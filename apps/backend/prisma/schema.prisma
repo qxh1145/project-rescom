@@ -1,0 +1,266 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------
+// ENUMS
+// ----------------------------------------
+enum Role {
+  ADMIN
+  PUBLISHER
+  RESPONDENT
+}
+
+enum UserStatus {
+  ACTIVE
+  LOCKED
+}
+
+enum FormType {
+  INTERNAL
+  EXTERNAL
+}
+
+enum FormStatus {
+  DRAFT
+  ESCROW_LOCKED
+  MODERATION_QUEUE
+  PUBLISHED
+  CLOSED
+}
+
+enum ResponseStatus {
+  IN_PROGRESS
+  SUBMITTED
+  VALIDATED
+  DISPUTED
+  REJECTED
+}
+
+enum TransactionType {
+  EARN
+  SPEND
+  ESCROW_LOCK
+  ESCROW_REFUND
+  TOP_UP
+  ADMIN_MINT
+}
+
+enum BalanceType {
+  AVAILABLE
+  PENDING
+  FROZEN
+  ESCROW
+}
+
+enum FraudLogType {
+  TIME_BARRIER
+  RATE_LIMIT
+  DEMO_MISMATCH
+  RECAPTCHA_FAIL
+}
+
+enum NotificationType {
+  SURVEY_APPROVED
+  ESCROW_RELEASED
+  TOPUP_SUCCESS
+  WARNING
+}
+
+enum TopUpStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ----------------------------------------
+// MODELS
+// ----------------------------------------
+
+model User {
+  id            String   @id @default(uuid()) @db.Uuid
+  email         String   @unique
+  passwordHash  String   @map("password_hash")
+  role          Role
+  status        UserStatus @default(ACTIVE)
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  demographicProfile DemographicProfile?
+  gamificationStat   GamificationStat?
+  formsPublished     Form[]              @relation("PublisherForms")
+  responses          Response[]
+  ledgerTransactions LedgerTransaction[]
+  fraudLogs          FraudLog[]
+  notifications      Notification[]
+  topUpRequests      TopUpRequest[]
+
+  @@map("users")
+}
+
+model DemographicProfile {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @unique @map("user_id") @db.Uuid
+  age              Int?
+  location         String?
+  householdIncome  String?  @map("household_income")
+  specificInterests Json?   @map("specific_interests")
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("demographic_profiles")
+}
+
+model Form {
+  id                  String     @id @default(uuid()) @db.Uuid
+  publisherId         String     @map("publisher_id") @db.Uuid
+  type                FormType
+  status              FormStatus @default(DRAFT)
+  title               String
+  description         String?    @db.Text
+  rewardPerResponse   Int        @map("reward_per_response")
+  expectedCompletions Int        @map("expected_completions")
+  
+  externalUrl         String?    @map("external_url")
+  completionCode      String?    @map("completion_code")
+  
+  parentFormId        String?    @map("parent_form_id") @db.Uuid
+  versionNumber       Int        @default(1) @map("version_number")
+  
+  publishedAt         DateTime?  @map("published_at")
+  createdAt           DateTime   @default(now()) @map("created_at")
+  updatedAt           DateTime   @updatedAt @map("updated_at")
+
+  // Relationships
+  publisher           User            @relation("PublisherForms", fields: [publisherId], references: [id])
+  schema              FormSchema?
+  targeting           FormTargeting?
+  responses           Response[]
+  
+  // Self-relation for versioning
+  parentForm          Form?           @relation("FormVersions", fields: [parentFormId], references: [id])
+  childForms          Form[]          @relation("FormVersions")
+
+  @@map("forms")
+}
+
+model FormSchema {
+  id         String   @id @default(uuid()) @db.Uuid
+  formId     String   @unique @map("form_id") @db.Uuid
+  schemaJson Json     @map("schema_json") // Zod compatible form blocks
+  
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  form       Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@map("form_schemas")
+}
+
+model FormTargeting {
+  id           String   @id @default(uuid()) @db.Uuid
+  formId       String   @unique @map("form_id") @db.Uuid
+  criteriaJson Json     @map("criteria_json") // Demographic requirements
+  
+  form         Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@map("form_targetings")
+}
+
+model Response {
+  id            String         @id @default(uuid()) @db.Uuid
+  formId        String         @map("form_id") @db.Uuid
+  respondentId  String?        @map("respondent_id") @db.Uuid // Nullable for Guest
+  status        ResponseStatus @default(IN_PROGRESS)
+  answersJson   Json?          @map("answers_json")
+  ipAddress     String         @map("ip_address")
+  isGuest       Boolean        @default(false) @map("is_guest")
+  
+  submittedAt   DateTime?      @map("submitted_at")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  form          Form           @relation(fields: [formId], references: [id], onDelete: Restrict)
+  respondent    User?          @relation(fields: [respondentId], references: [id], onDelete: SetNull)
+
+  @@map("responses")
+}
+
+model LedgerTransaction {
+  id              String          @id @default(uuid()) @db.Uuid
+  userId          String          @map("user_id") @db.Uuid
+  type            TransactionType
+  balanceType     BalanceType     @map("balance_type")
+  amount          Int
+  referenceId     String?         @map("reference_id") @db.Uuid // e.g., form_id or topup_id
+  idempotencyKey  String          @unique @map("idempotency_key")
+  
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  user            User            @relation(fields: [userId], references: [id])
+
+  @@map("ledger_transactions")
+}
+
+model FraudLog {
+  id        String       @id @default(uuid()) @db.Uuid
+  userId    String       @map("user_id") @db.Uuid
+  type      FraudLogType
+  details   Json?
+  
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  user      User         @relation(fields: [userId], references: [id])
+
+  @@map("fraud_logs")
+}
+
+model GamificationStat {
+  userId                String   @id @map("user_id") @db.Uuid
+  currentStreak         Int      @default(0) @map("current_streak")
+  maxStreak             Int      @default(0) @map("max_streak")
+  totalSurveysCompleted Int      @default(0) @map("total_surveys_completed")
+  isTrustedResearcher   Boolean  @default(false) @map("is_trusted_researcher")
+  lastSurveyDate        DateTime? @map("last_survey_date")
+  
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("gamification_stats")
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  type      NotificationType
+  message   String
+  isRead    Boolean          @default(false) @map("is_read")
+  
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model TopUpRequest {
+  id        String      @id @default(uuid()) @db.Uuid
+  userId    String      @map("user_id") @db.Uuid
+  amount    Int
+  status    TopUpStatus @default(PENDING)
+  adminId   String?     @map("admin_id") @db.Uuid
+  
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  user      User        @relation(fields: [userId], references: [id])
+
+  @@map("top_up_requests")
+}

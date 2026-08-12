@@ -1,0 +1,203 @@
+RESCOM
+Nền tảng cộng đồng hỗ trợ trao đổi khảo sát học thuật
+Tài liệu Tổng quan Dự án — bản dành cho người đọc không chuyên về kỹ thuật
+Phiên bản: 1.1    Cập nhật: 08/2026    Thực hiện: Rescom Team — FPT University Đà Nẵng
+Mục Lục
+1. RESCOM Là Gì?
+2. Vấn Đề Mà RESCOM Giải Quyết
+3. Giải Pháp Của RESCOM
+4. RESCOM Dành Cho Ai?
+5. “Điểm” — Đơn Vị Trao Đổi Của RESCOM
+6. Hành Trình Sử Dụng Sản Phẩm
+7. Các Tính Năng Chính Của Hệ Thống
+8. Cấp Độ Thành Viên
+9. Cam Kết Của RESCOM
+10. Hạ Tầng Công Nghệ & Độ Tin Cậy Vận Hành
+11. Phạm Vi Giai Đoạn 1 (MVP) Và Lộ Trình Phát Triển
+12. Tóm Tắt Điểm Nổi Bật
+
+1. RESCOM Là Gì?
+RESCOM (viết tắt của Research + Community) là một nền tảng website kết nối cộng đồng sinh viên, giúp việc thực hiện khảo sát phục vụ học tập và nghiên cứu — như assignment, đồ án, khóa luận — trở nên dễ dàng, công bằng và đáng tin cậy hơn.
+Nói một cách đơn giản:
+RESCOM là nơi sinh viên “giúp nhau làm khảo sát” theo một cơ chế có ràng buộc công bằng — ai muốn được hỗ trợ thu thập dữ liệu thì cũng phải bỏ công đóng góp lại cho cộng đồng.
+
+2. Vấn Đề Mà RESCOM Giải Quyết
+Mỗi năm có hơn 2 triệu sinh viên (Bộ GD&ĐT, 2024) cần thu thập dữ liệu khảo sát cho việc học. Cách làm phổ biến hiện nay — nhờ vả qua các nhóm mạng xã hội — đang gặp phải 5 vấn đề cốt lõi:
+#
+Vấn đề
+Thực trạng
+1
+Khó tiếp cận đúng đối tượng
+60,6% sinh viên không thể lọc được đúng nhóm người trả lời phù hợp với đề tài của mình
+2
+Chất lượng dữ liệu kém
+76,0% từng gặp phải câu trả lời qua loa, thiếu trung thực
+3
+Áp lực deadline
+68,3% gặp khó khăn vì gần đến hạn nộp bài mà vẫn chưa thu đủ số lượng khảo sát
+4
+Trao đổi thiếu công bằng
+Không có cơ chế ràng buộc — người được giúp đỡ không cần đóng góp lại
+5
+Khó xác nhận ai thực sự đã làm
+Không có cách nào biết chắc người trả lời có thực sự làm nghiêm túc hay không
+Nguồn: khảo sát nội bộ nhóm phát triển RESCOM, n = 105 sinh viên, tháng 5/2026.
+3. Giải Pháp Của RESCOM
+RESCOM xây dựng một mô hình “kinh tế chia sẻ hai chiều”: người làm khảo sát để nhận điểm thưởng, và dùng chính điểm đó để đăng khảo sát của riêng mình. Vòng lặp này khiến mọi người trong cộng đồng vừa là người nhận hỗ trợ, vừa là người đóng góp.
+Respondent làm khảo sát  →  nhận Điểm  →  dùng Điểm để đăng khảo sát của chính mình  →  người khác lại đi làm khảo sát để nhận Điểm  →  ...
+
+Nguyên tắc cốt lõi xuyên suốt hệ thống: 
+	•	Công bằng: Ai muốn nhận sự hỗ trợ thì phải đóng góp trước.
+	•	Minh bạch: Mọi giao dịch điểm đều được ghi lại vĩnh viễn, không thể chỉnh sửa hay xóa.
+	•	Chất lượng: Hệ thống lọc đúng người và phát hiện gian lận giúp dữ liệu thu về đáng tin cậy hơn.
+
+4. RESCOM Dành Cho Ai?
+Nhóm người dùng
+Vai trò
+Nhu cầu chính
+Publisher
+(Người tạo khảo sát)
+Sinh viên cần thu thập dữ liệu cho bài tập, đồ án, khóa luận, nghiên cứu
+Thu đủ mẫu đúng hạn, đúng đối tượng, dữ liệu sạch
+Respondent
+(Người làm khảo sát)
+Sinh viên làm khảo sát để tích lũy điểm thưởng
+Được ghi nhận công sức, hệ thống công bằng
+Tổ chức / Giảng viên
+(định hướng mở rộng)
+Câu lạc bộ, giảng viên, khoa/trường, nhóm nghiên cứu
+Công cụ quản lý khảo sát theo tổ chức, thống kê nâng cao
+Trong giai đoạn đầu, phần lớn người dùng vừa đóng vai trò Publisher, vừa đóng vai trò Respondent tùy thời điểm.
+5. “Điểm” — Đơn Vị Trao Đổi Của RESCOM
+Toàn bộ hoạt động trên RESCOM xoay quanh một đơn vị trao đổi nội bộ gọi là Điểm. Đây là cách hệ thống hoạt động, giải thích theo từng bước:
+	•	Quy đổi: 1 điểm quy đổi = 200 VNĐ khi nạp, nhưng Điểm không phải là tiền và không được mua bán, chuyển nhượng giữa các tài khoản.
+	•	Điểm khởi đầu: Mọi thành viên mới được tặng 100 điểm ngay khi đăng ký, nhưng số điểm này bị “đóng băng” cho đến khi họ chứng minh là người dùng thật (bằng cách hoàn thành 2 khảo sát đầu tiên). Đây là cách RESCOM chặn tài khoản ảo.
+	•	Khóa điểm đảm bảo (Escrow): Khi Publisher đăng khảo sát, số điểm dự kiến trả cho người làm sẽ được “khóa lại” ngay lập tức trong hệ thống — đảm bảo Respondent luôn được trả điểm đầy đủ, không bao giờ bị quỵt.
+	•	Thời gian đối soát: Sau khi Respondent hoàn thành khảo sát hợp lệ, điểm được chuyển vào trạng thái “Đang chờ đối soát” trong 48 giờ, để Publisher có thời gian kiểm tra chất lượng dữ liệu và khiếu nại nếu phát hiện vấn đề. Sau 48 giờ không có khiếu nại, điểm tự động chuyển thành khả dụng, dùng được ngay.
+	•	Nạp thêm điểm: Nếu cần điểm gấp, người dùng có thể nạp tiền thật để đổi thành điểm (tối thiểu 100 điểm, tương đương 20.000 VNĐ). Ở giai đoạn đầu, việc này do Admin xử lý thủ công.
+
+Mức điểm thưởng cho Respondent được hệ thống tự động đề xuất dựa trên thời gian làm bài — khảo sát càng dài, điểm thưởng càng cao — và Publisher không thể trả thấp hơn mức tối thiểu:
+Thời gian hoàn thành
+Điểm thưởng
+Dưới 5 phút
+5 – 10 điểm
+5 – 10 phút
+10 – 20 điểm
+10 – 15 phút
+15 – 25 điểm
+Trên 15 phút
+20 – 40 điểm
+
+6. Hành Trình Sử Dụng Sản Phẩm
+6.1 Hành trình của người dùng mới
+	•	Đăng ký tài khoản bằng email hoặc Google.
+	•	Nhận 100 điểm ở trạng thái “đóng băng”.
+	•	Làm khảo sát nhân khẩu học đầu tiên (thông tin cơ bản: tuổi, giới tính, ngành học, khu vực, sở thích...).
+	•	Làm thêm 1 khảo sát bất kỳ khác từ danh sách.
+	•	Sau khi hoàn thành cả 2 khảo sát trên, 100 điểm được mở khóa — tài khoản chính thức hoạt động đầy đủ.
+6.2 Hành trình của Respondent (người làm khảo sát)
+	•	Đăng nhập và xem “Feed” khảo sát — danh sách đã được lọc sẵn theo đúng đối tượng phù hợp với hồ sơ cá nhân.
+	•	Chọn một khảo sát và bấm “Bắt đầu làm”.
+	•	Hệ thống mở khảo sát (Google Forms) ở tab mới, đồng thời hiện đồng hồ đếm ngược theo thời gian ước tính.
+	•	Người dùng làm khảo sát thật sự — nút xác nhận hoàn thành bị khóa cho đến khi hết thời gian đếm ngược, để tránh việc bấm xác nhận ngay mà chưa làm.
+	•	Sau khi làm xong, lấy “Mã hoàn thành” hiển thị ở cuối khảo sát và nhập lại vào RESCOM.
+	•	Hệ thống kiểm tra mã đúng và đủ thời gian làm bài; nếu hợp lệ, điểm được cộng vào mục “Đang chờ đối soát”.
+	•	Sau 48 giờ không có khiếu nại, điểm tự động chuyển thành điểm khả dụng, dùng được ngay.
+6.3 Hành trình của Publisher (người đăng khảo sát)
+	•	Chọn “Tạo khảo sát mới”.
+	•	Bước 1: Dán link khảo sát (Google Forms), nhập mã hoàn thành và thời gian làm ước tính.
+	•	Bước 2: Chọn tiêu chí đối tượng mong muốn — ngành học, độ tuổi, giới tính, khu vực...
+	•	Bước 3: Nhập số lượng mẫu cần thu và mức điểm thưởng cho mỗi lượt hoàn thành.
+	•	Hệ thống tự tính tổng điểm cần khóa và kiểm tra số dư: nếu không đủ điểm, hệ thống chặn đăng bài và gợi ý đi làm khảo sát để kiếm thêm; nếu đủ điểm, khảo sát được đăng lên ngay cho đúng nhóm đối tượng đã chọn.
+	•	Theo dõi tiến độ qua Dashboard riêng: số lượt hoàn thành, thời gian còn lại, điểm đã dùng...
+	•	Nếu hết hạn mà vẫn còn slot trống, điểm dư sẽ tự động được hoàn lại.
+7. Các Tính Năng Chính Của Hệ Thống
+7.1 Dành cho Respondent (người làm khảo sát)
+	•	Đăng ký / đăng nhập nhanh bằng email hoặc tài khoản Google.
+	•	Feed khảo sát cá nhân hóa — chỉ hiện khảo sát phù hợp với hồ sơ (ngành, tuổi, giới tính, khu vực); có thể sắp xếp theo: phù hợp nhất, ngắn/dễ làm, gần deadline, điểm cao, cùng trường/ngành, mới đăng; có thể dùng bộ lọc nâng cao để tìm đúng khảo sát mong muốn.
+	•	Xem rõ thông tin trước khi làm: điểm thưởng, thời gian ước tính, số lượng chỗ còn trống.
+	•	Cơ chế làm khảo sát minh bạch với đồng hồ đếm ngược và mã xác nhận hoàn thành, đảm bảo công sức được ghi nhận đúng.
+	•	Ví điểm cá nhân — xem số dư khả dụng / đang chờ đối soát / đóng băng, cùng lịch sử giao dịch chi tiết không thể chỉnh sửa hay xóa.
+	•	Đánh giá và góp ý sau khi làm khảo sát (độ rõ ràng câu hỏi, độ dài, trải nghiệm làm bài...).
+7.2 Dành cho Publisher (người đăng khảo sát)
+	•	Đăng khảo sát từ Google Forms chỉ với 3 bước đơn giản.
+	•	Thiết lập tiêu chí đối tượng mục tiêu để tiếp cận đúng người cần khảo sát của mình.
+	•	Hệ thống tự động khóa điểm đảm bảo (Escrow) khi đăng bài, và tự động hoàn điểm dư nếu hết hạn mà chưa đủ mẫu.
+	•	Dashboard theo dõi tiến độ theo thời gian thực: số lượt hoàn thành, deadline đếm ngược, thời gian làm trung bình, tỷ lệ bỏ dở giữa chừng, feedback tổng hợp từ người làm khảo sát.
+	•	Có thể báo cáo phản hồi kém chất lượng trong vòng 48 giờ để được xem xét hoàn điểm.
+	•	Nạp thêm điểm bằng tiền thật khi cần khảo sát gấp mà chưa đủ điểm.
+7.3 Dành cho Admin (quản trị viên)
+	•	Xử lý khiếu nại về dữ liệu kém chất lượng giữa Publisher và Respondent, và điều chỉnh điểm tương ứng sau quyết định.
+	•	Duyệt các giao dịch nạp và rút điểm thủ công trong giai đoạn đầu.
+	•	Giám sát nhật ký gian lận (không thể chỉnh sửa hay xóa) và xử lý vi phạm, kể cả khóa tài khoản nếu cần thiết.
+7.4 Tính năng nền tảng, áp dụng chung toàn hệ thống
+	•	Hệ thống điểm minh bạch — mọi giao dịch điểm được ghi lại vĩnh viễn, không thể sửa hay xóa.
+	•	Cơ chế chống gian lận nhiều lớp — đo thời gian làm bài thực tế, giới hạn số lần nhập sai mã, giới hạn tần suất làm khảo sát để chặn bot, và mỗi tài khoản chỉ được hoàn thành một khảo sát đúng một lần.
+	•	Bảng giá điểm thưởng tự động theo thời gian làm bài, đảm bảo Respondent luôn được trả công xứng đáng.
+7.5 Sắp ra mắt — Trình Tạo Khảo Sát Trực Quan & Trợ Lý AI (Giai đoạn 2)
+Bên cạnh việc đăng khảo sát từ Google Forms, RESCOM đang phát triển trình tạo khảo sát ngay trên nền tảng, giúp Publisher chủ động hơn và không còn phụ thuộc vào công cụ bên ngoài:
+	•	Kéo-thả trực quan: Trình soạn thảo kéo-thả với đầy đủ các dạng câu hỏi phổ biến: văn bản, số, chọn một, chọn nhiều, đánh giá sao, thang đo, ngày tháng, tải tệp đính kèm...
+	•	Trợ lý AI gợi ý câu hỏi: Publisher chỉ cần mô tả mục đích khảo sát bằng ngôn ngữ tự nhiên, hệ thống sẽ tự động gợi ý cấu trúc câu hỏi phù hợp — Publisher toàn quyền xem lại và chỉnh sửa trước khi đăng chính thức.
+	•	Quản lý phiên bản khảo sát: Mỗi khảo sát được lưu thành từng phiên bản riêng biệt; một khi đã có người làm, khảo sát sẽ không thể bị chỉnh sửa trực tiếp — đảm bảo dữ liệu phản hồi luôn khớp đúng với bộ câu hỏi mà Respondent đã trả lời.
+	•	Không phụ thuộc bắt buộc vào AI: AI chỉ đóng vai trò trợ lý tùy chọn — nếu tính năng AI tạm ngưng vì bất kỳ lý do gì, toàn bộ chức năng cốt lõi (đăng nhập, làm khảo sát, ví điểm, marketplace...) vẫn hoạt động bình thường.
+
+8. Cấp Độ Thành Viên
+Để khuyến khích đóng góp lâu dài, RESCOM chia thành viên thành 5 cấp độ theo số khảo sát đã hoàn thành:
+Cấp độ
+Điều kiện
+Quyền lợi
+Thành viên mới
+Vừa đăng ký tài khoản
+Có 100 điểm (đang đóng băng)
+Thành viên đã xác thực
+Hoàn thành 2 khảo sát onboarding
+Mở khóa 100 điểm, dùng đầy đủ tính năng
+Người đóng góp tích cực
+Hoàn thành ≥ 20 khảo sát
+Được ưu tiên hiển thị trong Feed
+Nhà nghiên cứu tin cậy
+Hoàn thành ≥ 100 khảo sát
+Tăng độ tin cậy, rút ngắn thời gian chờ đối soát
+Đại sứ cộng đồng
+Hoàn thành ≥ 300 khảo sát
+Nhận đặc quyền cộng đồng
+9. Cam Kết Của RESCOM
+	•	Nhanh: Phản hồi hệ thống nhanh, Feed khảo sát tải chỉ trong vài giây.
+	•	An toàn: Dữ liệu cá nhân được bảo vệ, chỉ dùng để ghép nối đúng khảo sát phù hợp, không dùng vào mục đích khác.
+	•	Công bằng & minh bạch: Mọi giao dịch điểm không thể bị nhân đôi hay biến mất; nhật ký gian lận không thể bị xóa.
+	•	Ổn định: Hệ thống hoạt động ổn định trong giờ cao điểm học kỳ, mục tiêu thời gian hoạt động liên tục từ 99% trở lên.
+	•	Dễ dùng: Giao diện hiện đại, tối giản, hướng đến sinh viên Gen Z; quy trình đăng khảo sát chỉ gồm 3 bước.
+
+Về mặt pháp lý và đạo đức sử dụng dữ liệu, RESCOM cam kết:
+	•	Điểm không được định vị là tiền tệ, không thể mua bán hay chuyển nhượng giữa các tài khoản.
+	•	Dữ liệu thu thập từ khảo sát chỉ được sử dụng cho mục đích học thuật, có cam kết bảo mật rõ ràng.
+	•	RESCOM là dịch vụ hỗ trợ phân phối khảo sát đến đúng đối tượng, không bán responses.
+10. Hạ Tầng Công Nghệ & Độ Tin Cậy Vận Hành
+Phía sau trải nghiệm đơn giản mà người dùng nhìn thấy là một hạ tầng kỹ thuật được tách lớp rõ ràng, giúp RESCOM vừa an toàn, vừa có thể mở rộng khi lượng người dùng tăng lên:
+	•	Bảo vệ truy cập: Mọi truy cập vào RESCOM đều đi qua một lớp bảo vệ chống tấn công mạng và được mã hóa trước khi đến hệ thống xử lý chính, tương tự cơ chế an ninh mà các nền tảng lớn đang áp dụng.
+	•	Tách biệt dữ liệu quan trọng: Dữ liệu người dùng và Ví điểm (Point Ledger) được lưu trên một dịch vụ cơ sở dữ liệu chuyên dụng, tách biệt hoàn toàn khỏi máy chủ ứng dụng và có sao lưu định kỳ — giảm tối đa rủi ro mất hoặc sai lệch dữ liệu, kể cả khi máy chủ ứng dụng gặp sự cố.
+	•	Lưu trữ tệp an toàn: Ảnh đại diện, tệp đính kèm được lưu ở dịch vụ lưu trữ chuyên biệt, tách khỏi máy chủ ứng dụng, tránh thất lạc dữ liệu khi nâng cấp hoặc sự cố hệ thống.
+	•	Có thể mở rộng dần: Kiến trúc cho phép bổ sung thêm máy chủ xử lý khi lượng truy cập tăng cao, mà không cần viết lại toàn bộ hệ thống từ đầu — đảm bảo RESCOM có thể phát triển cùng số lượng người dùng.
+	•	Quy trình đảm bảo chất lượng trước khi ra mắt: Trước khi chính thức vận hành, đội ngũ tuân theo danh sách kiểm tra bắt buộc gồm sao lưu & khôi phục dữ liệu, kiểm thử bảo mật, kiểm thử chịu tải và giám sát hệ thống liên tục — đảm bảo RESCOM ổn định ngay từ ngày đầu ra mắt.
+
+Nguyên tắc vận hành cốt lõi:
+Nếu một tính năng phụ (như trợ lý AI) gặp sự cố, các chức năng lõi — đăng nhập, làm khảo sát, ví điểm, marketplace — vẫn phải hoạt động bình thường. Không một thành phần phụ nào được phép làm gián đoạn toàn hệ thống.
+
+11. Phạm Vi Giai Đoạn 1 (MVP) Và Lộ Trình Phát Triển
+Ở giai đoạn đầu tiên, RESCOM tập trung triển khai thí điểm tại Đại học FPT Đà Nẵng với đầy đủ các tính năng cốt lõi đã trình bày ở trên: đăng ký & hồ sơ, ví điểm, khảo sát onboarding, đăng khảo sát từ link ngoài kèm mã xác nhận, Feed khảo sát có lọc, cơ chế chống gian lận, khóa điểm đảm bảo, đối soát 48 giờ, dashboard cơ bản, đánh giá phản hồi, và nạp tiền thủ công qua Admin.
+Giai đoạn
+Trọng tâm
+Giai đoạn 1 — MVP
+(hiện tại)
+Triển khai thí điểm ngang hàng (peer-to-peer) tại ĐH FPT Đà Nẵng, với khảo sát từ link ngoài, cơ chế mã xác nhận, chống gian lận, đối soát 48 giờ và nạp/rút điểm thủ công.
+Giai đoạn 2 — Hoàn thiện
+Trình tạo khảo sát kéo-thả ngay trên RESCOM kèm trợ lý AI gợi ý câu hỏi (không cần Google Forms), quản lý phiên bản khảo sát, cơ chế giúp người làm khảo sát tập trung hơn, thanh toán tự động, tính năng “đẩy” khảo sát để tăng khả năng tiếp cận, và dashboard nâng cao.
+Giai đoạn 3 — Mở rộng
+Mở rộng cho tổ chức (giảng viên, khoa/trường, nhóm nghiên cứu), mở rộng địa lý ra toàn quốc, bổ sung công cụ phân tích dữ liệu và xuất báo cáo (Excel/SPSS).
+12. Tóm Tắt Điểm Nổi Bật
+	•	Mô hình “có qua có lại” độc đáo, giải quyết tận gốc vấn đề thiếu công bằng trong trao đổi khảo sát.
+	•	Cơ chế chống gian lận nhiều lớp giúp đảm bảo chất lượng dữ liệu thu về.
+	•	Ghép nối đúng đối tượng khảo sát nhờ hồ sơ nhân khẩu học chi tiết.
+	•	Minh bạch tuyệt đối trong quản lý điểm thưởng — không thể chỉnh sửa hay đánh mất.
+	•	Hạ tầng kỹ thuật hiện đại, tách lớp rõ ràng, bảo vệ an toàn dữ liệu điểm và có thể mở rộng khi lượng người dùng tăng.
+Tài liệu này được biên soạn dựa trên Đặc tả Yêu cầu Phần mềm (SRS) v1.0 và tài liệu Kiến trúc Hệ thống của dự án RESCOM, trình bày lại theo ngôn ngữ phổ thông để phục vụ các bên liên quan không chuyên về kỹ thuật (nhà đầu tư, ban giám khảo, đối tác, người dùng thử nghiệm).
