@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>RESCOM Architecture Health Review — 2026-08-16</title>
+  <style>
+    :root {
+      --ink: #18212f;
+      --muted: #657083;
+      --paper: #f5f7fb;
+      --surface: #ffffff;
+      --line: #dce2ec;
+      --navy: #102a43;
+      --blue: #1769e0;
+      --blue-soft: #eaf2ff;
+      --critical: #a51d2d;
+      --critical-soft: #fff0f2;
+      --high: #b54708;
+      --high-soft: #fff4e5;
+      --medium: #8a6500;
+      --medium-soft: #fff9d9;
+      --low: #246b4e;
+      --low-soft: #eaf8f1;
+      --shadow: 0 10px 30px rgba(16, 42, 67, .08);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    a { color: var(--blue); }
+    a:hover { text-decoration-thickness: 2px; }
+
+    .shell {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .hero {
+      color: white;
+      background:
+        radial-gradient(circle at 92% 10%, rgba(87, 172, 255, .28), transparent 27%),
+        linear-gradient(135deg, #102a43 0%, #153d67 58%, #0a5695 100%);
+      padding: 64px 0 54px;
+      border-bottom: 5px solid #48a2ff;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      font-size: .78rem;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #a9d6ff;
+    }
+
+    h1 {
+      max-width: 850px;
+      margin: 0;
+      font-size: clamp(2.1rem, 5vw, 4.3rem);
+      line-height: 1.02;
+      letter-spacing: -.045em;
+    }
+
+    .subtitle {
+      max-width: 770px;
+      margin: 20px 0 0;
+      font-size: 1.08rem;
+      color: #d8eaff;
+    }
+
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 28px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 6px 12px;
+      border: 1px solid rgba(255,255,255,.24);
+      border-radius: 999px;
+      background: rgba(255,255,255,.09);
+      font-size: .82rem;
+      font-weight: 700;
+    }
+
+    .top-grid {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 24px;
+      margin-top: -28px;
+      align-items: start;
+    }
+
+    .score-card, .verdict-card, .panel, .issue, .priority, .decision {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .score-card {
+      position: sticky;
+      top: 18px;
+      border-radius: 18px;
+      overflow: hidden;
+    }
+
+    .score-head {
+      padding: 22px;
+      color: white;
+      background: var(--critical);
+    }
+
+    .score-head small {
+      display: block;
+      font-weight: 800;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      opacity: .82;
+    }
+
+    .score {
+      margin-top: 2px;
+      font-size: 3.9rem;
+      font-weight: 850;
+      line-height: 1;
+      letter-spacing: -.06em;
+    }
+
+    .score span { font-size: 1.3rem; opacity: .8; }
+
+    .score-body { padding: 20px 22px 22px; }
+
+    .score-body strong { color: var(--critical); }
+
+    nav a {
+      display: block;
+      padding: 8px 0;
+      color: var(--navy);
+      font-size: .9rem;
+      font-weight: 700;
+      text-decoration: none;
+      border-bottom: 1px solid #edf0f5;
+    }
+
+    nav a:last-child { border-bottom: 0; }
+
+    .verdict-card {
+      padding: 30px;
+      border-radius: 18px;
+    }
+
+    .verdict-card h2 { margin-top: 0; }
+
+    .callout {
+      margin: 22px 0 0;
+      padding: 18px 20px;
+      border-left: 5px solid var(--critical);
+      background: var(--critical-soft);
+      border-radius: 6px 12px 12px 6px;
+      color: #58131c;
+      font-weight: 650;
+    }
+
+    main { padding: 36px 0 70px; }
+
+    section { scroll-margin-top: 18px; margin-top: 38px; }
+
+    section > h2 {
+      margin: 0 0 16px;
+      color: var(--navy);
+      font-size: 1.7rem;
+      letter-spacing: -.025em;
+    }
+
+    h3 { color: var(--navy); }
+
+    .section-note { margin: -6px 0 18px; color: var(--muted); }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .metric {
+      padding: 17px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: white;
+    }
+
+    .metric .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-weight: 750;
+    }
+
+    .metric .value { color: var(--critical); }
+
+    .bar {
+      height: 7px;
+      margin-top: 11px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #edf0f5;
+    }
+
+    .bar span {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, #d95b63, #f29f56);
+      border-radius: inherit;
+    }
+
+    .panel {
+      padding: 24px;
+      border-radius: 14px;
+    }
+
+    .authority-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .authority-grid h3 { margin-top: 0; }
+
+    .canonical { border-top: 5px solid var(--low); }
+    .conflict { border-top: 5px solid var(--critical); }
+
+    .tag {
+      display: inline-block;
+      margin-bottom: 9px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: .72rem;
+      font-weight: 850;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .tag.critical { color: var(--critical); background: var(--critical-soft); }
+    .tag.high { color: var(--high); background: var(--high-soft); }
+    .tag.medium { color: var(--medium); background: var(--medium-soft); }
+    .tag.low { color: var(--low); background: var(--low-soft); }
+
+    .issues { display: grid; gap: 14px; }
+
+    .issue {
+      padding: 22px;
+      border-radius: 14px;
+      box-shadow: 0 5px 18px rgba(16,42,67,.06);
+    }
+
+    .issue.critical { border-left: 5px solid var(--critical); }
+    .issue.high { border-left: 5px solid var(--high); }
+    .issue h3 { margin: 0 0 8px; font-size: 1.1rem; }
+    .issue p { margin: 8px 0 0; }
+    .action { color: #173b2c; }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: white;
+      box-shadow: 0 5px 18px rgba(16,42,67,.05);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .9rem;
+    }
+
+    th, td {
+      padding: 13px 15px;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid var(--line);
+    }
+
+    th {
+      color: white;
+      background: var(--navy);
+      font-size: .76rem;
+      letter-spacing: .045em;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+    tbody tr:nth-child(even) { background: #fafbfd; }
+
+    .status {
+      white-space: nowrap;
+      font-weight: 800;
+    }
+
+    .status.bad { color: var(--critical); }
+    .status.warn { color: var(--high); }
+    .status.good { color: var(--low); }
+
+    .decision-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .decision { padding: 18px; border-radius: 12px; box-shadow: none; }
+    .decision h3 { margin: 0 0 7px; font-size: 1rem; }
+    .decision p { margin: 0; color: var(--muted); }
+
+    .keep { border-top: 4px solid var(--low); }
+    .modify { border-top: 4px solid var(--medium); }
+    .remove { border-top: 4px solid var(--critical); }
+    .replace { border-top: 4px solid var(--blue); }
+
+    .architecture {
+      display: grid;
+      grid-template-columns: 1fr auto 1.1fr auto 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: linear-gradient(180deg, white, #f7faff);
+    }
+
+    .arch-box {
+      min-height: 112px;
+      padding: 15px;
+      border: 2px solid #9bbde9;
+      border-radius: 12px;
+      background: white;
+      text-align: center;
+    }
+
+    .arch-box strong { display: block; color: var(--navy); }
+    .arch-box small { color: var(--muted); }
+    .arrow { color: var(--blue); font-size: 1.6rem; font-weight: 900; }
+
+    .contexts {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .context {
+      padding: 16px;
+      border-radius: 12px;
+      background: var(--blue-soft);
+      border: 1px solid #c9ddff;
+    }
+
+    .context strong { display: block; color: var(--navy); }
+    .context span { font-size: .87rem; color: #42536a; }
+
+    .flow {
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 8px 2px 14px;
+    }
+
+    .flow-step {
+      flex: 1 0 130px;
+      padding: 13px 10px;
+      border: 1px solid #c9ddff;
+      border-radius: 10px;
+      background: white;
+      color: var(--navy);
+      text-align: center;
+      font-size: .8rem;
+      font-weight: 750;
+    }
+
+    .flow-arrow { align-self: center; color: var(--blue); font-weight: 900; }
+
+    .priorities { display: grid; gap: 14px; }
+
+    .priority {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 5px 18px rgba(16,42,67,.05);
+    }
+
+    .priority-code {
+      display: grid;
+      place-items: center;
+      color: white;
+      background: var(--navy);
+      font-size: 1.35rem;
+      font-weight: 850;
+    }
+
+    .priority-body { padding: 18px 20px; }
+    .priority-body h3 { margin: 0 0 5px; }
+    .priority-body p { margin: 0; }
+
+    .evidence-list {
+      columns: 2;
+      column-gap: 36px;
+      margin: 0;
+    }
+
+    .evidence-list li { break-inside: avoid; margin-bottom: 9px; }
+
+    .reviewers {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .reviewer {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: white;
+    }
+
+    .reviewer strong { display: block; color: var(--critical); font-size: 1.1rem; }
+    .reviewer a { display: inline-block; margin-top: 9px; font-size: .84rem; }
+
+    footer {
+      padding: 32px 0 50px;
+      color: var(--muted);
+      border-top: 1px solid var(--line);
+      background: white;
+    }
+
+    footer strong { color: var(--navy); }
+
+    @media (max-width: 900px) {
+      .top-grid { grid-template-columns: 1fr; }
+      .score-card { position: static; }
+      .metrics, .contexts, .reviewers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .architecture { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); text-align: center; }
+    }
+
+    @media (max-width: 620px) {
+      .hero { padding-top: 44px; }
+      .metrics, .authority-grid, .decision-grid, .contexts, .reviewers { grid-template-columns: 1fr; }
+      .priority { grid-template-columns: 54px minmax(0, 1fr); }
+      .evidence-list { columns: 1; }
+      .verdict-card { padding: 22px; }
+    }
+
+    @media print {
+      body { background: white; font-size: 10pt; }
+      .hero { padding: 26px 0; }
+      .top-grid { margin-top: 18px; grid-template-columns: 220px 1fr; }
+      .score-card { position: static; }
+      .panel, .issue, .verdict-card, .score-card { box-shadow: none; }
+      section { break-inside: avoid; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="shell">
+      <p class="eyebrow">BMAD Architecture Validation · Final</p>
+      <h1>RESCOM Architecture Health Review</h1>
+      <p class="subtitle">A full comparison of the canonical requirements, architecture decisions, current Prisma schema, repository structure, runtime evidence, and production-readiness claims.</p>
+      <div class="hero-meta">
+        <span class="pill">Review date: 2026-08-16</span>
+        <span class="pill">Scope: entire current project</span>
+        <span class="pill">Intent: validate, no spine edits</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="shell top-grid">
+    <aside class="score-card" aria-label="Architecture score and navigation">
+      <div class="score-head">
+        <small>Architecture health</small>
+        <div class="score">4.2<span>/10</span></div>
+      </div>
+      <div class="score-body">
+        <p><strong>Not safe</strong> for parallel feature development or production deployment.</p>
+        <nav aria-label="Report sections">
+          <a href="#scorecard">Scorecard</a>
+          <a href="#authority">Authority conflict</a>
+          <a href="#critical">Critical issues</a>
+          <a href="#mismatches">Docs vs implementation</a>
+          <a href="#decisions">Decision disposition</a>
+          <a href="#target">Optimized architecture</a>
+          <a href="#priorities">Priorities</a>
+          <a href="#evidence">Evidence gaps</a>
+          <a href="#verification">Verification</a>
+        </nav>
+      </div>
+    </aside>
+
+    <article class="verdict-card">
+      <span class="tag critical">Executive verdict</span>
+      <h2>The technology direction is viable; the architecture has not converged.</h2>
+      <p>A NestJS modular monolith, PostgreSQL source of truth, immutable Form Versions, transactional outbox, internal-only Research Integrity Engine, progressive policy enforcement, and optional AI are defensible. The blocking failure is that the canonical SPEC/spine, an unratified “Architecture V2,” and the current Prisma schema describe materially different systems.</p>
+      <div class="callout">Pause at the schema and migration boundary. Do not generate a first migration until authority, identity/versioning, ledger, integrity lineage, outbox, and privacy contracts are reconciled.</div>
+    </article>
+  </div>
+
+  <main class="shell">
+    <section id="scorecard">
+      <h2>Scorecard</h2>
+      <p class="section-note">The score distinguishes a promising target direction from the health of what is documented and implemented today.</p>
+      <div class="metrics">
+        <div class="metric"><div class="row"><span>Strategic feasibility</span><span class="value">7.0</span></div><div class="bar"><span style="width:70%"></span></div></div>
+        <div class="metric"><div class="row"><span>Requirements alignment</span><span class="value">5.0</span></div><div class="bar"><span style="width:50%"></span></div></div>
+        <div class="metric"><div class="row"><span>Documentation consistency</span><span class="value">3.0</span></div><div class="bar"><span style="width:30%"></span></div></div>
+        <div class="metric"><div class="row"><span>Maintainability</span><span class="value">4.5</span></div><div class="bar"><span style="width:45%"></span></div></div>
+        <div class="metric"><div class="row"><span>Data integrity</span><span class="value">2.0</span></div><div class="bar"><span style="width:20%"></span></div></div>
+        <div class="metric"><div class="row"><span>Security / privacy</span><span class="value">3.0</span></div><div class="bar"><span style="width:30%"></span></div></div>
+        <div class="metric"><div class="row"><span>Scalability / recovery</span><span class="value">5.0</span></div><div class="bar"><span style="width:50%"></span></div></div>
+        <div class="metric"><div class="row"><span>Implementation alignment</span><span class="value">2.0</span></div><div class="bar"><span style="width:20%"></span></div></div>
+        <div class="metric"><div class="row"><span>Production readiness</span><span class="value">1.0</span></div><div class="bar"><span style="width:10%"></span></div></div>
+      </div>
+    </section>
+
+    <section id="authority">
+      <h2>Architecture authority is split</h2>
+      <div class="authority-grid">
+        <div class="panel canonical">
+          <span class="tag low">Canonical</span>
+          <h3>Build contract</h3>
+          <ol>
+            <li>Canonical SPEC</li>
+            <li>Final PRD and integrity addendum</li>
+            <li>Finalized Architecture Spine</li>
+            <li>Solution design</li>
+            <li>Epics and stories</li>
+          </ol>
+          <p>The SPEC explicitly names these companions, and the spine declares itself binding.</p>
+        </div>
+        <div class="panel conflict">
+          <span class="tag critical">Unratified conflict</span>
+          <h3>Two Architecture V2 copies</h3>
+          <p>Byte-identical proposals exist at the repository root and in planning artifacts. They change external assessment behavior, replace FraudLog, and change worker deployment. Parts of the current Prisma schema already reflect those incompatible choices.</p>
+          <p><strong>Disposition:</strong> extract compatible material, reconcile it through an architecture Update, then archive one historical copy.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="critical">
+      <h2>Critical issues</h2>
+      <div class="issues">
+        <article class="issue critical">
+          <span class="tag critical">C-01</span>
+          <h3>Split-brain architecture authority</h3>
+          <p>Canonical rules say External responses are <code>NOT_ASSESSED</code>, FraudLog remains a separate security record, and background processing is in-process. Architecture V2 specifies reduced-confidence External assessments, replaces FraudLog, and deploys a separate worker.</p>
+          <p class="action"><strong>Required:</strong> declare the canonical contract, reconcile V2, and block migration generation until completed.</p>
+        </article>
+        <article class="issue critical">
+          <span class="tag critical">C-02</span>
+          <h3>The financial schema is not double-entry</h3>
+          <p>The current <code>LedgerTransaction</code> has one user, one balance type, and one signed amount. It cannot prove balanced movement, conservation, escrow ownership, or atomic transfer semantics.</p>
+          <p class="action"><strong>Required:</strong> replace it with an immutable journal header and at least two balanced entries posted to explicit accounts.</p>
+        </article>
+        <article class="issue critical">
+          <span class="tag critical">C-03</span>
+          <h3>Form/version/attempt/response identity is not enforceable</h3>
+          <p>There is no explicit immutable FormVersion, version references are nullable scalars without foreign keys, guest Internal responses cannot be represented, and duplicated form/respondent references can disagree with the linked attempt.</p>
+          <p class="action"><strong>Required:</strong> make Attempt the submission context, reference one immutable FormVersion, and model authenticated/guest identity intentionally.</p>
+        </article>
+        <article class="issue critical">
+          <span class="tag critical">C-04</span>
+          <h3>The integrity pipeline cannot meet its canonical contract</h3>
+          <p>Consent, event deduplication, raw-event lineage, replayable signals, assessment applicability/coverage/revision, immutable reliability and survey-quality snapshots, trust projection, and robust outbox semantics are missing or under-specified.</p>
+          <p class="action"><strong>Required:</strong> redesign this schema slice directly from canonical CAP-1 through CAP-7 before the first migration.</p>
+        </article>
+        <article class="issue critical">
+          <span class="tag critical">C-05</span>
+          <h3>Privacy and governance gates block production telemetry</h3>
+          <p>Consent, retention/deletion, access audit, policy promotion, review/appeal ownership, and Survey Quality evidence thresholds remain unresolved while behavioral telemetry and raw identifiers are already modeled.</p>
+          <p class="action"><strong>Required:</strong> collect no production telemetry until these controls are approved, testable, and represented in schema and stories.</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>High-risk findings</h2>
+      <div class="issues">
+        <article class="issue high"><span class="tag high">H-01 · H-02</span><h3>Backend, workspace, migrations, and runtime are targets only</h3><p>No NestJS source, root workspace, shared packages, migration history, or running database evidence exists. Prisma syntax validation is not runtime proof.</p></article>
+        <article class="issue high"><span class="tag high">H-03 · H-04</span><h3>Worker and package baselines conflict</h3><p>Worker topology is contradictory. Prisma CLI/client are v6 while config is v7; Node 18 documentation conflicts with current Prisma/Nest requirements and there is no pinned repository toolchain.</p></article>
+        <article class="issue high"><span class="tag high">H-05 · H-06</span><h3>Security/session and user capability contracts are incomplete</h3><p>Cookie JWTs have no binding CSRF, key rotation, session-version, expiry, audit, or origin posture. One mutually exclusive role cannot express the documented dual Publisher/Respondent capability without an inheritance rule.</p></article>
+        <article class="issue high"><span class="tag high">H-07 · H-08</span><h3>Telemetry ownership and append-only guarantees are weak</h3><p>IntegrityEvent mixes economy/policy/review events into a cross-domain bus. Append-only behavior exists only in prose, not database permissions, triggers, repository restrictions, or tests.</p></article>
+        <article class="issue high"><span class="tag high">H-09 · H-10</span><h3>Some structural mandates are over-engineered</h3><p>Strict four-layer Clean Architecture for every small feature, mandatory Turborepo, and unconditional Day-1 Redis add ceremony without current value. Preserve seams and ownership where risk justifies them.</p></article>
+        <article class="issue high"><span class="tag high">H-11</span><h3>Production operations are unproven</h3><p>No backend container, CI/CD, health endpoint, observability, backup/restore test, RPO/RTO, secrets implementation, load test, or deployment topology is present.</p></article>
+      </div>
+    </section>
+
+    <section id="mismatches">
+      <h2>Documentation vs implementation</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Contract</th><th>Canonical expectation</th><th>Current reality</th><th>Verdict</th></tr></thead>
+          <tbody>
+            <tr><td>NestJS modular monolith</td><td>Adopted</td><td>No backend source</td><td class="status bad">Missing</td></tr>
+            <tr><td>Shared contracts</td><td>Workspace + versioned Zod packages</td><td>Root is not a workspace; packages empty</td><td class="status bad">Missing</td></tr>
+            <tr><td>PostgreSQL</td><td>Durable source of truth</td><td>Compose 15 + syntactically valid schema</td><td class="status warn">Partial</td></tr>
+            <tr><td>Cookie JWT + single session</td><td>Secure auth and immediate invalidation</td><td>No auth/session implementation</td><td class="status bad">Missing</td></tr>
+            <tr><td>Double-entry ledger</td><td>Balanced debits and credits</td><td>Single signed transaction row</td><td class="status bad">Contradiction</td></tr>
+            <tr><td>Immutable Form Version</td><td>Every attempt/response pins one version</td><td>Self-versioned Form; weak scalar IDs</td><td class="status bad">Contradiction</td></tr>
+            <tr><td>Guest Internal response</td><td>Supported</td><td>Attempt requires User</td><td class="status bad">Contradiction</td></tr>
+            <tr><td>Consent-aware ingestion</td><td>Versioned consent + replay-safe events</td><td>No consent/client-event contract</td><td class="status bad">Contradiction</td></tr>
+            <tr><td>Integrity dimensions</td><td>Response, Reliability, Survey Quality</td><td>Assessment + mutable reputation only</td><td class="status bad">Missing</td></tr>
+            <tr><td>External applicability</td><td><code>NOT_ASSESSED</code></td><td>V2 conflict; schema has no applicability</td><td class="status bad">Conflict</td></tr>
+            <tr><td>Outbox</td><td>Idempotent distributed claim/retry</td><td>No key, lease, aggregate version, or handler dedupe</td><td class="status bad">Contradiction</td></tr>
+            <tr><td>Production operations</td><td>Monitoring, recovery, isolated environments</td><td>No implementation/runtime evidence</td><td class="status bad">Missing</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="decisions">
+      <h2>KEEP / MODIFY / REMOVE / REPLACE</h2>
+      <div class="decision-grid">
+        <article class="decision keep"><span class="tag low">Keep</span><h3>Modular monolith + PostgreSQL</h3><p>One codebase with explicit bounded-context ownership and PostgreSQL as durable source of truth.</p></article>
+        <article class="decision keep"><span class="tag low">Keep</span><h3>REST/Zod, outbox, internal-only Integrity</h3><p>Materialize contracts; strengthen the outbox; keep score separate from policy and AI optional.</p></article>
+        <article class="decision modify"><span class="tag medium">Modify</span><h3>Clean Architecture application</h3><p>Require ports at business/external seams, not four ceremonial folders for every CRUD operation.</p></article>
+        <article class="decision modify"><span class="tag medium">Modify</span><h3>Prisma, Redis, and frontend topology</h3><p>Use one Prisma family; add Redis only when distributed ephemeral state is needed; start with one Next.js app.</p></article>
+        <article class="decision remove"><span class="tag critical">Remove / defer</span><h3>Unratified and premature invariants</h3><p>Archive V2 authority; defer Turborepo as mandatory, external reduced assessment, and Incident-as-FraudLog replacement.</p></article>
+        <article class="decision replace"><span class="tag low" style="color:#1769e0;background:#eaf2ff">Replace</span><h3>Three load-bearing designs</h3><p>Use explicit FormVersion, journal + ledger entries, and one code/image with separate API and worker entrypoints.</p></article>
+      </div>
+    </section>
+
+    <section id="target">
+      <h2>Optimized target architecture</h2>
+      <p class="section-note"><strong>Pragmatic Modular Monolith + Transactional Outbox:</strong> the smallest architecture that preserves the product’s hard invariants without inventing new infrastructure.</p>
+      <div class="architecture" role="img" aria-label="One Next.js app calls a NestJS API, backed by PostgreSQL and a same-codebase worker">
+        <div class="arch-box"><strong>One Next.js App</strong><small>Route groups<br>Multiple domains if needed</small></div>
+        <div class="arrow">→</div>
+        <div class="arch-box"><strong>NestJS API</strong><small>Modular monolith<br>Explicit context ownership</small></div>
+        <div class="arrow">↔</div>
+        <div class="arch-box"><strong>PostgreSQL</strong><small>Domain state · Ledger<br>Outbox · Worker claims</small></div>
+      </div>
+      <div class="architecture" style="margin-top:10px" role="img" aria-label="Worker and optional services">
+        <div class="arch-box"><strong>NestJS Worker</strong><small>Same code/image<br>Separate entrypoint</small></div>
+        <div class="arrow">→</div>
+        <div class="arch-box"><strong>Integrity Domain</strong><small>Pure scorer<br>Versioned evidence</small></div>
+        <div class="arrow">↔</div>
+        <div class="arch-box"><strong>Optional adapters</strong><small>S3 · Redis when justified<br>Private AI provider</small></div>
+      </div>
+
+      <div class="contexts" aria-label="Recommended bounded contexts">
+        <div class="context"><strong>Identity</strong><span>Users, auth identities, sessions, demographics, permissions</span></div>
+        <div class="context"><strong>Research</strong><span>Survey aggregate, immutable FormVersion, targeting</span></div>
+        <div class="context"><strong>Participation</strong><span>Attempt, Response, answers, submission lifecycle</span></div>
+        <div class="context"><strong>Economy</strong><span>Accounts, journals/entries, escrow, settlement</span></div>
+        <div class="context"><strong>Integrity</strong><span>Consent, events, signals, assessments, policy, snapshots</span></div>
+        <div class="context"><strong>Marketplace</strong><span>Eligibility and ranking read models</span></div>
+        <div class="context"><strong>Moderation</strong><span>Survey moderation, disputes, reviews, security FraudLog</span></div>
+        <div class="context"><strong>Notifications</strong><span>Notification state and delivery from outbox</span></div>
+        <div class="context"><strong>AI adapter</strong><span>Drafts/signals only; time-bounded and non-authoritative</span></div>
+      </div>
+
+      <h3>Canonical Internal Form flow</h3>
+      <div class="flow" aria-label="Canonical data flow">
+        <div class="flow-step">Attempt + exact FormVersion + Consent</div><div class="flow-arrow">→</div>
+        <div class="flow-step">Deduplicated Events</div><div class="flow-arrow">→</div>
+        <div class="flow-step">Response + Outbox transaction</div><div class="flow-arrow">→</div>
+        <div class="flow-step">Worker lease + Signals</div><div class="flow-arrow">→</div>
+        <div class="flow-step">Assessment revision</div><div class="flow-arrow">→</div>
+        <div class="flow-step">Policy decision</div><div class="flow-arrow">→</div>
+        <div class="flow-step">Balanced Ledger + optional Review</div>
+      </div>
+      <p><strong>External Form flow:</strong> completion code + time barrier + dispute controls → applicability <code>NOT_ASSESSED</code> → economy settlement. It does not feed full Response Integrity, Reliability, or Survey Quality assessment.</p>
+    </section>
+
+    <section>
+      <h2>Minimum durable model corrections</h2>
+      <div class="panel">
+        <ol>
+          <li>Explicit Survey/Form aggregate and immutable <code>FormVersion</code>.</li>
+          <li><code>SurveyAttempt</code> pins one version and intentionally represents authenticated or guest participation.</li>
+          <li><code>Response</code> references Attempt; duplicated identity/version fields are removed or constrained.</li>
+          <li>Versioned <code>IntegrityConsent</code> with scope, timestamps, and lifecycle semantics.</li>
+          <li>Events add client ID, server receipt time, schema version, consent reference, payload validation, and dedupe key.</li>
+          <li>Durable signal/feature snapshots preserve derivation version and source lineage.</li>
+          <li>Assessments add applicability, coverage, immutable policy relation, revision, reason codes, and unique lineage.</li>
+          <li>Append-only Respondent Reliability and Survey Quality snapshots.</li>
+          <li>Integrity findings/reviews remain separate from security <code>FraudLog</code>.</li>
+          <li>Trust edges are typed, rebuildable projections, never authoritative state.</li>
+          <li><code>LedgerJournal</code> plus balanced immutable <code>LedgerEntry</code> rows and an idempotent command reference.</li>
+          <li>Outbox adds unique idempotency, aggregate version, lease, retry/backoff, terminal state, and handler deduplication.</li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="priorities">
+      <h2>Prioritized recovery plan</h2>
+      <div class="priorities">
+        <article class="priority"><div class="priority-code">P0</div><div class="priority-body"><h3>Architecture and schema gate</h3><p>Declare authority; archive/reconcile V2; freeze <code>db push</code>/migrations; redesign FormVersion, ledger, integrity, and outbox; resolve privacy launch gates; run BMAD architecture Update.</p></div></article>
+        <article class="priority"><div class="priority-code">P1</div><div class="priority-body"><h3>Foundation before public features</h3><p>Pin Node/Nest/Prisma families; establish npm workspaces and shared Zod contracts; scaffold bounded modules; move security foundations ahead of public auth; add migrations, isolated tests, CI, and safe configuration.</p></div></article>
+        <article class="priority"><div class="priority-code">P2</div><div class="priority-body"><h3>Core product path</h3><p>Build Identity, Research/FormVersion, Participation, and balanced Economy. Implement External Forms as explicitly not assessed. Add API/worker outbox processing and audited storage/admin flows.</p></div></article>
+        <article class="priority"><div class="priority-code">P3</div><div class="priority-body"><h3>Integrity in SHADOW</h3><p>Collect only approved consented telemetry; derive replayable signals; keep policies non-enforcing; measure coverage, latency, reliability, fairness, and review outcomes before reward impact.</p></div></article>
+        <article class="priority"><div class="priority-code">P4</div><div class="priority-body"><h3>Scale from evidence</h3><p>Add Redis, split deployments, or adopt streaming/graph/analytics infrastructure only when measured traffic, query, failure, or team boundaries justify them.</p></div></article>
+      </div>
+    </section>
+
+    <section id="evidence">
+      <h2>Production-readiness evidence still missing</h2>
+      <div class="panel">
+        <p><span class="tag high">Insufficient evidence</span></p>
+        <ul class="evidence-list">
+          <li>Applied database state, migrations, and real constraint behavior</li>
+          <li>Provider, regions, pooling, connection budgets, backup/restore, RPO/RTO</li>
+          <li>Backend container, reverse proxy, TLS/origins, topology, health checks</li>
+          <li>CI/CD, dependency/secret scanning, SAST/DAST, penetration testing</li>
+          <li>JWT key rotation, CSRF, invalidation, and admin audit access</li>
+          <li>Redis failure policy and topology</li>
+          <li>Object-storage policies, malware scanning, MIME/size enforcement</li>
+          <li>Qwen/Ollama fit, GPU capacity, timeout/fallback, license/data handling</li>
+          <li>Peak concurrency, event volume, storage growth, retention cost, SLOs</li>
+          <li>Monitoring, alerting, incident response, on-call, disaster recovery</li>
+          <li>Team ownership capable of sustaining the proposed boundaries</li>
+        </ul>
+        <p>No production-readiness, horizontal-scalability, or privacy-compliance claim is justified until these are evidenced.</p>
+      </div>
+    </section>
+
+    <section id="verification">
+      <h2>Verification performed</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Check</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td>BMAD deterministic spine lint</td><td class="status good">PASS — 0 findings</td></tr>
+            <tr><td>Prisma schema validation</td><td class="status good">PASS syntactically</td></tr>
+            <tr><td>Prisma package tree</td><td class="status bad">FAIL alignment — v6 CLI/client + v7 config</td></tr>
+            <tr><td>Root/backend tests</td><td class="status bad">FAIL — placeholder “no test specified”</td></tr>
+            <tr><td>Frontend ESLint and TypeScript</td><td class="status good">PASS</td></tr>
+            <tr><td>Docker runtime/database</td><td class="status warn">INSUFFICIENT EVIDENCE — daemon unavailable</td></tr>
+            <tr><td>Migrations, backend build, shared packages, CI/CD</td><td class="status bad">ABSENT</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Current technology reality</h2>
+      <div class="panel">
+        <ul>
+          <li>Next.js 16.3.0 is present and was released on 2026-08-03. Architecture prose should specify a supported patch policy, not freeze one patch.</li>
+          <li>NestJS 11 requires Node 20+; observed Node 22.18.0 fits, while the backend README’s Node 18 floor does not.</li>
+          <li>Prisma 7 is current GA and its official guidance moves CLI and client together. The mixed v6/v7 package state is not a coherent baseline.</li>
+          <li>PostgreSQL 15 remains supported through 2027-11-11 and is a valid floor when kept on a current minor.</li>
+        </ul>
+        <p>
+          <a href="https://nextjs.org/blog">Next.js releases</a> ·
+          <a href="https://docs.nestjs.com/migration-guide">NestJS migration guide</a> ·
+          <a href="https://docs.prisma.io/docs/orm/v6/more/upgrades/to-v7">Prisma 7 upgrade</a> ·
+          <a href="https://www.postgresql.org/support/versioning/">PostgreSQL support</a>
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Independent reviewer gate</h2>
+      <div class="reviewers">
+        <article class="reviewer"><strong>FAIL · 4.8/10</strong><span>Rubric, security, data, and production review</span><a href="reviews/review-current-architecture-rubric-2026-08-16.md">Open full review</a></article>
+        <article class="reviewer"><strong>4.0/10 · Not ready</strong><span>Adversarial boundary and failure-mode review</span><a href="reviews/review-current-adversarial-boundaries-2026-08-16.md">Open full review</a></article>
+        <article class="reviewer"><strong>FAIL</strong><span>Version, package, and implementation-reality review</span><a href="reviews/review-current-version-reality-2026-08-16.md">Open full review</a></article>
+      </div>
+      <p>All reviewers independently converged on invalid ledger semantics, canonical/schema drift, missing event/assessment/outbox invariants, competing authority, and insufficient production evidence.</p>
+    </section>
+
+    <section>
+      <div class="callout" style="border-left-color:#1769e0;background:#eaf2ff;color:#143f72">
+        <strong>Recommended next action:</strong> run <code>bmad-architecture</code> in <strong>Update</strong> mode. Keep AD IDs stable, amend contradictory rules, add only the missing enforceable invariants, reconcile/retire Architecture V2, then update the schema and Story 1.1 before starting <code>bmad-dev-story</code>.
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="shell">
+      <strong>RESCOM Architecture Health Review</strong><br>
+      Generated by the BMAD architecture validation workflow on 2026-08-16. The finalized Architecture Spine and application source were not modified.
+      <p><a href="architecture-health-report-2026-08-16.md">Open the full Markdown report</a></p>
+    </div>
+  </footer>
+</body>
+</html>

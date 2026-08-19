@@ -1,0 +1,128 @@
+# generated: 2026-08-16 17:09:30
+# last_updated: 2026-08-16 17:09:30
+# project: project-rescom
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; sprint-status surfaces open ones
+
+generated: "2026-08-16 17:09:30"
+last_updated: "2026-08-16 17:15:00"
+project: "project-rescom"
+project_key: "NOKEY"
+tracking_system: "file-system"
+story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+development_status:
+  epic-1: in-progress
+  1-1-emailpassword-registration-authentication: ready-for-dev
+  1-2-google-oauth-login: backlog
+  1-3-single-session-enforcement: backlog
+  1-4-role-based-access-control-rbac-user-management: backlog
+  1-5-system-audit-logging: backlog
+  1-6-security-api-foundation: backlog
+  epic-1-retrospective: optional
+  epic-2: backlog
+  2-1-shared-form-schema-validation: backlog
+  2-2-form-draft-creation-lifecycle: backlog
+  2-3-form-builder-canvas-block-types: backlog
+  2-4-form-block-editing-manipulation: backlog
+  2-5-live-form-preview: backlog
+  2-6-form-publish-lifecycle-immutability: backlog
+  2-7-form-versioning: backlog
+  epic-2-retrospective: optional
+  epic-3: backlog
+  3-1-ai-prompt-submission-payload-preparation: backlog
+  3-2-ai-json-generation-ux-loading-states: backlog
+  3-3-ai-output-parsing-zod-validation: backlog
+  3-4-ai-failure-fallback-isolation: backlog
+  epic-3-retrospective: optional
+  epic-4: backlog
+  4-1-survey-targeting-criteria: backlog
+  4-2-automated-marketplace-matching: backlog
+  4-3-feed-interactions-sortfilterauto-hide: backlog
+  4-4-public-link-guest-submissions: backlog
+  4-5-external-survey-setup-google-forms: backlog
+  epic-4-retrospective: optional
+  epic-5: backlog
+  5-1-survey-attempt-initialization-concurrency: backlog
+  5-2-internal-form-rendering-execution: backlog
+  5-3-file-upload-validation-secure-storage: backlog
+  5-4-internal-form-submission: backlog
+  5-5-external-form-completion-code-verification: backlog
+  epic-5-retrospective: optional
+  epic-6: backlog
+  6-1-double-entry-ledger-core-idempotency: backlog
+  6-2-wallet-balance-aggregation-presentation: backlog
+  6-3-escrow-lock-release-refund: backlog
+  6-4-respondent-point-credit-pending-logic: backlog
+  6-5-frozen-starter-points-lifecycle: backlog
+  6-6-point-top-up-request-admin-approval: backlog
+  epic-6-retrospective: optional
+  epic-7: backlog
+  7-1-mandatory-demographic-survey: backlog
+  7-2-secondary-deep-onboarding: backlog
+  7-3-automated-demographic-cross-check-algorithmic-ai-ready: backlog
+  7-4-gamification-daily-streaks: backlog
+  7-5-gamification-respondent-leaderboard: backlog
+  7-6-gamification-progression-tiers-trusted-researcher: backlog
+  epic-7-retrospective: optional
+  epic-8: backlog
+  8-1-survey-moderation-queue: backlog
+  8-2-automated-bot-protection-time-barrier-rate-limit: backlog
+  8-3-integrity-incident-system: backlog
+  8-4-anti-bot-integrity-incident-point-freezing: backlog
+  8-5-complaint-dispute-resolution-workflow: backlog
+  epic-8-retrospective: optional
+  epic-9: backlog
+  9-1-survey-traffic-analytics-dashboard: backlog
+  9-2-respondent-post-completion-feedback: backlog
+  9-3-publisher-feedback-summary: backlog
+  9-4-negative-feedback-deprioritization: backlog
+  9-5-transaction-ledger-dashboard: backlog
+  9-6-event-notification-system: backlog
+  epic-9-retrospective: optional
+  epic-10: backlog
+  10-1-integrity-consent-telemetry-event-contract: backlog
+  10-2-behavioral-telemetry-collection-in-internal-form-renderer: backlog
+  10-3-signal-derivation-pipeline-outbox-processing: backlog
+  10-4-pure-versioned-response-integrity-scoring-core: backlog
+  10-5-cold-start-respondent-reliability-snapshots: backlog
+  10-6-survey-quality-assessment-per-form-version: backlog
+  10-7-admin-integrity-review-queue-label-feedback-loop: backlog
+  10-8-relational-trustgraph-projection-evidence-protection: backlog
+  epic-10-retrospective: optional

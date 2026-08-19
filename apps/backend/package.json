@@ -9,7 +9,6 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@prisma/config": "^7.9.1",
     "prisma": "6.0.0"
   },
   "dependencies": {

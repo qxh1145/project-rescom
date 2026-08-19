@@ -21,6 +21,11 @@ enum UserStatus {
   LOCKED
 }
 
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+}
+
 enum FormType {
   INTERNAL
   EXTERNAL
@@ -42,20 +47,51 @@ enum ResponseStatus {
   REJECTED
 }
 
-enum TransactionType {
-  EARN
-  SPEND
-  ESCROW_LOCK
-  ESCROW_REFUND
-  TOP_UP
-  ADMIN_MINT
+enum AttemptStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+  LOCKED
 }
 
-enum BalanceType {
-  AVAILABLE
-  PENDING
-  FROZEN
-  ESCROW
+enum IntegrityEventType {
+  SURVEY_ATTEMPT_STARTED
+  SURVEY_ATTEMPT_RESUMED
+  SURVEY_ATTEMPT_ABANDONED
+  SURVEY_SUBMITTED
+  QUESTION_SHOWN
+  QUESTION_FOCUSED
+  QUESTION_BLURRED
+  ANSWER_SELECTED
+  ANSWER_ENTERED
+  ANSWER_CHANGED
+  ANSWER_CLEARED
+  QUESTION_SKIPPED
+  QUESTION_RETURNED
+  PAGE_HIDDEN
+  PAGE_VISIBLE
+  ATTENTION_CHECK_PASSED
+  ATTENTION_CHECK_FAILED
+  TIME_BARRIER_TRIGGERED
+  RATE_LIMIT_TRIGGERED
+  DEMOGRAPHIC_CONFLICT_DETECTED
+  DUPLICATE_PATTERN_DETECTED
+  SEMANTIC_QUALITY_EVALUATED
+  INTEGRITY_ASSESSMENT_CREATED
+  INTEGRITY_POLICY_DECIDED
+  INTEGRITY_REVIEW_COMPLETED
+  REWARD_PENDING
+  REWARD_RELEASED
+  REWARD_HELD
+  REWARD_REJECTED
+  ESCROW_RELEASED
+  ESCROW_REFUNDED
+}
+
+enum IntegrityRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
 }
 
 enum FraudLogType {
@@ -63,6 +99,51 @@ enum FraudLogType {
   RATE_LIMIT
   DEMO_MISMATCH
   RECAPTCHA_FAIL
+  SECURITY_VIOLATION
+}
+
+enum IntegrityIncidentType {
+  SPEED_ANOMALY
+  ATTENTION_FAILURE
+  DEMOGRAPHIC_CONFLICT
+  ANSWER_INCONSISTENCY
+  DUPLICATE_PATTERN
+  ACCOUNT_BEHAVIOR_ANOMALY
+  AUTOMATION_SUSPECTED
+  NETWORK_ANOMALY
+}
+
+enum IntegrityIncidentStatus {
+  OPEN
+  REVIEWED
+}
+
+enum IntegritySeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IntegrityResolution {
+  DISMISSED
+  CONFIRMED_LOW_QUALITY
+  CONFIRMED_FRAUD
+}
+
+enum PolicyStatus {
+  DRAFT
+  SHADOW
+  ADVISORY
+  ENFORCED
+  RETIRED
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSED
+  FAILED
+  DEAD_LETTER
 }
 
 enum NotificationType {
@@ -78,45 +159,100 @@ enum TopUpStatus {
   REJECTED
 }
 
+enum LedgerAccountClass {
+  USER_AVAILABLE
+  PENDING
+  FROZEN
+  ESCROW
+  INTEGRITY_HOLD
+  SYSTEM_ISSUANCE
+  SYSTEM_SINK
+  SYSTEM_CLEARING
+}
+
+enum AssessmentApplicability {
+  APPLICABLE
+  NOT_ASSESSED
+  INSUFFICIENT_EVIDENCE
+}
+
 // ----------------------------------------
 // MODELS
 // ----------------------------------------
 
 model User {
-  id            String   @id @default(uuid()) @db.Uuid
-  email         String   @unique
-  passwordHash  String   @map("password_hash")
-  role          Role
-  status        UserStatus @default(ACTIVE)
+  id           String     @id @default(uuid()) @db.Uuid
+  email        String     @unique
+  passwordHash String?    @map("password_hash")
+  role         Role       @default(RESPONDENT)
+  status       UserStatus @default(ACTIVE)
 
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relationships
+  authIdentities     AuthIdentity[]
+  sessions           Session[]
   demographicProfile DemographicProfile?
   gamificationStat   GamificationStat?
   formsPublished     Form[]              @relation("PublisherForms")
   responses          Response[]
-  ledgerTransactions LedgerTransaction[]
-  fraudLogs          FraudLog[]
   notifications      Notification[]
   topUpRequests      TopUpRequest[]
+  ledgerAccounts     LedgerAccount[]
+
+  surveyAttempts       SurveyAttempt[]
+  integrityConsents    IntegrityConsent[]
+  integrityAssessments IntegrityAssessment[]
+  integrityIncidents   IntegrityIncident[]
+  integrityReviews     IntegrityReview[]
+  fraudLogs            FraudLog[]
 
   @@map("users")
 }
 
+model AuthIdentity {
+  id                String       @id @default(uuid()) @db.Uuid
+  userId            String       @map("user_id") @db.Uuid
+  provider          AuthProvider
+  providerSubjectId String       @map("provider_subject_id")
+  createdAt         DateTime     @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerSubjectId])
+  @@map("auth_identities")
+}
+
+model Session {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  token          String   @unique
+  refreshSecret  String   @map("refresh_secret")
+  csrfHash       String   @map("csrf_hash")
+  sessionVersion Int      @default(1) @map("session_version")
+  revoked        Boolean  @default(false)
+  expiresAt      DateTime @map("expires_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
 model DemographicProfile {
-  id               String   @id @default(uuid()) @db.Uuid
-  userId           String   @unique @map("user_id") @db.Uuid
-  age              Int?
-  location         String?
-  householdIncome  String?  @map("household_income")
+  id                String  @id @default(uuid()) @db.Uuid
+  userId            String  @unique @map("user_id") @db.Uuid
+  age               Int?
+  location          String?
+  householdIncome   String? @map("household_income")
   specificInterests Json?   @map("specific_interests")
 
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("demographic_profiles")
 }
@@ -130,137 +266,363 @@ model Form {
   description         String?    @db.Text
   rewardPerResponse   Int        @map("reward_per_response")
   expectedCompletions Int        @map("expected_completions")
-  
-  externalUrl         String?    @map("external_url")
-  completionCode      String?    @map("completion_code")
-  
-  parentFormId        String?    @map("parent_form_id") @db.Uuid
-  versionNumber       Int        @default(1) @map("version_number")
-  
-  publishedAt         DateTime?  @map("published_at")
-  createdAt           DateTime   @default(now()) @map("created_at")
-  updatedAt           DateTime   @updatedAt @map("updated_at")
 
-  // Relationships
-  publisher           User            @relation("PublisherForms", fields: [publisherId], references: [id])
-  schema              FormSchema?
-  targeting           FormTargeting?
-  responses           Response[]
-  
-  // Self-relation for versioning
-  parentForm          Form?           @relation("FormVersions", fields: [parentFormId], references: [id])
-  childForms          Form[]          @relation("FormVersions")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  publisher User            @relation("PublisherForms", fields: [publisherId], references: [id])
+  versions  FormVersion[]
+  responses Response[]
+  attempts  SurveyAttempt[]
 
   @@map("forms")
 }
 
-model FormSchema {
-  id         String   @id @default(uuid()) @db.Uuid
-  formId     String   @unique @map("form_id") @db.Uuid
-  schemaJson Json     @map("schema_json") // Zod compatible form blocks
-  
-  createdAt  DateTime @default(now()) @map("created_at")
+model FormVersion {
+  id             String    @id @default(uuid()) @db.Uuid
+  formId         String    @map("form_id") @db.Uuid
+  versionNumber  Int       @map("version_number")
+  schemaJson     Json      @map("schema_json") // Zod compatible form blocks
+  targetingJson  Json?     @map("targeting_json")
+  isPublished    Boolean   @default(false) @map("is_published")
+  externalUrl    String?   @map("external_url")
+  completionCode String?   @map("completion_code")
+  publishedAt    DateTime? @map("published_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
-  form       Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  form            Form             @relation(fields: [formId], references: [id], onDelete: Cascade)
+  attempts        SurveyAttempt[]
+  responses       Response[]
+  integrityEvents IntegrityEvent[]
 
-  @@map("form_schemas")
-}
-
-model FormTargeting {
-  id           String   @id @default(uuid()) @db.Uuid
-  formId       String   @unique @map("form_id") @db.Uuid
-  criteriaJson Json     @map("criteria_json") // Demographic requirements
-  
-  form         Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
-
-  @@map("form_targetings")
+  @@unique([formId, versionNumber])
+  @@map("form_versions")
 }
 
 model Response {
   id            String         @id @default(uuid()) @db.Uuid
   formId        String         @map("form_id") @db.Uuid
+  formVersionId String         @map("form_version_id") @db.Uuid
+  attemptId     String?        @unique @map("attempt_id") @db.Uuid
   respondentId  String?        @map("respondent_id") @db.Uuid // Nullable for Guest
   status        ResponseStatus @default(IN_PROGRESS)
   answersJson   Json?          @map("answers_json")
   ipAddress     String         @map("ip_address")
   isGuest       Boolean        @default(false) @map("is_guest")
-  
-  submittedAt   DateTime?      @map("submitted_at")
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
 
-  form          Form           @relation(fields: [formId], references: [id], onDelete: Restrict)
-  respondent    User?          @relation(fields: [respondentId], references: [id], onDelete: SetNull)
+  submittedAt DateTime? @map("submitted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  form        Form           @relation(fields: [formId], references: [id], onDelete: Restrict)
+  formVersion FormVersion    @relation(fields: [formVersionId], references: [id], onDelete: Restrict)
+  respondent  User?          @relation(fields: [respondentId], references: [id], onDelete: SetNull)
+  attempt     SurveyAttempt? @relation(fields: [attemptId], references: [id])
+
+  integrityAssessments IntegrityAssessment[]
 
   @@map("responses")
 }
 
-model LedgerTransaction {
-  id              String          @id @default(uuid()) @db.Uuid
-  userId          String          @map("user_id") @db.Uuid
-  type            TransactionType
-  balanceType     BalanceType     @map("balance_type")
-  amount          Int
-  referenceId     String?         @map("reference_id") @db.Uuid // e.g., form_id or topup_id
-  idempotencyKey  String          @unique @map("idempotency_key")
-  
-  createdAt       DateTime        @default(now()) @map("created_at")
+model LedgerAccount {
+  id           String             @id @default(uuid()) @db.Uuid
+  userId       String?            @map("user_id") @db.Uuid // Null for system accounts
+  accountClass LedgerAccountClass @map("account_class")
+  currency     String             @default("POINTS")
+  balance      Int                @default(0) // Denormalized balance, derived from entries
 
-  user            User            @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@map("ledger_transactions")
+  user    User?         @relation(fields: [userId], references: [id])
+  entries LedgerEntry[]
+
+  @@map("ledger_accounts")
+}
+
+model LedgerJournal {
+  id                String  @id @default(uuid()) @db.Uuid
+  idempotencyKey    String  @unique @map("idempotency_key")
+  description       String?
+  reversesJournalId String? @unique @map("reverses_journal_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  entries         LedgerEntry[]
+  reversedJournal LedgerJournal? @relation("JournalReversal", fields: [reversesJournalId], references: [id])
+  reversal        LedgerJournal? @relation("JournalReversal")
+
+  @@map("ledger_journals")
+}
+
+model LedgerEntry {
+  id        String @id @default(uuid()) @db.Uuid
+  journalId String @map("journal_id") @db.Uuid
+  accountId String @map("account_id") @db.Uuid
+  amount    Int // Positive or negative. Sum of entries in a journal must be 0
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  journal LedgerJournal @relation(fields: [journalId], references: [id], onDelete: Restrict)
+  account LedgerAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@map("ledger_entries")
+}
+
+// ----------------------------------------
+// V2 RESEARCH INTEGRITY ENGINE
+// ----------------------------------------
+
+model SurveyAttempt {
+  id            String        @id @default(uuid()) @db.Uuid
+  respondentId  String?       @map("respondent_id") @db.Uuid // Nullable for guest
+  surveyId      String        @map("survey_id") @db.Uuid
+  formVersionId String        @map("form_version_id") @db.Uuid
+  status        AttemptStatus @default(IN_PROGRESS)
+  isGuest       Boolean       @default(false) @map("is_guest")
+  startedAt     DateTime      @default(now()) @map("started_at")
+  submittedAt   DateTime?     @map("submitted_at")
+  clientContext Json?         @map("client_context")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  respondent User?       @relation(fields: [respondentId], references: [id])
+  form       Form        @relation(fields: [surveyId], references: [id])
+  version    FormVersion @relation(fields: [formVersionId], references: [id])
+
+  response             Response?
+  integrityEvents      IntegrityEvent[]
+  integrityAssessments IntegrityAssessment[]
+  integrityIncidents   IntegrityIncident[]
+
+  @@map("survey_attempts")
+}
+
+model IntegrityConsent {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  purpose       String
+  noticeVersion Int       @map("notice_version")
+  grantedAt     DateTime  @default(now()) @map("granted_at")
+  revokedAt     DateTime? @map("revoked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  integrityEvents IntegrityEvent[]
+
+  @@map("integrity_consents")
+}
+
+model IntegrityEvent {
+  id                String             @id @default(uuid()) @db.Uuid
+  clientEventId     String             @map("client_event_id")
+  attemptId         String             @map("attempt_id") @db.Uuid
+  respondentId      String?            @map("respondent_id") @db.Uuid
+  formVersionId     String             @map("form_version_id") @db.Uuid
+  questionId        String?            @map("question_id")
+  consentId         String?            @map("consent_id") @db.Uuid
+  eventType         IntegrityEventType @map("event_type")
+  eventVersion      Int                @default(1) @map("event_version")
+  sequence          Int?
+  occurredAt        DateTime           @map("occurred_at") // Client time
+  serverReceiptTime DateTime           @default(now()) @map("server_receipt_time") // Server time
+  metadata          Json?
+  createdAt         DateTime           @default(now()) @map("created_at")
+
+  attempt SurveyAttempt     @relation(fields: [attemptId], references: [id])
+  version FormVersion       @relation(fields: [formVersionId], references: [id])
+  consent IntegrityConsent? @relation(fields: [consentId], references: [id])
+
+  @@unique([attemptId, clientEventId])
+  @@index([attemptId, eventType])
+  @@map("integrity_events")
+}
+
+model IntegrityAssessment {
+  id                   String                  @id @default(uuid()) @db.Uuid
+  attemptId            String                  @map("attempt_id") @db.Uuid
+  responseId           String                  @map("response_id") @db.Uuid
+  respondentId         String?                 @map("respondent_id") @db.Uuid
+  applicability        AssessmentApplicability @default(APPLICABLE)
+  score                Decimal?
+  confidence           Decimal?
+  evidenceCoverage     Decimal?                @map("evidence_coverage")
+  riskLevel            IntegrityRiskLevel?     @map("risk_level")
+  componentScores      Json?                   @map("component_scores")
+  reasonCodes          Json?                   @map("reason_codes")
+  inputLineageChecksum String?                 @map("input_lineage_checksum")
+  featureVersion       String                  @map("feature_version")
+  scoringVersion       String                  @map("scoring_version")
+  policyVersion        String?                 @map("policy_version")
+  createdAt            DateTime                @default(now()) @map("created_at")
+
+  attempt    SurveyAttempt @relation(fields: [attemptId], references: [id])
+  response   Response      @relation(fields: [responseId], references: [id])
+  respondent User?         @relation(fields: [respondentId], references: [id])
+
+  @@index([respondentId, createdAt])
+  @@index([responseId])
+  @@map("integrity_assessments")
+}
+
+model RespondentReputation {
+  id                    String   @id @default(uuid()) @db.Uuid
+  respondentId          String   @unique @map("respondent_id") @db.Uuid
+  integrityScoreRolling Decimal  @map("integrity_score_rolling")
+  confidence            Decimal
+  acceptedResponses     Int      @default(0) @map("accepted_responses")
+  reviewedResponses     Int      @default(0) @map("reviewed_responses")
+  confirmedIncidents    Int      @default(0) @map("confirmed_incidents")
+  metrics               Json
+  version               Int      @default(1)
+  calculatedAt          DateTime @map("calculated_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("respondent_reputations")
+}
+
+model IntegrityIncident {
+  id           String                  @id @default(uuid()) @db.Uuid
+  attemptId    String?                 @map("attempt_id") @db.Uuid
+  responseId   String?                 @map("response_id") @db.Uuid
+  respondentId String                  @map("respondent_id") @db.Uuid
+  type         IntegrityIncidentType
+  status       IntegrityIncidentStatus @default(OPEN)
+  severity     IntegritySeverity
+  evidence     Json
+  detectedAt   DateTime                @default(now()) @map("detected_at")
+  reviewedAt   DateTime?               @map("reviewed_at")
+  resolution   IntegrityResolution?
+  createdAt    DateTime                @default(now()) @map("created_at")
+
+  respondent User              @relation(fields: [respondentId], references: [id])
+  attempt    SurveyAttempt?    @relation(fields: [attemptId], references: [id])
+  reviews    IntegrityReview[]
+
+  @@map("integrity_incidents")
+}
+
+model IntegrityReview {
+  id         String              @id @default(uuid()) @db.Uuid
+  incidentId String              @map("incident_id") @db.Uuid
+  reviewerId String              @map("reviewer_id") @db.Uuid
+  decision   IntegrityResolution
+  reason     String?
+  evidence   Json?
+  createdAt  DateTime            @default(now()) @map("created_at")
+
+  incident IntegrityIncident @relation(fields: [incidentId], references: [id])
+  reviewer User              @relation(fields: [reviewerId], references: [id])
+
+  @@map("integrity_reviews")
 }
 
 model FraudLog {
-  id        String       @id @default(uuid()) @db.Uuid
-  userId    String       @map("user_id") @db.Uuid
-  type      FraudLogType
-  details   Json?
-  
-  createdAt DateTime     @default(now()) @map("created_at")
+  id      String       @id @default(uuid()) @db.Uuid
+  userId  String       @map("user_id") @db.Uuid
+  type    FraudLogType
+  details Json?
 
-  user      User         @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
 
   @@map("fraud_logs")
 }
 
+model ScoringPolicy {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String
+  version     Int
+  status      PolicyStatus
+  definition  Json
+  activatedAt DateTime?    @map("activated_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  @@unique([name, version])
+  @@map("scoring_policies")
+}
+
+model OutboxEvent {
+  id               String  @id @default(uuid()) @db.Uuid
+  idempotencyKey   String  @unique @map("idempotency_key")
+  eventType        String  @map("event_type")
+  schemaVersion    Int     @default(1) @map("schema_version")
+  producer         String
+  aggregateType    String  @map("aggregate_type")
+  aggregateId      String  @map("aggregate_id")
+  aggregateVersion Int     @default(1) @map("aggregate_version")
+  orderingStream   String? @map("ordering_stream")
+  streamSequence   Int?    @map("stream_sequence")
+  correlationId    String? @map("correlation_id") @db.Uuid
+  causationId      String? @map("causation_id") @db.Uuid
+  payload          Json
+
+  status            OutboxStatus @default(PENDING)
+  attempts          Int          @default(0)
+  availableAt       DateTime     @default(now()) @map("available_at")
+  claimOwner        String?      @map("claim_owner")
+  claimFencingToken String?      @map("claim_fencing_token")
+  claimExpiresAt    DateTime?    @map("claim_expires_at")
+  lastError         String?      @map("last_error")
+  terminalState     String?      @map("terminal_state")
+
+  processedAt DateTime? @map("processed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, availableAt])
+  @@map("outbox_events")
+}
+
+model ProcessedHandler {
+  id             String   @id @default(uuid()) @db.Uuid
+  handlerName    String   @map("handler_name")
+  eventId        String?  @map("event_id") @db.Uuid
+  streamSequence Int?     @map("stream_sequence") // Used for ordered streams
+  processedAt    DateTime @default(now()) @map("processed_at")
+
+  @@unique([handlerName, eventId])
+  @@map("processed_handlers")
+}
+
 model GamificationStat {
-  userId                String   @id @map("user_id") @db.Uuid
-  currentStreak         Int      @default(0) @map("current_streak")
-  maxStreak             Int      @default(0) @map("max_streak")
-  totalSurveysCompleted Int      @default(0) @map("total_surveys_completed")
-  isTrustedResearcher   Boolean  @default(false) @map("is_trusted_researcher")
+  userId                String    @id @map("user_id") @db.Uuid
+  currentStreak         Int       @default(0) @map("current_streak")
+  maxStreak             Int       @default(0) @map("max_streak")
+  totalSurveysCompleted Int       @default(0) @map("total_surveys_completed")
+  isTrustedResearcher   Boolean   @default(false) @map("is_trusted_researcher")
   lastSurveyDate        DateTime? @map("last_survey_date")
-  
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("gamification_stats")
 }
 
 model Notification {
-  id        String           @id @default(uuid()) @db.Uuid
-  userId    String           @map("user_id") @db.Uuid
-  type      NotificationType
-  message   String
-  isRead    Boolean          @default(false) @map("is_read")
-  
-  createdAt DateTime         @default(now()) @map("created_at")
+  id      String           @id @default(uuid()) @db.Uuid
+  userId  String           @map("user_id") @db.Uuid
+  type    NotificationType
+  message String
+  isRead  Boolean          @default(false) @map("is_read")
 
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("notifications")
 }
 
 model TopUpRequest {
-  id        String      @id @default(uuid()) @db.Uuid
-  userId    String      @map("user_id") @db.Uuid
-  amount    Int
-  status    TopUpStatus @default(PENDING)
-  adminId   String?     @map("admin_id") @db.Uuid
-  
-  createdAt DateTime    @default(now()) @map("created_at")
+  id      String      @id @default(uuid()) @db.Uuid
+  userId  String      @map("user_id") @db.Uuid
+  amount  Int
+  status  TopUpStatus @default(PENDING)
+  adminId String?     @map("admin_id") @db.Uuid
 
-  user      User        @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
 
   @@map("top_up_requests")
 }

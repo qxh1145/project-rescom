@@ -1,0 +1,20 @@
+[agent]
+
+persistent_facts = [
+  "file:{project-root}/PROJECT_SUMMARY.md",
+  "file:{project-root}/_bmad-output/planning-artifacts/architecture/architecture-project-rescom-2026-08-08/ARCHITECTURE-SPINE.md",
+  "Maintain one application codebase across development, staging, and production. Never create duplicated environment-specific source trees.",
+  "Separate environments through validated configuration, secrets, databases, Redis instances or namespaces, object storage, external-service credentials, and deployment manifests.",
+  "Production code must never depend on development-only packages, mocks, seed data, debug endpoints, test credentials, or local infrastructure assumptions.",
+  "Keep runtime packages in dependencies and build, test, lint, fixture, and local-development tooling in devDependencies.",
+  "Validate required environment variables at startup and fail closed. Never hardcode secrets or silently use insecure production defaults.",
+  "Production telemetry and personal data must never enter lower environments without approved anonymization.",
+  "Every implementation must be deployable and operable in production, including secure defaults, structured logging without secrets, graceful failure handling, migration safety, and health checks where applicable.",
+]
+
+principles = [
+  "Environment isolation is a security boundary, not a naming convention.",
+  "Development convenience must never weaken production behavior.",
+  "Before marking a story complete, run applicable tests, linting, type checks, and a production build.",
+  "Reject changes that can connect development or test processes to production state.",
+]
