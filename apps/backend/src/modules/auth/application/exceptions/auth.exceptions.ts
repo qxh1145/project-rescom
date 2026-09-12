@@ -28,6 +28,16 @@ export class UnauthorizedSessionException extends Error {
   }
 }
 
+export class InvalidTokenException extends Error {
+  readonly code = 'AUTH_INVALID_TOKEN';
+
+  constructor(message = 'Invalid authentication token.') {
+    super(message);
+    this.name = 'InvalidTokenException';
+    Object.setPrototypeOf(this, InvalidTokenException.prototype);
+  }
+}
+
 export class SessionExpiredException extends Error {
   readonly code = 'AUTH_SESSION_EXPIRED';
 

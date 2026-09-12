@@ -38,6 +38,9 @@ import {
   InvalidCsrfTokenException,
   InvalidRefreshTokenException,
   UnauthorizedSessionException,
+  SessionRevokedException,
+  SessionExpiredException,
+  UserLockedException,
 } from '../application/exceptions/auth.exceptions';
 import { SessionAuthGuard } from './guards/session-auth.guard';
 import { CurrentUser } from './decorators';
@@ -159,10 +162,23 @@ export class AuthController {
       throw new InvalidRefreshTokenException();
     }
 
-    const rotated = await this.sessionService.refreshSession(
-      refreshToken,
-      csrfToken,
-    );
+    let rotated;
+    try {
+      rotated = await this.sessionService.refreshSession(
+        refreshToken,
+        csrfToken,
+      );
+    } catch (err) {
+      if (
+        err instanceof SessionRevokedException ||
+        err instanceof InvalidRefreshTokenException ||
+        err instanceof SessionExpiredException ||
+        err instanceof UserLockedException
+      ) {
+        clearAuthCookies(res, this.envService);
+      }
+      throw err;
+    }
 
     res.cookie(
       AUTH_COOKIE_NAME,

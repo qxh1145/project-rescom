@@ -25,15 +25,21 @@ export class InMemorySessionRepository implements SessionRepositoryPort {
     userId: string,
     input: ReplaceUserSessionInput,
   ): Promise<Session> {
-    // Acquire per-user lock for serialized execution
-    while (this.userLocks.has(userId)) {
-      await this.userLocks.get(userId);
-    }
+    // Acquire per-user lock for serialized execution via strict FIFO promise chaining
+    const prevLock = this.userLocks.get(userId) || Promise.resolve();
     let resolveLock!: () => void;
     const lockPromise = new Promise<void>((resolve) => {
       resolveLock = resolve;
     });
-    this.userLocks.set(userId, lockPromise);
+    this.userLocks.set(
+      userId,
+      prevLock.then(
+        () => lockPromise,
+        () => lockPromise,
+      ),
+    );
+
+    await prevLock;
 
     try {
       // 1. Calculate next version as max of all historical versions for user + 1
@@ -58,9 +64,11 @@ export class InMemorySessionRepository implements SessionRepositoryPort {
         sessionVersion: nextVersion,
       };
       this.sessions.set(createdSessionProps.id, createdSessionProps);
-      this.credentials.set(input.credential.id, input.credential);
 
-      // 4. Mandatory audit record enriched with committed session info
+      // 4. Create RefreshCredential
+      this.credentials.set(input.credential.id, { ...input.credential });
+
+      // 5. Append IdentityAuditLog if auditPort configured
       if (this.auditPort) {
         await this.auditPort.append({
           ...input.audit,
@@ -74,8 +82,10 @@ export class InMemorySessionRepository implements SessionRepositoryPort {
 
       return new Session(createdSessionProps);
     } finally {
-      this.userLocks.delete(userId);
       resolveLock();
+      if (this.userLocks.get(userId) === lockPromise) {
+        this.userLocks.delete(userId);
+      }
     }
   }
 

@@ -5,7 +5,10 @@ import {
   AccessTokenClaims,
 } from '../application/ports/token-service.port';
 import { EnvService } from '../../../common/config/env.service';
-import { UnauthorizedSessionException } from '../application/exceptions/auth.exceptions';
+import {
+  InvalidTokenException,
+  SessionExpiredException,
+} from '../application/exceptions/auth.exceptions';
 
 @Injectable()
 export class NestJwtTokenAdapter implements TokenServicePort {
@@ -39,8 +42,18 @@ export class NestJwtTokenAdapter implements TokenServicePort {
         },
       );
       return decoded;
-    } catch {
-      throw new UnauthorizedSessionException('Invalid or expired token');
+    } catch (err: unknown) {
+      if (
+        typeof err === 'object' &&
+        err !== null &&
+        'name' in err &&
+        (err as { name: string }).name === 'TokenExpiredError'
+      ) {
+        throw new SessionExpiredException();
+      }
+      throw new InvalidTokenException(
+        err instanceof Error ? err.message : 'Invalid token',
+      );
     }
   }
 }

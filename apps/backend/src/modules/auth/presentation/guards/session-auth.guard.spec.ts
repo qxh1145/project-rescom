@@ -7,6 +7,7 @@ import {
 } from '../cookie-options.helper';
 import {
   UnauthorizedSessionException,
+  InvalidTokenException,
   SessionExpiredException,
   SessionRevokedException,
   UserLockedException,
@@ -173,6 +174,30 @@ describe('SessionAuthGuard (Task 3)', () => {
     await expect(
       guard.canActivate(context as ExecutionContext),
     ).rejects.toThrow(UserLockedException);
+
+    expect(res.clearCookie).toHaveBeenCalledWith(
+      AUTH_COOKIE_NAME,
+      expect.any(Object),
+    );
+    expect(res.clearCookie).toHaveBeenCalledWith(
+      REFRESH_COOKIE_NAME,
+      expect.any(Object),
+    );
+    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+  });
+
+  it('should clear cookies, set no-store, and rethrow InvalidTokenException', async () => {
+    const { context, res } = createMockExecutionContext({
+      [AUTH_COOKIE_NAME]: 'invalid-signature-token',
+    });
+
+    mockSessionService.validateSession.mockRejectedValue(
+      new InvalidTokenException('Signature invalid'),
+    );
+
+    await expect(
+      guard.canActivate(context as ExecutionContext),
+    ).rejects.toThrow(InvalidTokenException);
 
     expect(res.clearCookie).toHaveBeenCalledWith(
       AUTH_COOKIE_NAME,

@@ -15,6 +15,7 @@ import {
   SessionExpiredException,
   SessionRevokedException,
   InvalidRefreshTokenException,
+  InvalidTokenException,
   InvalidCsrfTokenException,
   ForbiddenOriginException,
   UserLockedException,
@@ -44,10 +45,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       status = HttpStatus.CONFLICT;
       code = exception.code;
       message = exception.message;
-    } else if (
-      exception instanceof InvalidCredentialsException ||
-      exception instanceof UserLockedException
-    ) {
+    } else if (exception instanceof InvalidCredentialsException) {
       status = HttpStatus.UNAUTHORIZED;
       code = exception.code;
       message = exception.message;
@@ -55,14 +53,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
       exception instanceof UnauthorizedSessionException ||
       exception instanceof SessionExpiredException ||
       exception instanceof SessionRevokedException ||
-      exception instanceof InvalidRefreshTokenException
+      exception instanceof InvalidRefreshTokenException ||
+      exception instanceof InvalidTokenException
     ) {
       status = HttpStatus.UNAUTHORIZED;
       code = exception.code;
       message = exception.message;
     } else if (
       exception instanceof InvalidCsrfTokenException ||
-      exception instanceof ForbiddenOriginException
+      exception instanceof ForbiddenOriginException ||
+      exception instanceof UserLockedException
     ) {
       status = HttpStatus.FORBIDDEN;
       code = exception.code;

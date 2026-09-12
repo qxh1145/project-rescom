@@ -5,6 +5,7 @@ import { EnvService } from '../../../../common/config/env.service';
 import { AUTH_COOKIE_NAME, clearAuthCookies } from '../cookie-options.helper';
 import {
   UnauthorizedSessionException,
+  InvalidTokenException,
   SessionExpiredException,
   SessionRevokedException,
   UserLockedException,
@@ -62,6 +63,7 @@ export class SessionAuthGuard implements CanActivate {
   private isKnownAuthFailure(err: unknown): boolean {
     return (
       err instanceof UnauthorizedSessionException ||
+      err instanceof InvalidTokenException ||
       err instanceof SessionExpiredException ||
       err instanceof SessionRevokedException ||
       err instanceof UserLockedException

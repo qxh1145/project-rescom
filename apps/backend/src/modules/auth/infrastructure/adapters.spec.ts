@@ -3,6 +3,10 @@ import { JwtService } from '@nestjs/jwt';
 import { BcryptPasswordHasherAdapter } from './bcrypt-password-hasher.adapter';
 import { NestJwtTokenAdapter } from './nest-jwt-token.adapter';
 import { EnvService } from '../../../common/config/env.service';
+import {
+  InvalidTokenException,
+  SessionExpiredException,
+} from '../application/exceptions/auth.exceptions';
 
 describe('Auth Infrastructure Adapters', () => {
   const mockEnvService = {
@@ -119,6 +123,30 @@ describe('Auth Infrastructure Adapters', () => {
       expect(verified.sub).toBe(sub);
       expect(verified.sessionId).toBe(sessionId);
       expect(verified.sessionVersion).toBe(sessionVersion);
+    });
+
+    it('should throw SessionExpiredException when token is expired', async () => {
+      const expiredToken = await jwtService.signAsync(
+        {
+          sub: 'u1',
+          sessionId: 's1',
+          sessionVersion: 1,
+        },
+        {
+          secret: mockEnvService.jwtSecret,
+          expiresIn: -10,
+        },
+      );
+
+      await expect(tokenAdapter.verifyToken(expiredToken)).rejects.toThrow(
+        SessionExpiredException,
+      );
+    });
+
+    it('should throw InvalidTokenException when token is invalid or tampered', async () => {
+      await expect(
+        tokenAdapter.verifyToken('not-a-valid-jwt.token.value'),
+      ).rejects.toThrow(InvalidTokenException);
     });
   });
 });

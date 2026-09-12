@@ -10,7 +10,7 @@ context:
 
 # Story 1.3: Single-Session Enforcement
 
-Status: review
+Status: done
 
 ## Story
 
@@ -249,6 +249,18 @@ The guard is a NestJS `CanActivate` in the presentation layer. It does NOT becom
     - **CRITICAL**: Verify `sessionVersion = 3` through test repository/database state or by decoding the issued JWT inside test code only. Do NOT expose `sessionVersion` through production API responses solely for testing.
   - [x] 8.12 Run full verification: `npm run verify` + `npm run test:e2e` + `npm run lint` + `test/architecture.spec.ts`.
 
+### Review Findings
+
+- [x] [Review][Patch] Symmetrically clear auth cookies on failed POST /auth/refresh with revoked session or invalid refresh token [apps/backend/src/modules/auth/presentation/auth.controller.ts:162] (AC3)
+- [x] [Review][Patch] Throw SessionExpiredException (401 AUTH_SESSION_EXPIRED) on TokenExpiredError instead of generic AUTH_UNAUTHORIZED [apps/backend/src/modules/auth/infrastructure/nest-jwt-token.adapter.ts:40] (AC6)
+- [x] [Review][Patch] Map UserLockedException to HTTP 403 Forbidden AUTH_USER_LOCKED in HttpExceptionFilter [apps/backend/src/common/http/http-exception.filter.ts:50] (AC5, AC6)
+- [x] [Review][Patch] Define InvalidTokenException domain exception and integrate with SessionAuthGuard isKnownAuthFailure [apps/backend/src/modules/auth/application/exceptions/auth.exceptions.ts:31] (AC5)
+- [x] [Review][Patch] Fix InMemorySessionRepository async mutex race condition using strict FIFO promise chaining [apps/backend/src/modules/auth/infrastructure/in-memory-session.repository.ts:28] (AC8)
+- [x] [Review][Patch] Validate UUID format on claims.sessionId in validateSession and on parts[0] in rotateCsrf to prevent unhandled database syntax exceptions [apps/backend/src/modules/auth/application/session.service.ts:123]
+- [x] [Review][Patch] Check user.isLocked() in rotateCsrf when resolving session via refreshToken fallback [apps/backend/src/modules/auth/application/session.service.ts:200]
+- [x] [Review][Patch] Support graceful fallback to refreshToken in rotateCsrf when accessToken is expired [apps/backend/src/modules/auth/application/session.service.ts:162]
+- [x] [Review][Defer] Background cron eviction of expired/revoked sessions and refresh credentials [deferred, out of scope for Story 1.3 single-session enforcement]
+
 ## Dev Notes
 
 ### Architecture Constraints (MANDATORY)
@@ -380,32 +392,44 @@ The following are ALREADY working — DO NOT reimplement:
 Claude 3.7 Sonnet / Antigravity Agent
 
 ### Debug Log References
-- Unit/Integration verification: 18 test suites, 129 tests passed (including `architecture.spec.ts` zero boundary violations, `prisma-session.repository.spec.ts`, `session.repository.spec.ts`, `session-auth.guard.spec.ts`).
-- E2E verification: 3 test suites, 29 tests passed (including `single-session.e2e-spec.ts` testing registration v1, login A v2, login B v3, post-logout login v4, 401 revocation rejection, missing cookie, expired token, locked user).
+- Unit/Integration verification: 18 test suites, 132 tests passed (including `architecture.spec.ts` zero boundary violations, `prisma-session.repository.spec.ts`, `session.repository.spec.ts`, `session-auth.guard.spec.ts`, `adapters.spec.ts`).
+- E2E verification: 3 test suites, 29 tests passed (including `single-session.e2e-spec.ts` testing registration v1, login A v2, login B v3, post-logout login v4, 401 revocation rejection, missing cookie, expired token, locked user 403, and refresh cookie clearing).
 - Lint and formatting verification: ESLint and Prettier passed with zero errors/warnings.
 
 ### Completion Notes List
 - **Task 1 (Contract & Atomic Versioning)**: Defined `ReplaceUserSessionInput` in `session-repository.port.ts`. Updated `replaceUserSession` to encapsulate monotonic version calculation `COALESCE(MAX(session_version), 0) + 1` inside `SELECT id FROM users WHERE id = $1 FOR UPDATE` user row lock. Enriched `SESSION_REPLACED` audit log with committed session details (`sessionId`, `sessionVersion`). Access JWT signed strictly post-commit.
-- **Task 2 (Concurrency & PostgreSQL Integration)**: Implemented concurrency tests in `session.repository.spec.ts` (proving serialized monotonic versioning without duplicates) and transactional tests in `prisma-session.repository.spec.ts` (verifying `FOR UPDATE` lock query, rollback guarantees, and clean lock release).
+- **Task 2 (Concurrency & PostgreSQL Integration)**: Implemented concurrency tests in `session.repository.spec.ts` (proving serialized monotonic versioning without duplicates) and transactional tests in `prisma-session.repository.spec.ts` (verifying `FOR UPDATE` lock query, rollback guarantees, and clean lock release). Fixed in-memory mutex to use strict FIFO promise chaining to eliminate coroutine race conditions.
 - **Task 3 (Cookie Clearing, Types & Guard)**: Implemented centralized `clearAuthCookies(res, envService)` in `CookieOptionsHelper`. Defined `AuthenticatedUser` (`{ id, email, role, status }`, strictly omitting sensitive fields like `passwordHash`) and strongly-typed `AuthenticatedRequest extends Request` with zero `(req as any)` casts. Created `SessionAuthGuard` in `presentation/guards` with selective fail-safe error handling (clears cookies and sets `no-store` on known auth domain exceptions; rethrows infrastructure errors untouched without logging out the client). Registered guard in `AuthModule`.
 - **Task 4 (Parameter Decorators)**: Created strongly typed `@CurrentUser()` and `@CurrentSession()` parameter decorators in `presentation/decorators/`.
 - **Task 5 (Probe Endpoint `GET /auth/me`)**: Added `GET /auth/me` in `AuthController` returning sanitized `AuthenticatedUser` wrapped in the standard response envelope `{ data, error, meta }`.
 - **Task 6 (Controller Refactoring)**: Refactored `GoogleOAuthController.linkStart` and `linkDelete` to use `SessionAuthGuard` and `@CurrentUser()` / `@CurrentSession()`, eliminating manual cookie extraction and validation boilerplate while maintaining identical behavior.
 - **Task 7 (Graceful Revoked Logout)**: Handled logout of already-revoked sessions idempotently in `SessionService.logout`: clears cookies, returns 204 No Content, and omits redundant `SESSION_REVOKED` / `LOGOUT` audit log entries.
 - **Task 8 (Comprehensive E2E Suite)**: Added `apps/backend/test/single-session.e2e-spec.ts` validating complete single-session lifecycle, cross-device eviction, cookie clearance, error envelopes, and post-logout monotonic versioning.
+- **Code Review Hardening**:
+  - Implemented symmetric cookie clearing in `AuthController.refresh` on revoked session or invalid token (AC3).
+  - Configured `NestJwtTokenAdapter` to throw `SessionExpiredException` on `TokenExpiredError` returning `AUTH_SESSION_EXPIRED` (AC6).
+  - Mapped `UserLockedException` to HTTP 403 Forbidden with `AUTH_USER_LOCKED` in `HttpExceptionFilter` (AC5, AC6).
+  - Defined `InvalidTokenException` domain exception class and registered in `SessionAuthGuard` (AC5).
+  - Hardened `InMemorySessionRepository` with strict FIFO promise-chained mutex.
+  - Added UUID regex validation in `validateSession` and `rotateCsrf`, and account locked verification in `rotateCsrf`.
 
 ### Change Log
 - `2026-09-12`: Implemented Story 1.3 Single-Session Enforcement per BMAD dev-story workflow. All acceptance criteria AC1-AC10 verified. Status moved to `review`.
+- `2026-09-12`: Completed code review with parallel Blind Hunter, Edge Case Hunter, and Acceptance Auditor layers. Applied 8 patches addressing AC discrepancies, cookie clearing on refresh, token error classification, locked user HTTP status, mutex chaining, and UUID validation. Full regression, unit, E2E, and architecture tests passed. Status moved to `done`.
 
 ### File List
 - **Modified**:
   - `_bmad-output/implementation-artifacts/sprint-status.yaml`
   - `_bmad-output/implementation-artifacts/1-3-single-session-enforcement.md`
+  - `apps/backend/src/common/http/http-exception.filter.ts`
+  - `apps/backend/src/modules/auth/application/exceptions/auth.exceptions.ts`
   - `apps/backend/src/modules/auth/application/ports/session-repository.port.ts`
   - `apps/backend/src/modules/auth/application/session.service.ts`
   - `apps/backend/src/modules/auth/application/session.service.spec.ts`
   - `apps/backend/src/modules/auth/infrastructure/prisma-session.repository.ts`
   - `apps/backend/src/modules/auth/infrastructure/in-memory-session.repository.ts`
+  - `apps/backend/src/modules/auth/infrastructure/nest-jwt-token.adapter.ts`
+  - `apps/backend/src/modules/auth/infrastructure/adapters.spec.ts`
   - `apps/backend/src/modules/auth/presentation/cookie-options.helper.ts`
   - `apps/backend/src/modules/auth/presentation/auth.controller.ts`
   - `apps/backend/src/modules/auth/presentation/google-oauth.controller.ts`

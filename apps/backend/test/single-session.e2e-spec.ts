@@ -235,6 +235,7 @@ describe('Single-Session Enforcement E2E Tests (Story 1.3)', () => {
       .expect(401);
 
     expect(refreshRes.body.error.code).toBe('AUTH_SESSION_REVOKED');
+    expectCookiesCleared(refreshRes);
 
     // 8. Device A attempts POST /auth/logout with revoked cookies -> 204 No Content, idempotent, no audit pollution
     const auditCountBeforeLogout = auditRepo.records.length;
@@ -306,7 +307,7 @@ describe('Single-Session Enforcement E2E Tests (Story 1.3)', () => {
         .set('Cookie', `${AUTH_COOKIE_NAME}=${expiredToken}`)
         .expect(401);
 
-      expect(res.body.error.code).toBe('AUTH_UNAUTHORIZED');
+      expect(res.body.error.code).toBe('AUTH_SESSION_EXPIRED');
       expect(res.headers['cache-control']).toBe('no-store');
       expectCookiesCleared(res);
     });
@@ -359,7 +360,7 @@ describe('Single-Session Enforcement E2E Tests (Story 1.3)', () => {
       const res = await request(app.getHttpServer())
         .get('/auth/me')
         .set('Cookie', `${AUTH_COOKIE_NAME}=${token}`)
-        .expect(401);
+        .expect(403);
 
       expect(res.body.error.code).toBe('AUTH_USER_LOCKED');
       expect(res.headers['cache-control']).toBe('no-store');

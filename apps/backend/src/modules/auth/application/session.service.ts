@@ -19,6 +19,9 @@ import {
   UserLockedException,
 } from './exceptions/auth.exceptions';
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export interface SessionTokens {
   accessToken: string;
   refreshToken: string;
@@ -120,6 +123,10 @@ export class SessionService {
   ): Promise<{ session: Session; user: User }> {
     const claims = await this.tokenService.verifyToken(accessToken);
 
+    if (!claims?.sessionId || !UUID_REGEX.test(claims.sessionId)) {
+      throw new UnauthorizedSessionException('Session not found');
+    }
+
     const session = await this.sessionRepository.findById(claims.sessionId);
     if (!session) {
       throw new UnauthorizedSessionException('Session not found');
@@ -156,14 +163,22 @@ export class SessionService {
     accessToken?: string;
     refreshToken?: string;
   }): Promise<{ csrfToken: string }> {
-    let session: Session;
+    let session: Session | null = null;
 
     if (params.accessToken) {
-      const validated = await this.validateSession(params.accessToken);
-      session = validated.session;
-    } else if (params.refreshToken) {
+      try {
+        const validated = await this.validateSession(params.accessToken);
+        session = validated.session;
+      } catch (err) {
+        if (!params.refreshToken) {
+          throw err;
+        }
+      }
+    }
+
+    if (!session && params.refreshToken) {
       const parts = params.refreshToken.split('.');
-      if (parts.length !== 2) {
+      if (parts.length !== 2 || !UUID_REGEX.test(parts[0]) || !parts[1]) {
         throw new InvalidRefreshTokenException();
       }
       const [credentialId, rawSecret] = parts;
@@ -199,8 +214,16 @@ export class SessionService {
         throw new InvalidRefreshTokenException();
       }
 
+      const user = await this.userRepository.findById(found.session.userId);
+      if (!user) {
+        throw new UnauthorizedSessionException('User not found');
+      }
+      if (user.isLocked()) {
+        throw new UserLockedException();
+      }
+
       session = found.session;
-    } else {
+    } else if (!session) {
       throw new UnauthorizedSessionException();
     }
 
@@ -217,8 +240,6 @@ export class SessionService {
     csrfToken: string,
   ): Promise<SessionTokens> {
     const parts = rawRefreshToken.split('.');
-    const UUID_REGEX =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (parts.length !== 2 || !UUID_REGEX.test(parts[0]) || !parts[1]) {
       throw new InvalidRefreshTokenException();
     }
