@@ -61,6 +61,13 @@ export const envSchema = z
         'Wildcard origin (*) is strictly forbidden when credentials are enabled',
       ),
 
+    // System Monitoring & Metrics Logging
+    SYSTEM_METRICS_LOG_INTERVAL_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(0, 'SYSTEM_METRICS_LOG_INTERVAL_SECONDS must be at least 0')
+      .default(30),
+
     // Story 1.2: Session and Keyed Secret Configuration
     SESSION_ABSOLUTE_TTL_SECONDS: z.coerce
       .number()

@@ -55,6 +55,10 @@ export class EnvService {
     return this.config.FRONTEND_ORIGINS;
   }
 
+  get systemMetricsLogIntervalSeconds(): number {
+    return this.config.SYSTEM_METRICS_LOG_INTERVAL_SECONDS;
+  }
+
   get sessionAbsoluteTtlSeconds(): number {
     return this.config.SESSION_ABSOLUTE_TTL_SECONDS;
   }
