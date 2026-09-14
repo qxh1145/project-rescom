@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { SystemController } from './system.controller';
 import { SystemMetricsService } from './system-metrics.service';
 import { SystemMetrics } from './system-metrics.interface';
+import { SessionAuthGuard } from '../../modules/auth/presentation/guards/session-auth.guard';
+import { RolesGuard } from '../../modules/auth/presentation/guards/roles.guard';
 
 describe('SystemController', () => {
   let controller: SystemController;
@@ -50,7 +52,12 @@ describe('SystemController', () => {
           useValue: mockMetricsService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(SessionAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .overrideGuard(RolesGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .compile();
 
     controller = module.get<SystemController>(SystemController);
   });

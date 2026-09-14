@@ -24,6 +24,11 @@ describe('EnvService', () => {
     ]);
     expect(service.isTest).toBe(true);
     expect(service.isProduction).toBe(false);
+    expect(service.trustProxyHops).toBe(0);
+    expect(service.rateLimitTtlSeconds).toBe(60);
+    expect(service.rateLimitMaxRequests).toBe(100);
+    expect(service.authRateLimitTtlSeconds).toBe(60);
+    expect(service.authRateLimitMaxRequests).toBe(10);
   });
 
   it('should fail if DATABASE_URL is missing', () => {
@@ -84,6 +89,29 @@ describe('EnvService', () => {
   });
 
   describe('AC12: Google OAuth & Session configuration validation', () => {
+    it('requires an explicit trusted proxy hop in production', () => {
+      const productionEnv = {
+        ...validBaseEnv,
+        NODE_ENV: 'production',
+        AUTH_SECRET_PROTECTION_KEY:
+          'super_secret_protection_key_at_least_32_chars!',
+        GOOGLE_CLIENT_ID: 'real-client-id',
+        GOOGLE_CLIENT_SECRET: 'real-client-secret',
+        FRONTEND_ORIGINS: 'https://app.rescom.io',
+        GOOGLE_REDIRECT_URI: 'https://api.rescom.io/auth/google/callback',
+        AUTH_FRONTEND_SUCCESS_URL: 'https://app.rescom.io/callback',
+        AUTH_FRONTEND_ERROR_URL: 'https://app.rescom.io/error',
+      };
+
+      expect(() => new EnvService(productionEnv)).toThrow(
+        /TRUST_PROXY_HOPS must explicitly trust the production reverse proxy/,
+      );
+      expect(
+        new EnvService({ ...productionEnv, TRUST_PROXY_HOPS: '1' })
+          .trustProxyHops,
+      ).toBe(1);
+    });
+
     it('should reject URLs with credentials or fragments', () => {
       expect(
         () =>

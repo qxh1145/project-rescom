@@ -1,5 +1,5 @@
-import { z } from 'zod';
-import { sanitizedUserSchema } from './sanitized-user.schema';
+import { z } from "zod";
+import { sanitizedUserSchema } from "./sanitized-user.schema";
 
 export const apiErrorSchema = z.object({
   code: z.string(),

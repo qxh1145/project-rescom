@@ -35,6 +35,11 @@ import {
   CannotDemoteSelfException,
   CannotDemoteLastAdminException,
 } from '../../modules/users/application/exceptions/user-admin.exceptions';
+import {
+  AuditLogNotFoundException,
+  ImmutableAuditLogException,
+} from '../../modules/admin/application/exceptions/audit-log.exceptions';
+import { ThrottlerException } from '@nestjs/throttler';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -44,12 +49,20 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
 
+    if (response && response.headersSent) {
+      return;
+    }
+
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let code = 'INTERNAL_SERVER_ERROR';
     let message = 'An unexpected error occurred.';
     let details: any = undefined;
 
-    if (exception instanceof EmailAlreadyRegisteredException) {
+    if (exception instanceof ThrottlerException) {
+      status = HttpStatus.TOO_MANY_REQUESTS;
+      code = 'RATE_LIMIT_EXCEEDED';
+      message = 'Too many requests. Please try again later.';
+    } else if (exception instanceof EmailAlreadyRegisteredException) {
       status = HttpStatus.CONFLICT;
       code = exception.code;
       message = exception.message;
@@ -76,8 +89,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
       status = HttpStatus.FORBIDDEN;
       code = exception.code;
       message = exception.message;
-    } else if (exception instanceof UserNotFoundException) {
+    } else if (
+      exception instanceof UserNotFoundException ||
+      exception instanceof AuditLogNotFoundException
+    ) {
       status = HttpStatus.NOT_FOUND;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof ImmutableAuditLogException) {
+      status = HttpStatus.FORBIDDEN;
       code = exception.code;
       message = exception.message;
     } else if (
@@ -126,7 +146,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
                   ? 'NOT_FOUND'
                   : status === 409
                     ? 'CONFLICT'
-                    : 'HTTP_ERROR';
+                    : status === 429
+                      ? 'RATE_LIMIT_EXCEEDED'
+                      : 'HTTP_ERROR';
       } else if (typeof res === 'object' && res !== null) {
         const resObj = res as Record<string, any>;
         code =
@@ -141,7 +163,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
                   ? 'NOT_FOUND'
                   : status === 409
                     ? 'CONFLICT'
-                    : 'HTTP_ERROR');
+                    : status === 429
+                      ? 'RATE_LIMIT_EXCEEDED'
+                      : 'HTTP_ERROR');
         message = resObj.message || exception.message;
         details = resObj.details;
       }

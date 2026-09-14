@@ -1,5 +1,7 @@
 import { AuthController } from './auth.controller';
 import { AuthenticatedUser } from './types/authenticated-request.type';
+import { UserLockedException } from '../application/exceptions/auth.exceptions';
+import { AUTH_COOKIE_NAME, REFRESH_COOKIE_NAME } from './cookie-options.helper';
 
 describe('AuthController (Task 5)', () => {
   let controller: AuthController;
@@ -13,10 +15,12 @@ describe('AuthController (Task 5)', () => {
       isProduction: false,
       jwtAccessTtlSeconds: 900,
       sessionAbsoluteTtlSeconds: 2592000,
+      frontendOrigins: ['http://localhost:3000'],
       authFrontendOrigins: ['http://localhost:3000'],
     };
     mockSessionService = {
       logout: jest.fn(),
+      rotateCsrf: jest.fn(),
     };
 
     controller = new AuthController(
@@ -24,6 +28,34 @@ describe('AuthController (Task 5)', () => {
       mockEnvService,
       mockSessionService,
     );
+  });
+
+  describe('GET /auth/csrf', () => {
+    it('clears authentication cookies when a locked account is rejected', async () => {
+      mockSessionService.rotateCsrf.mockRejectedValueOnce(
+        new UserLockedException(),
+      );
+      const request: any = {
+        headers: { origin: 'http://localhost:3000' },
+        cookies: {
+          [AUTH_COOKIE_NAME]: 'access-token',
+          [REFRESH_COOKIE_NAME]: 'refresh-token',
+        },
+      };
+      const response: any = { clearCookie: jest.fn() };
+
+      await expect(controller.getCsrf(request, response)).rejects.toThrow(
+        UserLockedException,
+      );
+      expect(response.clearCookie).toHaveBeenCalledWith(
+        AUTH_COOKIE_NAME,
+        expect.any(Object),
+      );
+      expect(response.clearCookie).toHaveBeenCalledWith(
+        REFRESH_COOKIE_NAME,
+        expect.any(Object),
+      );
+    });
   });
 
   describe('GET /auth/me', () => {

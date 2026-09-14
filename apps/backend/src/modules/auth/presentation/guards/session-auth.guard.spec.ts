@@ -48,6 +48,8 @@ describe('SessionAuthGuard (Task 3)', () => {
         getRequest: () => req,
         getResponse: () => res,
       }),
+      getHandler: () => jest.fn(),
+      getClass: () => jest.fn(),
     };
     return { context, req, res };
   }
@@ -225,5 +227,21 @@ describe('SessionAuthGuard (Task 3)', () => {
     // Client cookies must NOT be cleared when DB experiences temporary outage
     expect(res.clearCookie).not.toHaveBeenCalled();
     expect(res.setHeader).not.toHaveBeenCalled();
+  });
+
+  it('should allow access without tokens when route is decorated with @Public()', async () => {
+    const mockReflector: any = {
+      getAllAndOverride: jest.fn().mockReturnValue(true),
+    };
+    const publicGuard = new SessionAuthGuard(
+      mockSessionService,
+      mockEnvService as EnvService,
+      mockReflector,
+    );
+    const { context } = createMockExecutionContext({});
+
+    const result = await publicGuard.canActivate(context as ExecutionContext);
+    expect(result).toBe(true);
+    expect(mockSessionService.validateSession).not.toHaveBeenCalled();
   });
 });

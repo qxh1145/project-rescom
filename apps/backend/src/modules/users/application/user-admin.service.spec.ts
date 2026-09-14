@@ -183,6 +183,39 @@ describe('UserAdminService', () => {
       expect(remainingActiveAdmins).toBe(1);
     });
 
+    it('audits a concurrent duplicate lock as a changed:false no-op', async () => {
+      const results = await Promise.all([
+        service.updateUserStatus('admin-1', 'admin-2', 'LOCKED'),
+        service.updateUserStatus('user-normal', 'admin-2', 'LOCKED'),
+      ]);
+
+      expect(results.every((user) => user.status === 'LOCKED')).toBe(true);
+      expect(auditRepo.records).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            outcome: 'SUCCESS',
+            metadata: expect.objectContaining({ changed: true }),
+          }),
+          expect.objectContaining({
+            outcome: 'SUCCESS',
+            metadata: expect.objectContaining({ changed: false }),
+          }),
+        ]),
+      );
+    });
+
+    it('rolls back an in-memory transaction when audit persistence fails', async () => {
+      jest
+        .spyOn(auditRepo, 'append')
+        .mockRejectedValueOnce(new Error('audit unavailable'));
+
+      await expect(
+        service.updateUserStatus('admin-1', 'user-normal', 'LOCKED'),
+      ).rejects.toThrow('audit unavailable');
+      expect((await userRepo.findById('user-normal'))?.status).toBe('ACTIVE');
+      expect(auditRepo.records).toHaveLength(0);
+    });
+
     it('should reject locking the last remaining active admin', async () => {
       // First lock admin-2 -> only admin-1 is left
       await service.updateUserStatus('admin-1', 'admin-2', 'LOCKED');

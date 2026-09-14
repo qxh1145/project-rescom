@@ -11,6 +11,14 @@ export class InMemoryIdentityAuditRepository implements IdentityAuditPort {
     this.records.push(Object.freeze({ ...record }));
   }
 
+  snapshot(): CreateIdentityAuditRecord[] {
+    return [...this.records];
+  }
+
+  restore(snapshot: readonly CreateIdentityAuditRecord[]): void {
+    this.records = [...snapshot];
+  }
+
   clear(): void {
     this.records = [];
   }

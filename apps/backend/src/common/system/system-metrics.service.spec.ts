@@ -133,7 +133,9 @@ describe('SystemMetricsService', () => {
 
   describe('Logging', () => {
     it('should log formatted human-readable metrics in development', async () => {
-      const logSpy = jest.spyOn((service as any).logger, 'log').mockImplementation();
+      const logSpy = jest
+        .spyOn((service as any).logger, 'log')
+        .mockImplementation();
 
       const metrics = await service.collectMetrics();
       service.logSystemMetrics(metrics);
@@ -148,7 +150,9 @@ describe('SystemMetricsService', () => {
 
     it('should log structured JSON metrics in production', async () => {
       mockEnv.isProduction = true;
-      const logSpy = jest.spyOn((service as any).logger, 'log').mockImplementation();
+      const logSpy = jest
+        .spyOn((service as any).logger, 'log')
+        .mockImplementation();
 
       const metrics = await service.collectMetrics();
       service.logSystemMetrics(metrics);

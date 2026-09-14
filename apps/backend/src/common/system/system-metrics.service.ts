@@ -47,8 +47,7 @@ export class SystemMetricsService
         this.logger.error('Failed to log initial system metrics', err);
       });
 
-    const intervalMs =
-      this.envService.systemMetricsLogIntervalSeconds * 1000;
+    const intervalMs = this.envService.systemMetricsLogIntervalSeconds * 1000;
     this.intervalId = setInterval(async () => {
       try {
         const metrics = await this.collectMetrics();
@@ -78,8 +77,7 @@ export class SystemMetricsService
     this.lastCpuTime = process.hrtime();
     this.lastCpuUsage = process.cpuUsage();
 
-    const totalCpuMicroseconds =
-      currentCpuUsage.user + currentCpuUsage.system;
+    const totalCpuMicroseconds = currentCpuUsage.user + currentCpuUsage.system;
     const cores = os.cpus()?.length || 1;
     const processPercent =
       elapsedMicroseconds > 0
@@ -112,7 +110,7 @@ export class SystemMetricsService
     const toGb = (bytes: number) =>
       Math.round((bytes / 1024 / 1024 / 1024) * 100) / 100;
     const systemUsedPercent =
-      totalMem > 0 ? Math.round(((usedMem / totalMem) * 100) * 10) / 10 : 0;
+      totalMem > 0 ? Math.round((usedMem / totalMem) * 100 * 10) / 10 : 0;
 
     return {
       heapUsedMb: toMb(mem.heapUsed),

@@ -2,6 +2,10 @@ import { AdminUsersController } from './admin-users.controller';
 import { UserAdminService } from '../../users/application/user-admin.service';
 import { User } from '../../users/domain/user.entity';
 import { AuthenticatedUser } from '../../auth/presentation/types/authenticated-request.type';
+import {
+  adminUserDetailResponseSchema,
+  paginatedAdminUsersResponseSchema,
+} from '@rescom/schemas';
 
 describe('AdminUsersController', () => {
   let controller: AdminUsersController;
@@ -60,6 +64,9 @@ describe('AdminUsersController', () => {
   describe('listUsers', () => {
     it('should return paginated user envelope with sanitized items and computed totalPages', async () => {
       const response = await controller.listUsers({ page: 1, limit: 10 });
+      expect(() =>
+        paginatedAdminUsersResponseSchema.parse(response),
+      ).not.toThrow();
 
       expect(response.error).toBeNull();
       expect(response.data!.items).toHaveLength(1);
@@ -95,6 +102,7 @@ describe('AdminUsersController', () => {
   describe('getUserById', () => {
     it('should return user detail envelope without sensitive fields', async () => {
       const response = await controller.getUserById(sampleUser.id);
+      expect(() => adminUserDetailResponseSchema.parse(response)).not.toThrow();
 
       expect(response.error).toBeNull();
       expect(response.data!.user).toEqual({
@@ -117,6 +125,7 @@ describe('AdminUsersController', () => {
         adminActor,
         mockReq,
       );
+      expect(() => adminUserDetailResponseSchema.parse(response)).not.toThrow();
 
       expect(mockUserAdminService.updateUserStatus).toHaveBeenCalledWith(
         adminActor.id,
@@ -139,6 +148,7 @@ describe('AdminUsersController', () => {
         adminActor,
         mockReq,
       );
+      expect(() => adminUserDetailResponseSchema.parse(response)).not.toThrow();
 
       expect(mockUserAdminService.updateUserRole).toHaveBeenCalledWith(
         adminActor.id,

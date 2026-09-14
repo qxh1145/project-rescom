@@ -1,8 +1,15 @@
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  Optional,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { Request, Response } from 'express';
 import { SessionService } from '../../application/session.service';
 import { EnvService } from '../../../../common/config/env.service';
 import { AUTH_COOKIE_NAME, clearAuthCookies } from '../cookie-options.helper';
+import { IS_PUBLIC_KEY } from '../../../../common/security/public.decorator';
 import {
   UnauthorizedSessionException,
   InvalidTokenException,
@@ -20,9 +27,24 @@ export class SessionAuthGuard implements CanActivate {
   constructor(
     private readonly sessionService: SessionService,
     private readonly envService: EnvService,
+    @Optional() private readonly reflector?: Reflector,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    if (
+      this.reflector &&
+      typeof context.getHandler === 'function' &&
+      typeof context.getClass === 'function'
+    ) {
+      const isPublic = this.reflector.getAllAndOverride<boolean>(
+        IS_PUBLIC_KEY,
+        [context.getHandler(), context.getClass()],
+      );
+      if (isPublic) {
+        return true;
+      }
+    }
+
     const http = context.switchToHttp();
     const req = http.getRequest<Request>();
     const res = http.getResponse<Response>();

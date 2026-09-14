@@ -55,6 +55,10 @@ export class EnvService {
     return this.config.FRONTEND_ORIGINS;
   }
 
+  get trustProxyHops(): number {
+    return this.config.TRUST_PROXY_HOPS;
+  }
+
   get systemMetricsLogIntervalSeconds(): number {
     return this.config.SYSTEM_METRICS_LOG_INTERVAL_SECONDS;
   }
@@ -93,6 +97,22 @@ export class EnvService {
 
   get authFrontendErrorUrl(): string {
     return this.config.AUTH_FRONTEND_ERROR_URL;
+  }
+
+  get rateLimitTtlSeconds(): number {
+    return this.config.RATE_LIMIT_TTL_SECONDS;
+  }
+
+  get rateLimitMaxRequests(): number {
+    return this.config.RATE_LIMIT_MAX_REQUESTS;
+  }
+
+  get authRateLimitTtlSeconds(): number {
+    return this.config.AUTH_RATE_LIMIT_TTL_SECONDS;
+  }
+
+  get authRateLimitMaxRequests(): number {
+    return this.config.AUTH_RATE_LIMIT_MAX_REQUESTS;
   }
 
   get raw(): EnvConfig {

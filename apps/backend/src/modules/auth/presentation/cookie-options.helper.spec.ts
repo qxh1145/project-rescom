@@ -40,6 +40,7 @@ describe('Cookie Options Helper (AC6)', () => {
       GOOGLE_REDIRECT_URI: 'https://api.rescom.io/auth/google/callback',
       AUTH_FRONTEND_SUCCESS_URL: 'https://app.rescom.io/callback',
       AUTH_FRONTEND_ERROR_URL: 'https://app.rescom.io/error',
+      TRUST_PROXY_HOPS: 1,
     });
 
     const options = getAuthCookieOptions(envService);
@@ -62,6 +63,7 @@ describe('Cookie Options Helper (AC6)', () => {
       GOOGLE_REDIRECT_URI: 'https://api.rescom.io/auth/google/callback',
       AUTH_FRONTEND_SUCCESS_URL: 'https://app.rescom.io/callback',
       AUTH_FRONTEND_ERROR_URL: 'https://app.rescom.io/error',
+      TRUST_PROXY_HOPS: 1,
     });
 
     const clearOptions = getAuthClearCookieOptions(envService);

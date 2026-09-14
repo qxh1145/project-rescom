@@ -7,6 +7,7 @@
     "build": "npm run build --workspace backend",
     "typecheck": "npm run typecheck --workspace @rescom/schemas && npm run typecheck --workspace backend",
     "test": "npm test --workspace backend",
+    "test:e2e": "npm run test:e2e --workspace backend",
     "verify": "npm run build && npm run typecheck && npm test"
   },
   "author": "",

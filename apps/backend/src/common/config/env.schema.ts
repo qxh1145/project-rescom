@@ -49,7 +49,7 @@ export const envSchema = z
       .transform((val) =>
         val
           .split(',')
-          .map((origin) => origin.trim())
+          .map((origin) => origin.trim().replace(/\/+$/, ''))
           .filter((origin) => origin.length > 0),
       )
       .refine(
@@ -60,6 +60,23 @@ export const envSchema = z
         (origins) => !origins.includes('*'),
         'Wildcard origin (*) is strictly forbidden when credentials are enabled',
       ),
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(3).default(0),
+
+    // Rate Limiting & Throttling
+    RATE_LIMIT_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(86400)
+      .default(60),
+    RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().min(1).default(100),
+    AUTH_RATE_LIMIT_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(86400)
+      .default(60),
+    AUTH_RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().min(1).default(10),
 
     // System Monitoring & Metrics Logging
     SYSTEM_METRICS_LOG_INTERVAL_SECONDS: z.coerce
@@ -126,6 +143,15 @@ export const envSchema = z
 
     // Production secret check
     if (isProduction) {
+      if (data.TRUST_PROXY_HOPS < 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['TRUST_PROXY_HOPS'],
+          message:
+            'TRUST_PROXY_HOPS must explicitly trust the production reverse proxy',
+        });
+      }
+
       if (!data.AUTH_SECRET_PROTECTION_KEY) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

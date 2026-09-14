@@ -183,6 +183,35 @@ export class InMemorySessionRepository implements SessionRepositoryPort {
     }
   }
 
+  snapshot(): {
+    sessions: SessionProps[];
+    credentials: RefreshCredentialProps[];
+  } {
+    return {
+      sessions: Array.from(this.sessions.values(), (session) => ({
+        ...session,
+      })),
+      credentials: Array.from(this.credentials.values(), (credential) => ({
+        ...credential,
+      })),
+    };
+  }
+
+  restore(snapshot: {
+    sessions: readonly SessionProps[];
+    credentials: readonly RefreshCredentialProps[];
+  }): void {
+    this.sessions = new Map(
+      snapshot.sessions.map((session) => [session.id, { ...session }]),
+    );
+    this.credentials = new Map(
+      snapshot.credentials.map((credential) => [
+        credential.id,
+        { ...credential },
+      ]),
+    );
+  }
+
   clear(): void {
     this.sessions.clear();
     this.credentials.clear();

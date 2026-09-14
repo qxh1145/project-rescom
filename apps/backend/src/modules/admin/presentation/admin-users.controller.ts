@@ -23,6 +23,7 @@ import { UserAdminService } from '../../users/application/user-admin.service';
 import { User } from '../../users/domain/user.entity';
 import { SessionAuthGuard } from '../../auth/presentation/guards/session-auth.guard';
 import { RolesGuard } from '../../auth/presentation/guards/roles.guard';
+import { CsrfGuard } from '../../auth/presentation/guards/csrf.guard';
 import { Roles, CurrentUser } from '../../auth/presentation/decorators';
 import { AuthenticatedUser } from '../../auth/presentation/types/authenticated-request.type';
 import { ZodValidationPipe } from '../../../common/http/zod-validation.pipe';
@@ -85,7 +86,7 @@ export class AdminUsersController {
   }
 
   @Patch(':id/status')
-  @UseGuards(JsonOnlyGuard)
+  @UseGuards(JsonOnlyGuard, CsrfGuard)
   @UsePipes(
     new ZodValidationPipe(updateUserStatusSchema, 'VALIDATION_ERROR', 'body'),
   )
@@ -113,7 +114,7 @@ export class AdminUsersController {
   }
 
   @Patch(':id/role')
-  @UseGuards(JsonOnlyGuard)
+  @UseGuards(JsonOnlyGuard, CsrfGuard)
   @UsePipes(
     new ZodValidationPipe(updateUserRoleSchema, 'VALIDATION_ERROR', 'body'),
   )

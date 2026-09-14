@@ -3,26 +3,37 @@ import {
   UserAdminTransactionContext,
 } from '../application/ports/user-admin-transaction.port';
 import { User, UserRole, UserStatus } from '../domain/user.entity';
-import {
-  CreateIdentityAuditRecord,
-  IdentityAuditPort,
-} from '../../auth/application/ports/identity-audit.port';
-import { SessionRepositoryPort } from '../../auth/application/ports/session-repository.port';
+import { CreateIdentityAuditRecord } from '../../auth/application/ports/identity-audit.port';
 import { InMemoryUserRepository } from './in-memory-user.repository';
+import { InMemorySessionRepository } from '../../auth/infrastructure/in-memory-session.repository';
+import { InMemoryIdentityAuditRepository } from '../../auth/infrastructure/in-memory-identity-audit.repository';
 
 export class InMemoryUserAdminTransactionAdapter implements UserAdminTransactionPort {
-  private adminLock: Promise<void> = Promise.resolve();
+  private transactionLock: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly userRepository: InMemoryUserRepository,
-    private readonly sessionRepository?: SessionRepositoryPort,
-    private readonly auditPort?: IdentityAuditPort,
+    private readonly sessionRepository: InMemorySessionRepository,
+    private readonly auditPort: InMemoryIdentityAuditRepository,
   ) {}
 
   async run<T>(
     work: (ctx: UserAdminTransactionContext) => Promise<T>,
   ): Promise<T> {
-    let releaseLock: (() => void) | null = null;
+    const previousLock = this.transactionLock;
+    let releaseLock!: () => void;
+    const currentLock = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    this.transactionLock = previousLock.then(
+      () => currentLock,
+      () => currentLock,
+    );
+    await previousLock;
+
+    const userSnapshot = this.userRepository.snapshot();
+    const sessionSnapshot = this.sessionRepository.snapshot();
+    const auditSnapshot = this.auditPort.snapshot();
 
     const ctx: UserAdminTransactionContext = {
       findUserById: async (userId: string): Promise<User | null> => {
@@ -30,20 +41,6 @@ export class InMemoryUserAdminTransactionAdapter implements UserAdminTransaction
       },
 
       lockActiveAdmins: async (): Promise<number> => {
-        if (!releaseLock) {
-          const prevLock = this.adminLock;
-          let resolveLock!: () => void;
-          const nextLock = new Promise<void>((r) => {
-            resolveLock = r;
-          });
-          this.adminLock = prevLock.then(
-            () => nextLock,
-            () => nextLock,
-          );
-          await prevLock;
-          releaseLock = resolveLock;
-        }
-        await new Promise((r) => setImmediate(r));
         return await this.userRepository.countByRoleAndStatus(
           'ADMIN',
           'ACTIVE',
@@ -90,26 +87,25 @@ export class InMemoryUserAdminTransactionAdapter implements UserAdminTransaction
       },
 
       revokeUserSessions: async (userId: string): Promise<void> => {
-        if (this.sessionRepository) {
-          await this.sessionRepository.revokeAllByUserId(userId);
-        }
+        await this.sessionRepository.revokeAllByUserId(userId);
       },
 
       appendAuditLog: async (
         record: CreateIdentityAuditRecord,
       ): Promise<void> => {
-        if (this.auditPort) {
-          await this.auditPort.append(record);
-        }
+        await this.auditPort.append(record);
       },
     };
 
     try {
       return await work(ctx);
+    } catch (error) {
+      this.userRepository.restore(userSnapshot);
+      this.sessionRepository.restore(sessionSnapshot);
+      this.auditPort.restore(auditSnapshot);
+      throw error;
     } finally {
-      if (typeof releaseLock === 'function') {
-        (releaseLock as () => void)();
-      }
+      releaseLock();
     }
   }
 }

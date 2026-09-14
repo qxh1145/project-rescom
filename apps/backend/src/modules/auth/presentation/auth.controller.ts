@@ -115,7 +115,10 @@ export class AuthController {
   @Get('csrf')
   @HttpCode(HttpStatus.OK)
   @Header('Cache-Control', 'no-store')
-  async getCsrf(@Req() req: Request) {
+  async getCsrf(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     validateRequestOrigin(req, this.envService);
 
     const accessToken = req.cookies?.[AUTH_COOKIE_NAME];
@@ -131,10 +134,23 @@ export class AuthController {
       throw new UnauthorizedSessionException('Session service unavailable');
     }
 
-    const { csrfToken } = await this.sessionService.rotateCsrf({
-      accessToken,
-      refreshToken,
-    });
+    let csrfToken: string;
+    try {
+      ({ csrfToken } = await this.sessionService.rotateCsrf({
+        accessToken,
+        refreshToken,
+      }));
+    } catch (err) {
+      if (
+        err instanceof SessionRevokedException ||
+        err instanceof InvalidRefreshTokenException ||
+        err instanceof SessionExpiredException ||
+        err instanceof UserLockedException
+      ) {
+        clearAuthCookies(res, this.envService);
+      }
+      throw err;
+    }
 
     return createSuccessEnvelope({ csrfToken });
   }

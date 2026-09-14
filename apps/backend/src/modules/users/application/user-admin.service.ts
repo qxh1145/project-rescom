@@ -18,7 +18,7 @@ export class UserAdminService {
   constructor(
     private readonly userRepository: UserRepositoryPort,
     private readonly transactionPort: UserAdminTransactionPort,
-    private readonly auditPort?: IdentityAuditPort,
+    private readonly auditPort: IdentityAuditPort,
   ) {}
 
   async listUsers(params: ListUsersParams): Promise<PaginatedUsersResult> {
@@ -41,22 +41,24 @@ export class UserAdminService {
   ): Promise<User> {
     // 1. Check self-lock outside transaction (depends only on IDs)
     if (actorUserId === targetUserId && newStatus === 'LOCKED') {
-      if (this.auditPort) {
-        await this.auditPort.append({
-          action: 'USER_STATUS_CHANGED',
-          userId: actorUserId,
-          targetUserId,
-          outcome: 'FAILURE',
-          errorCode: 'CANNOT_LOCK_SELF',
-          metadata: auditMetadata,
-        });
-      }
+      await this.auditPort.append({
+        action: 'USER_STATUS_CHANGED',
+        userId: actorUserId,
+        targetUserId,
+        outcome: 'FAILURE',
+        errorCode: 'CANNOT_LOCK_SELF',
+        metadata: auditMetadata,
+      });
       throw new CannotLockSelfException();
     }
 
     // 2. Transactional execution with fresh snapshot
     try {
       return await this.transactionPort.run(async (ctx) => {
+        // Serialize every role/status transition against the active-admin set.
+        // This prevents a concurrent promotion/unlock from entering the set
+        // between an unlocked predicate check and the eventual mutation.
+        const activeAdminCount = await ctx.lockActiveAdmins();
         const target = await ctx.findUserById(targetUserId);
         if (!target) {
           throw new UserNotFoundException();
@@ -80,25 +82,14 @@ export class UserAdminService {
           return target;
         }
 
-        // If locking an active admin, lock active admin rows and verify invariant
+        // If locking an active admin, verify the invariant against the rows
+        // locked before the target snapshot was read.
         if (
           target.role === 'ADMIN' &&
           target.status === 'ACTIVE' &&
           newStatus === 'LOCKED'
         ) {
-          const activeAdminCount = await ctx.lockActiveAdmins();
-          const freshTarget = await ctx.findUserById(targetUserId);
-          if (!freshTarget) {
-            throw new UserNotFoundException();
-          }
-          if (freshTarget.status === newStatus) {
-            return freshTarget;
-          }
-          if (
-            freshTarget.role === 'ADMIN' &&
-            freshTarget.status === 'ACTIVE' &&
-            activeAdminCount <= 1
-          ) {
+          if (activeAdminCount <= 1) {
             throw new CannotLockLastAdminException();
           }
         }
@@ -128,16 +119,14 @@ export class UserAdminService {
         err instanceof UserNotFoundException ||
         err instanceof CannotLockLastAdminException
       ) {
-        if (this.auditPort) {
-          await this.auditPort.append({
-            action: 'USER_STATUS_CHANGED',
-            userId: actorUserId,
-            targetUserId,
-            outcome: 'FAILURE',
-            errorCode: err.code,
-            metadata: auditMetadata,
-          });
-        }
+        await this.auditPort.append({
+          action: 'USER_STATUS_CHANGED',
+          userId: actorUserId,
+          targetUserId,
+          outcome: 'FAILURE',
+          errorCode: err.code,
+          metadata: auditMetadata,
+        });
       }
       throw err;
     }
@@ -151,22 +140,21 @@ export class UserAdminService {
   ): Promise<User> {
     // 1. Check self-demotion outside transaction (depends only on IDs)
     if (actorUserId === targetUserId && newRole !== 'ADMIN') {
-      if (this.auditPort) {
-        await this.auditPort.append({
-          action: 'USER_ROLE_CHANGED',
-          userId: actorUserId,
-          targetUserId,
-          outcome: 'FAILURE',
-          errorCode: 'CANNOT_DEMOTE_SELF',
-          metadata: auditMetadata,
-        });
-      }
+      await this.auditPort.append({
+        action: 'USER_ROLE_CHANGED',
+        userId: actorUserId,
+        targetUserId,
+        outcome: 'FAILURE',
+        errorCode: 'CANNOT_DEMOTE_SELF',
+        metadata: auditMetadata,
+      });
       throw new CannotDemoteSelfException();
     }
 
     // 2. Transactional execution with fresh snapshot
     try {
       return await this.transactionPort.run(async (ctx) => {
+        const activeAdminCount = await ctx.lockActiveAdmins();
         const target = await ctx.findUserById(targetUserId);
         if (!target) {
           throw new UserNotFoundException();
@@ -190,25 +178,14 @@ export class UserAdminService {
           return target;
         }
 
-        // If demoting an active admin to non-admin, lock active admin rows and verify invariant
+        // If demoting an active admin to non-admin, verify the invariant against
+        // the active-admin set locked before reading the target snapshot.
         if (
           target.role === 'ADMIN' &&
           target.status === 'ACTIVE' &&
           newRole !== 'ADMIN'
         ) {
-          const activeAdminCount = await ctx.lockActiveAdmins();
-          const freshTarget = await ctx.findUserById(targetUserId);
-          if (!freshTarget) {
-            throw new UserNotFoundException();
-          }
-          if (freshTarget.role === newRole) {
-            return freshTarget;
-          }
-          if (
-            freshTarget.role === 'ADMIN' &&
-            freshTarget.status === 'ACTIVE' &&
-            activeAdminCount <= 1
-          ) {
+          if (activeAdminCount <= 1) {
             throw new CannotDemoteLastAdminException();
           }
         }
@@ -236,16 +213,14 @@ export class UserAdminService {
         err instanceof UserNotFoundException ||
         err instanceof CannotDemoteLastAdminException
       ) {
-        if (this.auditPort) {
-          await this.auditPort.append({
-            action: 'USER_ROLE_CHANGED',
-            userId: actorUserId,
-            targetUserId,
-            outcome: 'FAILURE',
-            errorCode: err.code,
-            metadata: auditMetadata,
-          });
-        }
+        await this.auditPort.append({
+          action: 'USER_ROLE_CHANGED',
+          userId: actorUserId,
+          targetUserId,
+          outcome: 'FAILURE',
+          errorCode: err.code,
+          metadata: auditMetadata,
+        });
       }
       throw err;
     }

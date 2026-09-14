@@ -1,9 +1,9 @@
-import { z } from 'zod';
+import { z } from "zod";
 
-export const userRoleSchema = z.enum(['ADMIN', 'PUBLISHER', 'RESPONDENT']);
+export const userRoleSchema = z.enum(["ADMIN", "PUBLISHER", "RESPONDENT"]);
 export type UserRole = z.infer<typeof userRoleSchema>;
 
-export const userStatusSchema = z.enum(['ACTIVE', 'LOCKED']);
+export const userStatusSchema = z.enum(["ACTIVE", "LOCKED"]);
 export type UserStatus = z.infer<typeof userStatusSchema>;
 
 export const listUsersQuerySchema = z
