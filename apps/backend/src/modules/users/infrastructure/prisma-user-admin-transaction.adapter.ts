@@ -8,9 +8,7 @@ import { User, UserRole, UserStatus } from '../domain/user.entity';
 import { CreateIdentityAuditRecord } from '../../auth/application/ports/identity-audit.port';
 
 @Injectable()
-export class PrismaUserAdminTransactionAdapter
-  implements UserAdminTransactionPort
-{
+export class PrismaUserAdminTransactionAdapter implements UserAdminTransactionPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async run<T>(

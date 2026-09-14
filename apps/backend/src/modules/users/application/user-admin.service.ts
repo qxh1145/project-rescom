@@ -4,12 +4,8 @@ import {
   ListUsersParams,
   PaginatedUsersResult,
 } from './ports/user.repository.port';
-import {
-  UserAdminTransactionPort,
-} from './ports/user-admin-transaction.port';
-import {
-  IdentityAuditPort,
-} from '../../auth/application/ports/identity-audit.port';
+import { UserAdminTransactionPort } from './ports/user-admin-transaction.port';
+import { IdentityAuditPort } from '../../auth/application/ports/identity-audit.port';
 import {
   UserNotFoundException,
   CannotLockSelfException,

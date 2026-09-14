@@ -21,7 +21,9 @@ export class CannotLockSelfException extends Error {
 export class CannotLockLastAdminException extends Error {
   readonly code = 'CANNOT_LOCK_LAST_ADMIN';
 
-  constructor(message = 'Cannot lock the sole remaining active admin account.') {
+  constructor(
+    message = 'Cannot lock the sole remaining active admin account.',
+  ) {
     super(message);
     this.name = 'CannotLockLastAdminException';
     Object.setPrototypeOf(this, CannotLockLastAdminException.prototype);

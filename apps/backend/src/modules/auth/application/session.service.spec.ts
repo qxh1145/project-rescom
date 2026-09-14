@@ -416,14 +416,14 @@ describe('SessionService (Task 1: Identity Session Foundation)', () => {
       ).rejects.toThrow(UserLockedException);
 
       // rotateCsrf with accessToken must throw UserLockedException
-      await expect(
-        sessionService.rotateCsrf({ accessToken }),
-      ).rejects.toThrow(UserLockedException);
+      await expect(sessionService.rotateCsrf({ accessToken })).rejects.toThrow(
+        UserLockedException,
+      );
 
       // rotateCsrf with refreshToken must throw UserLockedException
-      await expect(
-        sessionService.rotateCsrf({ refreshToken }),
-      ).rejects.toThrow(UserLockedException);
+      await expect(sessionService.rotateCsrf({ refreshToken })).rejects.toThrow(
+        UserLockedException,
+      );
     });
   });
 

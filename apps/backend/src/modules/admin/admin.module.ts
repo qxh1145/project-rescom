@@ -26,12 +26,7 @@ import {
         userRepository: UserRepositoryPort,
         transactionPort: UserAdminTransactionPort,
         identityAudit: IdentityAuditPort,
-      ) =>
-        new UserAdminService(
-          userRepository,
-          transactionPort,
-          identityAudit,
-        ),
+      ) => new UserAdminService(userRepository, transactionPort, identityAudit),
       inject: [
         USER_REPOSITORY_PORT,
         USER_ADMIN_TRANSACTION_PORT,

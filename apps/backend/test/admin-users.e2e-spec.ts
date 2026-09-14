@@ -13,6 +13,7 @@ import { IDENTITY_AUDIT_PORT } from '../src/modules/auth/application/ports/ident
 import { InMemoryIdentityAuditRepository } from '../src/modules/auth/infrastructure/in-memory-identity-audit.repository';
 import { SessionService } from '../src/modules/auth/application/session.service';
 import { User } from '../src/modules/users/domain/user.entity';
+import { UserAdminService } from '../src/modules/users/application/user-admin.service';
 import { HttpExceptionFilter } from '../src/common/http/http-exception.filter';
 import { EnvService } from '../src/common/config/env.service';
 import { PrismaService } from '../src/common/database/prisma.service';
@@ -30,8 +31,7 @@ describe('Admin Users & RBAC E2E Tests (Story 1.4)', () => {
   let sessionService: SessionService;
   let envService: EnvService;
 
-  const TEST_JWT_SECRET =
-    'at_least_32_characters_super_secure_jwt_secret_key!';
+  const TEST_JWT_SECRET = 'at_least_32_characters_super_secure_jwt_secret_key!';
 
   beforeAll(async () => {
     process.env.DATABASE_URL =
@@ -469,7 +469,7 @@ describe('Admin Users & RBAC E2E Tests (Story 1.4)', () => {
     });
 
     it('should reject locking the last remaining active admin with 400 CANNOT_LOCK_LAST_ADMIN', async () => {
-      const { user: soleAdmin, tokens } = await createTestUserWithSession(
+      const { user: soleAdmin } = await createTestUserWithSession(
         'sole-admin@example.com',
         'ADMIN',
       );
@@ -486,10 +486,7 @@ describe('Admin Users & RBAC E2E Tests (Story 1.4)', () => {
 
       // Attempting to lock soleAdmin from our admin actor: but soleAdmin self-lock is rejected outside tx.
       // So let's test via UserAdminService directly for another actor:
-      const adminService = app.get(
-        require('../src/modules/users/application/user-admin.service')
-          .UserAdminService,
-      );
+      const adminService = app.get(UserAdminService);
       await expect(
         adminService.updateUserStatus(fakeAdminId, soleAdmin.id, 'LOCKED'),
       ).rejects.toThrow('Cannot lock the sole remaining active admin account.');
@@ -546,10 +543,7 @@ describe('Admin Users & RBAC E2E Tests (Story 1.4)', () => {
       );
 
       const fakeAdminId = '00000000-0000-0000-0000-000000000099';
-      const adminService = app.get(
-        require('../src/modules/users/application/user-admin.service')
-          .UserAdminService,
-      );
+      const adminService = app.get(UserAdminService);
 
       await expect(
         adminService.updateUserRole(fakeAdminId, soleAdmin.id, 'RESPONDENT'),

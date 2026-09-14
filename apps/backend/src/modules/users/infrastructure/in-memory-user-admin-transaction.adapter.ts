@@ -10,9 +10,7 @@ import {
 import { SessionRepositoryPort } from '../../auth/application/ports/session-repository.port';
 import { InMemoryUserRepository } from './in-memory-user.repository';
 
-export class InMemoryUserAdminTransactionAdapter
-  implements UserAdminTransactionPort
-{
+export class InMemoryUserAdminTransactionAdapter implements UserAdminTransactionPort {
   private adminLock: Promise<void> = Promise.resolve();
 
   constructor(
@@ -46,7 +44,10 @@ export class InMemoryUserAdminTransactionAdapter
           releaseLock = resolveLock;
         }
         await new Promise((r) => setImmediate(r));
-        return await this.userRepository.countByRoleAndStatus('ADMIN', 'ACTIVE');
+        return await this.userRepository.countByRoleAndStatus(
+          'ADMIN',
+          'ACTIVE',
+        );
       },
 
       updateUserStatus: async (
@@ -70,10 +71,7 @@ export class InMemoryUserAdminTransactionAdapter
         return updated;
       },
 
-      updateUserRole: async (
-        userId: string,
-        role: UserRole,
-      ): Promise<User> => {
+      updateUserRole: async (userId: string, role: UserRole): Promise<User> => {
         const existing = await this.userRepository.findById(userId);
         if (!existing) {
           throw new Error('User not found in in-memory store');
