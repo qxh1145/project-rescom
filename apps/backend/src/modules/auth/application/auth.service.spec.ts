@@ -27,6 +27,8 @@ describe('AuthService', () => {
       findByEmail: jest.fn(),
       findById: jest.fn(),
       create: jest.fn(),
+      findMany: jest.fn(),
+      countByRoleAndStatus: jest.fn(),
     };
 
     mockPasswordHasher = {

@@ -132,14 +132,6 @@ export class SessionService {
       throw new UnauthorizedSessionException('Session not found');
     }
 
-    if (session.revoked) {
-      throw new SessionRevokedException();
-    }
-
-    if (session.isExpired()) {
-      throw new SessionExpiredException();
-    }
-
     if (
       session.userId !== claims.sub ||
       session.sessionVersion !== claims.sessionVersion
@@ -156,6 +148,14 @@ export class SessionService {
       throw new UserLockedException();
     }
 
+    if (session.revoked) {
+      throw new SessionRevokedException();
+    }
+
+    if (session.isExpired()) {
+      throw new SessionExpiredException();
+    }
+
     return { session, user };
   }
 
@@ -170,6 +170,9 @@ export class SessionService {
         const validated = await this.validateSession(params.accessToken);
         session = validated.session;
       } catch (err) {
+        if (err instanceof UserLockedException) {
+          throw err;
+        }
         if (!params.refreshToken) {
           throw err;
         }
@@ -186,6 +189,11 @@ export class SessionService {
         await this.sessionRepository.findCredentialWithSession(credentialId);
       if (!found) {
         throw new InvalidRefreshTokenException();
+      }
+
+      const user = await this.userRepository.findById(found.session.userId);
+      if (user && user.isLocked()) {
+        throw new UserLockedException();
       }
 
       if (found.session.revoked) {
@@ -214,12 +222,8 @@ export class SessionService {
         throw new InvalidRefreshTokenException();
       }
 
-      const user = await this.userRepository.findById(found.session.userId);
       if (!user) {
         throw new UnauthorizedSessionException('User not found');
-      }
-      if (user.isLocked()) {
-        throw new UserLockedException();
       }
 
       session = found.session;
@@ -252,6 +256,11 @@ export class SessionService {
     }
 
     const { credential, session } = found;
+
+    const user = await this.userRepository.findById(session.userId);
+    if (user && user.isLocked()) {
+      throw new UserLockedException();
+    }
 
     if (session.revoked) {
       throw new SessionRevokedException();
@@ -286,9 +295,8 @@ export class SessionService {
       throw new InvalidCsrfTokenException();
     }
 
-    const user = await this.userRepository.findById(session.userId);
-    if (!user || user.isLocked()) {
-      throw new UserLockedException();
+    if (!user) {
+      throw new UnauthorizedSessionException('User not found');
     }
 
     const newCredentialId = this.generateId();

@@ -3,6 +3,8 @@ import { PrismaService } from '../../../common/database/prisma.service';
 import {
   UserRepositoryPort,
   CreateUserData,
+  ListUsersParams,
+  PaginatedUsersResult,
 } from '../application/ports/user.repository.port';
 import { User, UserRole, UserStatus } from '../domain/user.entity';
 import { EmailAlreadyRegisteredException } from '../../auth/application/exceptions/auth.exceptions';
@@ -70,5 +72,56 @@ export class PrismaUserRepository implements UserRepositoryPort {
       }
       throw error;
     }
+  }
+
+  async findMany(params: ListUsersParams): Promise<PaginatedUsersResult> {
+    const { page, limit, search, role, status } = params;
+    const skip = (page - 1) * limit;
+    const take = limit;
+
+    const where: any = {};
+    if (search && search.trim().length > 0) {
+      where.email = { contains: search.trim(), mode: 'insensitive' };
+    }
+    if (role) {
+      where.role = role;
+    }
+    if (status) {
+      where.status = status;
+    }
+
+    const [rawUsers, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    const users = rawUsers.map(
+      (raw) =>
+        new User({
+          id: raw.id,
+          email: raw.email,
+          passwordHash: raw.passwordHash,
+          role: raw.role as UserRole,
+          status: raw.status as UserStatus,
+          createdAt: raw.createdAt,
+          updatedAt: raw.updatedAt,
+        }),
+    );
+
+    return { users, total };
+  }
+
+  async countByRoleAndStatus(
+    role: UserRole,
+    status: UserStatus,
+  ): Promise<number> {
+    return await this.prisma.user.count({
+      where: { role, status },
+    });
   }
 }

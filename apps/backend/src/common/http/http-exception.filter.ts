@@ -26,7 +26,15 @@ import {
   GoogleLinkRequiredException,
   FinalLoginMethodException,
   GoogleIdentityConflictException,
+  ForbiddenResourceException,
 } from '../../modules/auth/application/exceptions/auth.exceptions';
+import {
+  UserNotFoundException,
+  CannotLockSelfException,
+  CannotLockLastAdminException,
+  CannotDemoteSelfException,
+  CannotDemoteLastAdminException,
+} from '../../modules/users/application/exceptions/user-admin.exceptions';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -62,9 +70,23 @@ export class HttpExceptionFilter implements ExceptionFilter {
     } else if (
       exception instanceof InvalidCsrfTokenException ||
       exception instanceof ForbiddenOriginException ||
-      exception instanceof UserLockedException
+      exception instanceof UserLockedException ||
+      exception instanceof ForbiddenResourceException
     ) {
       status = HttpStatus.FORBIDDEN;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof UserNotFoundException) {
+      status = HttpStatus.NOT_FOUND;
+      code = exception.code;
+      message = exception.message;
+    } else if (
+      exception instanceof CannotLockSelfException ||
+      exception instanceof CannotLockLastAdminException ||
+      exception instanceof CannotDemoteSelfException ||
+      exception instanceof CannotDemoteLastAdminException
+    ) {
+      status = HttpStatus.BAD_REQUEST;
       code = exception.code;
       message = exception.message;
     } else if (
