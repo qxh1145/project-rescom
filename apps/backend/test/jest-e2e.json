@@ -1,0 +1,13 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testRegex": ".e2e-spec.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "^@rescom/schemas/(.*)$": "<rootDir>/../../packages/schemas/src/$1",
+    "^@rescom/schemas$": "<rootDir>/../../packages/schemas/src"
+  },
+  "testEnvironment": "node"
+}
