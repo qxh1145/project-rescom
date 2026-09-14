@@ -183,6 +183,13 @@ export class PrismaSessionRepository implements SessionRepositoryPort {
     });
   }
 
+  async revokeAllByUserId(userId: string): Promise<void> {
+    await this.prisma.session.updateMany({
+      where: { userId, revoked: false },
+      data: { revoked: true },
+    });
+  }
+
   async updateCsrfDigest(
     sessionId: string,
     newCsrfDigest: string,

@@ -3,6 +3,8 @@ import * as crypto from 'crypto';
 import {
   UserRepositoryPort,
   CreateUserData,
+  ListUsersParams,
+  PaginatedUsersResult,
 } from '../application/ports/user.repository.port';
 import { User, UserRole, UserStatus } from '../domain/user.entity';
 
@@ -44,6 +46,46 @@ export class InMemoryUserRepository implements UserRepositoryPort {
     });
     this.users.set(id, newUser);
     return newUser;
+  }
+
+  async findMany(params: ListUsersParams): Promise<PaginatedUsersResult> {
+    const { page, limit, search, role, status } = params;
+    let list = Array.from(this.users.values());
+
+    if (search && search.trim().length > 0) {
+      const q = search.trim().toLowerCase();
+      list = list.filter((u) => u.email.toLowerCase().includes(q));
+    }
+    if (role) {
+      list = list.filter((u) => u.role === role);
+    }
+    if (status) {
+      list = list.filter((u) => u.status === status);
+    }
+
+    list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    const total = list.length;
+    const skip = (page - 1) * limit;
+    const users = list.slice(skip, skip + limit);
+
+    return { users, total };
+  }
+
+  async countByRoleAndStatus(
+    role: UserRole,
+    status: UserStatus,
+  ): Promise<number> {
+    let count = 0;
+    for (const u of this.users.values()) {
+      if (u.role === role && u.status === status) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  save(user: User): void {
+    this.users.set(user.id, user);
   }
 
   clear() {

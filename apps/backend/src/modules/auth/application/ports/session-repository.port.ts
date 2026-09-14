@@ -36,6 +36,8 @@ export interface SessionRepositoryPort {
     auditRecord?: CreateIdentityAuditRecord,
   ): Promise<void>;
 
+  revokeAllByUserId(userId: string): Promise<void>;
+
   updateCsrfDigest(sessionId: string, newCsrfDigest: string): Promise<void>;
 }
 

@@ -6,6 +6,7 @@ import { GoogleOAuthService } from './application/google-oauth.service';
 import { AuthController } from './presentation/auth.controller';
 import { GoogleOAuthController } from './presentation/google-oauth.controller';
 import { SessionAuthGuard } from './presentation/guards/session-auth.guard';
+import { RolesGuard } from './presentation/guards/roles.guard';
 import {
   PASSWORD_HASHER_PORT,
   PasswordHasherPort,
@@ -184,11 +185,13 @@ import { EnvService } from '../../common/config/env.service';
       ],
     },
     SessionAuthGuard,
+    RolesGuard,
   ],
   exports: [
     AuthService,
     SessionService,
     SessionAuthGuard,
+    RolesGuard,
     GoogleOAuthService,
     TOKEN_SERVICE_PORT,
     SECRET_PROTECTION_PORT,

@@ -3,4 +3,4 @@ export * from './auth/login.schema';
 export * from './auth/sanitized-user.schema';
 export * from './auth/response-envelope.schema';
 export * from './auth/google-oauth.schema';
-
+export * from './users/admin-users.schema';

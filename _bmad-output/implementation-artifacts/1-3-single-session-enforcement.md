@@ -260,6 +260,19 @@ The guard is a NestJS `CanActivate` in the presentation layer. It does NOT becom
 - [x] [Review][Patch] Check user.isLocked() in rotateCsrf when resolving session via refreshToken fallback [apps/backend/src/modules/auth/application/session.service.ts:200]
 - [x] [Review][Patch] Support graceful fallback to refreshToken in rotateCsrf when accessToken is expired [apps/backend/src/modules/auth/application/session.service.ts:162]
 - [x] [Review][Defer] Background cron eviction of expired/revoked sessions and refresh credentials [deferred, out of scope for Story 1.3 single-session enforcement]
+- [ ] [Review][Patch] High: Recheck and lock the parent session during refresh rotation so a concurrent replacement cannot issue tokens for a revoked session [apps/backend/src/modules/auth/infrastructure/prisma-session.repository.ts:121]
+- [ ] [Review][Patch] High: Atomically revoke the refresh-token family when concurrent refresh reuse loses the credential CAS race [apps/backend/src/modules/auth/infrastructure/prisma-session.repository.ts:122]
+- [ ] [Review][Patch] Medium: Authenticate the refresh secret before treating a used credential as replay and revoking its session [apps/backend/src/modules/auth/application/session.service.ts:199]
+- [ ] [Review][Patch] Medium: Make logout revocation conditional so concurrent logouts append at most one audit record [apps/backend/src/modules/auth/infrastructure/prisma-session.repository.ts:165]
+- [ ] [Review][Patch] Medium: Require a valid CSRF token when logging out an active session while preserving revoked-session idempotence [apps/backend/src/modules/auth/application/session.service.ts:347]
+- [ ] [Review][Patch] Medium: Make in-memory session replacement atomic and require its mandatory audit dependency [apps/backend/src/modules/auth/infrastructure/in-memory-session.repository.ts:22]
+- [ ] [Review][Patch] Low: Delete completed per-user mutex tails by comparing the promise actually stored in the lock map [apps/backend/src/modules/auth/infrastructure/in-memory-session.repository.ts:34]
+- [ ] [Review][Patch] Medium: Run SessionAuthGuard before JsonOnlyGuard so revoked protected requests clear cookies and return the authentication failure [apps/backend/src/modules/auth/presentation/google-oauth.controller.ts:124]
+- [ ] [Review][Patch] High: Make PostgreSQL concurrency and rollback tests fail or visibly skip instead of silently passing when PostgreSQL is unavailable [apps/backend/src/modules/auth/infrastructure/prisma-session.repository.spec.ts:12]
+- [ ] [Review][Patch] Medium: Assert refresh-credential and audit rollback and bound the lock-release assertion with a timeout [apps/backend/src/modules/auth/infrastructure/prisma-session.repository.spec.ts:195]
+- [ ] [Review][Patch] Medium: Verify the mocked row-lock query contains the user predicate and FOR UPDATE instead of only asserting it was called [apps/backend/src/modules/auth/infrastructure/prisma-session.repository.spec.ts:253]
+- [ ] [Review][Patch] Medium: Add Google OAuth session-replacement coverage to prove AC1 through both login paths [apps/backend/test/google-oauth.e2e-spec.ts:371]
+- [ ] [Review][Patch] Low: Return non-optional AuthenticatedUser and Session values from guarded parameter decorators [apps/backend/src/modules/auth/presentation/decorators/current-user.decorator.ts:8]
 
 ## Dev Notes
 

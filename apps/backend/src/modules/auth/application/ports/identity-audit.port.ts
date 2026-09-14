@@ -8,7 +8,9 @@ export type IdentityAuditAction =
   | 'REFRESH_REUSE_REVOKED'
   | 'LOGOUT'
   | 'IDENTITY_LINKED'
-  | 'IDENTITY_UNLINKED';
+  | 'IDENTITY_UNLINKED'
+  | 'USER_STATUS_CHANGED'
+  | 'USER_ROLE_CHANGED';
 
 export interface CreateIdentityAuditRecord {
   action: IdentityAuditAction;

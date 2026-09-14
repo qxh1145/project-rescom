@@ -120,6 +120,14 @@ describe('SessionService (Task 1: Identity Session Foundation)', () => {
       }
     }
 
+    async revokeAllByUserId(userId: string): Promise<void> {
+      for (const [id, s] of this.sessions.entries()) {
+        if (s.userId === userId && !s.revoked) {
+          this.sessions.set(id, { ...s, revoked: true });
+        }
+      }
+    }
+
     async updateCsrfDigest(
       sessionId: string,
       newCsrfDigest: string,
@@ -152,6 +160,18 @@ describe('SessionService (Task 1: Identity Session Foundation)', () => {
 
     async findById(id: string): Promise<User | null> {
       return this.users.get(id) ?? null;
+    }
+
+    async findMany(): Promise<any> {
+      return { users: Array.from(this.users.values()), total: this.users.size };
+    }
+
+    async countByRoleAndStatus(role: any, status: any): Promise<number> {
+      let count = 0;
+      for (const u of this.users.values()) {
+        if (u.role === role && u.status === status) count++;
+      }
+      return count;
     }
   }
 
@@ -357,6 +377,51 @@ describe('SessionService (Task 1: Identity Session Foundation)', () => {
       );
 
       await expect(sessionService.validateSession(accessToken)).rejects.toThrow(
+        UserLockedException,
+      );
+    });
+
+    it('should prioritize UserLockedException over SessionRevokedException when user is locked and session is revoked', async () => {
+      const user = await userRepo.create({
+        id: 'user-locked-revoked',
+        email: 'locked-revoked@example.com',
+        role: 'RESPONDENT',
+        status: 'ACTIVE',
+      });
+
+      const { accessToken, refreshToken, csrfToken } =
+        await sessionService.createSession(user.id);
+
+      // Lock user AND revoke session (as happens during an admin lock)
+      userRepo.users.set(
+        user.id,
+        new User({
+          id: user.id,
+          email: user.email,
+          passwordHash: user.passwordHash,
+          role: user.role,
+          status: 'LOCKED',
+        }),
+      );
+      await sessionRepo.revokeAllByUserId(user.id);
+
+      // validateSession must throw UserLockedException (403), NOT SessionRevokedException (401)
+      await expect(sessionService.validateSession(accessToken)).rejects.toThrow(
+        UserLockedException,
+      );
+
+      // refreshSession must throw UserLockedException (403), NOT SessionRevokedException (401)
+      await expect(
+        sessionService.refreshSession(refreshToken, csrfToken),
+      ).rejects.toThrow(UserLockedException);
+
+      // rotateCsrf with accessToken must throw UserLockedException
+      await expect(sessionService.rotateCsrf({ accessToken })).rejects.toThrow(
+        UserLockedException,
+      );
+
+      // rotateCsrf with refreshToken must throw UserLockedException
+      await expect(sessionService.rotateCsrf({ refreshToken })).rejects.toThrow(
         UserLockedException,
       );
     });

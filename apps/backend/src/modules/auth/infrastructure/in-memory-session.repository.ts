@@ -162,6 +162,14 @@ export class InMemorySessionRepository implements SessionRepositoryPort {
     }
   }
 
+  async revokeAllByUserId(userId: string): Promise<void> {
+    for (const [id, session] of this.sessions.entries()) {
+      if (session.userId === userId && !session.revoked) {
+        this.sessions.set(id, { ...session, revoked: true });
+      }
+    }
+  }
+
   async updateCsrfDigest(
     sessionId: string,
     newCsrfDigest: string,

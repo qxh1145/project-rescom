@@ -171,3 +171,13 @@ export class GoogleIdentityConflictException extends Error {
     Object.setPrototypeOf(this, GoogleIdentityConflictException.prototype);
   }
 }
+
+export class ForbiddenResourceException extends Error {
+  readonly code = 'FORBIDDEN_RESOURCE';
+
+  constructor(message = 'Access denied: insufficient permissions.') {
+    super(message);
+    this.name = 'ForbiddenResourceException';
+    Object.setPrototypeOf(this, ForbiddenResourceException.prototype);
+  }
+}
