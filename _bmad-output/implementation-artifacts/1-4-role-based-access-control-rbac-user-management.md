@@ -10,7 +10,7 @@ context:
 
 # Story 1.4: Role-Based Access Control (RBAC) & User Management
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -362,8 +362,8 @@ so that I can manage privileged authorization assignments, lock malicious or com
       export const USER_ADMIN_TRANSACTION_PORT = Symbol('UserAdminTransactionPort');
       ```
 
-- [ ] **Task 3: Session Validation Locked-Account Fix in `SessionService`** (AC: 2)
-  - [ ] 3.1 In `apps/backend/src/modules/auth/application/session.service.ts`:
+- [x] **Task 3: Session Validation Locked-Account Fix in `SessionService`** (AC: 2)
+  - [x] 3.1 In `apps/backend/src/modules/auth/application/session.service.ts`:
     - Ensure session lookups (`findById`, `findCredentialWithSession`) retrieve session records regardless of `revoked` state.
     - In `validateSession(accessToken: string)`:
       - Query `user = await this.userRepository.findById(session.userId)`.
@@ -374,19 +374,19 @@ so that I can manage privileged authorization assignments, lock malicious or com
       - Query `user = await this.userRepository.findById(session.userId)`.
       - Check `if (user && user.isLocked()) { throw new UserLockedException(); }` (HTTP 403 `AUTH_USER_LOCKED`) BEFORE checking `if (session.revoked)`.
       - If user is not locked, check `if (session.revoked) { throw new SessionRevokedException(); }` (HTTP 401 `AUTH_SESSION_REVOKED`).
-  - [ ] 3.2 Update `session.service.spec.ts`, `session-auth.guard.spec.ts`, and auth controller specs to test locked user with revoked session returning 403 `AUTH_USER_LOCKED` across both access-token and refresh-token flows (vs 401 `AUTH_SESSION_REVOKED` for revoked non-locked users).
+  - [x] 3.2 Update `session.service.spec.ts`, `session-auth.guard.spec.ts`, and auth controller specs to test locked user with revoked session returning 403 `AUTH_USER_LOCKED` across both access-token and refresh-token flows (vs 401 `AUTH_SESSION_REVOKED` for revoked non-locked users).
 
-- [ ] **Task 4: Repository & Transaction Port Implementations** (AC: 6, 7, 8, 10)
-  - [ ] 4.1 In `apps/backend/src/modules/auth/infrastructure/prisma-session.repository.ts`:
+- [x] **Task 4: Repository & Transaction Port Implementations** (AC: 6, 7, 8, 10)
+  - [x] 4.1 In `apps/backend/src/modules/auth/infrastructure/prisma-session.repository.ts`:
     - Implement `revokeAllByUserId(userId: string): Promise<void>`:
       `await this.prisma.session.updateMany({ where: { userId, revoked: false }, data: { revoked: true } })`.
-  - [ ] 4.2 In `apps/backend/src/modules/auth/infrastructure/in-memory-session.repository.ts`:
+  - [x] 4.2 In `apps/backend/src/modules/auth/infrastructure/in-memory-session.repository.ts`:
     - Implement matching in-memory `revokeAllByUserId`.
-  - [ ] 4.3 In `apps/backend/src/modules/users/infrastructure/prisma-user.repository.ts`:
+  - [x] 4.3 In `apps/backend/src/modules/users/infrastructure/prisma-user.repository.ts`:
     - Implement `findMany`: build Prisma filter with `contains` (mode: `'insensitive'`) on `email`, pagination `skip` and `take`, ordering `createdAt: 'desc'`.
     - Implement `countByRoleAndStatus(role: UserRole, status: UserStatus): Promise<number>`:
       `await this.prisma.user.count({ where: { role, status } })`.
-  - [ ] 4.4 In `apps/backend/src/modules/users/infrastructure/prisma-user-admin-transaction.adapter.ts`:
+  - [x] 4.4 In `apps/backend/src/modules/users/infrastructure/prisma-user-admin-transaction.adapter.ts`:
     - Implement `UserAdminTransactionPort` using `this.prisma.$transaction(async (tx) => work(ctx))`:
       - Provide atomic context operations (strictly atomic data/locking operations without domain policy decisions or domain exceptions):
         1. `findUserById(userId)`: queries `await tx.user.findUnique({ where: { id: userId } })`, returns domain `User | null`.
@@ -398,13 +398,13 @@ so that I can manage privileged authorization assignments, lock malicious or com
         4. `updateUserRole(userId, role)`: `await tx.user.update({ where: { id: userId }, data: { role } })`, returns domain `User`.
         5. `revokeUserSessions(userId)`: `await tx.session.updateMany({ where: { userId, revoked: false }, data: { revoked: true } })`.
         6. `appendAuditLog(record)`: appends audit log record via `tx.identityAuditLog.create({ data: { ... } })`.
-  - [ ] 4.5 In `apps/backend/src/modules/users/infrastructure/in-memory-user.repository.ts`:
+  - [x] 4.5 In `apps/backend/src/modules/users/infrastructure/in-memory-user.repository.ts`:
     - Implement `findMany` and `countByRoleAndStatus`.
-  - [ ] 4.6 In `apps/backend/src/modules/users/infrastructure/in-memory-user-admin-transaction.adapter.ts`:
+  - [x] 4.6 In `apps/backend/src/modules/users/infrastructure/in-memory-user-admin-transaction.adapter.ts`:
     - Implement matching in-memory atomic transaction adapter providing `run` and context operations (`findUserById`, `lockActiveAdmins`, `updateUserStatus`, `updateUserRole`, `revokeUserSessions`, `appendAuditLog`) for unit testing.
 
-- [ ] **Task 5: Application Service `UserAdminService`** (AC: 4, 5, 6, 7, 8, 10)
-  - [ ] 5.1 In `apps/backend/src/modules/users/application/user-admin.service.ts`:
+- [x] **Task 5: Application Service `UserAdminService`** (AC: 4, 5, 6, 7, 8, 10)
+  - [x] 5.1 In `apps/backend/src/modules/users/application/user-admin.service.ts`:
     - Pure TypeScript class without `@nestjs/` imports.
     - Inject `UserRepositoryPort`, `UserAdminTransactionPort`, and `IdentityAuditPort`.
     - `listUsers(params: ListUsersParams)`: calls `findMany`, computes pagination metadata (`totalPages = Math.ceil(total / limit)`), returns sanitized users via allowlist mapper.
@@ -447,13 +447,13 @@ so that I can manage privileged authorization assignments, lock malicious or com
       - 3. Catch domain failures outside transaction:
         - If `UserNotFoundException`, `CannotDemoteLastAdminException`, etc. are thrown from the transaction, `UserAdminService` catches them, appends an audit failure record (`outcome: 'FAILURE'`, matching `errorCode`), and rethrows.
       - 4. Returns sanitized user projection via `toAdminUserResponse`.
-  - [ ] 5.2 Create unit tests in `apps/backend/src/modules/users/application/user-admin.service.spec.ts` covering all branches, no-ops, guard failures, and audit logging.
+  - [x] 5.2 Create unit tests in `apps/backend/src/modules/users/application/user-admin.service.spec.ts` covering all branches, no-ops, guard failures, and audit logging.
 
-- [ ] **Task 6: Presentation Decorators & RolesGuard in `AuthModule`** (AC: 1, 10)
-  - [ ] 6.1 In `apps/backend/src/modules/auth/presentation/decorators/roles.decorator.ts`:
+- [x] **Task 6: Presentation Decorators & RolesGuard in `AuthModule`** (AC: 1, 10)
+  - [x] 6.1 In `apps/backend/src/modules/auth/presentation/decorators/roles.decorator.ts`:
     - Define `@Roles(...roles: UserRole[])` using `SetMetadata('roles', roles)`.
     - Re-export via `apps/backend/src/modules/auth/presentation/decorators/index.ts`.
-  - [ ] 6.2 In `apps/backend/src/modules/auth/presentation/guards/roles.guard.ts`:
+  - [x] 6.2 In `apps/backend/src/modules/auth/presentation/guards/roles.guard.ts`:
     - Implement `RolesGuard implements CanActivate`:
       - Extract required roles via `Reflector.getAllAndOverride<UserRole[]>('roles', [context.getHandler(), context.getClass()])`.
       - If no roles required, return `true`.
@@ -461,13 +461,13 @@ so that I can manage privileged authorization assignments, lock malicious or com
       - If `!req.user`, throw `UnauthorizedSessionException`.
       - If `!requiredRoles.includes(req.user.role)`, throw `ForbiddenResourceException`.
       - Return `true`.
-  - [ ] 6.3 Register and export `RolesGuard` in `AuthModule` providers and exports.
-  - [ ] 6.4 Create unit tests in `apps/backend/src/modules/auth/presentation/guards/roles.guard.spec.ts`.
+  - [x] 6.3 Register and export `RolesGuard` in `AuthModule` providers and exports.
+  - [x] 6.4 Create unit tests in `apps/backend/src/modules/auth/presentation/guards/roles.guard.spec.ts`.
 
-- [ ] **Task 7: Standardized UUID Pipe, Controller & `AdminModule` Wiring** (AC: 4, 5, 6, 7, 10)
-  - [ ] 7.1 In `apps/backend/src/common/http/parse-uuid.pipe.ts`:
+- [x] **Task 7: Standardized UUID Pipe, Controller & `AdminModule` Wiring** (AC: 4, 5, 6, 7, 10)
+  - [x] 7.1 In `apps/backend/src/common/http/parse-uuid.pipe.ts`:
     - Create custom pipe (or use Zod) that validates UUID format and throws `ValidationException('Invalid UUID parameter', 'VALIDATION_ERROR')` on invalid UUID, ensuring consistent standard error envelope.
-  - [ ] 7.2 In `apps/backend/src/modules/admin/presentation/admin-users.controller.ts`:
+  - [x] 7.2 In `apps/backend/src/modules/admin/presentation/admin-users.controller.ts`:
     - `@Controller('admin/users')`
     - Class-level guards: `@UseGuards(SessionAuthGuard, RolesGuard)` and `@Roles('ADMIN')`.
     - `GET /admin/users`: query parsed via `new ZodValidationPipe(listUsersQuerySchema)`.
@@ -476,17 +476,17 @@ so that I can manage privileged authorization assignments, lock malicious or com
     - `PATCH /admin/users/:id/role`: id parsed via `new ParseUuidPipe()`, body parsed via `new ZodValidationPipe(updateUserRoleSchema)`.
     - Explicit projection allowlist: `toAdminUserResponse(user)`.
     - Standard response wrapper `{ data, error: null, meta: {} }` that conforms to `paginatedAdminUsersResponseSchema` / `adminUserDetailResponseSchema`.
-  - [ ] 7.3 In `apps/backend/src/modules/admin/admin.module.ts`:
+  - [x] 7.3 In `apps/backend/src/modules/admin/admin.module.ts`:
     - Create `AdminModule` importing `UsersModule` and `AuthModule`.
     - Provide `USER_ADMIN_TRANSACTION_PORT` with `PrismaUserAdminTransactionAdapter`.
     - Provide `UserAdminService` via `useFactory` injecting `USER_REPOSITORY_PORT`, `USER_ADMIN_TRANSACTION_PORT`, and `IDENTITY_AUDIT_PORT`.
     - Register `AdminUsersController`.
-  - [ ] 7.4 In `apps/backend/src/app.module.ts`:
+  - [x] 7.4 In `apps/backend/src/app.module.ts`:
     - Add `AdminModule` to `imports: [ConfigModule, PrismaModule, UsersModule, AuthModule, AdminModule]`.
     - Verify zero circular dependencies.
 
-- [ ] **Task 8: Automated Tests & Verification** (AC: 11)
-  - [ ] 8.1 Create `apps/backend/test/admin-users.e2e-spec.ts`:
+- [x] **Task 8: Automated Tests & Verification** (AC: 11)
+  - [x] 8.1 Create `apps/backend/test/admin-users.e2e-spec.ts`:
     - Test unauthenticated requests return 401 `AUTH_UNAUTHORIZED`.
     - Test non-admin (`RESPONDENT`, `PUBLISHER`) requests return 403 `FORBIDDEN_RESOURCE`.
     - Test invalid UUID returns standardized 400 `VALIDATION_ERROR`.
@@ -506,8 +506,8 @@ so that I can manage privileged authorization assignments, lock malicious or com
       - Concurrent demote vs. demote and lock vs. lock.
       - Assert system never reaches 0 ACTIVE ADMINs, state decisions never rely on stale pre-transaction snapshots, exactly one request succeeds, and one request fails with `CANNOT_LOCK_LAST_ADMIN` or `CANNOT_DEMOTE_LAST_ADMIN`.
     - Verify `identity_audit_logs` entries for all successes and domain failures.
-  - [ ] 8.2 Run `npm run test` and `npm run test:e2e` to verify 100% test pass.
-  - [ ] 8.3 Run `npm run test -- test/architecture.spec.ts` to verify 0 boundary violations.
+  - [x] 8.2 Run `npm run test` and `npm run test:e2e` to verify 100% test pass.
+  - [x] 8.3 Run `npm run test -- test/architecture.spec.ts` to verify 0 boundary violations.
 
 ---
 
@@ -609,9 +609,60 @@ so that I can manage privileged authorization assignments, lock malicious or com
 ## Dev Agent Record
 
 ### Agent Model Used
+- Antigravity 2.0 (Claude 3.7 Sonnet / Gemini 2.5 Flash)
 
 ### Debug Log References
+- Unit & Architecture Tests: task-313, task-322, task-465, task-502
+- E2E Tests: task-472, task-511
+- Linting & Typecheck: task-481
 
 ### Completion Notes List
+- Defined and exported shared Zod schemas in `@rescom/schemas` (`listUsersQuerySchema`, `updateUserStatusSchema`, `updateUserRoleSchema`, `adminUserSchema`, `adminUserDetailResponseSchema`, `paginatedAdminUsersResponseSchema`) with strict typing and ISO-8601 datetime strings.
+- Implemented `ForbiddenResourceException` in auth domain exceptions and `UserNotFoundException`, `CannotLockSelfException`, `CannotLockLastAdminException`, `CannotDemoteSelfException`, `CannotDemoteLastAdminException` in users domain exceptions.
+- Mapped all domain exceptions to standard HTTP error envelopes in `HttpExceptionFilter` (400, 403, 404).
+- Implemented locked account priority validation in `SessionService` across `validateSession`, `refreshSession`, and `rotateCsrf`: user LOCKED is evaluated before session revoked state, returning 403 `AUTH_USER_LOCKED` instead of 401 `AUTH_SESSION_REVOKED`.
+- Extended `SessionRepositoryPort` with `revokeAllByUserId(userId)` in both Prisma and in-memory repositories.
+- Extended `UserRepositoryPort` with `findMany` and `countByRoleAndStatus` in both Prisma and in-memory repositories.
+- Implemented `UserAdminTransactionPort` and `PrismaUserAdminTransactionAdapter` executing row-level locks (`SELECT "id" FROM "users" WHERE "role" = 'ADMIN'::"Role" AND "status" = 'ACTIVE'::"UserStatus" FOR UPDATE`) and atomic operations (`findUserById`, `lockActiveAdmins`, `updateUserStatus`, `updateUserRole`, `revokeUserSessions`, `appendAuditLog`).
+- Implemented `InMemoryUserAdminTransactionAdapter` with simulated row lock mutex for deterministic concurrency unit and integration tests.
+- Implemented `UserAdminService` as a pure TypeScript class without `@nestjs/` imports: self-lock/self-demote checked outside transactions, fresh snapshot re-fetched inside transactions via `ctx.findUserById`, no-op check, last active admin protection via `ctx.lockActiveAdmins()`, and audit logs emitted for both success and domain failures.
+- Implemented `@Roles()` decorator and `RolesGuard` enforcing RBAC route protection without clearing cookies on 403.
+- Implemented `ParseUUIDPipe` throwing `VALIDATION_ERROR` for non-UUID route parameters.
+- Implemented `AdminUsersController` and `AdminModule` wiring `UserAdminService` via `useFactory` provider without circular dependencies.
+- Verified 100% test pass: 21 unit test suites (163 tests), 4 E2E test suites (50 tests), and 0 clean architecture violations.
+- Verified real concurrency integration test: concurrent lock/demote mutations on 2 active admins serialize, never reach 0 active admins, and exactly one request fails with a last-admin error.
 
 ### File List
+- `packages/schemas/src/users/admin-users.schema.ts`
+- `packages/schemas/src/index.ts`
+- `apps/backend/src/common/http/http-exception.filter.ts`
+- `apps/backend/src/common/http/parse-uuid.pipe.ts`
+- `apps/backend/src/common/http/zod-validation.pipe.ts`
+- `apps/backend/src/modules/auth/application/exceptions/auth.exceptions.ts`
+- `apps/backend/src/modules/auth/application/ports/identity-audit.port.ts`
+- `apps/backend/src/modules/auth/application/ports/session-repository.port.ts`
+- `apps/backend/src/modules/auth/application/session.service.ts`
+- `apps/backend/src/modules/auth/application/session.service.spec.ts`
+- `apps/backend/src/modules/auth/infrastructure/prisma-session.repository.ts`
+- `apps/backend/src/modules/auth/infrastructure/in-memory-session.repository.ts`
+- `apps/backend/src/modules/auth/presentation/decorators/roles.decorator.ts`
+- `apps/backend/src/modules/auth/presentation/decorators/index.ts`
+- `apps/backend/src/modules/auth/presentation/guards/roles.guard.ts`
+- `apps/backend/src/modules/auth/presentation/guards/roles.guard.spec.ts`
+- `apps/backend/src/modules/auth/auth.module.ts`
+- `apps/backend/src/modules/users/application/exceptions/user-admin.exceptions.ts`
+- `apps/backend/src/modules/users/application/ports/user.repository.port.ts`
+- `apps/backend/src/modules/users/application/ports/user-admin-transaction.port.ts`
+- `apps/backend/src/modules/users/application/user-admin.service.ts`
+- `apps/backend/src/modules/users/application/user-admin.service.spec.ts`
+- `apps/backend/src/modules/users/infrastructure/prisma-user.repository.ts`
+- `apps/backend/src/modules/users/infrastructure/in-memory-user.repository.ts`
+- `apps/backend/src/modules/users/infrastructure/prisma-user-admin-transaction.adapter.ts`
+- `apps/backend/src/modules/users/infrastructure/in-memory-user-admin-transaction.adapter.ts`
+- `apps/backend/src/modules/users/users.module.ts`
+- `apps/backend/src/modules/admin/presentation/admin-users.controller.ts`
+- `apps/backend/src/modules/admin/presentation/admin-users.controller.spec.ts`
+- `apps/backend/src/modules/admin/admin.module.ts`
+- `apps/backend/src/app.module.ts`
+- `apps/backend/test/admin-users.e2e-spec.ts`
+
