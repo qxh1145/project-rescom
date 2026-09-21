@@ -41,6 +41,8 @@ describe('Cookie Options Helper (AC6)', () => {
       AUTH_FRONTEND_SUCCESS_URL: 'https://app.rescom.io/callback',
       AUTH_FRONTEND_ERROR_URL: 'https://app.rescom.io/error',
       TRUST_PROXY_HOPS: 1,
+      STORAGE_ACCESS_KEY_ID: 'prod-access-key',
+      STORAGE_SECRET_ACCESS_KEY: 'prod-secret-key-12345',
     });
 
     const options = getAuthCookieOptions(envService);
@@ -64,6 +66,8 @@ describe('Cookie Options Helper (AC6)', () => {
       AUTH_FRONTEND_SUCCESS_URL: 'https://app.rescom.io/callback',
       AUTH_FRONTEND_ERROR_URL: 'https://app.rescom.io/error',
       TRUST_PROXY_HOPS: 1,
+      STORAGE_ACCESS_KEY_ID: 'prod-access-key',
+      STORAGE_SECRET_ACCESS_KEY: 'prod-secret-key-12345',
     });
 
     const clearOptions = getAuthClearCookieOptions(envService);

@@ -12,4 +12,5 @@ module.exports = {
     '^@rescom/schemas/(.*)$': '<rootDir>/../../packages/schemas/src/$1',
     '^@rescom/schemas$': '<rootDir>/../../packages/schemas/src',
   },
+  testTimeout: 15000,
 };

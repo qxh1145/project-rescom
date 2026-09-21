@@ -99,6 +99,42 @@ export class EnvService {
     return this.config.AUTH_FRONTEND_ERROR_URL;
   }
 
+  get storageEndpoint(): string {
+    return this.config.STORAGE_ENDPOINT;
+  }
+
+  get storageRegion(): string {
+    return this.config.STORAGE_REGION;
+  }
+
+  get storageBucket(): string {
+    return this.config.STORAGE_BUCKET;
+  }
+
+  get storageAccessKeyId(): string {
+    return this.config.STORAGE_ACCESS_KEY_ID;
+  }
+
+  get storageSecretAccessKey(): string {
+    return this.config.STORAGE_SECRET_ACCESS_KEY;
+  }
+
+  get storageForcePathStyle(): boolean {
+    return this.config.STORAGE_FORCE_PATH_STYLE;
+  }
+
+  get malwareScannerHost(): string {
+    return this.config.MALWARE_SCANNER_HOST;
+  }
+
+  get malwareScannerPort(): number {
+    return this.config.MALWARE_SCANNER_PORT;
+  }
+
+  get malwareScannerTimeoutMs(): number {
+    return this.config.MALWARE_SCANNER_TIMEOUT_MS;
+  }
+
   get rateLimitTtlSeconds(): number {
     return this.config.RATE_LIMIT_TTL_SECONDS;
   }

@@ -39,6 +39,47 @@ import {
   AuditLogNotFoundException,
   ImmutableAuditLogException,
 } from '../../modules/admin/application/exceptions/audit-log.exceptions';
+import {
+  FormNotFoundException,
+  FormForbiddenException,
+  FormNotInDraftStatusException,
+  InvalidFormDraftException,
+  InvalidFormStatusTransitionException,
+  FormValidationException,
+  FormAlreadyPublishedException,
+  FormAlreadyClosedException,
+  FormNotPublishedException,
+  FormConflictException,
+  TargetingValidationException,
+  FormHasPublishedVersionsException,
+  PublicFormAccessDisabledException,
+  CaptchaVerificationFailedException,
+  GuestRateLimitExceededException,
+  InvalidGuestSubmissionException,
+} from '../../modules/forms/application/exceptions/form.exceptions';
+import {
+  ParticipantNotEligibleException,
+  SurveyAlreadyCompletedException,
+  SurveyQuotaFullException,
+  ConflictingActiveAttemptException,
+  SurveyNotAvailableException,
+} from '../../modules/participation/application/exceptions/participation.exceptions';
+import {
+  StorageObjectNotFoundException,
+  StorageInvalidFileException,
+  StorageObjectNotCleanException,
+  StorageUnauthorizedAccessException,
+  StorageScannerOutageException,
+} from '../../modules/storage/application/exceptions/storage.exceptions';
+import {
+  UnbalancedJournalException,
+  InsufficientBalanceException,
+  AccountNotFoundException,
+  JournalNotFoundException,
+  JournalAlreadyReversedException,
+  IdempotencyConflictException,
+  InvalidLedgerOperationException,
+} from '../../modules/economy/application/exceptions/economy.exceptions';
 import { ThrottlerException } from '@nestjs/throttler';
 
 @Catch()
@@ -84,16 +125,100 @@ export class HttpExceptionFilter implements ExceptionFilter {
       exception instanceof InvalidCsrfTokenException ||
       exception instanceof ForbiddenOriginException ||
       exception instanceof UserLockedException ||
-      exception instanceof ForbiddenResourceException
+      exception instanceof ForbiddenResourceException ||
+      exception instanceof FormForbiddenException
     ) {
       status = HttpStatus.FORBIDDEN;
       code = exception.code;
       message = exception.message;
     } else if (
       exception instanceof UserNotFoundException ||
-      exception instanceof AuditLogNotFoundException
+      exception instanceof AuditLogNotFoundException ||
+      exception instanceof FormNotFoundException
     ) {
       status = HttpStatus.NOT_FOUND;
+      code = exception.code;
+      message = exception.message;
+    } else if (
+      exception instanceof FormNotInDraftStatusException ||
+      exception instanceof FormAlreadyPublishedException ||
+      exception instanceof FormAlreadyClosedException ||
+      exception instanceof FormNotPublishedException ||
+      exception instanceof FormHasPublishedVersionsException
+    ) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+    } else if (
+      exception instanceof InvalidFormDraftException ||
+      exception instanceof InvalidFormStatusTransitionException
+    ) {
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof FormValidationException) {
+      status = HttpStatus.UNPROCESSABLE_ENTITY;
+      code = exception.code;
+      message = exception.message;
+      details = exception.errors;
+    } else if (exception instanceof TargetingValidationException) {
+      status = HttpStatus.UNPROCESSABLE_ENTITY;
+      code = exception.code;
+      message = exception.message;
+      details = exception.issues;
+    } else if (exception instanceof FormConflictException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof PublicFormAccessDisabledException) {
+      status = HttpStatus.FORBIDDEN;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof CaptchaVerificationFailedException) {
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof GuestRateLimitExceededException) {
+      status = HttpStatus.TOO_MANY_REQUESTS;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof InvalidGuestSubmissionException) {
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof ParticipantNotEligibleException) {
+      status = HttpStatus.FORBIDDEN;
+      code = exception.code;
+      message = exception.message;
+    } else if (
+      exception instanceof SurveyAlreadyCompletedException ||
+      exception instanceof SurveyQuotaFullException ||
+      exception instanceof ConflictingActiveAttemptException
+    ) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof SurveyNotAvailableException) {
+      status = HttpStatus.NOT_FOUND;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof StorageObjectNotFoundException) {
+      status = HttpStatus.NOT_FOUND;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof StorageInvalidFileException) {
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+    } else if (
+      exception instanceof StorageObjectNotCleanException ||
+      exception instanceof StorageUnauthorizedAccessException
+    ) {
+      status = HttpStatus.FORBIDDEN;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof StorageScannerOutageException) {
+      status = HttpStatus.SERVICE_UNAVAILABLE;
       code = exception.code;
       message = exception.message;
     } else if (exception instanceof ImmutableAuditLogException) {
@@ -127,6 +252,28 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message = exception.message;
     } else if (exception instanceof GoogleProviderUnavailableException) {
       status = HttpStatus.SERVICE_UNAVAILABLE;
+      code = exception.code;
+      message = exception.message;
+    } else if (
+      exception instanceof UnbalancedJournalException ||
+      exception instanceof InvalidLedgerOperationException
+    ) {
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+    } else if (
+      exception instanceof AccountNotFoundException ||
+      exception instanceof JournalNotFoundException
+    ) {
+      status = HttpStatus.NOT_FOUND;
+      code = exception.code;
+      message = exception.message;
+    } else if (
+      exception instanceof InsufficientBalanceException ||
+      exception instanceof JournalAlreadyReversedException ||
+      exception instanceof IdempotencyConflictException
+    ) {
+      status = HttpStatus.CONFLICT;
       code = exception.code;
       message = exception.message;
     } else if (exception instanceof HttpException) {

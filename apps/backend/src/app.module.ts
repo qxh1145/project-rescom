@@ -8,6 +8,12 @@ import { AppThrottlerGuard } from './common/security/app-throttler.guard';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { FormsModule } from './modules/forms/forms.module';
+import { AiModule } from './modules/ai/ai.module';
+import { MarketplaceModule } from './modules/marketplace/marketplace.module';
+import { ParticipationModule } from './modules/participation/participation.module';
+import { StorageModule } from './modules/storage/storage.module';
+import { EconomyModule } from './modules/economy/economy.module';
 
 @Module({
   imports: [
@@ -18,6 +24,12 @@ import { AdminModule } from './modules/admin/admin.module';
     UsersModule,
     AuthModule,
     AdminModule,
+    FormsModule,
+    AiModule,
+    MarketplaceModule,
+    ParticipationModule,
+    StorageModule,
+    EconomyModule,
   ],
   providers: [
     {

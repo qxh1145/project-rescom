@@ -7,6 +7,7 @@ export const formSettingsSchema = z
     shuffleBlocks: z.boolean().default(false),
     progressBar: z.boolean().default(true),
     requireAuth: z.boolean().default(false),
+    allowPublicAccess: z.boolean().default(true),
     submitButtonText: z
       .string()
       .trim()
@@ -41,6 +42,7 @@ export const formDefinitionSchema = z
   .strict()
   .superRefine((data, ctx) => {
     const blockIds = new Set<string>();
+    const blockOrders = new Set<number>();
 
     for (let i = 0; i < data.blocks.length; i++) {
       const block = data.blocks[i];
@@ -52,6 +54,14 @@ export const formDefinitionSchema = z
         });
       }
       blockIds.add(block.id);
+      if (block.order >= data.blocks.length || blockOrders.has(block.order)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["blocks", i, "order"],
+          message: "Block order values must be unique and sequential from 0",
+        });
+      }
+      blockOrders.add(block.order);
     }
 
     const pairMap = new Map<string, string>();

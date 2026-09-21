@@ -101,6 +101,8 @@ describe('EnvService', () => {
         GOOGLE_REDIRECT_URI: 'https://api.rescom.io/auth/google/callback',
         AUTH_FRONTEND_SUCCESS_URL: 'https://app.rescom.io/callback',
         AUTH_FRONTEND_ERROR_URL: 'https://app.rescom.io/error',
+        STORAGE_ACCESS_KEY_ID: 'production-storage-key',
+        STORAGE_SECRET_ACCESS_KEY: 'production-storage-secret',
       };
 
       expect(() => new EnvService(productionEnv)).toThrow(

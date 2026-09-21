@@ -41,12 +41,17 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: "2026-08-16 17:09:30"
-last_updated: "2026-09-14 17:50:00"
+last_updated: "2026-09-17 19:30:00"
 project: "project-rescom"
 project_key: "NOKEY"
 tracking_system: "file-system"
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
 
+# ==============================================================================
+# PHASE 1 (MVP) ACTIVE DEVELOPMENT STATUS
+# Focus: Core P2P Survey Marketplace (Identity, Form Builder, Distribution,
+# Submissions, Point Ledger & Escrow, Basic Onboarding, Time Barrier Moderation)
+# ==============================================================================
 development_status:
   epic-1: done
   1-1-emailpassword-registration-authentication: done
@@ -56,37 +61,30 @@ development_status:
   1-5-system-audit-logging: done
   1-6-security-api-foundation: done
   epic-1-retrospective: optional
-  epic-2: in-progress
+  epic-2: done
   2-1-shared-form-schema-validation: done
-  2-2-form-draft-creation-lifecycle: ready-for-dev
-  2-3-form-builder-canvas-block-types: backlog
-  2-4-form-block-editing-manipulation: backlog
-  2-5-live-form-preview: backlog
-  2-6-form-publish-lifecycle-immutability: backlog
-  2-7-form-versioning: backlog
+  2-2-form-draft-creation-lifecycle: done
+  2-3-form-builder-canvas-block-types: done
+  2-4-form-block-editing-manipulation: done
+  2-5-live-form-preview: done
+  2-6-form-publish-lifecycle-immutability: done
+  2-7-form-versioning: done
   epic-2-retrospective: optional
-  epic-3: backlog
-  3-1-ai-prompt-submission-payload-preparation: backlog
-  3-2-ai-json-generation-ux-loading-states: backlog
-  3-3-ai-output-parsing-zod-validation: backlog
-  3-4-ai-failure-fallback-isolation: backlog
-  epic-3-retrospective: optional
-  epic-4: backlog
-  4-1-survey-targeting-criteria: backlog
-  4-2-automated-marketplace-matching: backlog
-  4-3-feed-interactions-sortfilterauto-hide: backlog
-  4-4-public-link-guest-submissions: backlog
-  4-5-external-survey-setup-google-forms: backlog
+  epic-4: in-progress
+  4-1-survey-targeting-criteria: done
+  4-2-automated-marketplace-matching: review
+  4-3-feed-interactions-sortfilterauto-hide: review
+  4-5-external-survey-setup-google-forms: review
   epic-4-retrospective: optional
-  epic-5: backlog
-  5-1-survey-attempt-initialization-concurrency: backlog
-  5-2-internal-form-rendering-execution: backlog
-  5-3-file-upload-validation-secure-storage: backlog
+  epic-5: in-progress
+  5-1-survey-attempt-initialization-concurrency: review
+  5-2-internal-form-rendering-execution: review
+  5-3-file-upload-validation-secure-storage: in-progress
   5-4-internal-form-submission: backlog
   5-5-external-form-completion-code-verification: backlog
   epic-5-retrospective: optional
-  epic-6: backlog
-  6-1-double-entry-ledger-core-idempotency: backlog
+  epic-6: in-progress
+  6-1-double-entry-ledger-core-idempotency: review
   6-2-wallet-balance-aggregation-presentation: backlog
   6-3-escrow-lock-release-refund: backlog
   6-4-respondent-point-credit-pending-logic: backlog
@@ -96,33 +94,82 @@ development_status:
   epic-7: backlog
   7-1-mandatory-demographic-survey: backlog
   7-2-secondary-deep-onboarding: backlog
-  7-3-automated-demographic-cross-check-algorithmic-ai-ready: backlog
-  7-4-gamification-daily-streaks: backlog
-  7-5-gamification-respondent-leaderboard: backlog
-  7-6-gamification-progression-tiers-trusted-researcher: backlog
   epic-7-retrospective: optional
   epic-8: backlog
   8-1-survey-moderation-queue: backlog
   8-2-automated-bot-protection-time-barrier-rate-limit: backlog
-  8-3-integrity-incident-system: backlog
-  8-4-anti-bot-integrity-incident-point-freezing: backlog
-  8-5-complaint-dispute-resolution-workflow: backlog
   epic-8-retrospective: optional
   epic-9: backlog
-  9-1-survey-traffic-analytics-dashboard: backlog
   9-2-respondent-post-completion-feedback: backlog
-  9-3-publisher-feedback-summary: backlog
-  9-4-negative-feedback-deprioritization: backlog
-  9-5-transaction-ledger-dashboard: backlog
   9-6-event-notification-system: backlog
   epic-9-retrospective: optional
-  epic-10: backlog
-  10-1-integrity-consent-telemetry-event-contract: backlog
-  10-2-behavioral-telemetry-collection-in-internal-form-renderer: backlog
-  10-3-signal-derivation-pipeline-outbox-processing: backlog
-  10-4-pure-versioned-response-integrity-scoring-core: backlog
-  10-5-cold-start-respondent-reliability-snapshots: backlog
-  10-6-survey-quality-assessment-per-form-version: backlog
-  10-7-admin-integrity-review-queue-label-feedback-loop: backlog
-  10-8-relational-trustgraph-projection-evidence-protection: backlog
-  epic-10-retrospective: optional
+
+# ==============================================================================
+# PHASE 2 DEFERRED EPICS & SUB-EPICS (Post-MVP Scope)
+# Deferred on 2026-09-17 per BMAD scope pruning decision
+# ==============================================================================
+phase_2_deferred:
+  epic-3:
+    title: "AI Form Generation Assistant"
+    reason: "Epic 2 (Drag-and-drop Form Builder) is already functional. AI generation via Tailscale/Ollama is an optional convenience deferred to Phase 2."
+    stories:
+      3-1-ai-prompt-submission-payload-preparation: review
+      3-2-ai-json-generation-ux-loading-states: backlog
+      3-3-ai-output-parsing-zod-validation: backlog
+      3-4-ai-failure-fallback-isolation: backlog
+  epic-4-deferred:
+    stories:
+      4-4-public-link-guest-submissions:
+        status: review
+        reason: "Gated per PRD Addendum until repeat-abuse controls are defined; Phase 1 enforces authenticated FPT student participation."
+  epic-7-deferred:
+    stories:
+      7-3-automated-demographic-cross-check-algorithmic-ai-ready:
+        status: backlog
+        reason: "Algorithmic/AI demographic consistency checking deferred to Phase 2."
+      7-4-gamification-daily-streaks:
+        status: backlog
+        reason: "Daily streak mechanics deferred to Phase 2 retention cycle."
+      7-5-gamification-respondent-leaderboard:
+        status: backlog
+        reason: "Respondent leaderboard deferred to Phase 2."
+      7-6-gamification-progression-tiers-trusted-researcher:
+        status: backlog
+        reason: "Tier progression (Trusted Researcher) deferred to Phase 2."
+  epic-8-deferred:
+    stories:
+      8-3-integrity-incident-system:
+        status: backlog
+        reason: "Integrity incident engine deferred with Epic 10 scoring pipeline; basic FraudLog retained in Phase 1."
+      8-4-anti-bot-integrity-incident-point-freezing:
+        status: backlog
+        reason: "Automated scoring-based point freezing deferred to Phase 2."
+      8-5-complaint-dispute-resolution-workflow:
+        status: backlog
+        reason: "Multi-party dispute arbitration state machine deferred to Phase 2; manual admin moderation used in Phase 1."
+  epic-9-deferred:
+    stories:
+      9-1-survey-traffic-analytics-dashboard:
+        status: backlog
+        reason: "Advanced traffic/drop-off analytics dashboard deferred to Phase 2."
+      9-3-publisher-feedback-summary:
+        status: backlog
+        reason: "Aggregated feedback NLP summary deferred to Phase 2."
+      9-4-negative-feedback-deprioritization:
+        status: backlog
+        reason: "Algorithmic feed deprioritization based on negative feedback deferred to Phase 2."
+      9-5-transaction-ledger-dashboard:
+        status: backlog
+        reason: "System-wide admin BI transaction dashboard deferred to Phase 2; personal wallet history retained in Story 6.2."
+  epic-10:
+    title: "Research Integrity Foundation & TrustGraph"
+    reason: "Proprietary telemetry signal derivation, pure scoring core, reliability profiles, survey quality snapshots, and relational TrustGraph deferred to Phase 2 (progressive rollout in SHADOW/ADVISORY mode)."
+    stories:
+      10-1-integrity-consent-telemetry-event-contract: backlog
+      10-2-behavioral-telemetry-collection-in-internal-form-renderer: backlog
+      10-3-signal-derivation-pipeline-outbox-processing: backlog
+      10-4-pure-versioned-response-integrity-scoring-core: backlog
+      10-5-cold-start-respondent-reliability-snapshots: backlog
+      10-6-survey-quality-assessment-per-form-version: backlog
+      10-7-admin-integrity-review-queue-label-feedback-loop: backlog
+      10-8-relational-trustgraph-projection-evidence-protection: backlog

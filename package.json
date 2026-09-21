@@ -4,11 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "npm run build --workspace backend",
-    "typecheck": "npm run typecheck --workspace @rescom/schemas && npm run typecheck --workspace backend",
-    "test": "npm test --workspace backend",
+    "build": "npm run build --workspace backend && npm --prefix apps/frontend/my-app run build -- --webpack",
+    "typecheck": "npm run typecheck --workspace @rescom/schemas && npm run typecheck --workspace backend && npm --prefix apps/frontend/my-app run typecheck",
+    "lint": "npm run lint --workspace backend && npm --prefix apps/frontend/my-app run lint",
+    "test": "npm test --workspace @rescom/schemas && npm test --workspace backend && npm --prefix apps/frontend/my-app test",
     "test:e2e": "npm run test:e2e --workspace backend",
-    "verify": "npm run build && npm run typecheck && npm test"
+    "verify": "npm run build && npm run typecheck && npm run lint && npm test"
   },
   "author": "",
   "license": "ISC",

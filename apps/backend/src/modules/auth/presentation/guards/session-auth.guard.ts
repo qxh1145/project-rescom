@@ -31,6 +31,13 @@ export class SessionAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const http = context.switchToHttp();
+    const req = http.getRequest<Request>();
+    const res = http.getResponse<Response>();
+
+    const accessToken = req.cookies?.[AUTH_COOKIE_NAME];
+
+
     if (
       this.reflector &&
       typeof context.getHandler === 'function' &&
@@ -41,21 +48,33 @@ export class SessionAuthGuard implements CanActivate {
         [context.getHandler(), context.getClass()],
       );
       if (isPublic) {
+        if (accessToken) {
+          try {
+            const { user, session } =
+              await this.sessionService.validateSession(accessToken);
+            const authenticatedUser: AuthenticatedUser = {
+              id: user.id,
+              email: user.email,
+              role: user.role,
+              status: user.status,
+            };
+            const authReq = req as AuthenticatedRequest;
+            authReq.user = authenticatedUser;
+            authReq.session = session;
+          } catch {
+            // Public endpoint continues without authenticated session
+          }
+        }
         return true;
       }
     }
-
-    const http = context.switchToHttp();
-    const req = http.getRequest<Request>();
-    const res = http.getResponse<Response>();
-
-    const accessToken = req.cookies?.[AUTH_COOKIE_NAME];
 
     if (!accessToken) {
       clearAuthCookies(res, this.envService);
       res.setHeader('Cache-Control', 'no-store');
       throw new UnauthorizedSessionException('Access token cookie required');
     }
+
 
     try {
       const { user, session } =

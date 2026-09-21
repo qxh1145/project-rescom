@@ -208,6 +208,20 @@ describe('Shared Form Schema Validation (Story 2.1)', () => {
       }
     });
 
+    it('should reject duplicate or non-sequential block order values', () => {
+      const duplicateOrder = formDefinitionSchema.safeParse({
+        title: 'Order Test',
+        blocks: [sampleBlocks[0], { ...sampleBlocks[1], order: 0 }],
+      });
+      const gappedOrder = formDefinitionSchema.safeParse({
+        title: 'Order Test',
+        blocks: [sampleBlocks[0], { ...sampleBlocks[1], order: 2 }],
+      });
+
+      expect(duplicateOrder.success).toBe(false);
+      expect(gappedOrder.success).toBe(false);
+    });
+
     it('should reject forms exceeding 200 blocks cap', () => {
       const massiveBlocks = Array.from({ length: 201 }, (_, i) => ({
         ...sampleBlocks[0],

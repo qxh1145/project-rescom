@@ -137,6 +137,17 @@ export const envSchema = z
         'AUTH_FRONTEND_ERROR_URL must not contain credentials, fragments, or wildcard hosts',
       )
       .default('http://localhost:3000/auth/error'),
+
+    // Story 5.3: private S3-compatible storage and malware scanning
+    STORAGE_ENDPOINT: z.string().url().default('http://localhost:9000'),
+    STORAGE_REGION: z.string().min(1).default('us-east-1'),
+    STORAGE_BUCKET: z.string().min(3).default('rescom-private-storage'),
+    STORAGE_ACCESS_KEY_ID: z.string().min(1).default('minioadmin'),
+    STORAGE_SECRET_ACCESS_KEY: z.string().min(8).default('minioadmin'),
+    STORAGE_FORCE_PATH_STYLE: z.coerce.boolean().default(true),
+    MALWARE_SCANNER_HOST: z.string().min(1).default('127.0.0.1'),
+    MALWARE_SCANNER_PORT: z.coerce.number().int().min(1).max(65535).default(3310),
+    MALWARE_SCANNER_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(30000),
   })
   .superRefine((data, ctx) => {
     const isProduction = data.NODE_ENV === 'production';
@@ -169,6 +180,17 @@ export const envSchema = z
           path: ['GOOGLE_CLIENT_ID'],
           message:
             'Production requires explicit, non-default GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET',
+        });
+      }
+
+      if (
+        data.STORAGE_ACCESS_KEY_ID === 'minioadmin' ||
+        data.STORAGE_SECRET_ACCESS_KEY === 'minioadmin'
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['STORAGE_ACCESS_KEY_ID'],
+          message: 'Production requires explicit object-storage credentials',
         });
       }
 

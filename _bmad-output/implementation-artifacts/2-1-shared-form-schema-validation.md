@@ -128,6 +128,18 @@ All blocks must share common metadata: `id` (UUID or CUID string), `order` (non-
 - [x] [Review][Defer] Cross-block semantic type compatibility validation for consistency pairing rules [packages/schemas/src/forms/form-definition.schema.ts:51] — deferred to Story 2.6 (Publish Lifecycle Immutability) / Epic 10
 - [x] [Review][Defer] Dynamic form submission validator against specific FormDefinition instances (AC4.2 / AC4.3) [packages/schemas/src/forms/form-answer.schema.ts:1] — deferred to Story 5.4 (Internal Form Submission)
 
+### Review Findings — Re-review (2026-09-14)
+
+- [ ] [Review][Decision] Resolve AC4 dynamic answer-validation ownership — `formSubmissionSchema` accepts a generic value union, never verifies that `blockId` exists in the referenced Form Definition, and never applies the referenced block's type/options/range/required rules. Decide whether Story 2.1 must provide a definition-bound validator now or explicitly narrow AC4 and retain the implementation for Story 5.4. [packages/schemas/src/forms/form-answer.schema.ts:3]
+- [ ] [Review][Decision] Define which block types may be attention checks — validation currently covers only choice, rating, and linear-scale blocks, and even those checks omit some reachability constraints; text, textarea, number, date, and file-upload blocks accept incompatible expected values. Decide whether attention checks are restricted to a supported subset or require exhaustive type-specific semantics for every block type. [packages/schemas/src/forms/form-definition.schema.ts:103]
+- [ ] [Review][Patch] Enforce the documented UUID-or-CUID format for block IDs [packages/schemas/src/forms/form-blocks.schema.ts:29]
+- [ ] [Review][Patch] Reject unsupported `schemaVersion` values instead of parsing every positive integer as the current contract [packages/schemas/src/forms/form-definition.schema.ts:24]
+- [ ] [Review][Patch] Replace compile-only regex checking with actual catastrophic-backtracking/ReDoS protection [packages/schemas/src/forms/form-blocks.schema.ts:67]
+- [ ] [Review][Patch] Reject impossible calendar dates and invalid clock components that merely match the ISO-shaped regex [packages/schemas/src/forms/form-blocks.schema.ts:325]
+- [ ] [Review][Patch] Bound attention-check expected-value strings and arrays to prevent oversized definition payloads [packages/schemas/src/forms/form-integrity.schema.ts:17]
+- [ ] [Review][Patch] Align definition constraints with answer-contract caps so valid forms cannot require impossible answers (`minLength > 10000` or 101 selections with `allowOther`) [packages/schemas/src/forms/form-blocks.schema.ts:46]
+- [ ] [Review][Patch] Allow empty answer arrays for forms whose questions are all optional, and reject duplicate values within multi-select answers [packages/schemas/src/forms/form-answer.schema.ts:7]
+
 ---
 
 ## Dev Notes

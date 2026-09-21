@@ -437,3 +437,149 @@ export const formBlockSchema = z
 
 export type FormBlock = z.infer<typeof formBlockSchema>;
 export type FormBlockInput = z.input<typeof formBlockSchema>;
+
+function generateBlockId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `blk-${crypto.randomUUID()}`;
+  }
+  return `blk-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+export function createDefaultBlock(
+  type: FormBlockType,
+  order: number,
+  overrides: Partial<FormBlock> = {},
+): FormBlock {
+  const id = overrides.id ?? generateBlockId();
+  const title = overrides.title ?? "Untitled Question";
+  const required = overrides.required ?? false;
+  const description = overrides.description;
+
+  switch (type) {
+    case "text":
+      return {
+        id,
+        order,
+        type: "text",
+        title,
+        ...(description ? { description } : {}),
+        required,
+        placeholder: "Enter short answer...",
+        ...overrides,
+      } as TextBlock;
+
+    case "textarea":
+      return {
+        id,
+        order,
+        type: "textarea",
+        title: overrides.title ?? "Untitled Long Answer",
+        ...(description ? { description } : {}),
+        required,
+        placeholder: "Enter detailed response...",
+        ...overrides,
+      } as TextareaBlock;
+
+    case "number":
+      return {
+        id,
+        order,
+        type: "number",
+        title: overrides.title ?? "Untitled Number",
+        ...(description ? { description } : {}),
+        required,
+        integerOnly: false,
+        placeholder: "0",
+        ...overrides,
+      } as NumberBlock;
+
+    case "single_choice":
+      return {
+        id,
+        order,
+        type: "single_choice",
+        title: overrides.title ?? "Untitled Single Choice",
+        ...(description ? { description } : {}),
+        required,
+        allowOther: false,
+        options: [
+          { id: "opt-1", label: "Option 1", value: "opt_1" },
+          { id: "opt-2", label: "Option 2", value: "opt_2" },
+        ],
+        ...overrides,
+      } as SingleChoiceBlock;
+
+    case "multiple_choice":
+      return {
+        id,
+        order,
+        type: "multiple_choice",
+        title: overrides.title ?? "Untitled Multiple Choice",
+        ...(description ? { description } : {}),
+        required,
+        allowOther: false,
+        options: [
+          { id: "opt-1", label: "Option 1", value: "opt_1" },
+          { id: "opt-2", label: "Option 2", value: "opt_2" },
+          { id: "opt-3", label: "Option 3", value: "opt_3" },
+        ],
+        ...overrides,
+      } as MultipleChoiceBlock;
+
+    case "rating":
+      return {
+        id,
+        order,
+        type: "rating",
+        title: overrides.title ?? "Untitled Rating",
+        ...(description ? { description } : {}),
+        required,
+        maxRating: 5,
+        ratingShape: "STAR",
+        ...overrides,
+      } as RatingBlock;
+
+    case "linear_scale":
+      return {
+        id,
+        order,
+        type: "linear_scale",
+        title: overrides.title ?? "Untitled Linear Scale",
+        ...(description ? { description } : {}),
+        required,
+        min: 1,
+        max: 5,
+        minLabel: "Strongly Disagree",
+        maxLabel: "Strongly Agree",
+        step: 1,
+        ...overrides,
+      } as LinearScaleBlock;
+
+    case "date":
+      return {
+        id,
+        order,
+        type: "date",
+        title: overrides.title ?? "Untitled Date",
+        ...(description ? { description } : {}),
+        required,
+        includeTime: false,
+        ...overrides,
+      } as DateBlock;
+
+    case "file_upload":
+      return {
+        id,
+        order,
+        type: "file_upload",
+        title: overrides.title ?? "Untitled File Upload",
+        ...(description ? { description } : {}),
+        required,
+        maxFileSizeMb: 10,
+        allowedMimeTypes: ["application/pdf", "image/png", "image/jpeg"],
+        maxFiles: 1,
+        ...overrides,
+      } as FileUploadBlock;
+  }
+}
+

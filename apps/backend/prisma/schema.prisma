@@ -176,6 +176,31 @@ enum AssessmentApplicability {
   INSUFFICIENT_EVIDENCE
 }
 
+enum StoredObjectStatus {
+  INITIATED
+  UPLOADED
+  QUARANTINED
+  CLEAN
+  ATTACHED
+  REJECTED
+  EXPIRED
+  DELETED
+}
+
+enum StoredObjectScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  OUTAGE
+  SKIPPED
+}
+
+enum StorageDataClass {
+  SURVEY_ATTACHMENT
+  EVIDENCE
+  EXPORT
+}
+
 // ----------------------------------------
 // MODELS
 // ----------------------------------------
@@ -682,4 +707,33 @@ model TopUpRequest {
   user User @relation(fields: [userId], references: [id])
 
   @@map("top_up_requests")
+}
+
+model StoredObject {
+  id            String                 @id @default(uuid()) @db.Uuid
+  ownerContext  String                 @map("owner_context")
+  ownerRecordId String                 @map("owner_record_id") @db.Uuid
+  questionId    String?                @map("question_id")
+  dataClass     StorageDataClass       @default(SURVEY_ATTACHMENT) @map("data_class")
+  storageKey    String                 @unique @map("storage_key")
+  bucket        String
+  fileName      String                 @map("file_name")
+  fileSize      Int                    @map("file_size")
+  mimeType      String                 @map("mime_type")
+  checksum      String?
+  status        StoredObjectStatus     @default(INITIATED)
+  scanStatus    StoredObjectScanStatus @default(PENDING) @map("scan_status")
+  scanPolicy    String?                @map("scan_policy")
+  scanResult    Json?                  @map("scan_result")
+  uploadedAt    DateTime?              @map("uploaded_at")
+  scannedAt     DateTime?              @map("scanned_at")
+  attachedAt    DateTime?              @map("attached_at")
+  expiresAt     DateTime?              @map("expires_at")
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+
+  @@index([ownerContext, ownerRecordId])
+  @@index([ownerContext, ownerRecordId, questionId])
+  @@index([status, scanStatus])
+  @@map("stored_objects")
 }
