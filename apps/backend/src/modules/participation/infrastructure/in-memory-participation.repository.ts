@@ -51,12 +51,13 @@ function withAttempt(
     startedAt?: Date;
     submittedAt?: Date | null;
     codeVerification?: AttemptCodeVerificationState;
+    formVersionId?: string;
   },
 ): SurveyAttemptEntity {
   return new SurveyAttemptEntity(
     attempt.id,
     attempt.surveyId,
-    attempt.formVersionId,
+    changes.formVersionId ?? attempt.formVersionId,
     attempt.respondentId,
     changes.status ?? attempt.status,
     attempt.isGuest,
@@ -693,9 +694,14 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
     isLocked: boolean;
     accountFailureCount: number;
   }> {
-    const att = this.attempts.get(attemptId);
+    let att = this.attempts.get(attemptId);
     // Epic 5 review P2: the server-owned counter only (never clientContext).
     const currentFailures = att?.codeVerification.failedCount ?? 0;
+    // BE-7 (decision D4) parity: re-pin to the verified version first.
+    if (att?.status === 'IN_PROGRESS' && att.formVersionId !== formVersionId) {
+      att = withAttempt(att, { formVersionId });
+      this.attempts.set(attemptId, att);
+    }
     const accountFailuresBefore = this.completionCodeFailuresSync(
       respondentId,
       formVersionId,
@@ -846,9 +852,11 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
       }
     }
 
+    // BE-7 (decision D4) parity: the claim re-pins to the verified version.
     const updated = withAttempt(att, {
       status: 'COMPLETED',
       submittedAt: params.submittedAt,
+      formVersionId: params.formVersionId,
     });
     this.attempts.set(params.attemptId, updated);
     return { outcome: 'COMPLETED', attempt: updated };

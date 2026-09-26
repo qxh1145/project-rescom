@@ -956,10 +956,26 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
       `;
       const attempt = await tx.surveyAttempt.findUnique({
         where: { id: attemptId },
-        select: { status: true, failedCodeVerifications: true },
+        select: {
+          status: true,
+          failedCodeVerifications: true,
+          formVersionId: true,
+        },
       });
       // Epic 5 review P2: the server-owned counter only (never clientContext).
       const currentFailures = attempt?.failedCodeVerifications ?? 0;
+      // BE-7 (decision D4): a code verified against a rotated version re-pins
+      // the attempt to it before the sum is read, so this strike and the
+      // attempt's earlier ones count toward that version's budget.
+      if (
+        attempt?.status === 'IN_PROGRESS' &&
+        attempt.formVersionId !== formVersionId
+      ) {
+        await tx.surveyAttempt.update({
+          where: { id: attemptId },
+          data: { formVersionId },
+        });
+      }
       // Decision E5-D1: the account's counted wrong codes on this version
       // before this one (one IN_PROGRESS attempt per account and form, so
       // the attempt row lock serializes every writer of this sum).
@@ -1193,11 +1209,14 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
           }
         }
 
+        // BE-7 (decision D4): the claim re-pins the attempt to the version
+        // whose code was verified (a newer one after a code rotation).
         const updated = await tx.surveyAttempt.update({
           where: { id: params.attemptId },
           data: {
             status: 'COMPLETED',
             submittedAt: params.submittedAt,
+            formVersionId: params.formVersionId,
           },
         });
         return {

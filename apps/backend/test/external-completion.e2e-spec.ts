@@ -731,7 +731,7 @@ describe('Story 5.5: External Form Completion Code Verification E2E Tests', () =
         .send({ completionCode });
     }
 
-    it('rejects the superseded code and accepts the rotated one; the attempt stays pinned to v1', async () => {
+    it('rejects the superseded code and accepts the rotated one; the attempt is re-pinned to the rotated version', async () => {
       const started = await request(app.getHttpServer())
         .post(`/forms/${rotatedFormId}/attempts`)
         .set('Cookie', respondentCookie)
@@ -766,12 +766,19 @@ describe('Story 5.5: External Form Completion Code Verification E2E Tests', () =
           .filter((entry) => entry.userId === rotatingRespondentId)
           .map((entry) => entry.details?.formVersionId),
       ).toEqual([rotatedVersionId]);
+      // BE-7: the strike moved the attempt onto the rotated version, so it
+      // counts toward that version's per-account budget.
+      expect(partRepo.attempts.get(attemptId)?.formVersionId).toBe(
+        rotatedVersionId,
+      );
 
       const fresh = await verify(attemptId, newCode);
       expect(fresh.status).toBe(200);
       expect(fresh.body.data.status).toBe('COMPLETED');
-      expect(fresh.body.data.formVersionId).toBe(rotatedV1Id);
-      expect(partRepo.attempts.get(attemptId)?.formVersionId).toBe(rotatedV1Id);
+      expect(fresh.body.data.formVersionId).toBe(rotatedVersionId);
+      expect(partRepo.attempts.get(attemptId)?.formVersionId).toBe(
+        rotatedVersionId,
+      );
     });
   });
 });

@@ -411,15 +411,107 @@ describe('ParticipationService completion-code limit (decision E5-D1)', () => {
       expect(record).toHaveBeenCalledWith(attemptId, userId, rotatedVersionId);
     });
 
-    it('accepts the new code and keeps the attempt pinned to its version', async () => {
+    it('accepts the new code, re-pins the attempt to the rotated version and replays idempotently (BE-7)', async () => {
       const attemptId = await start();
       await rotate();
 
       const result = await verify(attemptId, '222222');
 
       expect(result.status).toBe('COMPLETED');
-      expect(result.formVersionId).toBe(versionId);
-      expect(partRepo.attempts.get(attemptId)!.formVersionId).toBe(versionId);
+      expect(result.formVersionId).toBe(rotatedVersionId);
+      expect(partRepo.attempts.get(attemptId)!.formVersionId).toBe(
+        rotatedVersionId,
+      );
+
+      // The retry finds the re-pinned version and replays the original result.
+      const verifyCalls = completionCode.verifyCode.mock.calls.length;
+      const replay = await verify(attemptId, '222222');
+      expect(replay).toMatchObject({
+        attemptId,
+        formVersionId: rotatedVersionId,
+        status: 'COMPLETED',
+        completedAt: result.completedAt,
+      });
+      expect(completionCode.verifyCode).toHaveBeenCalledTimes(verifyCalls);
+    });
+
+    it('counts a wrong code after the rotation toward the rotated version and re-pins the attempt (BE-7)', async () => {
+      const attemptId = await start();
+      await failTimes(attemptId, 1);
+      expect(
+        await partRepo.countCompletionCodeFailures(userId, versionId),
+      ).toBe(1);
+      await rotate();
+
+      const error = await verify(attemptId).catch((e: unknown) => e);
+
+      // The earlier strike moves with the attempt: 2 counted on v2, 0 on v1.
+      expect(error).toBeInstanceOf(InvalidCompletionCodeException);
+      expect((error as InvalidCompletionCodeException).remainingAttempts).toBe(
+        1,
+      );
+      expect(partRepo.attempts.get(attemptId)!.formVersionId).toBe(
+        rotatedVersionId,
+      );
+      expect(
+        await partRepo.countCompletionCodeFailures(userId, rotatedVersionId),
+      ).toBe(2);
+      expect(
+        await partRepo.countCompletionCodeFailures(userId, versionId),
+      ).toBe(0);
+
+      // A retry of the re-pinned attempt still completes with the new code.
+      const result = await verify(attemptId, '222222');
+      expect(result).toMatchObject({
+        status: 'COMPLETED',
+        formVersionId: rotatedVersionId,
+      });
+    });
+
+    it("reaches the rotated version's account limit with a pre-rotation attempt's strikes (BE-7)", async () => {
+      // 2 wrong codes on v1, then the rotation; the 3rd locks the attempt
+      // and all 3 now count on v2.
+      const first = await start();
+      await failTimes(first, 2);
+      await rotate();
+      const firstErrors = await failTimes(first, 1);
+      expect(firstErrors[0]).toBeInstanceOf(AttemptLockedException);
+      expect(
+        await partRepo.countCompletionCodeFailures(userId, rotatedVersionId),
+      ).toBe(3);
+
+      // A fresh v2 attempt: 3 + 2 = 5 counted; it expires (abandoned on the
+      // next start) with one try left on the version.
+      const second = await start();
+      expect(partRepo.attempts.get(second)!.formVersionId).toBe(
+        rotatedVersionId,
+      );
+      const secondErrors = await failTimes(second, 2);
+      expect(
+        (secondErrors[1] as InvalidCompletionCodeException).remainingAttempts,
+      ).toBe(1);
+      backdate(second, 31 * 60);
+
+      // The account limit, not the per-attempt one, locks the third attempt.
+      const third = await start();
+      const thirdErrors = await failTimes(third, 1);
+      expect(thirdErrors[0]).toBeInstanceOf(AttemptLockedException);
+      expect(partRepo.attempts.get(third)?.codeVerification.failedCount).toBe(
+        1,
+      );
+      expect(
+        await partRepo.countCompletionCodeFailures(userId, rotatedVersionId),
+      ).toBe(6);
+
+      await expect(
+        service.startAttempt(formId, userId, {}, '127.0.0.1'),
+      ).rejects.toMatchObject({
+        code: 'COMPLETION_CODE_LIMIT_REACHED',
+        details: expect.objectContaining({
+          formVersionId: rotatedVersionId,
+          failedVerifications: 6,
+        }),
+      });
     });
 
     it('verifies against the pinned version when nothing was rotated', async () => {

@@ -87,6 +87,26 @@ describe('PrismaParticipationRepository (Epic 6 review P5/P6)', () => {
     expect(tx.surveyAttempt.update).toHaveBeenCalled();
   });
 
+  it('BE-7: the claim re-pins the attempt to the verified (rotated) version', async () => {
+    const { tx, repository, unitOfWork } = setup('PUBLISHED');
+    const rotatedVersionId = '99999999-9999-4999-8999-999999999999';
+
+    await unitOfWork.run('external-completion:a', () =>
+      repository.completeExternalAttemptTransaction({
+        ...params,
+        formVersionId: rotatedVersionId,
+      }),
+    );
+
+    expect(tx.surveyAttempt.update).toHaveBeenCalledWith({
+      where: { id: attemptRow.id },
+      data: expect.objectContaining({
+        status: 'COMPLETED',
+        formVersionId: rotatedVersionId,
+      }),
+    });
+  });
+
   it('returns FORM_NOT_OPEN without writing when the form closed meanwhile', async () => {
     const { tx, repository, unitOfWork } = setup('CLOSED');
 
@@ -539,6 +559,7 @@ describe('PrismaParticipationRepository (Epic 5 review)', () => {
       tx.surveyAttempt.findUnique.mockResolvedValue({
         status: 'IN_PROGRESS',
         failedCodeVerifications: 2,
+        formVersionId: ids.version,
       });
 
       const result = await repository.recordFailedAttemptVerification(
@@ -554,8 +575,14 @@ describe('PrismaParticipationRepository (Epic 5 review)', () => {
       });
       expect(tx.surveyAttempt.findUnique).toHaveBeenCalledWith({
         where: { id: ids.attempt },
-        select: { status: true, failedCodeVerifications: true },
+        select: {
+          status: true,
+          failedCodeVerifications: true,
+          formVersionId: true,
+        },
       });
+      // Already on the verified version: no re-pin write (BE-7).
+      expect(tx.surveyAttempt.update).toHaveBeenCalledTimes(1);
       expect(tx.surveyAttempt.update).toHaveBeenCalledWith({
         where: { id: ids.attempt },
         data: expect.objectContaining({
@@ -573,6 +600,7 @@ describe('PrismaParticipationRepository (Epic 5 review)', () => {
         tx.surveyAttempt.findUnique.mockResolvedValue({
           status: 'IN_PROGRESS',
           failedCodeVerifications: 1,
+          formVersionId: ids.version,
         });
         // 3 (locked first attempt) + 2 (earlier attempt) + 0 forgiven = 5.
         tx.surveyAttempt.aggregate.mockResolvedValue({
@@ -610,6 +638,67 @@ describe('PrismaParticipationRepository (Epic 5 review)', () => {
             }),
           }),
         });
+      });
+
+      it('BE-7: re-pins a pre-rotation attempt to the verified version before summing, under the row lock', async () => {
+        const { tx, log, repository } = createHarness();
+        const oldVersion = '88888888-8888-4888-8888-888888888888';
+        tx.surveyAttempt.findUnique.mockResolvedValue({
+          status: 'IN_PROGRESS',
+          failedCodeVerifications: 2,
+          formVersionId: oldVersion,
+        });
+        tx.surveyAttempt.update.mockImplementation(async ({ data }: any) => {
+          log.push(`surveyAttempt.update:${Object.keys(data).join(',')}`);
+          return attemptRow(data);
+        });
+        // After the move the sum includes the attempt's 2 earlier strikes.
+        tx.surveyAttempt.aggregate.mockImplementation(async () => {
+          log.push('surveyAttempt.aggregate');
+          return { _sum: { failedCodeVerifications: 2 } };
+        });
+
+        const result = await repository.recordFailedAttemptVerification(
+          ids.attempt,
+          ids.respondent,
+          ids.version,
+        );
+
+        expect(result).toEqual({
+          failureCount: 3,
+          isLocked: true,
+          accountFailureCount: 3,
+        });
+        expect(tx.surveyAttempt.update).toHaveBeenNthCalledWith(1, {
+          where: { id: ids.attempt },
+          data: { formVersionId: ids.version },
+        });
+        expect(
+          log.filter((entry) => /FOR UPDATE|surveyAttempt\./.test(entry)),
+        ).toEqual([
+          expect.stringMatching(/FROM survey_attempts .* FOR UPDATE/),
+          'surveyAttempt.update:formVersionId',
+          'surveyAttempt.aggregate',
+          'surveyAttempt.update:status,failedCodeVerifications,lastFailedVerificationAt',
+        ]);
+      });
+
+      it('BE-7: never re-pins an attempt that is no longer IN_PROGRESS', async () => {
+        const { tx, repository } = createHarness();
+        tx.surveyAttempt.findUnique.mockResolvedValue({
+          status: 'LOCKED',
+          failedCodeVerifications: 3,
+          formVersionId: '88888888-8888-4888-8888-888888888888',
+        });
+
+        const result = await repository.recordFailedAttemptVerification(
+          ids.attempt,
+          ids.respondent,
+          ids.version,
+        );
+
+        expect(result).toMatchObject({ failureCount: 3, isLocked: true });
+        expect(tx.surveyAttempt.update).not.toHaveBeenCalled();
       });
 
       it('counts summed strikes minus what an Admin forgave, never below 0', async () => {

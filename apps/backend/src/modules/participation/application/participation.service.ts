@@ -1035,8 +1035,9 @@ export class ParticipationService {
     // Bug 3.4: a completion-code rotation after this attempt started creates
     // a newer published version with a new code. The code is verified against
     // that newest code only (a superseded code is rejected) and the failure
-    // budget is keyed by it; the attempt stays pinned to its version for the
-    // schema and analytics.
+    // budget is keyed by it. BE-7 (decision D4): a wrong code or the claim
+    // re-pins the attempt to that version, so its strikes count toward the
+    // budget they are checked against; a retry then finds it pinned there.
     const verifyVersion =
       currentVersion.id !== pinnedVersion.id &&
       currentVersion.formId === form.id &&
@@ -1050,12 +1051,7 @@ export class ParticipationService {
     // 1. Fast-path Idempotency check (AD-16: retry returns the original
     // result, read from the posted journal — never re-priced, Epic 5 P19).
     if (attempt.status === 'COMPLETED') {
-      return this.replayExternalCompletion(
-        attempt,
-        form.id,
-        pinnedVersion.id,
-        callerUserId,
-      );
+      return this.replayExternalCompletion(attempt, form.id, callerUserId);
     }
 
     // 2. Locked status check (3 failed validations lock attempt per FR-22).
@@ -1206,7 +1202,7 @@ export class ParticipationService {
               attemptId: attempt.id,
               respondentId: callerUserId,
               formId: form.id,
-              formVersionId: pinnedVersion.id,
+              formVersionId: verifyVersion.id,
               submittedAt: now,
               ...(completionLimit ? { completionLimit } : {}),
             },
@@ -1261,7 +1257,6 @@ export class ParticipationService {
         return this.replayExternalCompletion(
           outcome.attempt,
           form.id,
-          pinnedVersion.id,
           callerUserId,
         );
       case 'LOCKED':
@@ -1315,7 +1310,7 @@ export class ParticipationService {
     return {
       attemptId: attempt.id,
       formId: form.id,
-      formVersionId: pinnedVersion.id,
+      formVersionId: verifyVersion.id,
       status: 'COMPLETED',
       completedAt: completedAt.toISOString(),
       reward,
@@ -1333,7 +1328,6 @@ export class ParticipationService {
   private async replayExternalCompletion(
     attempt: SurveyAttemptEntity,
     formId: string,
-    formVersionId: string,
     callerUserId: string,
   ): Promise<VerifyExternalCompletionCodeResponseDto> {
     const completedAt = attempt.submittedAt ?? new Date();
@@ -1366,7 +1360,8 @@ export class ParticipationService {
     return {
       attemptId: attempt.id,
       formId,
-      formVersionId,
+      // BE-7: the version the attempt was completed against (re-pinned).
+      formVersionId: attempt.formVersionId,
       status: 'COMPLETED',
       completedAt: completedAt.toISOString(),
       reward,

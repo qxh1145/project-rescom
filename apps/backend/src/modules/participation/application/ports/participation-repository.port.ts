@@ -211,7 +211,9 @@ export interface ParticipationRepositoryPort {
    * the attempt becomes LOCKED at 3 wrong codes, or when the account's
    * counted wrong codes on the FormVersion reach 6 (decision E5-D1,
    * `completion-code-policy-v1`); logs a SECURITY_VIOLATION to FraudLog.
-   * Joins the caller's Unit of Work.
+   * An IN_PROGRESS attempt pinned to another version is first re-pinned to
+   * `formVersionId` (BE-7, decision D4), so its earlier strikes count there
+   * too. Joins the caller's Unit of Work.
    */
   recordFailedAttemptVerification(
     attemptId: string,
@@ -334,6 +336,10 @@ export interface CompleteExternalAttemptTransactionParams {
   attemptId: string;
   respondentId: string;
   formId: string;
+  /**
+   * The version whose code was verified; the claim re-pins the attempt to it
+   * (BE-7, decision D4: newer than the attempt's after a code rotation).
+   */
   formVersionId: string;
   submittedAt: Date;
   /** Authenticated respondents, when a rate limiter is configured. */
