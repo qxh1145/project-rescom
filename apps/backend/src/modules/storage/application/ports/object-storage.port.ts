@@ -17,6 +17,17 @@ export interface StoredObjectMetadata {
 export type CopyObjectOutcome =
   'COPIED' | 'PRECONDITION_FAILED' | 'SOURCE_NOT_FOUND';
 
+/**
+ * Thrown by a conditional `readObject` when the key no longer holds the bytes
+ * the given ETag named (re-written or removed since it was inspected).
+ */
+export class ObjectPreconditionFailedError extends Error {
+  constructor() {
+    super('Object changed since it was inspected.');
+    this.name = 'ObjectPreconditionFailedError';
+  }
+}
+
 export interface ObjectStoragePort {
   /**
    * Generates a time-limited scoped presigned URL for direct client upload (PUT).
@@ -57,11 +68,19 @@ export interface ObjectStoragePort {
     ifMatchEtag: string,
   ): Promise<CopyObjectOutcome>;
 
-  /** Reads quarantined bytes for malware inspection. */
-  readObject(bucket: string, storageKey: string): Promise<Uint8Array>;
+  /**
+   * Reads quarantined bytes for malware inspection. With `ifMatchEtag` the read
+   * is conditional (S3 `If-Match`) and throws `ObjectPreconditionFailedError`
+   * unless the key still carries that ETag.
+   */
+  readObject(
+    bucket: string,
+    storageKey: string,
+    ifMatchEtag?: string,
+  ): Promise<Uint8Array>;
 
   /**
-   * Removes an object from the private bucket.
+   * Removes an object from the private bucket. A missing key is not an error.
    */
   deleteObject(bucket: string, storageKey: string): Promise<void>;
 }

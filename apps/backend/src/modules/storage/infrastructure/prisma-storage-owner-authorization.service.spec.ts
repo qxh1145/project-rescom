@@ -12,6 +12,8 @@ describe('PrismaStorageOwnerAuthorizationService', () => {
   const attemptId = '22222222-2222-4222-8222-222222222222';
   const userId = '33333333-3333-4333-8333-333333333333';
   const otherUserId = '44444444-4444-4444-8444-444444444444';
+  const publisherId = '55555555-5555-4555-8555-555555555555';
+  const adminId = '66666666-6666-4666-8666-666666666666';
   let prisma: any;
   let service: PrismaStorageOwnerAuthorizationService;
 
@@ -24,6 +26,7 @@ describe('PrismaStorageOwnerAuthorizationService', () => {
       isGuest: false,
       status: 'IN_PROGRESS',
       startedAt: freshStart(),
+      form: { publisherId },
       ...overrides,
     };
   }
@@ -32,6 +35,7 @@ describe('PrismaStorageOwnerAuthorizationService', () => {
     prisma = {
       surveyAttempt: { findUnique: jest.fn() },
       form: { findUnique: jest.fn() },
+      user: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     service = new PrismaStorageOwnerAuthorizationService(prisma, {
       storageCapabilitySecret: capabilitySecret,
@@ -113,6 +117,126 @@ describe('PrismaStorageOwnerAuthorizationService', () => {
         ).rejects.toThrow(StorageUnauthorizedAccessException);
       },
     );
+  });
+
+  describe('publisher and admin reads (BE-1)', () => {
+    function asUser(role: string, status = 'ACTIVE') {
+      prisma.user.findUnique.mockResolvedValue({ role, status });
+    }
+
+    it('lets the survey publisher read, but not write, respondent files', async () => {
+      prisma.surveyAttempt.findUnique.mockResolvedValue(
+        attempt({ status: 'COMPLETED', startedAt: staleStart() }),
+      );
+      await expect(
+        service.authorize(
+          'participation',
+          attemptId,
+          publisherId,
+          null,
+          'read',
+        ),
+      ).resolves.toBeUndefined();
+      expect(prisma.surveyAttempt.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            form: { select: { publisherId: true } },
+          }),
+        }),
+      );
+
+      prisma.surveyAttempt.findUnique.mockResolvedValue(attempt());
+      await expect(
+        service.authorize(
+          'participation',
+          attemptId,
+          publisherId,
+          null,
+          'write',
+        ),
+      ).rejects.toThrow(StorageUnauthorizedAccessException);
+    });
+
+    it('lets an active admin read, but not write, respondent files', async () => {
+      asUser('ADMIN');
+      prisma.surveyAttempt.findUnique.mockResolvedValue(
+        attempt({ status: 'COMPLETED' }),
+      );
+      await expect(
+        service.authorize('participation', attemptId, adminId, null, 'read'),
+      ).resolves.toBeUndefined();
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: adminId },
+        select: { role: true, status: true },
+      });
+
+      prisma.surveyAttempt.findUnique.mockResolvedValue(attempt());
+      await expect(
+        service.authorize('participation', attemptId, adminId, null, 'write'),
+      ).rejects.toThrow(StorageUnauthorizedAccessException);
+    });
+
+    it.each([
+      ['a locked admin', 'ADMIN', 'LOCKED'],
+      ['another publisher', 'PUBLISHER', 'ACTIVE'],
+      ['another respondent', 'RESPONDENT', 'ACTIVE'],
+    ])('refuses reads by %s', async (_label, role, status) => {
+      asUser(role, status);
+      prisma.surveyAttempt.findUnique.mockResolvedValue(
+        attempt({ status: 'COMPLETED' }),
+      );
+      await expect(
+        service.authorize(
+          'participation',
+          attemptId,
+          otherUserId,
+          null,
+          'read',
+        ),
+      ).rejects.toThrow(StorageUnauthorizedAccessException);
+    });
+
+    it('still refuses the publisher on an ABANDONED attempt', async () => {
+      prisma.surveyAttempt.findUnique.mockResolvedValue(
+        attempt({ status: 'ABANDONED' }),
+      );
+      await expect(
+        service.authorize(
+          'participation',
+          attemptId,
+          publisherId,
+          null,
+          'read',
+        ),
+      ).rejects.toThrow(StorageUnauthorizedAccessException);
+    });
+
+    it.each(['forms', 'research'])(
+      'lets an active admin read, but not write, %s files',
+      async (ownerContext) => {
+        asUser('ADMIN');
+        prisma.form.findUnique.mockResolvedValue({ publisherId });
+        await expect(
+          service.authorize(ownerContext, attemptId, adminId, null, 'read'),
+        ).resolves.toBeUndefined();
+        await expect(
+          service.authorize(ownerContext, attemptId, adminId, null, 'write'),
+        ).rejects.toThrow(StorageUnauthorizedAccessException);
+
+        asUser('ADMIN', 'LOCKED');
+        await expect(
+          service.authorize(ownerContext, attemptId, adminId, null, 'read'),
+        ).rejects.toThrow(StorageUnauthorizedAccessException);
+      },
+    );
+
+    it('refuses an admin read of a form that does not exist', async () => {
+      asUser('ADMIN');
+      prisma.form.findUnique.mockResolvedValue(null);
+      await expect(
+        service.authorize('forms', attemptId, adminId, null, 'read'),
+      ).rejects.toThrow(StorageUnauthorizedAccessException);
+    });
   });
 
   describe('guest capability (P22)', () => {

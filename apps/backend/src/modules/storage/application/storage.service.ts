@@ -15,7 +15,10 @@ import {
   StorageScannerOutageException,
 } from './exceptions/storage.exceptions';
 import { MalwareScannerPort } from './ports/malware-scanner.port';
-import { ObjectStoragePort } from './ports/object-storage.port';
+import {
+  ObjectPreconditionFailedError,
+  ObjectStoragePort,
+} from './ports/object-storage.port';
 import {
   StorageAccess,
   StorageOwnerAuthorizationPort,
@@ -28,6 +31,9 @@ const DOWNLOAD_URL_TTL_SECONDS = 5 * 60;
 const STORAGE_CLEANUP_BATCH_SIZE = 200;
 const MAX_DELETE_ATTEMPTS = 3;
 const SNIFF_WINDOW_BYTES = 512;
+/** Leading markup comments are skipped within this window before sniffing. */
+const MARKUP_COMMENT_WINDOW_BYTES = 64 * 1024;
+const LEADING_MARKUP_COMMENTS = /^(?:<!--[\s\S]*?-->\s*)+/;
 const DANGEROUS_EXTENSIONS = new Set([
   '.exe',
   '.dll',
@@ -62,6 +68,7 @@ const ASCII_WHITESPACE = new Set([0x09, 0x0a, 0x0c, 0x0d, 0x20]);
 /** Leading markup a browser would render or execute (checked lower-cased). */
 const ACTIVE_CONTENT_PREFIXES = [
   '<!doctype html',
+  '<!doctype svg',
   '<html',
   '<script',
   '<svg',
@@ -75,6 +82,10 @@ export interface StorageCleanupResult {
   failures: { objectId: string; reason: string }[];
 }
 
+export interface StorageServiceLogger {
+  warn(message: string): void;
+}
+
 export class StorageService {
   constructor(
     private readonly storageRepository: StorageRepositoryPort,
@@ -82,6 +93,7 @@ export class StorageService {
     private readonly malwareScanner: MalwareScannerPort,
     private readonly ownerAuthorization?: StorageOwnerAuthorizationPort,
     private readonly envService?: EnvService,
+    private readonly logger?: StorageServiceLogger,
   ) {}
 
   async initiateUpload(
@@ -140,10 +152,13 @@ export class StorageService {
       input.ownerContext,
       input.ownerRecordId,
     );
+    // A scanner OUTAGE must not wedge the question: the respondent may retry
+    // that object or upload a replacement.
     const activeForQuestion = existing.filter(
       (object) =>
         object.questionId === (input.questionId ?? null) &&
-        !['REJECTED', 'EXPIRED', 'DELETED'].includes(object.status),
+        !['REJECTED', 'EXPIRED', 'DELETED'].includes(object.status) &&
+        object.scanStatus !== 'OUTAGE',
     ).length;
     if (activeForQuestion >= policy.maxFiles) {
       throw new StorageInvalidFileException(
@@ -207,10 +222,12 @@ export class StorageService {
    *
    * The presigned PUT stays usable until it expires, so the upload key is
    * never trusted after inspection: finalization claims the object (CAS
-   * INITIATED -> QUARANTINED, recording a server-owned `verified/` key), then
-   * copies the upload key there only if its ETag still matches the inspected
-   * one. Signature, checksum and malware scan run on the verified copy, and
-   * downloads only ever use it — no presigned URL can write that key.
+   * INITIATED -> QUARANTINED, or a retry after a scanner OUTAGE), reads the
+   * upload key only if its ETag still matches the inspected one, and runs
+   * signature, checksum and malware checks on those bytes. Only clean bytes
+   * are copied — again conditional on that ETag — to a server-owned
+   * `verified/` key, which downloads only ever use and no presigned URL can
+   * write. On an OUTAGE the object stays at its upload key, retryable.
    */
   async finalizeUpload(
     objectId: string,
@@ -227,7 +244,9 @@ export class StorageService {
     if (current.status === 'CLEAN' || current.status === 'REJECTED') {
       return this.toDto(current);
     }
-    if (current.status !== 'INITIATED') {
+    const retryingOutage =
+      current.status === 'QUARANTINED' && current.scanStatus === 'OUTAGE';
+    if (current.status !== 'INITIATED' && !retryingOutage) {
       throw new StorageInvalidFileException(
         current.status === 'QUARANTINED' || current.status === 'UPLOADED'
           ? 'Upload is already being finalized.'
@@ -235,20 +254,24 @@ export class StorageService {
       );
     }
     if (current.expiresAt && current.expiresAt.getTime() < Date.now()) {
+      const expectedStatus = current.status;
       current.markExpired();
       if (
-        await this.storageRepository.transition(objectId, 'INITIATED', current)
+        await this.storageRepository.transition(
+          objectId,
+          expectedStatus,
+          current,
+        )
       ) {
         await this.purgeBytesQuietly(current);
       }
       throw new StorageInvalidFileException('The upload session has expired.');
     }
 
-    // Pre-claim checks leave the object INITIATED so the client can re-PUT.
-    const uploadKey = current.storageKey;
+    // Pre-claim checks leave the object unclaimed so the client can re-PUT.
     const metadata = await this.objectStorage.getObjectMetadata(
       current.bucket,
-      uploadKey,
+      current.storageKey,
     );
     if (!metadata) {
       throw new StorageInvalidFileException(
@@ -276,9 +299,9 @@ export class StorageService {
     }
 
     const object = current;
-    object.markQuarantined(this.verifiedKeyFor(object));
+    object.markQuarantined();
     if (
-      !(await this.storageRepository.transition(objectId, 'INITIATED', object))
+      !(await this.storageRepository.claimForFinalization(objectId, object))
     ) {
       const latest = await this.storageRepository.findById(objectId);
       if (latest && ['CLEAN', 'REJECTED'].includes(latest.status)) {
@@ -292,7 +315,6 @@ export class StorageService {
     try {
       return await this.verifyAndScanClaimed(
         object,
-        uploadKey,
         inspectedEtag,
         metadata.checksumSha256,
         checksum,
@@ -304,7 +326,7 @@ export class StorageService {
       ) {
         throw error;
       }
-      // Copy, read or scanner failure after the claim: fail closed (AD-22).
+      // Read, scanner or copy failure after the claim: fail closed (AD-22).
       object.markScanOutage(
         'scanner-error',
         error instanceof Error ? error.message : 'Malware scanner failed',
@@ -481,26 +503,26 @@ export class StorageService {
 
   private async verifyAndScanClaimed(
     object: StoredObjectEntity,
-    uploadKey: string,
     inspectedEtag: string,
     providerChecksum: string | null,
     callerChecksum: string | undefined,
   ): Promise<StoredObjectDto> {
-    const copy = await this.objectStorage.copyObject(
-      object.bucket,
-      uploadKey,
-      object.storageKey,
-      inspectedEtag,
-    );
-    if (copy !== 'COPIED') {
-      return this.rejectClaimed(object, 'Object changed during finalization.');
+    let bytes: Uint8Array;
+    try {
+      bytes = await this.objectStorage.readObject(
+        object.bucket,
+        object.storageKey,
+        inspectedEtag,
+      );
+    } catch (error) {
+      if (error instanceof ObjectPreconditionFailedError) {
+        return this.rejectClaimed(
+          object,
+          'Object changed during finalization.',
+        );
+      }
+      throw error;
     }
-    await this.deleteQuietly(object.bucket, uploadKey);
-
-    const bytes = await this.objectStorage.readObject(
-      object.bucket,
-      object.storageKey,
-    );
     const observedChecksum = crypto
       .createHash('sha256')
       .update(bytes)
@@ -515,9 +537,8 @@ export class StorageService {
     if (problem) return this.rejectClaimed(object, problem);
     object.checksum = observedChecksum;
 
-    const scanResult = await this.malwareScanner.scanObject(
-      object.bucket,
-      object.storageKey,
+    const scanResult = await this.malwareScanner.scanBytes(
+      bytes,
       object.mimeType,
       object.fileName,
     );
@@ -537,14 +558,45 @@ export class StorageService {
       }
       throw new StorageScannerOutageException(scanResult.reason);
     }
-    if (scanResult.isClean) {
-      object.markClean(scanResult.scanPolicy, { verifiedClean: true });
-    } else {
+    if (!scanResult.isClean) {
       object.markInfected(
         scanResult.scanPolicy,
         scanResult.reason || 'Malicious content detected',
       );
+      if (
+        !(await this.storageRepository.transition(
+          object.id,
+          'QUARANTINED',
+          object,
+        ))
+      ) {
+        return this.latestAfterLostRace(object.id);
+      }
+      await this.deleteQuietly(object, object.storageKey);
+      return this.toDto(object);
     }
+
+    // Promote the scanned bytes: the copy is pinned to the same ETag as the
+    // read, so a re-PUT since then cannot reach the verified key. A retry
+    // whose earlier attempt already promoted the bytes skips the copy.
+    const verifiedKey = this.verifiedKeyFor(object);
+    if (object.storageKey !== verifiedKey) {
+      const copy = await this.objectStorage.copyObject(
+        object.bucket,
+        object.storageKey,
+        verifiedKey,
+        inspectedEtag,
+      );
+      if (copy !== 'COPIED') {
+        return this.rejectClaimed(
+          object,
+          'Object changed during finalization.',
+        );
+      }
+      await this.deleteQuietly(object, object.storageKey);
+      object.storageKey = verifiedKey;
+    }
+    object.markClean(scanResult.scanPolicy, { verifiedClean: true });
     if (
       !(await this.storageRepository.transition(
         object.id,
@@ -557,7 +609,10 @@ export class StorageService {
     return this.toDto(object);
   }
 
-  /** Rejects a claimed object whose verified bytes failed a check (400). */
+  /**
+   * Rejects a claimed object whose bytes failed a check (400), then discards
+   * those bytes; the rejection stands even if the deletion fails.
+   */
   private async rejectClaimed(
     object: StoredObjectEntity,
     reason: string,
@@ -572,6 +627,7 @@ export class StorageService {
     ) {
       return this.latestAfterLostRace(object.id);
     }
+    await this.deleteQuietly(object, object.storageKey);
     throw new StorageInvalidFileException(reason);
   }
 
@@ -680,11 +736,23 @@ export class StorageService {
     }
   }
 
-  private async deleteQuietly(bucket: string, key: string): Promise<void> {
+  /**
+   * Best effort: runs after the state transition is persisted, which a failed
+   * deletion never undoes. A missing key is not an error (port contract);
+   * anything else is logged by object id — never the storage key.
+   */
+  private async deleteQuietly(
+    object: StoredObjectEntity,
+    key: string,
+  ): Promise<void> {
     try {
-      await this.objectStorage.deleteObject(bucket, key);
-    } catch {
-      // Best effort: the upload key is never read or served after the copy.
+      await this.objectStorage.deleteObject(object.bucket, key);
+    } catch (error) {
+      this.logger?.warn(
+        `Failed to delete bytes of stored object ${object.id}: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
     }
   }
 
@@ -735,8 +803,10 @@ export class StorageService {
   }
 
   /**
-   * Sniffs the first 512 bytes after a UTF-8 BOM and leading whitespace, the
-   * way a browser would, for markup it could render or execute (P17).
+   * Sniffs the first 512 bytes after a UTF-8 BOM, leading whitespace and
+   * leading HTML/XML comments, the way a browser would, for markup it could
+   * render or execute (P17). Comments are skipped over a wider window so
+   * padding them out cannot push the markup past the sniffed bytes.
    */
   private startsWithActiveMarkup(bytes: Uint8Array): boolean {
     let start =
@@ -744,9 +814,13 @@ export class StorageService {
     while (start < bytes.length && ASCII_WHITESPACE.has(bytes[start])) {
       start += 1;
     }
-    const head = Buffer.from(bytes.subarray(start, start + SNIFF_WINDOW_BYTES))
+    const head = Buffer.from(
+      bytes.subarray(start, start + MARKUP_COMMENT_WINDOW_BYTES),
+    )
       .toString('latin1')
-      .toLowerCase();
+      .toLowerCase()
+      .replace(LEADING_MARKUP_COMMENTS, '')
+      .slice(0, SNIFF_WINDOW_BYTES);
     return (
       ACTIVE_CONTENT_PREFIXES.some((prefix) => head.startsWith(prefix)) ||
       (head.startsWith('<?xml') && head.includes('<svg'))

@@ -11,6 +11,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { EnvService } from '../../../common/config/env.service';
 import {
   CopyObjectOutcome,
+  ObjectPreconditionFailedError,
   ObjectStoragePort,
   StoredObjectMetadata,
 } from '../application/ports/object-storage.port';
@@ -112,30 +113,52 @@ export class S3ObjectStorageService implements ObjectStoragePort {
       );
       return 'COPIED';
     } catch (error: any) {
-      if (
-        error?.$metadata?.httpStatusCode === 412 ||
-        error?.name === 'PreconditionFailed'
-      ) {
-        return 'PRECONDITION_FAILED';
-      }
+      if (isPreconditionFailed(error)) return 'PRECONDITION_FAILED';
       if (isNotFound(error)) return 'SOURCE_NOT_FOUND';
       throw error;
     }
   }
 
-  async readObject(bucket: string, storageKey: string): Promise<Uint8Array> {
-    const result = await this.client.send(
-      new GetObjectCommand({ Bucket: bucket, Key: storageKey }),
-    );
-    if (!result.Body) throw new Error('Object body is empty');
-    return result.Body.transformToByteArray();
+  async readObject(
+    bucket: string,
+    storageKey: string,
+    ifMatchEtag?: string,
+  ): Promise<Uint8Array> {
+    try {
+      const result = await this.client.send(
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: storageKey,
+          IfMatch: ifMatchEtag,
+        }),
+      );
+      if (!result.Body) throw new Error('Object body is empty');
+      return await result.Body.transformToByteArray();
+    } catch (error: any) {
+      // A conditional read of a re-written or removed key: the bytes changed.
+      if (ifMatchEtag && (isPreconditionFailed(error) || isNotFound(error))) {
+        throw new ObjectPreconditionFailedError();
+      }
+      throw error;
+    }
   }
 
   async deleteObject(bucket: string, storageKey: string): Promise<void> {
-    await this.client.send(
-      new DeleteObjectCommand({ Bucket: bucket, Key: storageKey }),
-    );
+    try {
+      await this.client.send(
+        new DeleteObjectCommand({ Bucket: bucket, Key: storageKey }),
+      );
+    } catch (error: any) {
+      if (!isNotFound(error)) throw error;
+    }
   }
+}
+
+function isPreconditionFailed(error: any): boolean {
+  return (
+    error?.$metadata?.httpStatusCode === 412 ||
+    error?.name === 'PreconditionFailed'
+  );
 }
 
 function isNotFound(error: any): boolean {

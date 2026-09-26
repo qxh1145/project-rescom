@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
 import { PrismaModule } from '../../common/database/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 import { StorageController } from './presentation/storage.controller';
@@ -63,6 +63,7 @@ import { StorageCleanupService } from './infrastructure/storage-cleanup.service'
           scanner,
           ownerAuthorization,
           envService,
+          new Logger(StorageService.name),
         ),
       inject: [
         STORAGE_REPOSITORY_PORT,

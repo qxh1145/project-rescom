@@ -11,8 +11,9 @@ export class StoredObjectEntity {
     public readonly ownerRecordId: string,
     public readonly dataClass: StorageDataClass,
     /**
-     * Client-writable upload key while INITIATED; once finalization claims the
-     * object it points at the server-owned verified copy (Epic 5 review P10).
+     * Client-writable upload key while INITIATED or QUARANTINED (including a
+     * scanner OUTAGE awaiting retry); once the bytes are verified and scanned
+     * clean it points at the server-owned verified copy (Epic 5 review P10).
      */
     public storageKey: string,
     public readonly bucket: string,
@@ -51,14 +52,20 @@ export class StoredObjectEntity {
   }
 
   /**
-   * Enters quarantine before running malware scan (AD-22). When finalization
-   * moves the bytes to a server-owned key, the new key is recorded here.
+   * Enters quarantine before running malware scan (AD-22), or re-enters it to
+   * retry a scan that hit a scanner OUTAGE. The storage key is left alone: the
+   * bytes move to the verified key only once they are scanned clean.
    */
-  markQuarantined(verifiedStorageKey?: string): void {
-    if (this.status !== 'UPLOADED' && this.status !== 'INITIATED') {
+  markQuarantined(): void {
+    const retryingOutage =
+      this.status === 'QUARANTINED' && this.scanStatus === 'OUTAGE';
+    if (
+      this.status !== 'UPLOADED' &&
+      this.status !== 'INITIATED' &&
+      !retryingOutage
+    ) {
       throw new Error(`Cannot quarantine object from status: ${this.status}`);
     }
-    if (verifiedStorageKey) this.storageKey = verifiedStorageKey;
     this.status = 'QUARANTINED';
     this.scanStatus = 'PENDING';
     this.uploadedAt = this.uploadedAt ?? new Date();
@@ -109,7 +116,8 @@ export class StoredObjectEntity {
 
   /**
    * Fails closed when malware scanner is unavailable or experiences an outage (AD-22).
-   * Object remains QUARANTINED and scanStatus is OUTAGE.
+   * Object remains QUARANTINED at its upload key with scanStatus OUTAGE, so
+   * finalization can be retried once the scanner recovers.
    */
   markScanOutage(policy: string, errorDetails: string): void {
     this.status = 'QUARANTINED';

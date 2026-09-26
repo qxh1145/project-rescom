@@ -25,6 +25,24 @@ export class InMemoryStorageRepository implements StorageRepositoryPort {
     return true;
   }
 
+  async claimForFinalization(
+    id: string,
+    entity: StoredObjectEntity,
+  ): Promise<boolean> {
+    const stored = this.objects.get(id);
+    if (
+      !stored ||
+      !(
+        stored.status === 'INITIATED' ||
+        (stored.status === 'QUARANTINED' && stored.scanStatus === 'OUTAGE')
+      )
+    ) {
+      return false;
+    }
+    this.objects.set(id, copyOf(entity));
+    return true;
+  }
+
   async findById(id: string): Promise<StoredObjectEntity | null> {
     const stored = this.objects.get(id);
     return stored ? copyOf(stored) : null;
@@ -60,8 +78,9 @@ export class InMemoryStorageRepository implements StorageRepositoryPort {
     return [...this.objects.values()]
       .filter(
         (object) =>
-          !['ATTACHED', 'DELETED', 'EXPIRED'].includes(object.status) &&
-          Boolean(object.expiresAt && object.expiresAt <= now),
+          !['ATTACHED', 'DELETED', 'EXPIRED', 'REJECTED'].includes(
+            object.status,
+          ) && Boolean(object.expiresAt && object.expiresAt <= now),
       )
       .sort(
         (a, b) => (a.expiresAt?.getTime() ?? 0) - (b.expiresAt?.getTime() ?? 0),

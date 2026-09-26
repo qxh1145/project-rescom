@@ -50,6 +50,23 @@ export class PrismaStorageRepository implements StorageRepositoryPort {
     return result.count === 1;
   }
 
+  async claimForFinalization(
+    id: string,
+    entity: StoredObjectEntity,
+  ): Promise<boolean> {
+    const result = await this.prisma.storedObject.updateMany({
+      where: {
+        id,
+        OR: [
+          { status: 'INITIATED' },
+          { status: 'QUARANTINED', scanStatus: 'OUTAGE' },
+        ],
+      },
+      data: this.mutableState(entity),
+    });
+    return result.count === 1;
+  }
+
   async findById(id: string): Promise<StoredObjectEntity | null> {
     const raw = await this.prisma.storedObject.findUnique({
       where: { id },
@@ -87,7 +104,7 @@ export class PrismaStorageRepository implements StorageRepositoryPort {
     const rows = await this.prisma.storedObject.findMany({
       where: {
         expiresAt: { lte: now },
-        status: { notIn: ['ATTACHED', 'DELETED', 'EXPIRED'] },
+        status: { notIn: ['ATTACHED', 'DELETED', 'EXPIRED', 'REJECTED'] },
       },
       orderBy: { expiresAt: 'asc' },
       take: limit,

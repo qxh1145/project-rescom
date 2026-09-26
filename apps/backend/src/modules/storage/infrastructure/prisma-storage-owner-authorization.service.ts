@@ -35,6 +35,7 @@ export class PrismaStorageOwnerAuthorizationService implements StorageOwnerAutho
           isGuest: true,
           status: true,
           startedAt: true,
+          form: { select: { publisherId: true } },
         },
       });
       if (!attempt || !this.attemptAllows(attempt, access)) {
@@ -49,10 +50,18 @@ export class PrismaStorageOwnerAuthorizationService implements StorageOwnerAutho
           ownerRecordId,
           ownerCapability,
         );
-      if (!ownsAuthenticatedAttempt && !ownsGuestAttempt) {
-        throw new StorageUnauthorizedAccessException();
+      if (ownsAuthenticatedAttempt || ownsGuestAttempt) return;
+      // The survey's publisher and an active admin may read (never write)
+      // the files respondents uploaded to it.
+      if (
+        access === 'read' &&
+        callerUserId &&
+        (attempt.form?.publisherId === callerUserId ||
+          (await this.isActiveAdmin(callerUserId)))
+      ) {
+        return;
       }
-      return;
+      throw new StorageUnauthorizedAccessException();
     }
 
     if (!callerUserId) throw new StorageUnauthorizedAccessException();
@@ -60,9 +69,10 @@ export class PrismaStorageOwnerAuthorizationService implements StorageOwnerAutho
       where: { id: ownerRecordId },
       select: { publisherId: true },
     });
-    if (!form || form.publisherId !== callerUserId) {
-      throw new StorageUnauthorizedAccessException();
-    }
+    if (!form) throw new StorageUnauthorizedAccessException();
+    if (form.publisherId === callerUserId) return;
+    if (access === 'read' && (await this.isActiveAdmin(callerUserId))) return;
+    throw new StorageUnauthorizedAccessException();
   }
 
   async resolveUploadPolicy(
@@ -134,6 +144,14 @@ export class PrismaStorageOwnerAuthorizationService implements StorageOwnerAutho
         : [],
       maxFiles: block.maxFiles ?? 1,
     };
+  }
+
+  private async isActiveAdmin(userId: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true, status: true },
+    });
+    return user?.role === 'ADMIN' && user.status === 'ACTIVE';
   }
 
   /**

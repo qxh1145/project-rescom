@@ -209,7 +209,7 @@ describe('StorageService', () => {
       const init = await initiate({ fileName: 'scanner-error.pdf' });
       putPdf(init.storageKey, 1024);
       jest
-        .spyOn(malwareScanner, 'scanObject')
+        .spyOn(malwareScanner, 'scanBytes')
         .mockRejectedValueOnce(new Error('connection reset'));
 
       await expect(service.finalizeUpload(init.objectId)).rejects.toThrow(
@@ -237,6 +237,16 @@ describe('StorageService', () => {
           'xml prolog wrapping svg',
           '<?xml version="1.0"?>\n<!-- a comment -->\n<svg onload="alert(1)"/>',
         ],
+        ['svg doctype', '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN">'],
+        ['comment before svg', '<!-- hi --><svg onload="alert(1)"/>'],
+        [
+          'several comments before a script',
+          '\uFEFF <!-- a -->\n<!--\nb\n-->  <script>alert(1)</script>',
+        ],
+        [
+          'comment padded past the sniff window',
+          `<!--${'x'.repeat(2048)}--><html><script>alert(1)</script></html>`,
+        ],
       ];
 
       it.each(cases)('should reject %s', async (_label, content) => {
@@ -259,6 +269,7 @@ describe('StorageService', () => {
       it.each([
         ['plain xml without svg', '<?xml version="1.0"?><note>hi</note>'],
         ['csv text', 'name,score\nAn,9\n'],
+        ['comment before plain text', '<!-- notes -->\njust some text'],
       ])('should accept %s', async (_label, content) => {
         const bytes = Buffer.from(content, 'utf8');
         const init = await initiate({
@@ -278,16 +289,31 @@ describe('StorageService', () => {
       it('serves and scans a server-owned copy that a re-PUT cannot change', async () => {
         const init = await initiate();
         const original = putPdf(init.storageKey, 1024);
-        const scanSpy = jest.spyOn(malwareScanner, 'scanObject');
+        const verifiedKey = verifiedKeyOf(init.objectId);
+        const readSpy = jest.spyOn(objectStorage, 'readObject');
+        const scanObjectSpy = jest.spyOn(malwareScanner, 'scanObject');
+        let verifiedExistedDuringScan: boolean | undefined;
+        const scanSpy = jest
+          .spyOn(malwareScanner, 'scanBytes')
+          .mockImplementationOnce(async () => {
+            verifiedExistedDuringScan = objectStorage.hasObject(
+              bucket,
+              verifiedKey,
+            );
+            return { isClean: true, scanPolicy: 'test-policy' };
+          });
 
         const finalized = await service.finalizeUpload(init.objectId);
 
-        const verifiedKey = verifiedKeyOf(init.objectId);
         expect(finalized.status).toBe('CLEAN');
         expect(finalized.storageKey).toBe(verifiedKey);
+        // Scanned at the upload key, from the single read (BE-3, BE-11).
+        expect(verifiedExistedDuringScan).toBe(false);
+        expect(readSpy).toHaveBeenCalledTimes(1);
+        expect(readSpy.mock.calls[0][1]).toBe(init.storageKey);
+        expect(scanObjectSpy).not.toHaveBeenCalled();
         expect(scanSpy).toHaveBeenCalledWith(
-          bucket,
-          verifiedKey,
+          Uint8Array.from(original),
           'application/pdf',
           'document.pdf',
         );
@@ -325,7 +351,7 @@ describe('StorageService', () => {
             objectStorage.putObject(b, key, swapped, 'application/pdf');
             return inspected;
           });
-        const scanSpy = jest.spyOn(malwareScanner, 'scanObject');
+        const scanSpy = jest.spyOn(malwareScanner, 'scanBytes');
 
         await expect(service.finalizeUpload(init.objectId)).rejects.toThrow(
           'Object changed during finalization.',
@@ -342,12 +368,42 @@ describe('StorageService', () => {
         ).rejects.toBeInstanceOf(StorageObjectNotCleanException);
       });
 
+      it('never promotes bytes re-written after the scanned read', async () => {
+        const init = await initiate();
+        putPdf(init.storageKey, 1024);
+        jest
+          .spyOn(malwareScanner, 'scanBytes')
+          .mockImplementationOnce(async () => {
+            const swapped = pdfBytes(1024);
+            swapped.write('<script>alert(1)</script>', 512);
+            objectStorage.putObject(
+              bucket,
+              init.storageKey,
+              swapped,
+              'application/pdf',
+            );
+            return { isClean: true, scanPolicy: 'test-policy' };
+          });
+
+        await expect(service.finalizeUpload(init.objectId)).rejects.toThrow(
+          'Object changed during finalization.',
+        );
+
+        expect((await repository.findById(init.objectId))?.status).toBe(
+          'REJECTED',
+        );
+        expect(
+          objectStorage.hasObject(bucket, verifiedKeyOf(init.objectId)),
+        ).toBe(false);
+        expect(objectStorage.hasObject(bucket, init.storageKey)).toBe(false);
+      });
+
       it('refuses a concurrent finalize while the first is scanning', async () => {
         const init = await initiate();
         putPdf(init.storageKey, 1024);
         let concurrent: Promise<unknown> | undefined;
         jest
-          .spyOn(malwareScanner, 'scanObject')
+          .spyOn(malwareScanner, 'scanBytes')
           .mockImplementationOnce(async () => {
             concurrent = service.finalizeUpload(init.objectId);
             await concurrent.catch(() => undefined);
@@ -365,13 +421,13 @@ describe('StorageService', () => {
       it('returns the winner outcome when a racing finalize claims first', async () => {
         const init = await initiate();
         putPdf(init.storageKey, 1024);
-        const realTransition = repository.transition.bind(repository);
+        const realClaim = repository.claimForFinalization.bind(repository);
         jest
-          .spyOn(repository, 'transition')
-          .mockImplementationOnce(async (id, expected, entity) => {
+          .spyOn(repository, 'claimForFinalization')
+          .mockImplementationOnce(async (id, entity) => {
             // Another request finalizes the object to CLEAN in between.
             await service.finalizeUpload(init.objectId);
-            return realTransition(id, expected, entity);
+            return realClaim(id, entity);
           });
 
         await expect(
@@ -386,7 +442,7 @@ describe('StorageService', () => {
       const init = await initiate();
       putPdf(init.storageKey, 1024);
       jest
-        .spyOn(malwareScanner, 'scanObject')
+        .spyOn(malwareScanner, 'scanBytes')
         .mockImplementationOnce(async () => {
           await service.deleteObject(init.objectId);
           return { isClean: true, scanPolicy: 'test-policy' };
@@ -454,6 +510,192 @@ describe('StorageService', () => {
       expect(
         objectStorage.hasObject(bucket, verifiedKeyOf(init.objectId)),
       ).toBe(false);
+    });
+  });
+
+  describe('scanner outage recovery (BE-3)', () => {
+    it('keeps an outage object at its upload key, then a retry succeeds', async () => {
+      const init = await initiate();
+      const original = putPdf(init.storageKey, 1024);
+      malwareScanner.setSimulateOutage(true);
+
+      await expect(service.finalizeUpload(init.objectId)).rejects.toThrow(
+        StorageScannerOutageException,
+      );
+
+      const outage = await repository.findById(init.objectId);
+      expect(outage?.status).toBe('QUARANTINED');
+      expect(outage?.scanStatus).toBe('OUTAGE');
+      expect(outage?.storageKey).toBe(init.storageKey);
+      expect(objectStorage.hasObject(bucket, init.storageKey)).toBe(true);
+      expect(
+        objectStorage.hasObject(bucket, verifiedKeyOf(init.objectId)),
+      ).toBe(false);
+
+      malwareScanner.setSimulateOutage(false);
+      const retried = await service.finalizeUpload(init.objectId);
+
+      expect(retried).toMatchObject({
+        status: 'CLEAN',
+        scanStatus: 'CLEAN',
+        storageKey: verifiedKeyOf(init.objectId),
+      });
+      expect(objectStorage.hasObject(bucket, init.storageKey)).toBe(false);
+      expect(
+        Buffer.from(
+          await objectStorage.readObject(bucket, verifiedKeyOf(init.objectId)),
+        ),
+      ).toEqual(original);
+    });
+
+    it('retries after a thrown scanner failure as well', async () => {
+      const init = await initiate();
+      putPdf(init.storageKey, 1024);
+      jest
+        .spyOn(malwareScanner, 'scanBytes')
+        .mockRejectedValueOnce(new Error('connection reset'));
+
+      await expect(service.finalizeUpload(init.objectId)).rejects.toThrow(
+        StorageScannerOutageException,
+      );
+      expect((await repository.findById(init.objectId))?.storageKey).toBe(
+        init.storageKey,
+      );
+
+      await expect(
+        service.finalizeUpload(init.objectId),
+      ).resolves.toMatchObject({ status: 'CLEAN' });
+    });
+
+    it('lets only one retry claim an outage object', async () => {
+      const init = await initiate();
+      putPdf(init.storageKey, 1024);
+      malwareScanner.setSimulateOutage(true);
+      await expect(service.finalizeUpload(init.objectId)).rejects.toThrow(
+        StorageScannerOutageException,
+      );
+      malwareScanner.setSimulateOutage(false);
+      let concurrent: Promise<unknown> | undefined;
+      jest
+        .spyOn(malwareScanner, 'scanBytes')
+        .mockImplementationOnce(async () => {
+          concurrent = service.finalizeUpload(init.objectId);
+          await concurrent.catch(() => undefined);
+          return { isClean: true, scanPolicy: 'test-policy' };
+        });
+
+      await expect(
+        service.finalizeUpload(init.objectId),
+      ).resolves.toMatchObject({ status: 'CLEAN' });
+      await expect(concurrent).rejects.toThrow(
+        'Upload is already being finalized.',
+      );
+    });
+
+    it('does not count an outage object toward maxFiles', async () => {
+      const init = await initiate();
+      putPdf(init.storageKey, 1024);
+      malwareScanner.setSimulateOutage(true);
+      await expect(service.finalizeUpload(init.objectId)).rejects.toThrow(
+        StorageScannerOutageException,
+      );
+
+      // maxFiles is 1 here: a replacement upload is still accepted.
+      await expect(initiate({ fileName: 'replacement.pdf' })).resolves.toEqual(
+        expect.objectContaining({ objectId: expect.any(String) }),
+      );
+    });
+  });
+
+  describe('rejected bytes (BE-11)', () => {
+    let logger: { warn: jest.Mock };
+
+    beforeEach(() => {
+      logger = { warn: jest.fn() };
+      service = new StorageService(
+        repository,
+        objectStorage,
+        malwareScanner,
+        undefined,
+        undefined,
+        logger,
+      );
+    });
+
+    it('deletes the upload when its magic bytes do not match', async () => {
+      const init = await initiate();
+      objectStorage.putObject(
+        bucket,
+        init.storageKey,
+        Buffer.alloc(1024, 0x41),
+        'application/pdf',
+      );
+
+      await expect(service.finalizeUpload(init.objectId)).rejects.toThrow(
+        'Uploaded bytes do not match the declared MIME signature.',
+      );
+
+      expect((await repository.findById(init.objectId))?.status).toBe(
+        'REJECTED',
+      );
+      expect(objectStorage.hasObject(bucket, init.storageKey)).toBe(false);
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('deletes an infected upload without promoting it', async () => {
+      const init = await initiate({ fileName: 'test_virus.malware' });
+      putPdf(init.storageKey, 1024);
+
+      const finalized = await service.finalizeUpload(init.objectId);
+
+      expect(finalized).toMatchObject({
+        status: 'REJECTED',
+        scanStatus: 'INFECTED',
+      });
+      expect(objectStorage.hasObject(bucket, init.storageKey)).toBe(false);
+      expect(
+        objectStorage.hasObject(bucket, verifiedKeyOf(init.objectId)),
+      ).toBe(false);
+    });
+
+    it('keeps the rejection and logs when the deletion fails', async () => {
+      const init = await initiate({ fileName: 'test_virus.malware' });
+      putPdf(init.storageKey, 1024);
+      jest
+        .spyOn(objectStorage, 'deleteObject')
+        .mockRejectedValue(new Error('storage unavailable'));
+
+      await expect(
+        service.finalizeUpload(init.objectId),
+      ).resolves.toMatchObject({ status: 'REJECTED', scanStatus: 'INFECTED' });
+
+      expect((await repository.findById(init.objectId))?.status).toBe(
+        'REJECTED',
+      );
+      expect(logger.warn).toHaveBeenCalledWith(
+        `Failed to delete bytes of stored object ${init.objectId}: storage unavailable`,
+      );
+    });
+
+    it('keeps a magic-byte rejection when the deletion fails', async () => {
+      const init = await initiate();
+      objectStorage.putObject(
+        bucket,
+        init.storageKey,
+        Buffer.alloc(1024, 0x41),
+        'application/pdf',
+      );
+      jest
+        .spyOn(objectStorage, 'deleteObject')
+        .mockRejectedValue(new Error('storage unavailable'));
+
+      await expect(service.finalizeUpload(init.objectId)).rejects.toThrow(
+        StorageInvalidFileException,
+      );
+      expect((await repository.findById(init.objectId))?.status).toBe(
+        'REJECTED',
+      );
+      expect(logger.warn).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -585,6 +827,19 @@ describe('StorageService', () => {
 
       expect(first.expired).toBe(2);
       expect(second.expired).toBe(1);
+    });
+
+    it('never overwrites a REJECTED object with EXPIRED (BE-11)', async () => {
+      const init = await initiate({ fileName: 'test_virus.malware' });
+      putPdf(init.storageKey, 1024);
+      await service.finalizeUpload(init.objectId);
+
+      const result = await service.cleanupExpired(afterUploadWindow());
+
+      expect(result).toEqual({ expired: 0, failures: [] });
+      const stored = await repository.findById(init.objectId);
+      expect(stored?.status).toBe('REJECTED');
+      expect(stored?.scanStatus).toBe('INFECTED');
     });
 
     it('claims before purging, so an object attached meanwhile keeps its bytes', async () => {

@@ -4,6 +4,10 @@ import {
   StorageCleanupService,
 } from './storage-cleanup.service';
 import { StorageService } from '../application/storage.service';
+import { StoredObjectEntity } from '../domain/stored-object.entity';
+import { InMemoryStorageRepository } from './in-memory-storage.repository';
+import { InMemoryObjectStorageService } from './in-memory-object-storage.service';
+import { StubMalwareScannerService } from './stub-malware-scanner.service';
 
 describe('StorageCleanupService (P11)', () => {
   let storageService: { cleanupExpired: jest.Mock };
@@ -49,6 +53,47 @@ describe('StorageCleanupService (P11)', () => {
     expect(errorSpy).toHaveBeenCalledWith(
       'Failed to expire stored object object-1: storage unavailable',
     );
+  });
+
+  it('leaves lapsed REJECTED objects REJECTED and only expires the rest (BE-11)', async () => {
+    const repository = new InMemoryStorageRepository();
+    const lapsed = new Date(Date.now() - 60 * 1000);
+    const stored = (id: string, status: 'REJECTED' | 'INITIATED') =>
+      new StoredObjectEntity(
+        id,
+        'participation',
+        'attempt-1',
+        'SURVEY_ATTACHMENT',
+        `participation/attempt-1/${id}-file.pdf`,
+        'rescom-private-storage',
+        'file.pdf',
+        1024,
+        'application/pdf',
+        null,
+        status,
+        status === 'REJECTED' ? 'INFECTED' : 'PENDING',
+        null,
+        null,
+        null,
+        null,
+        null,
+        lapsed,
+      );
+    await repository.save(stored('rejected-1', 'REJECTED'));
+    await repository.save(stored('initiated-1', 'INITIATED'));
+    const realCleanup = new StorageCleanupService(
+      new StorageService(
+        repository,
+        new InMemoryObjectStorageService(),
+        new StubMalwareScannerService(),
+      ),
+    );
+
+    await realCleanup.runCleanup();
+
+    expect((await repository.findById('rejected-1'))?.status).toBe('REJECTED');
+    expect((await repository.findById('initiated-1'))?.status).toBe('EXPIRED');
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 
   it('runs from the interval without leaking a rejection', async () => {

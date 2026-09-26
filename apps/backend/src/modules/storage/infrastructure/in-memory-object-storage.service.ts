@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import {
   CopyObjectOutcome,
+  ObjectPreconditionFailedError,
   ObjectStoragePort,
   StoredObjectMetadata,
 } from '../application/ports/object-storage.port';
@@ -68,8 +69,15 @@ export class InMemoryObjectStorageService implements ObjectStoragePort {
     return 'COPIED';
   }
 
-  async readObject(bucket: string, storageKey: string): Promise<Uint8Array> {
+  async readObject(
+    bucket: string,
+    storageKey: string,
+    ifMatchEtag?: string,
+  ): Promise<Uint8Array> {
     const object = this.objects.get(`${bucket}:${storageKey}`);
+    if (ifMatchEtag && object?.etag !== ifMatchEtag) {
+      throw new ObjectPreconditionFailedError();
+    }
     if (!object) throw new Error('Object not found');
     return Uint8Array.from(object.bytes);
   }
