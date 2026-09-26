@@ -1946,6 +1946,268 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
       });
     });
 
+    describe('dispute hold and resolution guards (BE-5)', () => {
+      const creditTime = new Date('2026-09-20T08:00:00.000Z');
+      const otherAttemptId = '77777777-7777-4777-8777-777777777777';
+      const otherCaseId = '88888888-8888-4888-8888-888888888888';
+      let now: Date;
+
+      beforeEach(async () => {
+        now = creditTime;
+        service = new LedgerService(repo, { clock: () => now });
+        // Two credits pool in the same Pending account, so the balance
+        // pre-checks alone cannot catch a hold or resolution of the wrong
+        // attempt.
+        await service.creditPendingReward({
+          attemptId,
+          publisherId,
+          respondentId,
+          amount: 20,
+        });
+        await service.creditPendingReward({
+          attemptId: otherAttemptId,
+          publisherId,
+          respondentId,
+          amount: 20,
+        });
+      });
+
+      function hold(id = caseId, attempt = attemptId, amount = 20) {
+        return service.placeDisputeHold({
+          caseId: id,
+          attemptId: attempt,
+          respondentId,
+          amount,
+        });
+      }
+
+      function resolve(
+        outcome: 'RELEASE_TO_RESPONDENT' | 'REFUND_TO_PUBLISHER',
+        id = caseId,
+        amount = 20,
+      ) {
+        return service.resolveDisputeHold({
+          caseId: id,
+          respondentId,
+          publisherId,
+          amount,
+          outcome,
+        });
+      }
+
+      async function release() {
+        now = new Date(creditTime.getTime() + 49 * HOUR_MS);
+        return service.releasePendingReward({ attemptId });
+      }
+
+      async function expectNoHoldPosted() {
+        expect(
+          await service.findJournalByIdempotencyKey(
+            `external-dispute:${caseId}`,
+          ),
+        ).toBeNull();
+      }
+
+      describe('placeDisputeHold', () => {
+        it('refuses an attempt without a completion credit', async () => {
+          const error = await hold(
+            caseId,
+            '66666666-6666-4666-8666-666666666666',
+          ).catch((e) => e);
+
+          expect(error).toBeInstanceOf(PendingCreditNotFoundException);
+          await expectNoHoldPosted();
+          const wallet = await service.getWallet(respondentId);
+          expect(wallet.balance.pending).toBe(40);
+          expect(wallet.balance.integrityHold).toBe(0);
+        });
+
+        it('refuses a reversed credit', async () => {
+          const credit = await service.findJournalByIdempotencyKey(
+            `external-completion:${attemptId}`,
+          );
+          await service.reverseJournal({ targetJournalId: credit!.id });
+
+          await expect(hold()).rejects.toThrow(PendingCreditNotFoundException);
+          await expectNoHoldPosted();
+          expect((await service.getWallet(respondentId)).balance.pending).toBe(
+            20,
+          );
+        });
+
+        it.each([15, 40])(
+          'refuses an amount (%d) that differs from the credit',
+          async (amount) => {
+            await expect(hold(caseId, attemptId, amount)).rejects.toThrow(
+              IdempotencyConflictException,
+            );
+            await expectNoHoldPosted();
+            const wallet = await service.getWallet(respondentId);
+            expect(wallet.balance.pending).toBe(40);
+            expect(wallet.balance.integrityHold).toBe(0);
+          },
+        );
+
+        it('refuses a credit already released to Available', async () => {
+          await release();
+
+          await expect(hold()).rejects.toThrow(InvalidLedgerOperationException);
+          await expectNoHoldPosted();
+          const wallet = await service.getWallet(respondentId);
+          // The other attempt's 20 pooled points stay Pending.
+          expect(wallet.balance.pending).toBe(20);
+          expect(wallet.balance.integrityHold).toBe(0);
+          expect(wallet.balance.available).toBe(20);
+        });
+
+        it('allows a hold once the release is reversed', async () => {
+          const releaseJournal = await release();
+          await service.reverseJournal({ targetJournalId: releaseJournal.id });
+
+          await expect(hold()).resolves.toBeDefined();
+          const wallet = await service.getWallet(respondentId);
+          expect(wallet.balance.pending).toBe(20);
+          expect(wallet.balance.integrityHold).toBe(20);
+        });
+
+        it('refuses a second hold of the same attempt, even once the first is resolved', async () => {
+          await hold();
+
+          await expect(hold(otherCaseId)).rejects.toThrow(
+            DisputeHoldActiveException,
+          );
+          await resolve('RELEASE_TO_RESPONDENT');
+          await expect(hold(otherCaseId)).rejects.toThrow(
+            DisputeHoldActiveException,
+          );
+          expect(
+            await service.findJournalByIdempotencyKey(
+              `external-dispute:${otherCaseId}`,
+            ),
+          ).toBeNull();
+          const wallet = await service.getWallet(respondentId);
+          // The other attempt's 20 pooled points stay Pending.
+          expect(wallet.balance.pending).toBe(20);
+          expect(wallet.balance.integrityHold).toBe(0);
+        });
+
+        it('allows a new hold of the attempt once the first hold is reversed', async () => {
+          const first = await hold();
+          await service.reverseJournal({ targetJournalId: first.id });
+
+          await expect(hold(otherCaseId)).resolves.toBeDefined();
+          expect(
+            (await service.getWallet(respondentId)).balance.integrityHold,
+          ).toBe(20);
+        });
+
+        it('replays an identical hold and refuses a different one under the same case', async () => {
+          const first = await hold();
+
+          expect((await hold()).id).toBe(first.id);
+          await expect(hold(caseId, attemptId, 15)).rejects.toThrow(
+            IdempotencyConflictException,
+          );
+          await expect(hold(caseId, otherAttemptId)).rejects.toThrow(
+            IdempotencyConflictException,
+          );
+          expect(
+            (await service.getWallet(respondentId)).balance.integrityHold,
+          ).toBe(20);
+        });
+      });
+
+      describe('resolveDisputeHold', () => {
+        it('refuses a case without a dispute hold', async () => {
+          // Another attempt's hold funds the pooled Integrity Hold.
+          await hold(otherCaseId, otherAttemptId);
+
+          await expect(resolve('REFUND_TO_PUBLISHER')).rejects.toThrow(
+            InvalidLedgerOperationException,
+          );
+          expect(
+            await service.findJournalByIdempotencyKey(
+              `dispute-resolution:${caseId}:refund`,
+            ),
+          ).toBeNull();
+          expect(
+            (await service.getWallet(respondentId)).balance.integrityHold,
+          ).toBe(20);
+          expect((await service.getWallet(publisherId)).balance.available).toBe(
+            0,
+          );
+        });
+
+        it('refuses a case whose dispute hold is reversed', async () => {
+          const first = await hold();
+          await hold(otherCaseId, otherAttemptId);
+          await service.reverseJournal({ targetJournalId: first.id });
+
+          await expect(resolve('RELEASE_TO_RESPONDENT')).rejects.toThrow(
+            InvalidLedgerOperationException,
+          );
+          const wallet = await service.getWallet(respondentId);
+          expect(wallet.balance.integrityHold).toBe(20);
+          expect(wallet.balance.available).toBe(0);
+        });
+
+        it.each([10, 40])(
+          'refuses an amount (%d) that differs from the hold',
+          async (amount) => {
+            await hold();
+            await hold(otherCaseId, otherAttemptId);
+
+            await expect(
+              resolve('RELEASE_TO_RESPONDENT', caseId, amount),
+            ).rejects.toThrow(IdempotencyConflictException);
+            const wallet = await service.getWallet(respondentId);
+            expect(wallet.balance.integrityHold).toBe(40);
+            expect(wallet.balance.available).toBe(0);
+          },
+        );
+
+        it('refuses the opposite resolution while the first stands, and allows it once reversed', async () => {
+          await hold();
+          await hold(otherCaseId, otherAttemptId);
+          const refund = await resolve('REFUND_TO_PUBLISHER');
+
+          await expect(resolve('RELEASE_TO_RESPONDENT')).rejects.toThrow(
+            IdempotencyConflictException,
+          );
+          expect(
+            (await service.getWallet(respondentId)).balance.integrityHold,
+          ).toBe(20);
+
+          await service.reverseJournal({ targetJournalId: refund.id });
+          await expect(resolve('RELEASE_TO_RESPONDENT')).resolves.toBeDefined();
+          const wallet = await service.getWallet(respondentId);
+          expect(wallet.balance.integrityHold).toBe(20);
+          expect(wallet.balance.available).toBe(20);
+          expect((await service.getWallet(publisherId)).balance.available).toBe(
+            0,
+          );
+        });
+      });
+
+      describe('getExternalCreditState', () => {
+        it('reads PENDING again once the release is reversed', async () => {
+          const releaseJournal = await release();
+          expect(await service.getExternalCreditState(attemptId)).toBe(
+            'RELEASED',
+          );
+
+          await service.reverseJournal({ targetJournalId: releaseJournal.id });
+
+          expect(await service.getExternalCreditState(attemptId)).toBe(
+            'PENDING',
+          );
+          expect(await service.getExternalSettlementState(attemptId)).toBe(
+            'PENDING',
+          );
+        });
+      });
+    });
+
     describe('reverseJournal downstream guard (review 3.2)', () => {
       const creditTime = new Date('2026-09-20T08:00:00.000Z');
       const otherAttemptId = '77777777-7777-4777-8777-777777777777';
@@ -2051,8 +2313,13 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
         expect(await repo.findReversalJournal(credit.id)).toBeNull();
       });
 
-      it('refuses to reverse a dispute hold or the release once the dispute is resolved', async () => {
+      it('refuses to reverse a dispute hold or re-instate the release once the dispute is resolved', async () => {
+        // BE-5: a live release blocks the hold, so the release is reversed
+        // before the dispute is opened.
         const releaseJournal = await release();
+        const releaseReversal = await service.reverseJournal({
+          targetJournalId: releaseJournal.id,
+        });
         const hold = await placeHold();
         const resolution = await service.resolveDisputeHold({
           caseId,
@@ -2062,7 +2329,7 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
           outcome: 'REFUND_TO_PUBLISHER',
         });
 
-        for (const target of [hold, releaseJournal]) {
+        for (const target of [hold, releaseReversal]) {
           const error = await service
             .reverseJournal({ targetJournalId: target.id })
             .catch((e) => e);
@@ -2074,7 +2341,10 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
         await service.reverseJournal({ targetJournalId: resolution.id });
         await service.reverseJournal({ targetJournalId: hold.id });
         await expect(
-          service.reverseJournal({ targetJournalId: releaseJournal.id }),
+          service.reverseJournal({
+            targetJournalId: releaseReversal.id,
+            idempotencyKey: 'reinstate-release',
+          }),
         ).resolves.toBeDefined();
       });
 

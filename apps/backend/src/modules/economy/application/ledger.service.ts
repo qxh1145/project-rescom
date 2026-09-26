@@ -1666,6 +1666,11 @@ export class LedgerService {
   /**
    * Moves pending points to INTEGRITY_HOLD when a dispute is opened during the 48-hour window (FR-24, AD-16).
    * Keyed by idempotencyKey: `external-dispute:${caseId}`.
+   *
+   * The hold must match the attempt's unreversed, unreleased
+   * `external-completion:{attemptId}` credit exactly, and an attempt carries
+   * at most one unreversed hold (BE-5): otherwise the hold would take pooled
+   * Pending points that back another credit.
    */
   async placeDisputeHold(
     params: PlaceDisputeHoldParams,
@@ -1678,10 +1683,25 @@ export class LedgerService {
 
     const idempotencyKey = disputeHoldKey(params.caseId);
 
-    // Fast-path idempotency check
+    // Fast-path idempotency check: only an identical hold replays.
     const existing =
       await this.ledgerRepo.findJournalByIdempotencyKey(idempotencyKey);
     if (existing) {
+      if (attemptIdFromDisputeHold(existing) !== params.attemptId) {
+        throw this.replayConflict(idempotencyKey);
+      }
+      await this.assertReplayCompatible(existing, [
+        {
+          userId: params.respondentId,
+          accountClass: 'PENDING',
+          amount: -params.amount,
+        },
+        {
+          userId: params.respondentId,
+          accountClass: 'INTEGRITY_HOLD',
+          amount: params.amount,
+        },
+      ]);
       return existing;
     }
 
@@ -1710,18 +1730,58 @@ export class LedgerService {
         ],
       },
       {
-        // Under the Pending lock (review F1): a hold on a reversed credit
+        // Under the Pending lock (review F1, BE-5): a hold on a missing,
+        // reversed, released or already held credit, or of another amount,
         // would take pooled points that back another credit.
         assertBeforeInsert: async () => {
           const credit = await this.ledgerRepo.findJournalByIdempotencyKey(
             externalCompletionKey(params.attemptId),
           );
-          if (credit) {
-            await this.assertCreditNotReversed(
-              credit,
+          if (!credit) {
+            throw new PendingCreditNotFoundException(
               params.attemptId,
-              'The pending reward of this attempt was reversed; no dispute hold can be placed on it.',
+              'No pending reward credit exists for this attempt; no dispute hold can be placed on it.',
             );
+          }
+          await this.assertCreditNotReversed(
+            credit,
+            params.attemptId,
+            'The pending reward of this attempt was reversed; no dispute hold can be placed on it.',
+          );
+
+          const creditEntry = credit.entries.find((entry) => entry.amount > 0);
+          if (!creditEntry || creditEntry.accountId !== respondentPending.id) {
+            throw new InvalidLedgerOperationException(
+              'The completion credit of this attempt is not a Pending reward of this respondent.',
+            );
+          }
+          if (creditEntry.amount !== params.amount) {
+            throw new IdempotencyConflictException(
+              'The requested dispute hold amount does not match the pending credit.',
+            );
+          }
+
+          const release = await this.ledgerRepo.findJournalByIdempotencyKey(
+            releasePendingKey(params.attemptId),
+          );
+          if (release && !(await this.isJournalReversed(release.id))) {
+            throw new InvalidLedgerOperationException(
+              'The pending reward of this attempt was already released; no dispute hold can be placed on it.',
+            );
+          }
+
+          for (const hold of await this.findDisputeHoldsForAttempt(
+            params.attemptId,
+          )) {
+            if (
+              hold.idempotencyKey !== idempotencyKey &&
+              !(await this.isJournalReversed(hold.id))
+            ) {
+              throw new DisputeHoldActiveException(
+                params.attemptId,
+                `Attempt "${params.attemptId}" already has the dispute hold "${hold.idempotencyKey}".`,
+              );
+            }
           }
         },
       },
@@ -1773,14 +1833,54 @@ export class LedgerService {
       ? `Dispute resolution release to respondent: Case ${params.caseId}`
       : `Dispute resolution refund to publisher: Case ${params.caseId}`;
 
-    return this.postJournal({
-      idempotencyKey,
-      description,
-      entries: [
-        { accountId: respondentHold.id, amount: -params.amount },
-        { accountId: destinationAccount.id, amount: params.amount },
-      ],
-    });
+    return this.postJournal(
+      {
+        idempotencyKey,
+        description,
+        entries: [
+          { accountId: respondentHold.id, amount: -params.amount },
+          { accountId: destinationAccount.id, amount: params.amount },
+        ],
+      },
+      {
+        // Under the Integrity Hold lock (BE-5): only the unreversed hold of
+        // this case, for its exact amount, resolves, and only one way.
+        assertBeforeInsert: async () => {
+          const holdKey = disputeHoldKey(params.caseId);
+          const hold =
+            await this.ledgerRepo.findJournalByIdempotencyKey(holdKey);
+          if (!hold || (await this.isJournalReversed(hold.id))) {
+            throw new InvalidLedgerOperationException(
+              `No active dispute hold "${holdKey}" exists to resolve.`,
+            );
+          }
+
+          const holdEntry = hold.entries.find((entry) => entry.amount > 0);
+          if (!holdEntry || holdEntry.accountId !== respondentHold.id) {
+            throw new InvalidLedgerOperationException(
+              'The dispute hold of this case is not an Integrity Hold of this respondent.',
+            );
+          }
+          if (holdEntry.amount !== params.amount) {
+            throw new IdempotencyConflictException(
+              'The requested resolution amount does not match the dispute hold.',
+            );
+          }
+
+          const oppositeKey = disputeResolutionKey(
+            params.caseId,
+            isRelease ? 'refund' : 'release',
+          );
+          const opposite =
+            await this.ledgerRepo.findJournalByIdempotencyKey(oppositeKey);
+          if (opposite && !(await this.isJournalReversed(opposite.id))) {
+            throw new IdempotencyConflictException(
+              `Dispute case "${params.caseId}" was already resolved by "${oppositeKey}".`,
+            );
+          }
+        },
+      },
+    );
   }
 
   /**
@@ -1842,7 +1942,8 @@ export class LedgerService {
   /**
    * The current state of the External completion credit of `attemptId`
    * (Epic 9 review P1/P3). A reversal wins over a release, so a credit that
-   * was released and then reversed is `REVERSED`.
+   * was released and then reversed is `REVERSED`; a reversed release reads
+   * `PENDING` again (BE-5).
    */
   async getExternalCreditState(
     attemptId: string,
@@ -1859,7 +1960,10 @@ export class LedgerService {
     const release = await this.ledgerRepo.findJournalByIdempotencyKey(
       releasePendingKey(attemptId),
     );
-    return release ? 'RELEASED' : 'PENDING';
+    if (release && !(await this.isJournalReversed(release.id))) {
+      return 'RELEASED';
+    }
+    return 'PENDING';
   }
 
   /**
