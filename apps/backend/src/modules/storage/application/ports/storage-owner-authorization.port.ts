@@ -10,12 +10,19 @@ export interface FileUploadPolicy {
   maxFiles: number;
 }
 
+/**
+ * `write` (initiate, finalize, attach, delete) requires a live, unexpired
+ * owner record; `read` (status, download URL) also admits a completed one.
+ */
+export type StorageAccess = 'read' | 'write';
+
 export interface StorageOwnerAuthorizationPort {
   authorize(
     ownerContext: string,
     ownerRecordId: string,
     callerUserId: string | null,
-    ownerCapability?: string | null,
+    ownerCapability: string | null | undefined,
+    access: StorageAccess,
   ): Promise<void>;
 
   resolveUploadPolicy(

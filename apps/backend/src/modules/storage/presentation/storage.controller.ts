@@ -12,19 +12,26 @@ import {
   UsePipes,
 } from '@nestjs/common';
 import {
+  FinalizeUploadBody,
+  finalizeUploadBodySchema,
   initiateUploadInputSchema,
   InitiateUploadInput,
-  finalizeUploadInputSchema,
 } from '@rescom/schemas';
 import { StorageService } from '../application/storage.service';
 import { SessionAuthGuard } from '../../auth/presentation/guards/session-auth.guard';
+import { OptionalSessionCsrfGuard } from '../../auth/presentation/guards/optional-session-csrf.guard';
+import { JsonOnlyGuard } from '../../../common/http/json-only.guard';
 import { CurrentUser } from '../../auth/presentation/decorators';
 import { AuthenticatedUser } from '../../auth/presentation/types/authenticated-request.type';
 import { ParseUUIDPipe } from '../../../common/http/parse-uuid.pipe';
 import { ZodValidationPipe } from '../../../common/http/zod-validation.pipe';
 import { createSuccessEnvelope } from '../../../common/http/response.envelope';
 import { Public } from '../../../common/security/public.decorator';
-import { StorageInvalidFileException } from '../application/exceptions/storage.exceptions';
+
+/** Strict finalize body: only an optional SHA-256 checksum (review P12). */
+export const finalizeUploadBodyPipe = new ZodValidationPipe(
+  finalizeUploadBodySchema,
+);
 
 @Controller(['storage', 'api/storage'])
 @UseGuards(SessionAuthGuard)
@@ -33,10 +40,13 @@ export class StorageController {
 
   /**
    * Initiates direct upload to private storage, returning a presigned URL (AD-22).
+   * Guests are admitted; AD-20 CSRF applies (synchronizer token with a
+   * session, allowed Origin/Referer without one).
    */
   @Public()
   @Post('uploads/initiate')
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(OptionalSessionCsrfGuard, JsonOnlyGuard)
   @UsePipes(new ZodValidationPipe(initiateUploadInputSchema))
   async initiateUpload(
     @Body() input: InitiateUploadInput,
@@ -57,27 +67,17 @@ export class StorageController {
   @Public()
   @Post('uploads/:id/finalize')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(OptionalSessionCsrfGuard, JsonOnlyGuard)
   async finalizeUpload(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: any,
+    @Body(finalizeUploadBodyPipe) body: FinalizeUploadBody,
     @CurrentUser() user: AuthenticatedUser | null,
     @Headers('x-storage-capability') capability?: string,
   ) {
-    const parsed = finalizeUploadInputSchema.safeParse({
-      objectId: id,
-      checksum: body?.checksum,
-    });
-    if (!parsed.success) {
-      throw new StorageInvalidFileException(
-        parsed.error.issues[0]?.message || 'Invalid finalize payload.',
-      );
-    }
-    const checksum = parsed.data.checksum;
-
     const result = await this.storageService.finalizeUpload(
       id,
       user?.id ?? null,
-      checksum,
+      body.checksum,
       capability,
     );
     return createSuccessEnvelope(result);
@@ -122,6 +122,7 @@ export class StorageController {
   @Public()
   @Delete('objects/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(OptionalSessionCsrfGuard)
   async deleteObject(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser | null,

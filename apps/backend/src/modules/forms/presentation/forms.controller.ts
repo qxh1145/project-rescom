@@ -26,6 +26,8 @@ import {
   ListFormsQuery,
   publishFormSchema,
   PublishFormInput,
+  reopenSurveySchema,
+  ReopenSurveyInput,
   RotateCompletionCodeInput,
   rotateCompletionCodeSchema,
 } from '@rescom/schemas';
@@ -190,6 +192,40 @@ export class FormsController {
     });
   }
 
+  @Post(':id/reopen')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(CsrfGuard, JsonOnlyGuard)
+  async reopenForm(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(reopenSurveySchema))
+    dto: ReopenSurveyInput,
+  ) {
+    const reopened = await this.formsService.reopenForm(
+      id,
+      {
+        userId: user.id,
+        role: user.role,
+      },
+      dto,
+    );
+    return createSuccessEnvelope(reopened, {
+      message: 'Form reopened successfully with additional quota',
+    });
+  }
+
+  @Get(':id/pricing-quote')
+  async getPricingQuote(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const quote = await this.formsService.getPricingQuote(id, {
+      userId: user.id,
+      role: user.role,
+    });
+    return createSuccessEnvelope(quote);
+  }
+
   @Post(':id/status')
   @HttpCode(HttpStatus.OK)
   @UseGuards(CsrfGuard, JsonOnlyGuard)
@@ -212,6 +248,22 @@ export class FormsController {
     });
   }
 
+  /**
+   * Decision E5-D4: respondents currently taking the survey, whom "Create New
+   * Version" would cut off (the builder warns before confirming).
+   */
+  @Get(':id/in-progress-attempts')
+  async getInProgressAttempts(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const result = await this.formsService.getInProgressAttempts(id, {
+      userId: user.id,
+      role: user.role,
+    });
+    return createSuccessEnvelope(result);
+  }
+
   @Post(':id/versions')
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(CsrfGuard)
@@ -225,7 +277,9 @@ export class FormsController {
     });
     return createSuccessEnvelope(result, {
       message:
-        'New form version created successfully. The form is now in DRAFT status for editing.',
+        result.interruptedAttempts > 0
+          ? `New form version created successfully. The form is now in DRAFT status for editing; ${result.interruptedAttempts} in-progress attempt(s) on the previous version were cut off.`
+          : 'New form version created successfully. The form is now in DRAFT status for editing.',
     });
   }
 

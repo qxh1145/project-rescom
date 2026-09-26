@@ -2,6 +2,34 @@ import { SurveyTargetingCriteria } from "../forms/form-targeting.schema";
 import { DemographicProfileDto } from "../users/demographic-profile.schema";
 
 /**
+ * Canonical form for free-text targeting values (location, occupation, field
+ * of study). NFC makes composed ("Hà Nội" typed on Windows/Android) and
+ * decomposed (macOS input) spellings equal; whitespace runs collapse to one
+ * space. Synonyms and diacritic-less spellings ("Ha Noi") are NOT folded.
+ */
+export function normalizeTargetingText(value: string): string {
+  return value
+    .normalize("NFC")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase("vi");
+}
+
+function matchesAnyText(
+  allowed: readonly string[],
+  profileValue: string | null | undefined,
+): boolean {
+  if (typeof profileValue !== "string") return false;
+  const normalizedProfileValue = normalizeTargetingText(profileValue);
+  if (normalizedProfileValue.length === 0) return false;
+  return allowed.some(
+    (candidate) =>
+      typeof candidate === "string" &&
+      normalizeTargetingText(candidate) === normalizedProfileValue,
+  );
+}
+
+/**
  * Determines whether a respondent's demographic profile satisfies a survey's targeting criteria.
  *
  * Matching Rules:
@@ -9,7 +37,8 @@ import { DemographicProfileDto } from "../users/demographic-profile.schema";
  * 2. If targeting specifies criteria and profile is null/undefined -> returns false.
  * 3. Logical AND across categories: All specified criteria categories must be satisfied.
  * 4. Logical OR within category arrays (e.g. locations, genders, occupations, fieldOfStudy).
- * 5. String comparisons are case-insensitive and whitespace-trimmed.
+ * 5. String comparisons use `normalizeTargetingText`: Unicode NFC, trimmed,
+ *    internal whitespace collapsed, lower-cased (Vietnamese locale).
  */
 export function isSurveyTargetingMatch(
   targeting: SurveyTargetingCriteria | null | undefined,
@@ -57,14 +86,7 @@ export function isSurveyTargetingMatch(
 
   // 3. Location check
   if (hasLocations && targeting.locations) {
-    if (!profile.location || profile.location.trim().length === 0) {
-      return false;
-    }
-    const normalizedUserLoc = profile.location.trim().toLowerCase();
-    const matchesLocation = targeting.locations.some(
-      (loc) => loc.trim().toLowerCase() === normalizedUserLoc,
-    );
-    if (!matchesLocation) {
+    if (!matchesAnyText(targeting.locations, profile.location)) {
       return false;
     }
   }
@@ -81,28 +103,14 @@ export function isSurveyTargetingMatch(
 
   // 5. Occupation check
   if (hasOccupations && targeting.occupations) {
-    if (!profile.occupation || profile.occupation.trim().length === 0) {
-      return false;
-    }
-    const normalizedUserOcc = profile.occupation.trim().toLowerCase();
-    const matchesOccupation = targeting.occupations.some(
-      (occ) => occ.trim().toLowerCase() === normalizedUserOcc,
-    );
-    if (!matchesOccupation) {
+    if (!matchesAnyText(targeting.occupations, profile.occupation)) {
       return false;
     }
   }
 
   // 6. Field of Study check
   if (hasFieldOfStudy && targeting.fieldOfStudy) {
-    if (!profile.fieldOfStudy || profile.fieldOfStudy.trim().length === 0) {
-      return false;
-    }
-    const normalizedUserField = profile.fieldOfStudy.trim().toLowerCase();
-    const matchesField = targeting.fieldOfStudy.some(
-      (field) => field.trim().toLowerCase() === normalizedUserField,
-    );
-    if (!matchesField) {
+    if (!matchesAnyText(targeting.fieldOfStudy, profile.fieldOfStudy)) {
       return false;
     }
   }

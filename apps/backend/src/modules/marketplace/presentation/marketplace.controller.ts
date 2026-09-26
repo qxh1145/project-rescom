@@ -4,7 +4,18 @@ import { SessionAuthGuard } from '../../auth/presentation/guards/session-auth.gu
 import { CurrentUser } from '../../auth/presentation/decorators';
 import { AuthenticatedUser } from '../../auth/presentation/types/authenticated-request.type';
 import { createSuccessEnvelope } from '../../../common/http/response.envelope';
-import { marketplaceFeedQuerySchema } from '@rescom/schemas';
+import { ZodValidationPipe } from '../../../common/http/zod-validation.pipe';
+import {
+  MarketplaceFeedQueryDto,
+  marketplaceFeedQuerySchema,
+} from '@rescom/schemas';
+
+/** Invalid feed query parameters are a 400 VALIDATION_ERROR, never a 500. */
+export const marketplaceFeedQueryPipe = new ZodValidationPipe(
+  marketplaceFeedQuerySchema,
+  'VALIDATION_ERROR',
+  'query',
+);
 
 @Controller('marketplace')
 @UseGuards(SessionAuthGuard)
@@ -14,9 +25,8 @@ export class MarketplaceController {
   @Get('feed')
   async getFeed(
     @CurrentUser() user: AuthenticatedUser,
-    @Query() rawQuery?: Record<string, unknown>,
+    @Query(marketplaceFeedQueryPipe) query?: MarketplaceFeedQueryDto,
   ) {
-    const query = marketplaceFeedQuerySchema.parse(rawQuery ?? {});
     const feed = await this.marketplaceService.getFeed(user.id, query);
     return createSuccessEnvelope(feed);
   }

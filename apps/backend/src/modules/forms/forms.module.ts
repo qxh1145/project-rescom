@@ -2,12 +2,20 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../common/database/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 import { UsersModule } from '../users/users.module';
+import { EconomyModule } from '../economy/economy.module';
 import { FormsController } from './presentation/forms.controller';
 import { PublicFormsController } from './presentation/public-forms.controller';
 import { FormsService } from './application/forms.service';
+import { FormsEscrowCoordinator } from './application/forms-escrow.coordinator';
+import { FormModerationCommands } from './application/form-moderation.commands';
+import {
+  UNIT_OF_WORK_PORT,
+  UnitOfWorkPort,
+} from '../../common/database/unit-of-work.port';
 import { PublicFormsService } from './application/public-forms.service';
 import { CaptchaValidatorService } from './infrastructure/captcha-validator.service';
 import { GuestSubmissionRateLimiter } from './infrastructure/guest-submission-rate-limiter';
+import { LedgerService } from '../economy/application/ledger.service';
 import {
   FORM_REPOSITORY_PORT,
   FormRepositoryPort,
@@ -25,7 +33,7 @@ import {
 import { PrismaSurveyResponseRepository } from '../marketplace/infrastructure/prisma-survey-response.repository';
 
 @Module({
-  imports: [PrismaModule, AuthModule, UsersModule],
+  imports: [PrismaModule, AuthModule, UsersModule, EconomyModule],
   controllers: [FormsController, PublicFormsController],
   providers: [
     {
@@ -43,12 +51,41 @@ import { PrismaSurveyResponseRepository } from '../marketplace/infrastructure/pr
     CaptchaValidatorService,
     GuestSubmissionRateLimiter,
     {
+      provide: FormsEscrowCoordinator,
+      useFactory: (
+        formRepo: FormRepositoryPort,
+        ledgerService: LedgerService,
+      ) => new FormsEscrowCoordinator(formRepo, ledgerService),
+      inject: [FORM_REPOSITORY_PORT, LedgerService],
+    },
+    {
       provide: FormsService,
       useFactory: (
         formRepository: FormRepositoryPort,
         completionCodePort: CompletionCodePort,
-      ) => new FormsService(formRepository, completionCodePort),
-      inject: [FORM_REPOSITORY_PORT, COMPLETION_CODE_PORT],
+        escrowCoordinator: FormsEscrowCoordinator,
+        unitOfWork: UnitOfWorkPort,
+      ) =>
+        new FormsService(
+          formRepository,
+          completionCodePort,
+          escrowCoordinator,
+          unitOfWork,
+        ),
+      inject: [
+        FORM_REPOSITORY_PORT,
+        COMPLETION_CODE_PORT,
+        FormsEscrowCoordinator,
+        UNIT_OF_WORK_PORT,
+      ],
+    },
+    {
+      provide: FormModerationCommands,
+      useFactory: (
+        formRepository: FormRepositoryPort,
+        escrowCoordinator: FormsEscrowCoordinator,
+      ) => new FormModerationCommands(formRepository, escrowCoordinator),
+      inject: [FORM_REPOSITORY_PORT, FormsEscrowCoordinator],
     },
     {
       provide: PublicFormsService,
@@ -74,6 +111,7 @@ import { PrismaSurveyResponseRepository } from '../marketplace/infrastructure/pr
   ],
   exports: [
     FormsService,
+    FormModerationCommands,
     FORM_REPOSITORY_PORT,
     COMPLETION_CODE_PORT,
     PublicFormsService,

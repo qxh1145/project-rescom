@@ -7,6 +7,10 @@ import {
   EmailAlreadyRegisteredException,
   InvalidCredentialsException,
 } from './exceptions/auth.exceptions';
+import { StarterPointsCoordinator } from '../../economy/application/starter-points.coordinator';
+import { LedgerService } from '../../economy/application/ledger.service';
+import { InMemoryLedgerRepository } from '../../economy/infrastructure/in-memory-ledger.repository';
+import { InMemoryStarterPointsDataProvider } from '../../economy/infrastructure/in-memory-starter-points-data-provider';
 
 describe('AuthService', () => {
   let authService: AuthService;
@@ -298,6 +302,115 @@ describe('AuthService', () => {
       expect(result.accessToken).toBe('session.access.token');
       expect(result.refreshToken).toBe('cred-id.refresh-secret');
       expect(result.csrfToken).toBe('raw-csrf-token');
+    });
+
+    describe('starter points (FR-4)', () => {
+      let ledgerService: LedgerService;
+      let starterPoints: StarterPointsCoordinator;
+      let logger: { warn: jest.Mock };
+      const mockSessionService: any = {
+        createSession: jest.fn().mockResolvedValue({
+          accessToken: 'session.access.token',
+          refreshToken: 'cred-id.refresh-secret',
+          csrfToken: 'raw-csrf-token',
+        }),
+      };
+
+      beforeEach(() => {
+        ledgerService = new LedgerService(new InMemoryLedgerRepository());
+        logger = { warn: jest.fn() };
+        // Unknown users register "now" in the in-memory provider.
+        starterPoints = new StarterPointsCoordinator(
+          ledgerService,
+          new InMemoryStarterPointsDataProvider(),
+          undefined,
+          logger,
+        );
+        mockUserRepo.findByEmail.mockResolvedValue(null);
+        mockUserRepo.create.mockResolvedValue(sampleUser);
+      });
+
+      function authWith(sessionService?: any) {
+        return new AuthService(
+          mockUserRepo,
+          mockPasswordHasher,
+          mockTokenService,
+          () => sampleUser.id,
+          sessionService,
+          starterPoints,
+        );
+      }
+
+      async function frozenBalance() {
+        return (await ledgerService.getWallet(sampleUser.id)).balance.frozen;
+      }
+
+      async function grantJournals() {
+        return (
+          await ledgerService.getWallet(sampleUser.id)
+        ).transactions.filter(
+          (t) => t.idempotencyKey === `starter-grant:${sampleUser.id}`,
+        ).length;
+      }
+
+      it('grants 100 Frozen starter points to a newly registered user', async () => {
+        await authWith(mockSessionService).register({
+          email: 'test@example.com',
+          password: 'ValidPassword123!',
+        });
+
+        expect(await frozenBalance()).toBe(100);
+      });
+
+      it.each([
+        ['with SessionService', mockSessionService],
+        ['legacy token fallback', undefined],
+      ])(
+        'still registers the user when the grant fails (%s), and the next login grants exactly once',
+        async (_label, sessionService) => {
+          const auth = authWith(sessionService);
+          jest
+            .spyOn(ledgerService, 'grantStarterPoints')
+            .mockRejectedValueOnce(new Error('ledger unavailable'));
+
+          const registered = await auth.register({
+            email: 'test@example.com',
+            password: 'ValidPassword123!',
+          });
+
+          expect(registered.user.id).toBe(sampleUser.id);
+          expect(registered.accessToken).toBeDefined();
+          expect(await frozenBalance()).toBe(0);
+          expect(logger.warn).toHaveBeenCalledWith(
+            expect.stringContaining(sampleUser.id),
+          );
+
+          mockUserRepo.findByEmail.mockResolvedValue(sampleUser);
+          mockPasswordHasher.compare.mockResolvedValue(true);
+          const credentials = {
+            email: 'test@example.com',
+            password: 'ValidPassword123!',
+          };
+          await auth.login(credentials);
+          await auth.login(credentials);
+
+          expect(await frozenBalance()).toBe(100);
+          expect(await grantJournals()).toBe(1);
+        },
+      );
+
+      it('does not grant on a failed login', async () => {
+        mockUserRepo.findByEmail.mockResolvedValue(sampleUser);
+        mockPasswordHasher.compare.mockResolvedValue(false);
+
+        await expect(
+          authWith(mockSessionService).login({
+            email: 'test@example.com',
+            password: 'WrongPassword1!',
+          }),
+        ).rejects.toThrow(InvalidCredentialsException);
+        expect(await frozenBalance()).toBe(0);
+      });
     });
   });
 });

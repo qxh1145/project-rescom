@@ -2,17 +2,26 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../common/database/prisma.service';
 import {
+  currentClient,
+  runInTransaction,
+} from '../../../common/database/prisma-unit-of-work';
+import { listCompletionRefsForForm } from '../../../common/database/completion-counts';
+import {
   CreateVersionOptions,
+  FormCompletionRefs,
   FormRepositoryPort,
   FormSummaryItem,
   FormUpdateExpectation,
   FormWithVersion,
   ListFormsParams,
+  ModerationQueuePage,
+  ModerationQueueParams,
 } from '../application/ports/form-repository.port';
 import { FormEntity } from '../domain/form.entity';
 import { FormVersionEntity } from '../domain/form-version.entity';
 import {
   DraftFormDefinition,
+  FormCloseKind,
   FormStatusEnum,
   FormTypeEnum,
   SurveyTargetingCriteria,
@@ -31,6 +40,9 @@ function toFormEntity(raw: any, versions?: FormVersionEntity[]): FormEntity {
     raw.createdAt,
     raw.updatedAt,
     versions,
+    raw.closeCount ?? 0,
+    raw.estimatedDurationMinutes ?? null,
+    (raw.closeKind as FormCloseKind | null | undefined) ?? null,
   );
 }
 
@@ -59,8 +71,9 @@ export class PrismaFormRepository implements FormRepositoryPort {
   ): Promise<FormWithVersion> {
     // Run Form + FormVersion creation atomically so a partial write
     // (e.g. form row inserted but version row fails) never leaves the DB in an
-    // inconsistent state.
-    const raw = await this.prisma.$transaction(async (tx) => {
+    // inconsistent state. Joins the caller's Unit of Work when one is open
+    // (AD-16: auto-publish reserves Escrow in the same transaction).
+    const raw = await runInTransaction(this.prisma, async (tx) => {
       return tx.form.create({
         data: {
           id: form.id,
@@ -71,6 +84,9 @@ export class PrismaFormRepository implements FormRepositoryPort {
           description: form.description,
           rewardPerResponse: form.rewardPerResponse,
           expectedCompletions: form.expectedCompletions,
+          closeCount: form.closeCount,
+          closeKind: form.closeKind,
+          estimatedDurationMinutes: form.estimatedDurationMinutes,
           updatedAt: form.updatedAt,
           versions: {
             create: {
@@ -107,7 +123,9 @@ export class PrismaFormRepository implements FormRepositoryPort {
   }
 
   async findById(id: string): Promise<FormWithVersion | null> {
-    const raw = await this.prisma.form.findUnique({
+    // Joins the ambient Unit of Work (Epic 6 review P7): the close/publish/
+    // reopen coordinators read the form inside their transaction.
+    const raw = await currentClient(this.prisma).form.findUnique({
       where: { id },
       include: {
         versions: {
@@ -183,7 +201,9 @@ export class PrismaFormRepository implements FormRepositoryPort {
     version?: FormVersionEntity,
     expectation?: FormUpdateExpectation,
   ): Promise<FormWithVersion | null> {
-    const result = await this.prisma.$transaction(async (tx) => {
+    // Joins the caller's Unit of Work when one is open (AD-16: publish/close/
+    // moderation commit the Form transition together with the Escrow journal).
+    const result = await runInTransaction(this.prisma, async (tx) => {
       const updateResult = await tx.form.updateMany({
         where: {
           id: form.id,
@@ -199,6 +219,9 @@ export class PrismaFormRepository implements FormRepositoryPort {
           status: form.status,
           rewardPerResponse: form.rewardPerResponse,
           expectedCompletions: form.expectedCompletions,
+          closeCount: form.closeCount,
+          closeKind: form.closeKind,
+          estimatedDurationMinutes: form.estimatedDurationMinutes,
           updatedAt: form.updatedAt,
         },
       });
@@ -213,6 +236,7 @@ export class PrismaFormRepository implements FormRepositoryPort {
               ? (version.targetingJson as unknown as Prisma.InputJsonValue)
               : Prisma.DbNull,
             externalUrl: version.externalUrl,
+            completionCode: version.completionCode,
             isPublished: version.isPublished,
             publishedAt: version.publishedAt,
           },
@@ -262,18 +286,19 @@ export class PrismaFormRepository implements FormRepositoryPort {
     createdAt: Date,
     options?: CreateVersionOptions,
   ): Promise<FormWithVersion | null> {
-    const result = await this.prisma.$transaction(async (tx) => {
-      const targetStatus = options?.targetStatus ?? 'DRAFT';
-      if (!options?.targetStatus) {
+    const result = await runInTransaction(this.prisma, async (tx) => {
+      if (!options?.expectedStatus) {
         const transition = await tx.form.updateMany({
           where: { id: formId, status: 'PUBLISHED' },
           data: { status: 'DRAFT' },
         });
         if (transition.count !== 1) return null;
       } else {
+        // Rotation keeps the status; the status predicate stops a concurrent
+        // close (and its Escrow refund) from being reverted to PUBLISHED.
         const updateResult = await tx.form.updateMany({
-          where: { id: formId },
-          data: { status: targetStatus, updatedAt: createdAt },
+          where: { id: formId, status: options.expectedStatus },
+          data: { updatedAt: createdAt },
         });
         if (updateResult.count !== 1) return null;
       }
@@ -282,9 +307,9 @@ export class PrismaFormRepository implements FormRepositoryPort {
         where: { formId },
         orderBy: { versionNumber: 'desc' },
       });
-      const baseVersion =
-        existingVersions.find((version) => version.isPublished) ||
-        existingVersions[0];
+      // Clone the newest version: for a PUBLISHED form it is the published
+      // one; for a DRAFT/queued re-publication it carries the pending edits.
+      const baseVersion = existingVersions[0];
       if (!baseVersion) return null;
 
       const nextVersionNumber = existingVersions[0].versionNumber + 1;
@@ -338,7 +363,7 @@ export class PrismaFormRepository implements FormRepositoryPort {
   }
 
   async findAllVersions(formId: string): Promise<FormVersionEntity[]> {
-    const rawVersions = await this.prisma.formVersion.findMany({
+    const rawVersions = await currentClient(this.prisma).formVersion.findMany({
       where: { formId },
       orderBy: { versionNumber: 'asc' },
     });
@@ -346,6 +371,9 @@ export class PrismaFormRepository implements FormRepositoryPort {
   }
 
   async findPublishedForms(): Promise<FormWithVersion[]> {
+    // Only the newest *published* version is loaded per form (not the whole
+    // history with every schemaJson); a PUBLISHED form without a published
+    // version is skipped rather than exposing unmoderated draft content.
     const rawForms = await this.prisma.form.findMany({
       where: {
         status: 'PUBLISHED',
@@ -353,7 +381,9 @@ export class PrismaFormRepository implements FormRepositoryPort {
       orderBy: { updatedAt: 'desc' },
       include: {
         versions: {
+          where: { isPublished: true },
           orderBy: { versionNumber: 'desc' },
+          take: 1,
         },
       },
     });
@@ -361,20 +391,61 @@ export class PrismaFormRepository implements FormRepositoryPort {
     const result: FormWithVersion[] = [];
 
     for (const raw of rawForms) {
-      const versionEntities = raw.versions.map(toFormVersionEntity);
-      const formEntity = toFormEntity(raw, versionEntities);
-      const publishedVersion =
-        versionEntities.find((v) => v.isPublished) ?? versionEntities[0];
-
-      if (publishedVersion) {
-        result.push({
-          form: formEntity,
-          currentVersion: publishedVersion,
-          versions: versionEntities,
-        });
-      }
+      const publishedRaw = raw.versions[0];
+      if (!publishedRaw) continue;
+      const publishedVersion = toFormVersionEntity(publishedRaw);
+      result.push({
+        form: toFormEntity(raw, [publishedVersion]),
+        currentVersion: publishedVersion,
+        versions: [publishedVersion],
+      });
     }
 
     return result;
+  }
+
+  async listRewardableCompletions(formId: string): Promise<FormCompletionRefs> {
+    return listCompletionRefsForForm(currentClient(this.prisma), formId);
+  }
+
+  async countInProgressAttempts(
+    formId: string,
+    startedSince: Date,
+  ): Promise<number> {
+    return currentClient(this.prisma).surveyAttempt.count({
+      where: {
+        surveyId: formId,
+        status: 'IN_PROGRESS',
+        startedAt: { gte: startedSince },
+      },
+    });
+  }
+
+  async findModerationQueue(
+    params: ModerationQueueParams,
+  ): Promise<ModerationQueuePage> {
+    const where: Prisma.FormWhereInput = { status: 'MODERATION_QUEUE' };
+    const [rows, total] = await Promise.all([
+      this.prisma.form.findMany({
+        where,
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        skip: params.offset,
+        take: params.limit,
+        include: { versions: { orderBy: { versionNumber: 'desc' } } },
+      }),
+      this.prisma.form.count({ where }),
+    ]);
+
+    const items: FormWithVersion[] = [];
+    for (const raw of rows) {
+      if (raw.versions.length === 0) continue;
+      const versionEntities = raw.versions.map(toFormVersionEntity);
+      items.push({
+        form: toFormEntity(raw, versionEntities),
+        currentVersion: versionEntities[0],
+        versions: versionEntities,
+      });
+    }
+    return { items, total };
   }
 }

@@ -1,4 +1,9 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleDestroy,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { ImmutableAuditLogException } from '../../modules/admin/application/exceptions/audit-log.exceptions';
 
@@ -7,7 +12,8 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
-  constructor(options?: Prisma.PrismaClientOptions) {
+  // @Optional: Nest injects undefined at boot; tests pass explicit options.
+  constructor(@Optional() options?: Prisma.PrismaClientOptions) {
     super(options);
     this.registerImmutabilityMiddleware();
   }

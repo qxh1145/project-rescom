@@ -1,11 +1,16 @@
 import { LedgerAccountClass } from '@rescom/schemas';
-import { LedgerRepositoryPort } from '../application/ports/ledger-repository.port';
+import {
+  LedgerRepositoryPort,
+  UserLedgerTransactionRecord,
+} from '../application/ports/ledger-repository.port';
 import { LedgerAccountEntity } from '../domain/ledger-account.entity';
 import { LedgerJournalEntity } from '../domain/ledger-journal.entity';
 import { LedgerEntryEntity } from '../domain/ledger-entry.entity';
 import {
   AccountNotFoundException,
+  IdempotencyConflictException,
   InsufficientBalanceException,
+  InvalidLedgerOperationException,
   JournalAlreadyReversedException,
   UnbalancedJournalException,
 } from '../application/exceptions/economy.exceptions';
@@ -14,6 +19,12 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
   private readonly accounts = new Map<string, LedgerAccountEntity>();
   private readonly journals = new Map<string, LedgerJournalEntity>();
   private readonly entries: LedgerEntryEntity[] = [];
+
+  clear(): void {
+    this.accounts.clear();
+    this.journals.clear();
+    this.entries.length = 0;
+  }
 
   async findAccountById(id: string): Promise<LedgerAccountEntity | null> {
     const acc = this.accounts.get(id);
@@ -47,7 +58,19 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
     return list;
   }
 
-  async createAccount(account: LedgerAccountEntity): Promise<LedgerAccountEntity> {
+  async createAccount(
+    account: LedgerAccountEntity,
+  ): Promise<LedgerAccountEntity> {
+    for (const existing of this.accounts.values()) {
+      if (
+        existing.userId === account.userId &&
+        existing.accountClass === account.accountClass &&
+        existing.currency === account.currency
+      ) {
+        return this.cloneAccount(existing);
+      }
+    }
+
     const cloned = this.cloneAccount(account);
     this.accounts.set(account.id, cloned);
     return this.cloneAccount(cloned);
@@ -81,10 +104,77 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
     return null;
   }
 
+  async findJournalsByIdempotencyKeys(
+    idempotencyKeys: string[],
+  ): Promise<LedgerJournalEntity[]> {
+    const keys = new Set(idempotencyKeys);
+    return Array.from(this.journals.values())
+      .filter((j) => keys.has(j.idempotencyKey))
+      .map((j) => this.enrichJournalWithEntries(j));
+  }
+
+  async findJournalsByIdempotencyKeyPrefix(
+    prefix: string,
+  ): Promise<LedgerJournalEntity[]> {
+    return Array.from(this.journals.values())
+      .filter((j) => j.idempotencyKey.startsWith(prefix))
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((j) => this.enrichJournalWithEntries(j));
+  }
+
+  async findReversalJournalsFor(
+    targetJournalIds: string[],
+  ): Promise<LedgerJournalEntity[]> {
+    const ids = new Set(targetJournalIds);
+    return Array.from(this.journals.values())
+      .filter((j) => j.reversesJournalId && ids.has(j.reversesJournalId))
+      .map((j) => this.enrichJournalWithEntries(j));
+  }
+
+  async findMaturedPendingCredits(params: {
+    cutoff: Date;
+    limit: number;
+  }): Promise<LedgerJournalEntity[]> {
+    const prefix = 'external-completion:';
+    const keys = new Set(
+      Array.from(this.journals.values()).map((j) => j.idempotencyKey),
+    );
+    const reversed = new Set(
+      Array.from(this.journals.values())
+        .map((j) => j.reversesJournalId)
+        .filter((id): id is string => Boolean(id)),
+    );
+    return Array.from(this.journals.values())
+      .filter(
+        (j) =>
+          j.idempotencyKey.startsWith(prefix) &&
+          j.createdAt.getTime() <= params.cutoff.getTime() &&
+          !keys.has(
+            `release-pending:${j.idempotencyKey.slice(prefix.length)}`,
+          ) &&
+          !reversed.has(j.id),
+      )
+      .sort(
+        (a, b) =>
+          a.createdAt.getTime() - b.createdAt.getTime() ||
+          a.id.localeCompare(b.id),
+      )
+      .slice(0, Math.max(0, params.limit))
+      .map((j) => this.enrichJournalWithEntries(j));
+  }
+
   async postJournalTransaction(
     journal: LedgerJournalEntity,
     entries: LedgerEntryEntity[],
   ): Promise<LedgerJournalEntity> {
+    for (const existing of this.journals.values()) {
+      if (existing.idempotencyKey === journal.idempotencyKey) {
+        throw new IdempotencyConflictException(
+          `Journal with key "${journal.idempotencyKey}" already exists.`,
+        );
+      }
+    }
+
     // 1. Invariant: Entries must sum to zero
     const sum = entries.reduce((acc, e) => acc + e.amount, 0);
     if (sum !== 0 || entries.length < 2) {
@@ -112,10 +202,14 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
     // 4. Calculate deltas per account
     const deltas = new Map<string, number>();
     for (const entry of entries) {
-      deltas.set(entry.accountId, (deltas.get(entry.accountId) || 0) + entry.amount);
+      deltas.set(
+        entry.accountId,
+        (deltas.get(entry.accountId) || 0) + entry.amount,
+      );
     }
 
     // 5. In ascending order, verify existence and sufficiency (no overdraft)
+    const currencies = new Set<string>();
     for (const accountId of distinctAccountIds) {
       const acc = this.accounts.get(accountId);
       if (!acc) {
@@ -124,12 +218,20 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
         );
       }
 
+      currencies.add(acc.currency);
+
       const delta = deltas.get(accountId) || 0;
       if (acc.wouldOverdraft(delta)) {
         throw new InsufficientBalanceException(
           `Account ${accountId} (${acc.accountClass}) has balance ${acc.balance} and cannot overdraft by delta ${delta}.`,
         );
       }
+    }
+
+    if (currencies.size !== 1) {
+      throw new InvalidLedgerOperationException(
+        'A ledger journal cannot mix account currencies.',
+      );
     }
 
     // 6. Apply updates and append records
@@ -174,13 +276,87 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
     return this.entries.reduce((sum, e) => sum + e.amount, 0);
   }
 
-  async rebuildAccountBalance(accountId: string, newBalance: number): Promise<void> {
+  async rebuildAccountBalance(
+    accountId: string,
+    newBalance: number,
+  ): Promise<void> {
     const acc = this.accounts.get(accountId);
     if (!acc) {
       throw new AccountNotFoundException(`Account ${accountId} not found.`);
     }
     const currentDelta = newBalance - acc.balance;
     acc.applyDelta(currentDelta);
+  }
+
+  async reconcileAccountBalance(accountId: string): Promise<{
+    accountId: string;
+    priorBalance: number;
+    correctedBalance: number;
+  }> {
+    const account = this.accounts.get(accountId);
+    if (!account) {
+      throw new AccountNotFoundException(`Account ${accountId} not found.`);
+    }
+
+    const priorBalance = account.balance;
+    const correctedBalance = this.entries
+      .filter((entry) => entry.accountId === accountId)
+      .reduce((sum, entry) => sum + entry.amount, 0);
+    if (priorBalance !== correctedBalance) {
+      account.applyDelta(correctedBalance - priorBalance);
+    }
+
+    return { accountId, priorBalance, correctedBalance };
+  }
+
+  async findTransactionsByUserId(
+    userId: string,
+    limit = 50,
+    offset = 0,
+  ): Promise<UserLedgerTransactionRecord[]> {
+    const userAccountIds = new Set(
+      Array.from(this.accounts.values())
+        .filter((a) => a.userId === userId)
+        .map((a) => a.id),
+    );
+
+    const userEntries = this.entries.filter((e) =>
+      userAccountIds.has(e.accountId),
+    );
+
+    const entryIndices = new Map<LedgerEntryEntity, number>();
+    this.entries.forEach((e, idx) => entryIndices.set(e, idx));
+
+    userEntries.sort((a, b) => {
+      const timeDiff = b.createdAt.getTime() - a.createdAt.getTime();
+      if (timeDiff !== 0) return timeDiff;
+      return (entryIndices.get(b) ?? 0) - (entryIndices.get(a) ?? 0);
+    });
+
+    const safeOffset = Math.max(0, offset);
+    const safeLimit = Math.max(1, limit);
+    const sliced = userEntries.slice(safeOffset, safeOffset + safeLimit);
+
+    const records: UserLedgerTransactionRecord[] = [];
+    for (const entry of sliced) {
+      const journal = this.journals.get(entry.journalId);
+      const account = this.accounts.get(entry.accountId);
+      if (!journal || !account) continue;
+
+      records.push({
+        entry: LedgerEntryEntity.create({
+          id: entry.id,
+          journalId: entry.journalId,
+          accountId: entry.accountId,
+          amount: entry.amount,
+          createdAt: entry.createdAt,
+        }),
+        journal: this.enrichJournalWithEntries(journal),
+        account: this.cloneAccount(account),
+      });
+    }
+
+    return records;
   }
 
   private cloneAccount(acc: LedgerAccountEntity): LedgerAccountEntity {
@@ -195,7 +371,9 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
     });
   }
 
-  private enrichJournalWithEntries(journal: LedgerJournalEntity): LedgerJournalEntity {
+  private enrichJournalWithEntries(
+    journal: LedgerJournalEntity,
+  ): LedgerJournalEntity {
     const journalEntries = this.entries
       .filter((e) => e.journalId === journal.id)
       .map((e) =>

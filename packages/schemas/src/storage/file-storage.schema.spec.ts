@@ -1,5 +1,6 @@
 import {
   initiateUploadInputSchema,
+  finalizeUploadBodySchema,
   finalizeUploadInputSchema,
   storedObjectStatusEnum,
   storedObjectScanStatusEnum,
@@ -34,6 +35,7 @@ describe("File Storage Schemas", () => {
         mimeType: "image/png",
         ownerContext: "participation",
         ownerRecordId: validUUID,
+        questionId: "block-file-1",
       };
 
       const result = initiateUploadInputSchema.safeParse(invalidTraversal);
@@ -53,11 +55,75 @@ describe("File Storage Schemas", () => {
           mimeType: dangerousMime,
           ownerContext: "participation",
           ownerRecordId: validUUID,
+          questionId: "block-file-1",
         };
 
         const result = initiateUploadInputSchema.safeParse(payload);
         expect(result.success).toBe(false);
       }
+    });
+
+    it("should deny SVG, PHP and Java-archive MIME types (Epic 5 review P17)", () => {
+      expect(DISALLOWED_MIME_TYPES).toEqual(
+        expect.arrayContaining([
+          "image/svg+xml",
+          "application/x-httpd-php",
+          "application/java-archive",
+        ]),
+      );
+      for (const mimeType of ["image/svg+xml", "IMAGE/SVG+XML"]) {
+        const result = initiateUploadInputSchema.safeParse({
+          fileName: "vector.png",
+          fileSize: 1024,
+          mimeType,
+          ownerContext: "participation",
+          ownerRecordId: validUUID,
+          questionId: "block-file-1",
+        });
+        expect(result.success).toBe(false);
+      }
+    });
+
+    it("should require questionId for participation uploads (Epic 5 review P4)", () => {
+      const base = {
+        fileName: "report.pdf",
+        fileSize: 1024,
+        mimeType: "application/pdf",
+        ownerRecordId: validUUID,
+      };
+
+      for (const questionId of [undefined, ""]) {
+        const result = initiateUploadInputSchema.safeParse({
+          ...base,
+          ownerContext: "participation",
+          ...(questionId === undefined ? {} : { questionId }),
+        });
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error.issues[0].path).toEqual(["questionId"]);
+          expect(result.error.issues[0].message).toContain(
+            "questionId is required",
+          );
+        }
+      }
+
+      expect(
+        initiateUploadInputSchema.safeParse({ ...base, ownerContext: "forms" })
+          .success,
+      ).toBe(true);
+    });
+
+    it("should still reject unknown fields", () => {
+      const result = initiateUploadInputSchema.safeParse({
+        fileName: "report.pdf",
+        fileSize: 1024,
+        mimeType: "application/pdf",
+        ownerContext: "participation",
+        ownerRecordId: validUUID,
+        questionId: "block-file-1",
+        storageKey: "attacker/chosen/key",
+      });
+      expect(result.success).toBe(false);
     });
 
     it("should reject file sizes exceeding 50MB", () => {
@@ -97,6 +163,25 @@ describe("File Storage Schemas", () => {
 
       const result = finalizeUploadInputSchema.safeParse(valid);
       expect(result.success).toBe(true);
+    });
+
+    it("should accept an empty finalize body and reject unknown or malformed fields", () => {
+      expect(finalizeUploadBodySchema.safeParse({}).success).toBe(true);
+      expect(
+        finalizeUploadBodySchema.safeParse({ checksum: "a".repeat(64) })
+          .success,
+      ).toBe(true);
+      expect(
+        finalizeUploadBodySchema.safeParse({ checksum: "not-a-sha256" })
+          .success,
+      ).toBe(false);
+      expect(
+        finalizeUploadBodySchema.safeParse({ status: "CLEAN" }).success,
+      ).toBe(false);
+      expect(
+        finalizeUploadInputSchema.safeParse({ objectId: validUUID, extra: 1 })
+          .success,
+      ).toBe(false);
     });
 
     it("should reject non-UUID objectId", () => {

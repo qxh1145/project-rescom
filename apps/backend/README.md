@@ -105,6 +105,13 @@ Truy cập giao diện Web UI tại: [http://localhost:5555](http://localhost:55
 
 ---
 
+## 🔐 Yêu cầu vận hành trước pilot (Ops checklist)
+
+* **Ít nhất 2 tài khoản ADMIN đang hoạt động** (quyết định code review E8-D3, 2026-09-26): Admin không thể tự kiểm duyệt khảo sát do chính mình đăng (`403 MODERATION_SELF_REVIEW_FORBIDDEN`) và không thể tự duyệt yêu cầu nạp điểm của mình (Story 6.6). Nếu chỉ có một Admin, khảo sát của Admin đó sẽ không bao giờ được duyệt. Hãy nâng quyền cho ít nhất hai người dùng (`role = ADMIN`, `status = ACTIVE`) trong cơ sở dữ liệu trước khi chạy pilot.
+* **`PARTICIPATION_RATE_LIMIT_POLICY_VERSION` là bắt buộc ở production** (quyết định E8-D4): tên phiên bản chính sách giới hạn tần suất được ghi vào mọi phản hồi 429 và mục FraudLog. `participation-rate-limit-v1` chỉ dùng cho bộ giá trị mặc định; nếu thay đổi bất kỳ giá trị `PARTICIPATION_*` nào, hãy đặt tên phiên bản mới. Các giá trị giới hạn vẫn đang chờ phê duyệt (PRD Open Question 16). Xem `.env.example`.
+
+---
+
 ## 📁 Cấu trúc thư mục Backend
 
 ```text

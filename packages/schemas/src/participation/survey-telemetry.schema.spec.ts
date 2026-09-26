@@ -168,3 +168,71 @@ describe('Survey Telemetry Schemas', () => {
     });
   });
 });
+
+describe('Epic 5 review P14 — telemetry schema hardening', () => {
+  const base = {
+    clientEventId: '11111111-1111-4111-8111-111111111111',
+    eventType: 'QUESTION_SHOWN',
+    attemptId: '22222222-2222-4222-8222-222222222222',
+    formVersionId: '33333333-3333-4333-8333-333333333333',
+    occurredAt: '2026-09-26T10:00:00.000Z',
+  };
+
+  it('rejects forbidden keys nested in objects and arrays', () => {
+    expect(
+      telemetryEventItemSchema.safeParse({
+        ...base,
+        metadata: { device: { details: { keystrokes: 'abc' } } },
+      }).success,
+    ).toBe(false);
+    expect(
+      telemetryEventItemSchema.safeParse({
+        ...base,
+        metadata: { items: [{ clipboardText: 'x' }] },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects metadata nested deeper than 4 levels', () => {
+    expect(
+      telemetryEventItemSchema.safeParse({
+        ...base,
+        metadata: { a: { b: { c: { d: { e: 1 } } } } },
+      }).success,
+    ).toBe(false);
+    expect(
+      telemetryEventItemSchema.safeParse({
+        ...base,
+        metadata: { a: { b: { c: 1 } } },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('bounds sequence to the int4 range', () => {
+    expect(
+      telemetryEventItemSchema.safeParse({ ...base, sequence: 2_147_483_647 })
+        .success,
+    ).toBe(true);
+    expect(
+      telemetryEventItemSchema.safeParse({ ...base, sequence: 2_147_483_648 })
+        .success,
+    ).toBe(false);
+  });
+
+  it('requires an ISO date-time occurredAt', () => {
+    expect(
+      telemetryEventItemSchema.safeParse({
+        ...base,
+        occurredAt: '2026-09-26T10:00:00+07:00',
+      }).success,
+    ).toBe(true);
+    expect(
+      telemetryEventItemSchema.safeParse({ ...base, occurredAt: 'March 3' })
+        .success,
+    ).toBe(false);
+    expect(
+      telemetryEventItemSchema.safeParse({ ...base, occurredAt: '1700000000' })
+        .success,
+    ).toBe(false);
+  });
+});

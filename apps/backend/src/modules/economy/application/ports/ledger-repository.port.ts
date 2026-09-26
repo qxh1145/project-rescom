@@ -16,8 +16,40 @@ export interface LedgerRepositoryPort {
   createAccount(account: LedgerAccountEntity): Promise<LedgerAccountEntity>;
 
   findJournalById(id: string): Promise<LedgerJournalEntity | null>;
-  findJournalByIdempotencyKey(idempotencyKey: string): Promise<LedgerJournalEntity | null>;
-  findReversalJournal(targetJournalId: string): Promise<LedgerJournalEntity | null>;
+  findJournalByIdempotencyKey(
+    idempotencyKey: string,
+  ): Promise<LedgerJournalEntity | null>;
+  findReversalJournal(
+    targetJournalId: string,
+  ): Promise<LedgerJournalEntity | null>;
+
+  /**
+   * Journals (with entries) for every existing key in `idempotencyKeys`;
+   * unknown keys are skipped. Large key sets are looked up in chunks.
+   */
+  findJournalsByIdempotencyKeys(
+    idempotencyKeys: string[],
+  ): Promise<LedgerJournalEntity[]>;
+
+  /** Journals whose idempotency key starts with `prefix`, oldest first. */
+  findJournalsByIdempotencyKeyPrefix(
+    prefix: string,
+  ): Promise<LedgerJournalEntity[]>;
+
+  /** Direct reversal journals of any of `targetJournalIds`. */
+  findReversalJournalsFor(
+    targetJournalIds: string[],
+  ): Promise<LedgerJournalEntity[]>;
+
+  /**
+   * FR-24 maturity scan: `external-completion:{attemptId}` credits created at
+   * or before `cutoff` that have no `release-pending:{attemptId}` journal and
+   * no reversal, oldest first, at most `limit`.
+   */
+  findMaturedPendingCredits(params: {
+    cutoff: Date;
+    limit: number;
+  }): Promise<LedgerJournalEntity[]>;
 
   /**
    * Atomically posts a journal and its entries in one database transaction,
@@ -44,4 +76,29 @@ export interface LedgerRepositoryPort {
    * Updates an account's denormalized balance to match the calculated sum of entries.
    */
   rebuildAccountBalance(accountId: string, newBalance: number): Promise<void>;
+
+  /**
+   * Locks an account, derives its balance from entries, and repairs the
+   * projection atomically so concurrent postings cannot be overwritten.
+   */
+  reconcileAccountBalance(accountId: string): Promise<{
+    accountId: string;
+    priorBalance: number;
+    correctedBalance: number;
+  }>;
+
+  /**
+   * Retrieves transaction history for accounts belonging to a given user.
+   */
+  findTransactionsByUserId(
+    userId: string,
+    limit?: number,
+    offset?: number,
+  ): Promise<UserLedgerTransactionRecord[]>;
+}
+
+export interface UserLedgerTransactionRecord {
+  entry: LedgerEntryEntity;
+  journal: LedgerJournalEntity;
+  account: LedgerAccountEntity;
 }

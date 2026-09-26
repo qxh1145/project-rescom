@@ -3,6 +3,7 @@ stepsCompleted: ["step-01-validate-prerequisites", "step-02-design-epics", "step
 inputDocuments:
   - _bmad-output/planning-artifacts/prds/prd-project-rescom-2026-08-08/prd.md
   - _bmad-output/planning-artifacts/architecture/architecture-project-rescom-2026-08-08/ARCHITECTURE-SPINE.md
+  - _bmad-output/planning-artifacts/sprint-change-proposal-2026-09-26.md
 ---
 
 # project-rescom - Epic Breakdown
@@ -134,6 +135,7 @@ NFR-22: CSAT target > 4.0/5.0
 - **Epic 8: Moderation & Anti-Fraud** -> FR-20, FR-28, FR-45, FR-46, FR-47, FR-48, FR-53, FR-54, FR-55
 - **Epic 9: Analytics & Notifications** -> FR-41, FR-42, FR-43, FR-44, FR-56, FR-57
 - **Epic 10: Research Integrity Foundation & TrustGraph** -> FR-58, FR-59, FR-60, FR-61, FR-62, FR-63, FR-64, FR-65, FR-66, FR-67
+- **Epic 11: Production Deployment & Pilot Readiness** -> NFR-ADD-3, NFR-ADD-4, NFR-ADD-5, AD-23 (no new FRs)
 
 ## Epic List
 
@@ -176,6 +178,10 @@ NFR-22: CSAT target > 4.0/5.0
 ### Epic 10: Research Integrity Foundation & TrustGraph
 **Goal:** Internal Form responses produce privacy-conscious telemetry, explainable integrity assessments, respondent reliability history, Survey Quality assessments, and TrustGraph-ready evidence without affecting external form compatibility.
 **FRs covered:** FR-58, FR-59, FR-60, FR-61, FR-62, FR-63, FR-64, FR-65, FR-66, FR-67
+
+### Epic 11: Production Deployment & Pilot Readiness
+**Goal:** The Phase 1 platform runs for pilot students on a simple, portable Google Cloud topology (Architecture AD-23) with automated deploys, error and uptime alerts, tested backups, and a rehearsed exit path to another provider.
+**FRs covered:** none (operational epic) — NFR-ADD-3, NFR-ADD-4, NFR-ADD-5, AD-23. Added by `sprint-change-proposal-2026-09-26.md`.
 
 ### Additional Production Requirements (Newly Added)
 
@@ -1077,3 +1083,107 @@ So that the system can track graph evidence without requiring a separate graph d
 **Then** typed `TrustEdge` records are projected in PostgreSQL (e.g., Respondent → Response, FormVersion → Publisher, Response → ReviewOutcome) (FR-66, FR-67, AD-15).
 **And** raw graph and device linkages are strictly isolated and never exposed through Publisher-facing APIs.
 **And** the projection is fully rebuildable from primary transactional tables.
+
+## Epic 11: Production Deployment & Pilot Readiness
+
+**Goal:** The Phase 1 platform runs for pilot students on a simple, portable Google Cloud topology (Architecture AD-23) with automated deploys, error and uptime alerts, tested backups, and a rehearsed exit path to another provider.
+
+### Story 11.1: Deployment-Ready Backend Packaging
+
+As a Developer,
+I want the backend packaged as one production Docker image with a production Compose file,
+So that the same artifact runs locally, on the Google Cloud VM, and on any later host.
+
+**Acceptance Criteria:**
+
+**Given** the npm workspace
+**When** the production image is built
+**Then** a multi-stage `Dockerfile` builds `@rescom/schemas` and the backend, runs as a non-root user on Node 22, and contains no secrets.
+**And** `docker-compose.prod.yml` runs `caddy`, `api` and `clamav` with restart policies and healthchecks; no database, object storage or other business data lives in a container volume (AD-23).
+**And** the `Caddyfile` proxies `api.rescom.com.vn` to the API and restores the client address from `CF-Connecting-IP`; with `TRUST_PROXY_HOPS=1` the API logs and rate-limits by the real client IP.
+**And** liveness and readiness endpoints exist; readiness reports database reachability and scanner reachability without leaking payloads (AD-17, NFR-ADD-4).
+**And** scheduled durable work (pending-credit release, frozen-starter expiry, reservation expiry, Outbox dispatch) runs in-process behind one configuration flag so exactly one scheduler owner exists, still claiming work through PostgreSQL (AD-5 amendment, AD-10).
+**And** the S3 client sets `requestChecksumCalculation` and `responseChecksumValidation` to `WHEN_REQUIRED`, and presigned upload plus download pass against Google Cloud Storage's S3 interoperability endpoint as well as local MinIO.
+**And** local `docker-compose.yml` pins MinIO and `minio/mc` to fixed tags instead of `latest`.
+**And** no provider-specific SDK (`@google-cloud/*`) is introduced (AD-23).
+
+### Story 11.2: Google Cloud Pilot Infrastructure Provisioning
+
+As an Operator,
+I want the pilot infrastructure provisioned in one region with least exposure,
+So that the API, database and storage are reachable only through the intended paths.
+
+**Acceptance Criteria:**
+
+**Given** a Google Cloud project on the trial billing account
+**When** the environment is provisioned in `asia-southeast1`
+**Then** budget alerts fire at USD 50, 100 and 200.
+**And** Cloud SQL for PostgreSQL has private IP only, automated backups and point-in-time recovery, and `prisma migrate deploy` has been applied.
+**And** one private Cloud Storage bucket exists per environment with HMAC credentials scoped to it and CORS limited to the frontend origin for presigned uploads; the bucket name is chosen so it can be reused on the post-trial host or its rewrite is planned (`StoredObject.bucket`).
+**And** the VM firewall admits 80/443 only from Cloudflare IP ranges; SSH uses keys only and is limited to team addresses.
+**And** Cloudflare proxies `rescom.com.vn` (Vercel) and `api.rescom.com.vn` (VM) with SSL mode Full (strict).
+**And** Vercel serves the frontend with function region `sin1` and `RESCOM_API_URL` pointing at the API.
+**And** the Google OAuth client lists the production redirect URI and frontend URLs.
+**And** secrets live in the VM `.env` (file mode 600) and GitHub Actions secrets only, never in the repository (NFR-ADD-3).
+
+### Story 11.3: CI/CD Pipeline with Rollback
+
+As a Developer,
+I want every merge to main verified, built and deployed automatically,
+So that releases are repeatable and a bad release can be reverted in minutes.
+
+**Acceptance Criteria:**
+
+**Given** a push to the main branch
+**When** the GitHub Actions workflow runs
+**Then** it runs `npm run verify` and stops on failure.
+**And** it builds the backend image, tags it with the commit SHA and pushes it to GHCR.
+**And** it deploys over SSH by pulling the tag, running `prisma migrate deploy`, restarting the stack and waiting for readiness; a failed readiness check restores the previous tag automatically.
+**And** a manual workflow input redeploys any earlier tag (rollback).
+**And** the frontend continues to deploy through Vercel's Git integration.
+
+### Story 11.4: Observability, Alerting and Backup-Restore Drill
+
+As an Operator,
+I want errors, downtime and backup failures to reach the team quickly,
+So that pilot incidents are noticed and recoverable.
+
+**Acceptance Criteria:**
+
+**Given** the deployed pilot environment
+**When** observability is configured
+**Then** Sentry captures frontend and backend exceptions with release tags, with request bodies, cookies and personal data scrubbed (NFR-ADD-4).
+**And** an external uptime monitor checks `rescom.com.vn` and the API readiness endpoint and alerts Telegram or email.
+**And** Cloud SQL backup failures and VM disk above 80% raise alerts.
+**And** one point-in-time restore of Cloud SQL into a scratch instance has been performed and its steps written down; RPO, RTO and backup retention are proposed for Operations approval (NFR-ADD-5).
+
+### Story 11.5: Pilot Launch Readiness
+
+As the Product Owner,
+I want a launch checklist verified on production,
+So that the first pilot students meet a working, governed platform.
+
+**Acceptance Criteria:**
+
+**Given** Stories 11.1–11.4 are done
+**When** launch readiness is reviewed
+**Then** the AD-21 processing register has Product plus Privacy/Legal approval; without it the launch date moves.
+**And** at least two active ADMIN accounts exist (self-moderation and self-top-up approval are forbidden, decision E8-D3).
+**And** real top-up bank account values are configured (production refuses placeholders) and `PARTICIPATION_RATE_LIMIT_POLICY_VERSION` is set.
+**And** the Form Builder hides the "Generate with AI" entry point while the AI Gateway is unconfigured (AD-3/AD-4 amendment).
+**And** a full-journey smoke test passes on production: register (email and Google), onboarding, create and publish a form, moderation approval, answer with a file upload, top-up approval, and notifications.
+
+### Story 11.6: Post-Trial Hosting Decision and Portability Rehearsal
+
+As the Product Owner,
+I want the post-trial hosting choice made and rehearsed before the credit ends,
+So that the pilot never loses data to trial expiry.
+
+**Acceptance Criteria:**
+
+**Given** the Google Cloud trial reaches about day 70
+**When** the hosting decision is prepared
+**Then** the team asks the university about FPT Cloud sponsorship and compares it with paid Google Cloud.
+**And** if FPT Cloud is a candidate, FPT Object Storage passes presigned upload/download with the unchanged AWS SDK storage adapter (fallback: Cloudflare R2).
+**And** a rehearsal restores a copy of the database and objects on the target, switches configuration only, and passes the smoke test.
+**And** the chosen path is executed before trial day 90, and never later than the end of the 30-day grace period, with a maintenance window that stops writes during `pg_dump`/`pg_restore` so the ledger stays consistent.

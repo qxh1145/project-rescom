@@ -8,16 +8,32 @@ import {
 
 export { VerifierParts };
 
+/** The only verifier key version currently configured (single-key ring). */
+export const CURRENT_COMPLETION_CODE_KEY_VERSION = 'v1';
+
+const MIN_SECRET_LENGTH = 32;
+
 @Injectable()
 export class CompletionCodeService implements CompletionCodePort {
   private readonly secretKey: string;
 
+  /**
+   * Key precedence (Story 4.5 AC2.3): `COMPLETION_CODE_HMAC_SECRET`, then
+   * `JWT_SECRET` (via EnvService when injected, else `process.env`). There is
+   * no hard-coded fallback: a missing or short key fails fast.
+   */
   constructor(@Optional() envService?: EnvService) {
-    this.secretKey =
+    const secret =
+      envService?.completionCodeHmacSecret ||
       envService?.jwtSecret ||
-      process.env.COMPLETION_CODE_SECRET ||
-      process.env.JWT_SECRET ||
-      'rescom_completion_code_secret_key_at_least_32_chars!';
+      process.env.COMPLETION_CODE_HMAC_SECRET ||
+      process.env.JWT_SECRET;
+    if (!secret || secret.length < MIN_SECRET_LENGTH) {
+      throw new Error(
+        `Completion code HMAC secret is missing or shorter than ${MIN_SECRET_LENGTH} characters (set COMPLETION_CODE_HMAC_SECRET or JWT_SECRET)`,
+      );
+    }
+    this.secretKey = secret;
   }
 
   /**
@@ -37,7 +53,7 @@ export class CompletionCodeService implements CompletionCodePort {
   computeVerifier(
     formVersionId: string,
     plaintextCode: string,
-    keyVersion = 'v1',
+    keyVersion = CURRENT_COMPLETION_CODE_KEY_VERSION,
   ): string {
     const payload = `${formVersionId}:${plaintextCode.trim()}`;
     const digest = crypto
@@ -65,6 +81,21 @@ export class CompletionCodeService implements CompletionCodePort {
   }
 
   /**
+   * Epic 5 review P9: a verifier is usable only when it parses, names the
+   * configured key version and carries a SHA-256 hex digest. A null, legacy
+   * or foreign-key verifier can never match, so callers must not charge the
+   * respondent a strike for it.
+   */
+  canVerify(storedVerifier?: string | null): boolean {
+    const parsed = this.parseVerifier(storedVerifier);
+    return (
+      parsed !== null &&
+      parsed.keyVersion === CURRENT_COMPLETION_CODE_KEY_VERSION &&
+      /^[0-9a-f]{64}$/i.test(parsed.digest)
+    );
+  }
+
+  /**
    * Validates a candidate completion code against a stored keyed verifier
    * using constant-time comparison (crypto.timingSafeEqual) to prevent timing attacks.
    *
@@ -86,6 +117,12 @@ export class CompletionCodeService implements CompletionCodePort {
 
     const parsed = this.parseVerifier(storedVerifier);
     if (!parsed) {
+      return false;
+    }
+    // `keyVersion` must select a configured key. Only the current key exists
+    // (no multi-key ring yet), so any other version can never verify — it must
+    // not be HMAC-ed with the current key under a different label.
+    if (parsed.keyVersion !== CURRENT_COMPLETION_CODE_KEY_VERSION) {
       return false;
     }
 

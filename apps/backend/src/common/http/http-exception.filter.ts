@@ -35,6 +35,7 @@ import {
   CannotDemoteSelfException,
   CannotDemoteLastAdminException,
 } from '../../modules/users/application/exceptions/user-admin.exceptions';
+import { DemographicProfileRequiredException } from '../../modules/users/application/exceptions/demographics.exceptions';
 import {
   AuditLogNotFoundException,
   ImmutableAuditLogException,
@@ -56,14 +57,37 @@ import {
   CaptchaVerificationFailedException,
   GuestRateLimitExceededException,
   InvalidGuestSubmissionException,
+  FormModerationRequiredException,
+  ModerationEscrowNotFundedException,
+  FormNotReopenableException,
+  PricingRewardOutOfBandException,
 } from '../../modules/forms/application/exceptions/form.exceptions';
 import {
   ParticipantNotEligibleException,
+  SelfParticipationForbiddenException,
   SurveyAlreadyCompletedException,
   SurveyQuotaFullException,
   ConflictingActiveAttemptException,
   SurveyNotAvailableException,
+  ResponseNotFoundException,
+  AttemptExpiredException,
+  InvalidFormSubmissionException,
+  SubmissionTooFastException,
+  ParticipationRateLimitedException,
+  UncleanAttachmentException,
+  TelemetryRejectedException,
+  InvalidCompletionCodeException,
+  AttemptLockedException,
+  CompletionCodeLimitReachedException,
+  AttemptNotExternalException,
+  SurveyRewardUnavailableException,
+  RewardNotSettleableException,
 } from '../../modules/participation/application/exceptions/participation.exceptions';
+import {
+  SurveyFeedbackAlreadySubmittedException,
+  SurveyFeedbackAttemptNotFoundException,
+  SurveyFeedbackNotAllowedException,
+} from '../../modules/participation/application/exceptions/survey-feedback.exceptions';
 import {
   StorageObjectNotFoundException,
   StorageInvalidFileException,
@@ -74,12 +98,34 @@ import {
 import {
   UnbalancedJournalException,
   InsufficientBalanceException,
+  InsufficientEscrowBalanceException,
   AccountNotFoundException,
   JournalNotFoundException,
   JournalAlreadyReversedException,
   IdempotencyConflictException,
   InvalidLedgerOperationException,
+  DisputeHoldActiveException,
+  ConcurrentLedgerCommandException,
+  PendingCreditNotFoundException,
+  PendingRewardNotMaturedException,
+  PendingRewardForbiddenException,
+  InvalidTopUpRequestException,
+  TopUpRequestNotFoundException,
+  TopUpAlreadyReviewedException,
+  TopUpPendingLimitExceededException,
+  TopUpReferenceConflictException,
+  TopUpAdminCapabilityRequiredException,
+  TopUpSelfReviewForbiddenException,
 } from '../../modules/economy/application/exceptions/economy.exceptions';
+import { NotificationNotFoundException } from '../../modules/notifications/application/exceptions/notification.exceptions';
+import {
+  FormNotInModerationQueueException,
+  InvalidModerationRequestException,
+  ModerationAdminCapabilityRequiredException,
+  ModerationAlreadyDecidedException,
+  ModerationSelfReviewForbiddenException,
+  ModerationVersionMismatchException,
+} from '../../modules/moderation/application/exceptions/moderation.exceptions';
 import { ThrottlerException } from '@nestjs/throttler';
 
 @Catch()
@@ -98,6 +144,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let code = 'INTERNAL_SERVER_ERROR';
     let message = 'An unexpected error occurred.';
     let details: any = undefined;
+    let retryAfterSeconds: number | undefined = undefined;
 
     if (exception instanceof ThrottlerException) {
       status = HttpStatus.TOO_MANY_REQUESTS;
@@ -134,7 +181,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
     } else if (
       exception instanceof UserNotFoundException ||
       exception instanceof AuditLogNotFoundException ||
-      exception instanceof FormNotFoundException
+      exception instanceof FormNotFoundException ||
+      exception instanceof NotificationNotFoundException
     ) {
       status = HttpStatus.NOT_FOUND;
       code = exception.code;
@@ -144,11 +192,36 @@ export class HttpExceptionFilter implements ExceptionFilter {
       exception instanceof FormAlreadyPublishedException ||
       exception instanceof FormAlreadyClosedException ||
       exception instanceof FormNotPublishedException ||
-      exception instanceof FormHasPublishedVersionsException
+      exception instanceof FormHasPublishedVersionsException ||
+      exception instanceof FormModerationRequiredException
     ) {
       status = HttpStatus.CONFLICT;
       code = exception.code;
       message = exception.message;
+    } else if (exception instanceof FormNotReopenableException) {
+      // Story 8.1 / decision E8-D1: why the survey cannot be reopened (an
+      // Admin takedown or moderation rejection is final; an unapproved
+      // version never goes live) and who closed it.
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = { reason: exception.reason, closeKind: exception.closeKind };
+    } else if (exception instanceof ModerationEscrowNotFundedException) {
+      // Epic 8 review P2: queue entry / approval of an unfunded survey.
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = { shortfall: exception.shortfall };
+    } else if (exception instanceof PricingRewardOutOfBandException) {
+      // Decision E6-D2: FR-14 pricing band enforced at publish.
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+      details = {
+        min: exception.band.min,
+        max: exception.band.max,
+        suggested: exception.band.suggested,
+      };
     } else if (
       exception instanceof InvalidFormDraftException ||
       exception instanceof InvalidFormStatusTransitionException
@@ -186,20 +259,106 @@ export class HttpExceptionFilter implements ExceptionFilter {
       status = HttpStatus.BAD_REQUEST;
       code = exception.code;
       message = exception.message;
-    } else if (exception instanceof ParticipantNotEligibleException) {
+    } else if (exception instanceof DemographicProfileRequiredException) {
+      // Story 7.1: earning features require the Mandatory Demographic Survey.
+      status = HttpStatus.FORBIDDEN;
+      code = exception.code;
+      message = exception.message;
+      details = { missingFields: exception.missingFields };
+    } else if (
+      exception instanceof ParticipantNotEligibleException ||
+      exception instanceof SelfParticipationForbiddenException
+    ) {
+      // Decision E4-DN2: a Publisher cannot take their own survey (403).
       status = HttpStatus.FORBIDDEN;
       code = exception.code;
       message = exception.message;
     } else if (
       exception instanceof SurveyAlreadyCompletedException ||
-      exception instanceof SurveyQuotaFullException ||
-      exception instanceof ConflictingActiveAttemptException
+      exception instanceof SurveyQuotaFullException
     ) {
       status = HttpStatus.CONFLICT;
       code = exception.code;
       message = exception.message;
-    } else if (exception instanceof SurveyNotAvailableException) {
+    } else if (exception instanceof ConflictingActiveAttemptException) {
+      // Epic 5 review P24: the caller's own attempt, to resume it.
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = exception.details;
+    } else if (
+      exception instanceof SurveyNotAvailableException ||
+      exception instanceof ResponseNotFoundException
+    ) {
       status = HttpStatus.NOT_FOUND;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof AttemptExpiredException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof InvalidFormSubmissionException) {
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+      details = exception.validationErrors;
+    } else if (exception instanceof SubmissionTooFastException) {
+      // Story 8.2: structured countdown data; the attempt was not consumed.
+      status = HttpStatus.UNPROCESSABLE_ENTITY;
+      code = exception.code;
+      message = exception.message;
+      details = exception.details;
+      retryAfterSeconds = exception.retryAfterSeconds;
+    } else if (exception instanceof ParticipationRateLimitedException) {
+      status = HttpStatus.TOO_MANY_REQUESTS;
+      code = exception.code;
+      message = exception.message;
+      details = exception.details;
+      retryAfterSeconds = exception.retryAfterSeconds;
+    } else if (exception instanceof UncleanAttachmentException) {
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof InvalidCompletionCodeException) {
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+      details = { remainingAttempts: exception.remainingAttempts };
+    } else if (exception instanceof AttemptLockedException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof CompletionCodeLimitReachedException) {
+      // Decision E5-D1: account+FormVersion completion-code limit.
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = exception.details;
+    } else if (
+      exception instanceof AttemptNotExternalException ||
+      exception instanceof TelemetryRejectedException
+    ) {
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+    } else if (
+      // Epic 6 review P1/P11: no Publisher balances in Respondent errors.
+      exception instanceof SurveyRewardUnavailableException ||
+      exception instanceof RewardNotSettleableException
+    ) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof SurveyFeedbackAttemptNotFoundException) {
+      // Story 9.2: unknown, guest and other users' attempts look the same.
+      status = HttpStatus.NOT_FOUND;
+      code = exception.code;
+      message = exception.message;
+    } else if (
+      exception instanceof SurveyFeedbackNotAllowedException ||
+      exception instanceof SurveyFeedbackAlreadySubmittedException
+    ) {
+      status = HttpStatus.CONFLICT;
       code = exception.code;
       message = exception.message;
     } else if (exception instanceof StorageObjectNotFoundException) {
@@ -261,9 +420,25 @@ export class HttpExceptionFilter implements ExceptionFilter {
       status = HttpStatus.BAD_REQUEST;
       code = exception.code;
       message = exception.message;
+    } else if (exception instanceof PendingRewardNotMaturedException) {
+      // Epic 6 review P2: server-enforced 48-hour review window (FR-24).
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = { maturesAt: exception.maturesAt.toISOString() };
+    } else if (exception instanceof ConcurrentLedgerCommandException) {
+      // Epic 6 review P14: retryable; the retry takes the idempotent path.
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof PendingRewardForbiddenException) {
+      status = HttpStatus.FORBIDDEN;
+      code = exception.code;
+      message = exception.message;
     } else if (
       exception instanceof AccountNotFoundException ||
-      exception instanceof JournalNotFoundException
+      exception instanceof JournalNotFoundException ||
+      exception instanceof PendingCreditNotFoundException
     ) {
       status = HttpStatus.NOT_FOUND;
       code = exception.code;
@@ -271,7 +446,62 @@ export class HttpExceptionFilter implements ExceptionFilter {
     } else if (
       exception instanceof InsufficientBalanceException ||
       exception instanceof JournalAlreadyReversedException ||
-      exception instanceof IdempotencyConflictException
+      exception instanceof IdempotencyConflictException ||
+      exception instanceof DisputeHoldActiveException
+    ) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      if (exception instanceof InsufficientEscrowBalanceException) {
+        details = {
+          availableBalance: exception.availableBalance,
+          requiredAmount: exception.requiredAmount,
+        };
+      }
+    } else if (exception instanceof InvalidTopUpRequestException) {
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof TopUpRequestNotFoundException) {
+      status = HttpStatus.NOT_FOUND;
+      code = exception.code;
+      message = exception.message;
+    } else if (
+      exception instanceof TopUpAdminCapabilityRequiredException ||
+      exception instanceof TopUpSelfReviewForbiddenException
+    ) {
+      status = HttpStatus.FORBIDDEN;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof TopUpAlreadyReviewedException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = { currentStatus: exception.currentStatus };
+    } else if (exception instanceof TopUpPendingLimitExceededException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = { maxPendingRequests: exception.maxPendingRequests };
+    } else if (exception instanceof TopUpReferenceConflictException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof InvalidModerationRequestException) {
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+    } else if (
+      exception instanceof ModerationAdminCapabilityRequiredException ||
+      exception instanceof ModerationSelfReviewForbiddenException
+    ) {
+      status = HttpStatus.FORBIDDEN;
+      code = exception.code;
+      message = exception.message;
+    } else if (
+      exception instanceof FormNotInModerationQueueException ||
+      exception instanceof ModerationVersionMismatchException ||
+      exception instanceof ModerationAlreadyDecidedException
     ) {
       status = HttpStatus.CONFLICT;
       code = exception.code;
@@ -327,6 +557,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
           : exception.message;
     } else {
       this.logger.error('Unhandled unknown exception', exception);
+    }
+
+    if (
+      retryAfterSeconds !== undefined &&
+      retryAfterSeconds > 0 &&
+      typeof response.setHeader === 'function'
+    ) {
+      response.setHeader('Retry-After', String(Math.ceil(retryAfterSeconds)));
     }
 
     const envelope = createErrorEnvelope(code, message, details);

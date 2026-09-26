@@ -1,9 +1,5 @@
 export type ResponseStatus =
-  | 'IN_PROGRESS'
-  | 'SUBMITTED'
-  | 'VALIDATED'
-  | 'DISPUTED'
-  | 'REJECTED';
+  'IN_PROGRESS' | 'SUBMITTED' | 'VALIDATED' | 'DISPUTED' | 'REJECTED';
 
 export class ResponseEntity {
   constructor(

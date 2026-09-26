@@ -1,33 +1,96 @@
 import {
   isValidStatusTransition,
   isFormImmutable,
+  isOwnerReopenableClose,
   determinePublishTargetStatus,
   publishFormSchema,
   closeFormSchema,
+  formCloseKindEnum,
+  formStatusEnum,
   formStatusTransitionSchema,
   FORM_STATUS_TRANSITIONS,
+  FormStatusEnum,
 } from '@rescom/schemas';
 
-describe('Story 2.6: Form Publish Lifecycle & Immutability Specification', () => {
-  describe('Form Lifecycle State Machine (AC2)', () => {
-    it('defines valid state transitions from DRAFT', () => {
-      expect(isValidStatusTransition('DRAFT', 'ESCROW_LOCKED')).toBe(true);
-      expect(isValidStatusTransition('DRAFT', 'PUBLISHED')).toBe(true);
+describe('Story 2.6 / 8.1: Form Publish Lifecycle & Immutability Specification', () => {
+  /**
+   * Decision E8-D1 (2026-09-26): the signed-off lifecycle transition table
+   * (ARCHITECTURE-SPINE open question "approve and contract-test the Form
+   * publication/moderation lifecycle transition table"). Every from -> to pair
+   * is pinned, so any change to the table fails here and needs a new
+   * sign-off. The two out-of-table transitions (new version PUBLISHED -> DRAFT,
+   * owner reopen CLOSED -> PUBLISHED) are commands, not table edges.
+   */
+  describe('Decision E8-D1: signed-off transition table (exhaustive contract)', () => {
+    const APPROVED_TABLE: Record<FormStatusEnum, FormStatusEnum[]> = {
+      DRAFT: ['MODERATION_QUEUE'],
+      ESCROW_LOCKED: ['MODERATION_QUEUE', 'CLOSED'],
+      MODERATION_QUEUE: ['PUBLISHED', 'CLOSED'],
+      PUBLISHED: ['CLOSED'],
+      CLOSED: [],
+    };
+    const statuses = formStatusEnum.options;
+    const pairs = statuses.flatMap((from) =>
+      statuses.map((to) => [from, to] as const),
+    );
+
+    it('covers every FormStatus value and nothing else', () => {
+      expect(Object.keys(FORM_STATUS_TRANSITIONS).sort()).toEqual(
+        [...statuses].sort(),
+      );
+      expect(FORM_STATUS_TRANSITIONS).toEqual(APPROVED_TABLE);
+    });
+
+    it.each(pairs)('%s -> %s matches the approved table', (from, to) => {
+      expect(isValidStatusTransition(from, to)).toBe(
+        APPROVED_TABLE[from].includes(to),
+      );
+    });
+
+    it('has no path to PUBLISHED that skips moderation', () => {
+      const intoPublished = statuses.filter((from) =>
+        isValidStatusTransition(from, 'PUBLISHED'),
+      );
+      expect(intoPublished).toEqual(['MODERATION_QUEUE']);
+    });
+
+    it('records who closed a survey and lets only the owner reopen it', () => {
+      expect(formCloseKindEnum.options).toEqual([
+        'OWNER',
+        'ADMIN',
+        'MODERATION',
+      ]);
+      expect(isOwnerReopenableClose('OWNER')).toBe(true);
+      expect(isOwnerReopenableClose('ADMIN')).toBe(false);
+      expect(isOwnerReopenableClose('MODERATION')).toBe(false);
+      // A close recorded before the close kind existed fails closed.
+      expect(isOwnerReopenableClose(null)).toBe(false);
+      expect(isOwnerReopenableClose(undefined)).toBe(false);
+    });
+  });
+
+  describe('Form Lifecycle State Machine (Story 2.6 AC2, Story 8.1 AC1)', () => {
+    it('only allows DRAFT to be submitted into the moderation queue', () => {
       expect(isValidStatusTransition('DRAFT', 'MODERATION_QUEUE')).toBe(true);
+
+      // Story 8.1: publishing can no longer bypass moderation
+      expect(isValidStatusTransition('DRAFT', 'PUBLISHED')).toBe(false);
+      expect(isValidStatusTransition('DRAFT', 'ESCROW_LOCKED')).toBe(false);
+      expect(FORM_STATUS_TRANSITIONS['DRAFT']).toEqual(['MODERATION_QUEUE']);
 
       // Illegal transitions from DRAFT
       expect(isValidStatusTransition('DRAFT', 'CLOSED')).toBe(false);
       expect(isValidStatusTransition('DRAFT', 'DRAFT')).toBe(false);
     });
 
-    it('defines valid state transitions from ESCROW_LOCKED', () => {
+    it('keeps legacy ESCROW_LOCKED rows able to enter moderation or close only', () => {
       expect(isValidStatusTransition('ESCROW_LOCKED', 'MODERATION_QUEUE')).toBe(
         true,
       );
-      expect(isValidStatusTransition('ESCROW_LOCKED', 'PUBLISHED')).toBe(true);
       expect(isValidStatusTransition('ESCROW_LOCKED', 'CLOSED')).toBe(true);
 
-      // Illegal transitions from ESCROW_LOCKED
+      // Story 8.1: ESCROW_LOCKED -> PUBLISHED bypassed moderation
+      expect(isValidStatusTransition('ESCROW_LOCKED', 'PUBLISHED')).toBe(false);
       expect(isValidStatusTransition('ESCROW_LOCKED', 'DRAFT')).toBe(false);
     });
 
@@ -71,40 +134,20 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability Specification', () =>
     });
   });
 
-  describe('Publish Target Status Determination Heuristic (AC2, AC3)', () => {
-    it('determines ESCROW_LOCKED for external surveys', () => {
-      expect(
-        determinePublishTargetStatus({
-          type: 'EXTERNAL',
-          rewardPerResponse: 0,
-        }),
-      ).toBe('ESCROW_LOCKED');
-
-      expect(
-        determinePublishTargetStatus({
-          type: 'EXTERNAL',
-          rewardPerResponse: 50,
-        }),
-      ).toBe('ESCROW_LOCKED');
-    });
-
-    it('determines ESCROW_LOCKED for internal surveys with rewards > 0', () => {
-      expect(
-        determinePublishTargetStatus({
-          type: 'INTERNAL',
-          rewardPerResponse: 10,
-        }),
-      ).toBe('ESCROW_LOCKED');
-    });
-
-    it('determines PUBLISHED for internal surveys with zero rewards', () => {
-      expect(
-        determinePublishTargetStatus({
-          type: 'INTERNAL',
-          rewardPerResponse: 0,
-        }),
-      ).toBe('PUBLISHED');
-    });
+  describe('Publish Target Status (Story 8.1 AC1, FR-20)', () => {
+    it.each([
+      ['EXTERNAL', 0],
+      ['EXTERNAL', 50],
+      ['INTERNAL', 10],
+      ['INTERNAL', 0],
+    ] as const)(
+      'sends every %s survey (reward %d) to MODERATION_QUEUE',
+      (type, rewardPerResponse) => {
+        expect(determinePublishTargetStatus({ type, rewardPerResponse })).toBe(
+          'MODERATION_QUEUE',
+        );
+      },
+    );
   });
 
   describe('Publish & Transition Schemas Validation (AC1, AC3, AC4)', () => {

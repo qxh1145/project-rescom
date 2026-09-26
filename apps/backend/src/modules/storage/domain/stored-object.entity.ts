@@ -10,7 +10,11 @@ export class StoredObjectEntity {
     public readonly ownerContext: string,
     public readonly ownerRecordId: string,
     public readonly dataClass: StorageDataClass,
-    public readonly storageKey: string,
+    /**
+     * Client-writable upload key while INITIATED; once finalization claims the
+     * object it points at the server-owned verified copy (Epic 5 review P10).
+     */
+    public storageKey: string,
     public readonly bucket: string,
     public readonly fileName: string,
     public readonly fileSize: number,
@@ -47,16 +51,17 @@ export class StoredObjectEntity {
   }
 
   /**
-   * Enters quarantine before running malware scan (AD-22).
+   * Enters quarantine before running malware scan (AD-22). When finalization
+   * moves the bytes to a server-owned key, the new key is recorded here.
    */
-  markQuarantined(): void {
+  markQuarantined(verifiedStorageKey?: string): void {
     if (this.status !== 'UPLOADED' && this.status !== 'INITIATED') {
-      throw new Error(
-        `Cannot quarantine object from status: ${this.status}`,
-      );
+      throw new Error(`Cannot quarantine object from status: ${this.status}`);
     }
+    if (verifiedStorageKey) this.storageKey = verifiedStorageKey;
     this.status = 'QUARANTINED';
     this.scanStatus = 'PENDING';
+    this.uploadedAt = this.uploadedAt ?? new Date();
     this.updatedAt = new Date();
   }
 
@@ -85,6 +90,20 @@ export class StoredObjectEntity {
     this.scanPolicy = policy;
     this.scanResult = { infectionReason: reason };
     this.scannedAt = new Date();
+    this.updatedAt = new Date();
+  }
+
+  /**
+   * Rejects a quarantined object whose bytes failed server-side verification
+   * (changed during finalization, wrong signature or checksum). No scan ran.
+   */
+  markRejected(reason: string): void {
+    if (this.status !== 'QUARANTINED') {
+      throw new Error(`Cannot reject object from status: ${this.status}`);
+    }
+    this.status = 'REJECTED';
+    this.scanStatus = 'SKIPPED';
+    this.scanResult = { rejectionReason: reason };
     this.updatedAt = new Date();
   }
 
@@ -119,7 +138,9 @@ export class StoredObjectEntity {
 
   markDeleted(): void {
     if (this.status === 'ATTACHED') {
-      throw new Error('Attached objects cannot be deleted through upload cleanup');
+      throw new Error(
+        'Attached objects cannot be deleted through upload cleanup',
+      );
     }
     this.status = 'DELETED';
     this.updatedAt = new Date();

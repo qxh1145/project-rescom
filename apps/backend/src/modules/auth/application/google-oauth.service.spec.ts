@@ -21,6 +21,10 @@ import {
   InvalidCredentialsException,
   GoogleProviderUnavailableException,
 } from './exceptions/auth.exceptions';
+import { StarterPointsCoordinator } from '../../economy/application/starter-points.coordinator';
+import { LedgerService } from '../../economy/application/ledger.service';
+import { InMemoryLedgerRepository } from '../../economy/infrastructure/in-memory-ledger.repository';
+import { InMemoryStarterPointsDataProvider } from '../../economy/infrastructure/in-memory-starter-points-data-provider';
 
 describe('GoogleOAuthService (Tasks 5 & 6)', () => {
   let service: GoogleOAuthService;
@@ -335,6 +339,83 @@ describe('GoogleOAuthService (Tasks 5 & 6)', () => {
         (r) => r.action === 'IDENTITY_UNLINKED' && r.userId === user.id,
       );
       expect(hasUnlinkedAudit).toBe(true);
+    });
+
+    describe('starter points (FR-4)', () => {
+      let ledgerService: LedgerService;
+      let serviceWithStarter: GoogleOAuthService;
+
+      beforeEach(() => {
+        ledgerService = new LedgerService(new InMemoryLedgerRepository());
+        // Unknown users register "now" in the in-memory provider.
+        const starterPoints = new StarterPointsCoordinator(
+          ledgerService,
+          new InMemoryStarterPointsDataProvider(),
+          undefined,
+          { warn: jest.fn() },
+        );
+        serviceWithStarter = new GoogleOAuthService(
+          oauthProvider,
+          intentRepo,
+          oauthRepo,
+          userRepo,
+          passwordHasher,
+          secretProtection,
+          auditRepo,
+          sessionService,
+          config,
+          undefined,
+          undefined,
+          starterPoints,
+        );
+      });
+
+      async function googleLogin() {
+        const { intentCookie } = await serviceWithStarter.initiateLogin();
+        const [intentId] = intentCookie.split('.');
+        const intent = await intentRepo.findById(intentId);
+        const rawState = intent!.stateDigest.replace(/^oauth-digest:/, '');
+        return serviceWithStarter.handleCallback(
+          { state: rawState, code: 'valid-code' },
+          intentCookie,
+        );
+      }
+
+      async function starterWallet() {
+        const user = await userRepo.findByEmail('user1@gmail.com');
+        const wallet = await ledgerService.getWallet(user!.id);
+        return {
+          frozen: wallet.balance.frozen,
+          grants: wallet.transactions.filter((t) =>
+            t.idempotencyKey.startsWith('starter-grant:'),
+          ).length,
+        };
+      }
+
+      it('grants 100 starter points to a newly provisioned Google OAuth user', async () => {
+        const result = await googleLogin();
+
+        expect(result.redirectUrl).toBe(config.frontendSuccessUrl);
+        expect(await starterWallet()).toEqual({ frozen: 100, grants: 1 });
+      });
+
+      it('logs in even when the grant fails, and the next Google login heals it exactly once', async () => {
+        jest
+          .spyOn(ledgerService, 'grantStarterPoints')
+          .mockRejectedValueOnce(new Error('ledger unavailable'));
+
+        const first = await googleLogin();
+        expect(first.redirectUrl).toBe(config.frontendSuccessUrl);
+        expect(first.sessionTokens).toBeDefined();
+        expect(await starterWallet()).toEqual({ frozen: 0, grants: 0 });
+
+        const second = await googleLogin();
+        expect(second.redirectUrl).toBe(config.frontendSuccessUrl);
+        expect(await starterWallet()).toEqual({ frozen: 100, grants: 1 });
+
+        await googleLogin();
+        expect(await starterWallet()).toEqual({ frozen: 100, grants: 1 });
+      });
     });
   });
 });

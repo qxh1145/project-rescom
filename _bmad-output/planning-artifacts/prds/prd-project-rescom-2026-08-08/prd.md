@@ -1,7 +1,7 @@
 ---
 title: RESCOM — Academic Survey Exchange Platform
 created: 2026-08-08
-updated: 2026-08-16
+updated: 2026-09-26
 status: final
 ---
 
@@ -413,6 +413,8 @@ Respondent enters the 6-digit code. Backend validates: the code matches the exac
 - Wrong code = rejection, logged to FraudLog
 - Maximum failed attempts, lock duration, and recovery behavior are versioned security-policy values; no launch value is assumed before Open Question 14 is approved
 
+> **Amendment 2026-09-26 (code-review decision E5-D1):** Phase 1 implements the versioned policy `completion-code-policy-v1` with **provisional** values — 3 wrong codes lock an Attempt; 6 wrong codes per account and Form Version, summed across Attempts, refuse further Attempts and verifications on that version (`COMPLETION_CODE_LIMIT_REACHED`); no automatic reset or lock expiry; an Admin recovers the account for that version through an audited reset; a new Form Version starts a fresh count. The values remain provisional until Open Question 14 is approved (the FR is not rewritten).
+
 #### FR-23: Missing Code Report
 If the Publisher failed to embed the Completion Code in their Google Form, Respondent can report the issue to Admin.
 
@@ -621,6 +623,8 @@ Dashboard aggregates Respondent feedback: question clarity, survey length, techn
 - Average ratings displayed per feedback dimension
 - Free-text comments are listed
 
+> **Amendment 2026-09-26 (code-review decision E9-D1):** Phase 1 collects feedback as one required overall rating (1–5 stars) plus optional issue tags and an optional comment (FR-43 amendment below), not five separately rated dimensions. The Feedback Summary (Story 9.3, Phase 2) therefore shows the **average overall rating** plus, **per issue tag, the share of respondents reporting it** (e.g. "% of respondents reporting unclear questions"); listing free-text comments stays behind the architecture's minimum-aggregation / pseudonymous-linkability launch gate (the FR is not rewritten).
+
 ---
 
 ### 4.13 Feedback System
@@ -638,6 +642,8 @@ Respondent can rate: question clarity, survey length accuracy, description accur
 - Feedback is visible to Publisher in dashboard
 - Validated aggregate feedback contributes to Survey Quality only after minimum evidence requirements are met
 - A single negative review cannot materially change Survey Quality
+
+> **Amendment 2026-09-26 (code-review decision E9-D1):** the Phase 1 feedback model is **one required overall-experience rating (1–5 stars) plus optional issue tags** for the other four dimensions — question clarity (`UNCLEAR_QUESTIONS`), survey length accuracy (`LONGER_THAN_ESTIMATED`), description accuracy (`MISLEADING_DESCRIPTION`), technical issues (`TECHNICAL_ISSUE`) — and an optional comment of at most 500 characters, one immutable feedback per completed Attempt (Story 9.2). The tags map directly onto FR-44's deprioritization triggers. Per-dimension star ratings are not collected; if they are wanted, they must be added before launch (adding them later would leave two incompatible data sets). "Visible to Publisher in dashboard" remains Story 9.3 (Phase 2) (the FR is not rewritten).
 
 #### FR-44: Negative Feedback Deprioritization
 If a survey crosses an approved negative-feedback threshold, the system reduces its visibility in the Marketplace feed. Automated deprioritization remains disabled until Open Question 15 is approved.
@@ -662,12 +668,16 @@ Server measures actual elapsed time from startTime to submission. Rejects if tim
 - startTime is recorded server-side only
 - Rejection triggers FraudLog entry
 
+> **Amendment 2026-09-26 (code-review decision E5-D2):** every Attempt reserves its quota slot for a fixed 30 minutes, so a survey is publishable only if it fits that window: its effective minimum time (Internal: answerable questions × 2 s or the Publisher minimum, whichever is stricter; External: the configured minimum) must leave at least 5 minutes to submit, and its declared effort / estimated duration must not exceed 30 minutes (rejected at publish with `SURVEY_DURATION_EXCEEDS_RESERVATION`). **Phase 1 does not support surveys longer than 30 minutes**; per-attempt reservation windows are a Phase 2 option (the FR is not rewritten).
+
 #### FR-46: Rate Limiting
 System limits how many surveys a user can complete in a given time window to prevent bot behavior.
 
 **Consequences (testable):**
 - Exceeding the rate limit blocks further attempts temporarily
 - Limits are centrally versioned security policy, not discretionary per-user Admin settings; launch values and outage behavior require Open Question 16 approval
+
+> **Amendment 2026-09-26 (code-review decision E8-D4):** "centrally versioned" is implemented as a named policy version configured per deployment — `PARTICIPATION_RATE_LIMIT_POLICY_VERSION`, **required in production** — that is stamped on every rate-limit rejection (429) and `RATE_LIMIT` FraudLog entry. The provisional Phase 1 values (20 completed surveys per user per rolling hour; 10 attempt-start / Internal-submission / completion-code requests per user per action per minute) are named `participation-rate-limit-v1`; any other values must run under a new version name. The values themselves **still require Open Question 16 approval** before launch (the FR is not rewritten).
 
 #### FR-47: Immutable FraudLog
 Rejected hard anti-abuse attempts, security-policy violations, and confirmed abuse evidence are logged in an append-only FraudLog. Soft quality signals, low scores, and integrity-review routing remain in Integrity records.
@@ -977,7 +987,7 @@ System explicitly records whether each integrity dimension applies.
 - **Nationwide expansion** beyond FPT Da Nang — deferred to Phase 3.
 - **Mobile native app** — web-first; responsive web serves mobile users.
 - **Push notifications** — in-app + email only for v1.
-- **Horizontal backend scaling** — single VPS sufficient for pilot.
+- **Horizontal backend scaling** — single VPS sufficient for pilot. *(Amendment 2026-09-26: the pilot runs on one Google Compute Engine VM per Architecture AD-23.)*
 - **Semantic LLM integrity scoring** — deferred until sufficient reviewed labels and governance approval exist.
 - **Graph anomaly detection and personalized behavioral models** — deferred until evidence volume, utility, and fairness are demonstrated.
 - **Graph database adoption** — deferred until measured query or scale requirements justify it.
@@ -1140,6 +1150,8 @@ No unresolved inference is approved as an implementation default. Former assumpt
 
 ### Cost
 - AI runs on a private GPU server (gaming laptop via Tailscale VPN) — no cloud AI costs
+  > **Amendment 2026-09-26 (sprint-change-proposal-2026-09-26):** Epic 3 is deferred to Phase 2; the pilot provisions no AI host. This cost line applies when the AI Form Generator ships.
+- Pilot hosting uses a USD 300 / 90-day Google Cloud trial credit (estimated USD 40–60 per month); the topology stays portable so it can move to FPT Cloud or another provider without code changes (Architecture AD-23, Story 11.6).
 - AI must remain an optional dependency with zero impact on core operations if unavailable
 
 ---
@@ -1154,3 +1166,13 @@ No unresolved inference is approved as an implementation default. Former assumpt
 - **File Storage:** S3-compatible Object Storage
 - **AI:** Ollama + Qwen on private GPU, accessed via Tailscale VPN
 - **CDN/Security:** Cloudflare (DNS, SSL, CDN, basic DDoS protection)
+
+> **Amendment 2026-09-26 (sprint-change-proposal-2026-09-26) — pilot hosting selected (Architecture AD-23).** Supersedes the hosting lines above for the pilot; product requirements are unchanged.
+> - **Domain:** `rescom.com.vn` (frontend, including public surveys at `/f/<id>`) and `api.rescom.com.vn` (backend); no separate `survey.` subdomain in the pilot.
+> - **Frontend:** Next.js → Vercel, function region `sin1`.
+> - **Backend:** NestJS → Docker Compose on one Google Compute Engine VM (`asia-southeast1`) with Caddy and ClamAV; one API replica with the scheduler co-located.
+> - **Database:** Cloud SQL for PostgreSQL (`asia-southeast1`, private IP, automated backups + point-in-time recovery).
+> - **File Storage:** private Google Cloud Storage bucket through the S3-compatible API.
+> - **AI:** no AI host in Phase 1 (Epic 3 deferred).
+> - **CDN/Security:** Cloudflare remains the only public ingress.
+> - **Observability / CI/CD:** Sentry, external uptime monitor, GitHub Actions → GHCR.

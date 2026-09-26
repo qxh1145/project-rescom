@@ -39,6 +39,15 @@ enum FormStatus {
   CLOSED
 }
 
+/// Who closed a survey (code-review decision E8-D1). Only an OWNER close can
+/// be reopened; an Admin takedown (ADMIN) or a moderation rejection
+/// (MODERATION) is final. Mirrors `formCloseKindEnum` in @rescom/schemas.
+enum FormCloseKind {
+  OWNER
+  ADMIN
+  MODERATION
+}
+
 enum ResponseStatus {
   IN_PROGRESS
   SUBMITTED
@@ -148,8 +157,13 @@ enum OutboxStatus {
 
 enum NotificationType {
   SURVEY_APPROVED
+  SURVEY_REJECTED
   ESCROW_RELEASED
   TOPUP_SUCCESS
+  REWARD_EARNED
+  REWARD_PENDING
+  REWARD_RELEASED
+  ACCOUNT_ACTIVATED
   WARNING
 }
 
@@ -157,6 +171,28 @@ enum TopUpStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+/// Story 8.1: outcome of an Admin survey moderation decision.
+enum SurveyModerationOutcome {
+  APPROVED
+  REJECTED
+}
+
+/// Story 9.2 (FR-43): optional issue tags covering the FR-43 dimensions
+/// besides the overall rating. Must equal `SURVEY_FEEDBACK_ISSUE_TAGS`.
+enum SurveyFeedbackIssueTag {
+  UNCLEAR_QUESTIONS
+  LONGER_THAN_ESTIMATED
+  MISLEADING_DESCRIPTION
+  TECHNICAL_ISSUE
+}
+
+/// Story 9.2: feedback enters Survey Quality aggregation only when ACCEPTED.
+enum SurveyFeedbackValidationStatus {
+  PENDING
+  ACCEPTED
+  EXCLUDED
 }
 
 enum LedgerAccountClass {
@@ -216,15 +252,20 @@ model User {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relationships
-  authIdentities     AuthIdentity[]
-  sessions           Session[]
-  demographicProfile DemographicProfile?
-  gamificationStat   GamificationStat?
-  formsPublished     Form[]              @relation("PublisherForms")
-  responses          Response[]
-  notifications      Notification[]
-  topUpRequests      TopUpRequest[]
-  ledgerAccounts     LedgerAccount[]
+  authIdentities                AuthIdentity[]
+  sessions                      Session[]
+  demographicProfile            DemographicProfile?
+  gamificationStat              GamificationStat?
+  formsPublished                Form[]                     @relation("PublisherForms")
+  responses                     Response[]
+  notifications                 Notification[]
+  topUpRequests                 TopUpRequest[]
+  ledgerAccounts                LedgerAccount[]
+  moderationDecisions           SurveyModerationDecision[] @relation("ModerationDecisionAdmin")
+  surveyFeedback                SurveyFeedback[]
+  /// Decision E5-D1: Admin recoveries of the completion-code limit.
+  completionCodeLimitResets     CompletionCodeLimitReset[] @relation("CompletionCodeLimitResetRespondent")
+  completionCodeLimitResetsByMe CompletionCodeLimitReset[] @relation("CompletionCodeLimitResetAdmin")
 
   surveyAttempts       SurveyAttempt[]
   integrityConsents    IntegrityConsent[]
@@ -257,14 +298,14 @@ model AuthIdentity {
 }
 
 model Session {
-  id             String              @id @default(uuid()) @db.Uuid
-  userId         String              @map("user_id") @db.Uuid
-  sessionVersion Int                 @default(1) @map("session_version")
-  csrfDigest     String              @map("csrf_digest")
-  revoked        Boolean             @default(false)
-  expiresAt      DateTime            @map("expires_at")
-  createdAt      DateTime            @default(now()) @map("created_at")
-  updatedAt      DateTime            @updatedAt @map("updated_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  sessionVersion Int      @default(1) @map("session_version")
+  csrfDigest     String   @map("csrf_digest")
+  revoked        Boolean  @default(false)
+  expiresAt      DateTime @map("expires_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   refreshCredentials RefreshCredential[]
@@ -340,14 +381,23 @@ model DemographicProfile {
 }
 
 model Form {
-  id                  String     @id @default(uuid()) @db.Uuid
-  publisherId         String     @map("publisher_id") @db.Uuid
-  type                FormType
-  status              FormStatus @default(DRAFT)
-  title               String
-  description         String?    @db.Text
-  rewardPerResponse   Int        @map("reward_per_response")
-  expectedCompletions Int        @map("expected_completions")
+  id                       String     @id @default(uuid()) @db.Uuid
+  publisherId              String     @map("publisher_id") @db.Uuid
+  type                     FormType
+  status                   FormStatus @default(DRAFT)
+  title                    String
+  description              String?    @db.Text
+  rewardPerResponse        Int        @map("reward_per_response")
+  expectedCompletions      Int        @map("expected_completions")
+  /// Times the survey entered CLOSED: the close identity of the Escrow keys
+  /// close-refund:{formId}:c{closeCount} / reopen-escrow:{formId}:c{closeCount}.
+  closeCount               Int        @default(0) @map("close_count")
+  /// Who closed the survey most recently (decision E8-D1); NULL when never
+  /// closed or closed before the column existed (not reopenable: fail closed).
+  closeKind                FormCloseKind? @map("close_kind")
+  /// Publisher's estimated completion time in whole minutes (decision E6-D2):
+  /// picks the FR-14 reward pricing band enforced at publish. Optional on drafts.
+  estimatedDurationMinutes Int?       @map("estimated_duration_minutes")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -356,6 +406,9 @@ model Form {
   versions  FormVersion[]
   responses Response[]
   attempts  SurveyAttempt[]
+
+  moderationDecisions SurveyModerationDecision[]
+  surveyFeedback      SurveyFeedback[]
 
   @@map("forms")
 }
@@ -376,6 +429,10 @@ model FormVersion {
   attempts        SurveyAttempt[]
   responses       Response[]
   integrityEvents IntegrityEvent[]
+
+  moderationDecision        SurveyModerationDecision?
+  surveyFeedback            SurveyFeedback[]
+  completionCodeLimitResets CompletionCodeLimitReset[]
 
   @@unique([formId, versionNumber])
   @@map("form_versions")
@@ -402,6 +459,7 @@ model Response {
   attempt     SurveyAttempt? @relation(fields: [attemptId], references: [id])
 
   integrityAssessments IntegrityAssessment[]
+  feedback             SurveyFeedback?
 
   @@map("responses")
 }
@@ -416,9 +474,10 @@ model LedgerAccount {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  user    User?         @relation(fields: [userId], references: [id])
+  user    User?         @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   entries LedgerEntry[]
 
+  @@unique([userId, accountClass, currency])
   @@map("ledger_accounts")
 }
 
@@ -455,18 +514,32 @@ model LedgerEntry {
 // V2 RESEARCH INTEGRITY ENGINE
 // ----------------------------------------
 
+/// Epic 5 review P1: two partial unique indexes (not expressible in Prisma 6)
+/// are created by migration `20260926230000_participation_concurrency_guards`:
+///   - `survey_attempts_one_active_per_account` (respondent_id, survey_id)
+///     WHERE status = 'IN_PROGRESS' AND respondent_id IS NOT NULL
+///   - `survey_attempts_one_completion_per_account` (respondent_id, survey_id)
+///     WHERE status = 'COMPLETED' AND respondent_id IS NOT NULL
+/// Environments built with `prisma db push` must also apply that SQL. The
+/// `forms` row lock taken at attempt start stays the primary guarantee.
 model SurveyAttempt {
-  id            String        @id @default(uuid()) @db.Uuid
-  respondentId  String?       @map("respondent_id") @db.Uuid // Nullable for guest
-  surveyId      String        @map("survey_id") @db.Uuid
-  formVersionId String        @map("form_version_id") @db.Uuid
-  status        AttemptStatus @default(IN_PROGRESS)
-  isGuest       Boolean       @default(false) @map("is_guest")
-  startedAt     DateTime      @default(now()) @map("started_at")
-  submittedAt   DateTime?     @map("submitted_at")
-  clientContext Json?         @map("client_context")
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
+  id                       String        @id @default(uuid()) @db.Uuid
+  respondentId             String?       @map("respondent_id") @db.Uuid // Nullable for guest
+  surveyId                 String        @map("survey_id") @db.Uuid
+  formVersionId            String        @map("form_version_id") @db.Uuid
+  status                   AttemptStatus @default(IN_PROGRESS)
+  isGuest                  Boolean       @default(false) @map("is_guest")
+  startedAt                DateTime      @default(now()) @map("started_at")
+  submittedAt              DateTime?     @map("submitted_at")
+  /// Opaque, bounded client diagnostics; never read by server logic.
+  clientContext            Json?         @map("client_context")
+  /// Epic 5 review P2: server-owned completion-code security state (FR-22/23).
+  failedCodeVerifications  Int           @default(0) @map("failed_code_verifications")
+  lastFailedVerificationAt DateTime?     @map("last_failed_verification_at")
+  missingCodeReportedAt    DateTime?     @map("missing_code_reported_at")
+  missingCodeReason        String?       @map("missing_code_reason")
+  createdAt                DateTime      @default(now()) @map("created_at")
+  updatedAt                DateTime      @updatedAt @map("updated_at")
 
   respondent User?       @relation(fields: [respondentId], references: [id])
   form       Form        @relation(fields: [surveyId], references: [id])
@@ -476,8 +549,38 @@ model SurveyAttempt {
   integrityEvents      IntegrityEvent[]
   integrityAssessments IntegrityAssessment[]
   integrityIncidents   IntegrityIncident[]
+  feedback             SurveyFeedback?
 
+  /// Story 8.2: rolling-window completion rate limit (FR-46) per respondent.
+  @@index([respondentId, status, submittedAt])
+  /// Decision E5-D1: summed wrong codes per account and FormVersion.
+  @@index([respondentId, formVersionId])
   @@map("survey_attempts")
+}
+
+/// Code-review decision E5-D1 (2026-09-26): Admin recovery of the
+/// account+FormVersion completion-code limit (`completion-code-policy-v1`,
+/// provisional pending PRD Open Question 14). Append-only audit rows (who,
+/// when, why, how many): the wrong codes a row forgives are subtracted from
+/// the account's summed `survey_attempts.failed_code_verifications` on that
+/// version. The attempts and their FraudLog evidence are never changed.
+model CompletionCodeLimitReset {
+  id               String   @id @default(uuid()) @db.Uuid
+  respondentId     String   @map("respondent_id") @db.Uuid
+  formVersionId    String   @map("form_version_id") @db.Uuid
+  failuresForgiven Int      @map("failures_forgiven")
+  /// The Admin who reset the limit.
+  resetById        String   @map("reset_by_id") @db.Uuid
+  reason           String
+  policyVersion    String   @map("policy_version")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  respondent  User        @relation("CompletionCodeLimitResetRespondent", fields: [respondentId], references: [id], onDelete: Restrict)
+  resetBy     User        @relation("CompletionCodeLimitResetAdmin", fields: [resetById], references: [id], onDelete: Restrict)
+  formVersion FormVersion @relation(fields: [formVersionId], references: [id], onDelete: Restrict)
+
+  @@index([respondentId, formVersionId])
+  @@map("completion_code_limit_resets")
 }
 
 model IntegrityConsent {
@@ -600,10 +703,12 @@ model IntegrityReview {
 }
 
 model FraudLog {
-  id      String       @id @default(uuid()) @db.Uuid
-  userId  String       @map("user_id") @db.Uuid
-  type    FraudLogType
-  details Json?
+  id        String       @id @default(uuid()) @db.Uuid
+  userId    String       @map("user_id") @db.Uuid
+  type      FraudLogType
+  details   Json?
+  /// Story 8.2: evidence idempotency (one TIME_BARRIER row per attempt, one RATE_LIMIT row per window). Append-only.
+  dedupeKey String?      @unique @map("dedupe_key")
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -682,31 +787,131 @@ model GamificationStat {
 }
 
 model Notification {
-  id      String           @id @default(uuid()) @db.Uuid
-  userId  String           @map("user_id") @db.Uuid
-  type    NotificationType
-  message String
-  isRead  Boolean          @default(false) @map("is_read")
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  type      NotificationType
+  message   String
+  isRead    Boolean          @default(false) @map("is_read")
+  /// Stable identity of the source event (e.g. the Ledger idempotency key);
+  /// a replay of the same event cannot create a second notification (AD-10).
+  dedupeKey String?          @map("dedupe_key")
+  readAt    DateTime?        @map("read_at")
 
   createdAt DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, dedupeKey])
+  @@index([userId, createdAt])
+  @@index([userId, isRead])
   @@map("notifications")
 }
 
+/// Manual Point top-up request (Story 6.6, FR-34/FR-35). Economy owns it;
+/// `PENDING` is the "Pending Payment" state. Approval commits the status
+/// transition, the `topup-approval:{id}` Ledger journal and the admin-audit
+/// Outbox event in one transaction (AD-16).
 model TopUpRequest {
-  id      String      @id @default(uuid()) @db.Uuid
-  userId  String      @map("user_id") @db.Uuid
-  amount  Int
-  status  TopUpStatus @default(PENDING)
-  adminId String?     @map("admin_id") @db.Uuid
+  id                String      @id @default(uuid()) @db.Uuid
+  userId            String      @map("user_id") @db.Uuid
+  /// Points to credit on approval.
+  amount            Int
+  /// VND the user must transfer (amount x 200).
+  amountVnd         Int         @map("amount_vnd")
+  /// Unique bank-transfer syntax shown to the user (e.g. RESCOMK7Q2M9XA).
+  transferReference String      @unique @map("transfer_reference")
+  status            TopUpStatus @default(PENDING)
+  /// Reviewing Admin (actor) of the approval or rejection.
+  adminId           String?     @map("admin_id") @db.Uuid
+  /// Ledger journal posted by the approval.
+  journalId         String?     @unique @map("journal_id") @db.Uuid
+  rejectionReason   String?     @map("rejection_reason")
+  /// Correlation id of the review command.
+  correlationId     String?     @map("correlation_id") @db.Uuid
+  reviewedAt        DateTime?   @map("reviewed_at")
 
   createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id])
 
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
   @@map("top_up_requests")
+}
+
+/// Story 8.1 (FR-20, FR-53): one Admin moderation decision per submitted
+/// FormVersion. Owned by the Moderation context; the Form transition itself is
+/// owned by Research and the Escrow refund journal by Economy (AD-16).
+model SurveyModerationDecision {
+  id              String                  @id @default(uuid()) @db.Uuid
+  formId          String                  @map("form_id") @db.Uuid
+  /// The exact version the Admin previewed and decided on (AD-19).
+  formVersionId   String                  @unique @map("form_version_id") @db.Uuid
+  versionNumber   Int                     @map("version_number")
+  outcome         SurveyModerationOutcome
+  /// Deciding Admin (actor).
+  adminId         String                  @map("admin_id") @db.Uuid
+  /// Rejection reason (required) or optional approval note.
+  reason          String?
+  /// Escrow refunded to the Publisher on rejection.
+  refundAmount    Int                     @default(0) @map("refund_amount")
+  /// Economy journal of the refund (`close-refund:{formId}:c{closeCount}`,
+  /// Epic 6 review P3).
+  refundJournalId String?                 @map("refund_journal_id") @db.Uuid
+  correlationId   String                  @map("correlation_id") @db.Uuid
+  decidedAt       DateTime                @map("decided_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  /// Append-only admin-action audit (Epic 8 review P13): deleting a decided
+  /// form or version must fail instead of silently erasing its decision.
+  form        Form        @relation(fields: [formId], references: [id], onDelete: Restrict)
+  formVersion FormVersion @relation(fields: [formVersionId], references: [id], onDelete: Restrict)
+  admin       User        @relation("ModerationDecisionAdmin", fields: [adminId], references: [id])
+
+  @@index([formId, decidedAt])
+  @@index([adminId, decidedAt])
+  @@map("survey_moderation_decisions")
+}
+
+/// Story 9.2 (FR-43): at most one post-completion feedback per completed
+/// Attempt (unique `attemptId`). Owned by Participation. Rows start PENDING;
+/// the Phase-2 Survey Quality validator consumes the `SurveyFeedbackSubmitted`
+/// Outbox event and only ACCEPTED feedback is ever aggregated. Rating range and
+/// comment length are also enforced by CHECK constraints in the migration.
+model SurveyFeedback {
+  id               String                         @id @default(uuid()) @db.Uuid
+  attemptId        String                         @unique @map("attempt_id") @db.Uuid
+  /// Internal Forms only (the validated Response of the attempt).
+  responseId       String?                        @unique @map("response_id") @db.Uuid
+  formId           String                         @map("form_id") @db.Uuid
+  /// Exact pinned FormVersion of the attempt (Survey Quality is per version).
+  formVersionId    String                         @map("form_version_id") @db.Uuid
+  respondentId     String                         @map("respondent_id") @db.Uuid
+  formType         FormType                       @map("form_type")
+  /// Overall experience, 1..5 stars.
+  rating           Int
+  /// Normalized plain text (<= 500 chars); never rendered as HTML.
+  comment          String?                        @db.Text
+  issueTags        SurveyFeedbackIssueTag[]       @default([]) @map("issue_tags")
+  validationStatus SurveyFeedbackValidationStatus @default(PENDING) @map("validation_status")
+  validatedAt      DateTime?                      @map("validated_at")
+  submittedAt      DateTime                       @map("submitted_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  attempt     SurveyAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  response    Response?     @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  form        Form          @relation(fields: [formId], references: [id], onDelete: Restrict)
+  formVersion FormVersion   @relation(fields: [formVersionId], references: [id], onDelete: Restrict)
+  respondent  User          @relation(fields: [respondentId], references: [id], onDelete: Cascade)
+
+  @@index([formId, validationStatus])
+  @@index([formVersionId, validationStatus])
+  @@index([respondentId, submittedAt])
+  @@map("survey_feedback")
 }
 
 model StoredObject {

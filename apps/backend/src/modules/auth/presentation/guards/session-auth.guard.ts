@@ -37,7 +37,6 @@ export class SessionAuthGuard implements CanActivate {
 
     const accessToken = req.cookies?.[AUTH_COOKIE_NAME];
 
-
     if (
       this.reflector &&
       typeof context.getHandler === 'function' &&
@@ -74,7 +73,6 @@ export class SessionAuthGuard implements CanActivate {
       res.setHeader('Cache-Control', 'no-store');
       throw new UnauthorizedSessionException('Access token cookie required');
     }
-
 
     try {
       const { user, session } =

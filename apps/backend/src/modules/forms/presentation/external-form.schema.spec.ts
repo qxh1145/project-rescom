@@ -30,6 +30,25 @@ describe('Story 4.5: External Form Schemas Unit Tests', () => {
       expect(isGoogleFormsUrl('https://example.com/survey')).toBe(false);
     });
 
+    it('requires a /forms/<id> path on docs.google.com and a path on the short hosts (decision E4-DN3)', () => {
+      expect(isGoogleFormsUrl('https://docs.google.com/forms')).toBe(false);
+      expect(isGoogleFormsUrl('https://docs.google.com/forms/')).toBe(false);
+      expect(isGoogleFormsUrl('https://forms.gle/')).toBe(false);
+      expect(isGoogleFormsUrl('https://forms.google.com/')).toBe(false);
+    });
+
+    it('returns false for non-Forms docs.google.com paths (Docs, Sheets, Drive)', () => {
+      expect(isGoogleFormsUrl('https://docs.google.com/document/d/abc')).toBe(
+        false,
+      );
+      expect(
+        isGoogleFormsUrl('https://docs.google.com/spreadsheets/d/abc'),
+      ).toBe(false);
+      expect(isGoogleFormsUrl('https://docs.google.com/formsfake/abc')).toBe(
+        false,
+      );
+    });
+
     it('returns false for invalid URL strings', () => {
       expect(isGoogleFormsUrl('not-a-url')).toBe(false);
       expect(isGoogleFormsUrl('')).toBe(false);
@@ -73,6 +92,21 @@ describe('Story 4.5: External Form Schemas Unit Tests', () => {
       ).toThrow(/External survey URL must use HTTPS/);
     });
 
+    it('rejects HTTPS links that are not Google Forms (Phase 1 allowlist, decision E4-DN3)', () => {
+      for (const externalUrl of [
+        'https://www.surveymonkey.com/r/xyz',
+        'https://example.com/survey',
+        'https://docs.google.com/document/d/abc/edit',
+      ]) {
+        expect(() =>
+          createExternalSurveySchema.parse({
+            title: 'Other platform',
+            externalUrl,
+          }),
+        ).toThrow(/must be a Google Forms link/);
+      }
+    });
+
     it('rejects invalid URL strings', () => {
       expect(() =>
         createExternalSurveySchema.parse({
@@ -91,14 +125,37 @@ describe('Story 4.5: External Form Schemas Unit Tests', () => {
       ).toThrow(/Title is required/);
     });
 
-    it('rejects negative reward', () => {
-      expect(() =>
+    it('rejects a negative or zero reward (AC1.1: positive integer)', () => {
+      for (const rewardPerResponse of [-5, 0]) {
+        expect(() =>
+          createExternalSurveySchema.parse({
+            title: 'Valid Title',
+            externalUrl: 'https://forms.gle/test',
+            rewardPerResponse,
+          }),
+        ).toThrow(/Reward must be at least 1 point/);
+      }
+    });
+
+    it('defaults and bounds the estimated completion time (FR-12)', () => {
+      const base = { title: 'Timed', externalUrl: 'https://forms.gle/test' };
+      expect(createExternalSurveySchema.parse(base).expectedEffortSeconds).toBe(
+        60,
+      );
+      expect(
         createExternalSurveySchema.parse({
-          title: 'Valid Title',
-          externalUrl: 'https://forms.gle/test',
-          rewardPerResponse: -5,
-        }),
-      ).toThrow(/Reward cannot be negative/);
+          ...base,
+          expectedEffortSeconds: 1800,
+        }).expectedEffortSeconds,
+      ).toBe(1800);
+      for (const expectedEffortSeconds of [9, 86401, 12.5]) {
+        expect(
+          createExternalSurveySchema.safeParse({
+            ...base,
+            expectedEffortSeconds,
+          }).success,
+        ).toBe(false);
+      }
     });
   });
 

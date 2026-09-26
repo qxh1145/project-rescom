@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { StoredObjectStatus } from '@rescom/schemas';
 import { PrismaService } from '../../../common/database/prisma.service';
 import { StorageRepositoryPort } from '../application/ports/storage-repository.port';
 import { StoredObjectEntity } from '../domain/stored-object.entity';
@@ -33,43 +34,20 @@ export class PrismaStorageRepository implements StorageRepositoryPort {
         createdAt: entity.createdAt,
         updatedAt: entity.updatedAt,
       },
-      update: {
-        checksum: entity.checksum,
-        status: entity.status,
-        scanStatus: entity.scanStatus,
-        scanPolicy: entity.scanPolicy,
-        scanResult: entity.scanResult ? (entity.scanResult as any) : undefined,
-        uploadedAt: entity.uploadedAt,
-        scannedAt: entity.scannedAt,
-        attachedAt: entity.attachedAt,
-        expiresAt: entity.expiresAt,
-        updatedAt: entity.updatedAt,
-      },
+      update: this.mutableState(entity),
     });
   }
 
-  async claimForScan(
+  async transition(
     id: string,
-    checksum?: string,
-  ): Promise<StoredObjectEntity | null> {
-    const now = new Date();
-    const claimed = await this.prisma.$transaction(async (tx) => {
-      const uploaded = await tx.storedObject.updateMany({
-        where: { id, status: 'INITIATED' },
-        data: {
-          status: 'UPLOADED',
-          uploadedAt: now,
-          ...(checksum ? { checksum } : {}),
-        },
-      });
-      if (uploaded.count !== 1) return false;
-      await tx.storedObject.update({
-        where: { id },
-        data: { status: 'QUARANTINED', scanStatus: 'PENDING' },
-      });
-      return true;
+    expectedStatus: StoredObjectStatus,
+    entity: StoredObjectEntity,
+  ): Promise<boolean> {
+    const result = await this.prisma.storedObject.updateMany({
+      where: { id, status: expectedStatus },
+      data: this.mutableState(entity),
     });
-    return claimed ? this.findById(id) : null;
+    return result.count === 1;
   }
 
   async findById(id: string): Promise<StoredObjectEntity | null> {
@@ -102,12 +80,17 @@ export class PrismaStorageRepository implements StorageRepositoryPort {
     return rows.map((r) => this.toEntity(r));
   }
 
-  async findExpiredUnattached(now: Date): Promise<StoredObjectEntity[]> {
+  async findExpiredUnattached(
+    now: Date,
+    limit = 200,
+  ): Promise<StoredObjectEntity[]> {
     const rows = await this.prisma.storedObject.findMany({
       where: {
         expiresAt: { lte: now },
         status: { notIn: ['ATTACHED', 'DELETED', 'EXPIRED'] },
       },
+      orderBy: { expiresAt: 'asc' },
+      take: limit,
     });
     return rows.map((row) => this.toEntity(row));
   }
@@ -116,6 +99,22 @@ export class PrismaStorageRepository implements StorageRepositoryPort {
     await this.prisma.storedObject.delete({
       where: { id },
     });
+  }
+
+  private mutableState(entity: StoredObjectEntity) {
+    return {
+      storageKey: entity.storageKey,
+      checksum: entity.checksum,
+      status: entity.status,
+      scanStatus: entity.scanStatus,
+      scanPolicy: entity.scanPolicy,
+      scanResult: entity.scanResult ? (entity.scanResult as any) : undefined,
+      uploadedAt: entity.uploadedAt,
+      scannedAt: entity.scannedAt,
+      attachedAt: entity.attachedAt,
+      expiresAt: entity.expiresAt,
+      updatedAt: entity.updatedAt,
+    };
   }
 
   private toEntity(raw: any): StoredObjectEntity {

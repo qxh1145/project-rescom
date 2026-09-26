@@ -9,6 +9,7 @@ import {
 } from './application/ports/demographic-profile.repository.port';
 import { PrismaDemographicProfileRepository } from './infrastructure/prisma-demographic-profile.repository';
 import { DemographicsService } from './application/demographics.service';
+import { StarterPointsCoordinator } from '../economy/application/starter-points.coordinator';
 @Module({
   providers: [
     {
@@ -25,9 +26,14 @@ import { DemographicsService } from './application/demographics.service';
     },
     {
       provide: DemographicsService,
-      useFactory: (repository: DemographicProfileRepositoryPort) =>
-        new DemographicsService(repository),
-      inject: [DEMOGRAPHIC_PROFILE_REPOSITORY_PORT],
+      useFactory: (
+        repository: DemographicProfileRepositoryPort,
+        starterPointsCoordinator?: StarterPointsCoordinator,
+      ) => new DemographicsService(repository, starterPointsCoordinator),
+      inject: [
+        DEMOGRAPHIC_PROFILE_REPOSITORY_PORT,
+        { token: StarterPointsCoordinator, optional: true },
+      ],
     },
   ],
   exports: [

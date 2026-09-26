@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { InitiateUploadInput } from '@rescom/schemas';
+import { InitiateUploadInput, RESERVATION_EXPIRY_MS } from '@rescom/schemas';
 import { PrismaService } from '../../../common/database/prisma.service';
 import { EnvService } from '../../../common/config/env.service';
 import { verifyStorageCapability } from '../../../common/security/storage-capability';
 import {
   FileUploadPolicy,
+  StorageAccess,
   StorageOwnerAuthorizationPort,
 } from '../application/ports/storage-owner-authorization.port';
 import {
@@ -13,9 +14,7 @@ import {
 } from '../application/exceptions/storage.exceptions';
 
 @Injectable()
-export class PrismaStorageOwnerAuthorizationService
-  implements StorageOwnerAuthorizationPort
-{
+export class PrismaStorageOwnerAuthorizationService implements StorageOwnerAuthorizationPort {
   constructor(
     private readonly prisma: PrismaService,
     private readonly envService: EnvService,
@@ -25,14 +24,20 @@ export class PrismaStorageOwnerAuthorizationService
     ownerContext: string,
     ownerRecordId: string,
     callerUserId: string | null,
-    ownerCapability?: string | null,
+    ownerCapability: string | null | undefined,
+    access: StorageAccess,
   ): Promise<void> {
     if (ownerContext === 'participation') {
       const attempt = await this.prisma.surveyAttempt.findUnique({
         where: { id: ownerRecordId },
-        select: { respondentId: true, isGuest: true, status: true },
+        select: {
+          respondentId: true,
+          isGuest: true,
+          status: true,
+          startedAt: true,
+        },
       });
-      if (!attempt || attempt.status !== 'IN_PROGRESS') {
+      if (!attempt || !this.attemptAllows(attempt, access)) {
         throw new StorageUnauthorizedAccessException();
       }
       const ownsAuthenticatedAttempt =
@@ -40,7 +45,7 @@ export class PrismaStorageOwnerAuthorizationService
       const ownsGuestAttempt =
         attempt.isGuest &&
         verifyStorageCapability(
-          this.envService.jwtSecret,
+          this.envService.storageCapabilitySecret,
           ownerRecordId,
           ownerCapability,
         );
@@ -65,11 +70,17 @@ export class PrismaStorageOwnerAuthorizationService
     callerUserId: string | null,
     ownerCapability?: string | null,
   ): Promise<FileUploadPolicy> {
+    // Defence in depth for the schema rule: a participation upload must name
+    // the file-upload question whose policy it is bound to (Epic 5 review P4).
+    if (input.ownerContext === 'participation' && !input.questionId) {
+      throw new StorageInvalidFileException('questionId is required');
+    }
     await this.authorize(
       input.ownerContext,
       input.ownerRecordId,
       callerUserId,
       ownerCapability,
+      'write',
     );
 
     if (!input.questionId) {
@@ -107,7 +118,9 @@ export class PrismaStorageOwnerAuthorizationService
       Array.isArray((schemaJson as any).blocks)
         ? (schemaJson as any).blocks
         : [];
-    const block = blocks.find((candidate: any) => candidate?.id === input.questionId);
+    const block = blocks.find(
+      (candidate: any) => candidate?.id === input.questionId,
+    );
     if (!block || block.type !== 'file_upload') {
       throw new StorageInvalidFileException(
         'The requested question is not a file-upload block in the pinned form version.',
@@ -121,5 +134,23 @@ export class PrismaStorageOwnerAuthorizationService
         : [],
       maxFiles: block.maxFiles ?? 1,
     };
+  }
+
+  /**
+   * Writes need a live reservation (IN_PROGRESS and not past the reservation
+   * window, even before the expiry sweep abandons it); reads also admit the
+   * COMPLETED attempt so its owner can still see an ATTACHED file.
+   */
+  private attemptAllows(
+    attempt: { status: string; startedAt: Date },
+    access: StorageAccess,
+  ): boolean {
+    if (access === 'read') {
+      return attempt.status === 'IN_PROGRESS' || attempt.status === 'COMPLETED';
+    }
+    return (
+      attempt.status === 'IN_PROGRESS' &&
+      attempt.startedAt.getTime() >= Date.now() - RESERVATION_EXPIRY_MS
+    );
   }
 }

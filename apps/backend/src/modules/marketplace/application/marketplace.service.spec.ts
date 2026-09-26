@@ -4,6 +4,7 @@ import { InMemoryDemographicProfileRepository } from '../../users/infrastructure
 import { InMemorySurveyResponseRepository } from '../infrastructure/in-memory-survey-response.repository';
 import { FormEntity } from '../../forms/domain/form.entity';
 import { FormVersionEntity } from '../../forms/domain/form-version.entity';
+import { DemographicProfileRequiredException } from '../../users/application/exceptions/demographics.exceptions';
 
 describe('MarketplaceService', () => {
   let service: MarketplaceService;
@@ -29,6 +30,8 @@ describe('MarketplaceService', () => {
       location: 'Hanoi',
       occupation: 'Student',
       fieldOfStudy: 'Computer Science',
+      householdIncome: 'Under 5M VND',
+      specificInterests: ['Technology'],
     });
 
     await demoRepo.upsert(respondentHcmcId, {
@@ -37,6 +40,8 @@ describe('MarketplaceService', () => {
       location: 'Ho Chi Minh City',
       occupation: 'Designer',
       fieldOfStudy: 'Graphic Design',
+      householdIncome: '10 - 20M VND',
+      specificInterests: ['Art'],
     });
   });
 
@@ -47,7 +52,44 @@ describe('MarketplaceService', () => {
     expect(feed.profileCompleted).toBe(true);
   });
 
-  it('should return open survey to all respondents, including those without a profile', async () => {
+  it('should reject the feed with DEMOGRAPHIC_PROFILE_REQUIRED when the user has no profile (Story 7.1)', async () => {
+    const error = await service
+      .getFeed(respondentNoProfileId)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DemographicProfileRequiredException);
+    expect(
+      (error as DemographicProfileRequiredException).missingFields,
+    ).toEqual([
+      'age',
+      'gender',
+      'location',
+      'occupation',
+      'fieldOfStudy',
+      'householdIncome',
+      'specificInterests',
+    ]);
+  });
+
+  it('should reject the feed for a partially completed profile (Story 7.1)', async () => {
+    await demoRepo.upsert(respondentNoProfileId, {
+      age: 25,
+      gender: 'OTHER',
+      location: 'Hue',
+    });
+
+    await expect(service.getFeed(respondentNoProfileId)).rejects.toMatchObject({
+      code: 'DEMOGRAPHIC_PROFILE_REQUIRED',
+      missingFields: [
+        'occupation',
+        'fieldOfStudy',
+        'householdIncome',
+        'specificInterests',
+      ],
+    });
+  });
+
+  it('should return open survey to every onboarded respondent', async () => {
     const now = new Date();
     const openForm = new FormEntity(
       'form-open',
@@ -81,11 +123,57 @@ describe('MarketplaceService', () => {
     expect(feedHanoi.surveys[0].id).toBe('form-open');
     expect(feedHanoi.surveys[0].hasTargeting).toBe(false);
 
-    // Respondent without profile also receives open survey
-    const feedNoProfile = await service.getFeed(respondentNoProfileId);
-    expect(feedNoProfile.total).toBe(1);
-    expect(feedNoProfile.surveys[0].id).toBe('form-open');
-    expect(feedNoProfile.profileCompleted).toBe(false);
+    // Any other onboarded respondent receives the open survey as well
+    const feedHcmc = await service.getFeed(respondentHcmcId);
+    expect(feedHcmc.total).toBe(1);
+    expect(feedHcmc.surveys[0].id).toBe('form-open');
+    expect(feedHcmc.profileCompleted).toBe(true);
+  });
+
+  it('hides the respondent’s own surveys from their feed (decision E4-DN2)', async () => {
+    const now = new Date();
+    const survey = (id: string, owner: string) =>
+      formRepo.create(
+        new FormEntity(
+          id,
+          owner,
+          'INTERNAL',
+          'PUBLISHED',
+          `Survey ${id}`,
+          null,
+          10,
+          100,
+          now,
+          now,
+        ),
+        new FormVersionEntity(
+          `ver-${id}`,
+          id,
+          1,
+          { title: id, blocks: [] } as any,
+          null,
+          true,
+          null,
+          null,
+          now,
+          now,
+        ),
+      );
+    await survey('form-own', respondentHanoiId);
+    await survey('form-other', publisherId);
+
+    const ownerFeed = await service.getFeed(respondentHanoiId, {
+      hideCompleted: false,
+    } as any);
+    expect(ownerFeed.surveys.map((card) => card.id)).toEqual(['form-other']);
+    expect(ownerFeed.total).toBe(1);
+
+    // Everyone else still sees both surveys.
+    const otherFeed = await service.getFeed(respondentHcmcId);
+    expect(otherFeed.surveys.map((card) => card.id).sort()).toEqual([
+      'form-other',
+      'form-own',
+    ]);
   });
 
   it('should filter surveys by demographic targeting criteria', async () => {
@@ -217,10 +305,10 @@ describe('MarketplaceService', () => {
     expect(hcmcIds).not.toContain('form-2');
     expect(hcmcIds).not.toContain('form-4');
 
-    // ── User with no profile feed ─────────────────────────────────────────
-    const feedNoProfile = await service.getFeed(respondentNoProfileId);
-    expect(feedNoProfile.total).toBe(1);
-    expect(feedNoProfile.surveys[0].id).toBe('form-1');
+    // ── User with no profile cannot reach the feed (Story 7.1) ────────────
+    await expect(service.getFeed(respondentNoProfileId)).rejects.toThrow(
+      DemographicProfileRequiredException,
+    );
   });
 
   describe('Story 4.3: Completed Survey Auto-Hide & Quota', () => {
@@ -349,6 +437,153 @@ describe('MarketplaceService', () => {
       const feed = await service.getFeed(respondentHanoiId);
       expect(feed.total).toBe(1);
       expect(feed.surveys[0].id).toBe('form-alpha');
+    });
+
+    it('hides an External survey the user completed (attempt COMPLETED, no Response) (review P3)', async () => {
+      responseRepo.recordExternalCompletion('form-alpha', respondentHanoiId);
+
+      const hidden = await service.getFeed(respondentHanoiId);
+      expect(hidden.surveys.map((card) => card.id)).toEqual(['form-beta']);
+
+      const shown = await service.getFeed(respondentHanoiId, {
+        hideCompleted: false,
+        sortBy: 'best_match',
+        type: 'ALL',
+      });
+      expect(
+        shown.surveys.find((card) => card.id === 'form-alpha')
+          ?.isCompletedByCurrentUser,
+      ).toBe(true);
+    });
+
+    it('hides a survey whose quota is reached by External completions (review P3)', async () => {
+      for (let i = 0; i < 5; i++) {
+        responseRepo.recordExternalCompletion('form-beta', `external-${i}`);
+      }
+
+      const feed = await service.getFeed(respondentHanoiId);
+      expect(feed.surveys.map((card) => card.id)).toEqual(['form-alpha']);
+    });
+
+    it("keeps a survey hidden when the user's Response was later DISPUTED but the attempt stays COMPLETED (review P3)", async () => {
+      await responseRepo.recordResponse({
+        formId: 'form-alpha',
+        formVersionId: 'v-alpha',
+        respondentId: respondentHanoiId,
+        status: 'DISPUTED',
+      });
+      responseRepo.recordCompletedAttempt({
+        formId: 'form-alpha',
+        respondentId: respondentHanoiId,
+        hasResponse: true,
+      });
+
+      const feed = await service.getFeed(respondentHanoiId);
+      expect(feed.surveys.map((card) => card.id)).toEqual(['form-beta']);
+      // An Internal attempt with a Response does not double-count the quota.
+      const counts = await responseRepo.getCompletedCountsByFormIds([
+        'form-alpha',
+      ]);
+      expect(counts.get('form-alpha')).toBe(0);
+    });
+  });
+
+  describe('Epic 4 review: published-version and stored-targeting safety', () => {
+    const now = new Date();
+
+    async function seedForm(
+      id: string,
+      options: {
+        targetingJson?: unknown;
+        isPublished?: boolean;
+        reward?: number;
+        publishedAt?: Date;
+      } = {},
+    ) {
+      await formRepo.create(
+        new FormEntity(
+          id,
+          publisherId,
+          'INTERNAL',
+          'PUBLISHED',
+          `Survey ${id}`,
+          null,
+          options.reward ?? 10,
+          100,
+          now,
+          now,
+        ),
+        new FormVersionEntity(
+          `v-${id}`,
+          id,
+          1,
+          { title: id, blocks: [] } as any,
+          (options.targetingJson ?? null) as any,
+          options.isPublished ?? true,
+          null,
+          null,
+          options.isPublished === false ? null : (options.publishedAt ?? now),
+          now,
+        ),
+      );
+    }
+
+    it('excludes a PUBLISHED form that has no published version instead of showing its draft (review P11)', async () => {
+      await seedForm('form-live');
+      await seedForm('form-draft-only', { isPublished: false });
+
+      const feed = await service.getFeed(respondentHanoiId);
+      expect(feed.surveys.map((card) => card.id)).toEqual(['form-live']);
+    });
+
+    it('fails closed per survey on malformed stored targeting and keeps the rest of the feed (review P12)', async () => {
+      await seedForm('form-ok');
+      await seedForm('form-bad-entry', { targetingJson: { locations: [1] } });
+      await seedForm('form-unknown-key', { targetingJson: { foo: 1 } });
+      await seedForm('form-empty-array', { targetingJson: { locations: [] } });
+
+      const feed = await service.getFeed(respondentHanoiId);
+      expect(feed.surveys.map((card) => card.id).sort()).toEqual([
+        'form-empty-array',
+        'form-ok',
+      ]);
+      const emptyArrayCard = feed.surveys.find(
+        (card) => card.id === 'form-empty-array',
+      );
+      expect(emptyArrayCard?.hasTargeting).toBe(false);
+    });
+
+    it('orders best_match as matching targeted first, then untargeted, ties by reward then newest (review P22)', async () => {
+      const older = new Date(now.getTime() - 60_000);
+      await seedForm('untargeted-high', { reward: 90 });
+      await seedForm('targeted-low', {
+        reward: 5,
+        targetingJson: { locations: ['Hanoi'] },
+      });
+      await seedForm('targeted-high-old', {
+        reward: 40,
+        publishedAt: older,
+        targetingJson: { ageRange: { min: 18, max: 30 } },
+      });
+      await seedForm('targeted-high-new', {
+        reward: 40,
+        targetingJson: { genders: ['MALE'] },
+      });
+      await seedForm('untargeted-low', { reward: 1 });
+
+      const feed = await service.getFeed(respondentHanoiId, {
+        sortBy: 'best_match',
+        hideCompleted: true,
+        type: 'ALL',
+      });
+
+      expect(feed.surveys.map((card) => card.id)).toEqual([
+        'targeted-high-new',
+        'targeted-high-old',
+        'targeted-low',
+        'untargeted-high',
+        'untargeted-low',
+      ]);
     });
   });
 

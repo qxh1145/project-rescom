@@ -18,4 +18,10 @@ export interface CompletionCodePort {
     storedVerifier?: string | null,
   ): boolean;
   parseVerifier(storedVerifier?: string | null): VerifierParts | null;
+  /**
+   * Epic 5 review P9: whether a stored verifier can be checked at all (well
+   * formed, with a configured key version). A false result means the survey
+   * version cannot verify any code — never the respondent's fault.
+   */
+  canVerify(storedVerifier?: string | null): boolean;
 }

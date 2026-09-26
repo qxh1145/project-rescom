@@ -3,6 +3,8 @@ import { formBlockSchema } from "./form-blocks.schema";
 import { formIntegrityMetadataSchema } from "./form-integrity.schema";
 import { formSettingsSchema } from "./form-definition.schema";
 import { surveyTargetingSchema, SurveyTargetingCriteria } from "./form-targeting.schema";
+import { externalSurveyUrlSchema } from "./external-url.schema";
+import { estimatedDurationMinutesSchema } from "../economy/pricing.schema";
 
 export const formTypeEnum = z.enum(["INTERNAL", "EXTERNAL"]);
 export type FormTypeEnum = z.infer<typeof formTypeEnum>;
@@ -142,15 +144,15 @@ export const createFormDraftSchema = z
       .min(1, "Expected completions must be at least 1")
       .max(100000, "Expected completions cannot exceed 100,000")
       .default(50),
+    /**
+     * Publisher's estimated completion time (decision E6-D2). Optional on a
+     * draft; a rewarded survey needs it at publish, where the FR-14 pricing
+     * band of this duration is enforced.
+     */
+    estimatedDurationMinutes: estimatedDurationMinutesSchema.optional().nullable(),
     schema: draftFormDefinitionSchema.optional(),
     targetingJson: surveyTargetingSchema.optional().nullable(),
-    externalUrl: z
-      .string()
-      .trim()
-      .url("Invalid external survey URL")
-      .max(2000)
-      .optional()
-      .nullable(),
+    externalUrl: externalSurveyUrlSchema.optional().nullable(),
   })
   .strict();
 
@@ -203,6 +205,8 @@ export const updateFormDraftSchema = z
       .min(1, "Expected completions must be at least 1")
       .max(100000, "Expected completions cannot exceed 100,000")
       .optional(),
+    /** Estimated completion time; `null` clears it (decision E6-D2). */
+    estimatedDurationMinutes: estimatedDurationMinutesSchema.optional().nullable(),
     schema: draftFormDefinitionSchema.optional(),
     /**
      * Demographic targeting criteria for Marketplace matching (Story 4.1).
@@ -212,13 +216,7 @@ export const updateFormDraftSchema = z
      * HTTP 422 / `TARGETING_VALIDATION_ERROR`.
      */
     targetingJson: surveyTargetingSchema.optional().nullable(),
-    externalUrl: z
-      .string()
-      .trim()
-      .url("Invalid external survey URL")
-      .max(2000)
-      .optional()
-      .nullable(),
+    externalUrl: externalSurveyUrlSchema.optional().nullable(),
   })
   .strict();
 
@@ -269,9 +267,38 @@ export interface FormDetailDto {
   description?: string | null;
   rewardPerResponse: number;
   expectedCompletions: number;
+  /** Estimated completion time in minutes (decision E6-D2); null when unset. */
+  estimatedDurationMinutes?: number | null;
+  /**
+   * Who closed the survey most recently (decision E8-D1): `OWNER`, `ADMIN` or
+   * `MODERATION`; null when it was never closed (or closed before the close
+   * kind was recorded). Only an `OWNER` close can be reopened.
+   */
+  closeKind?: "OWNER" | "ADMIN" | "MODERATION" | null;
   currentVersion: FormVersionDto;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Code-review decision E5-D4 (2026-09-26, option A — strict): "Create New
+ * Version" moves a live survey to DRAFT at once, so every respondent still
+ * taking the published version is cut off (their submission or code
+ * verification is refused). `GET /forms/:id/in-progress-attempts` lets the
+ * builder warn the Publisher before confirming.
+ */
+export interface FormInProgressAttemptsDto {
+  formId: string;
+  status: FormStatusEnum;
+  /** Unexpired IN_PROGRESS attempts on the form (each holds a reservation). */
+  inProgressAttempts: number;
+  reservationWindowMinutes: number;
+}
+
+/** `POST /forms/:id/versions` (decision E5-D4): the new draft + the impact. */
+export interface CreateFormVersionResultDto extends FormDetailDto {
+  /** In-progress attempts on the previous published version that were cut off. */
+  interruptedAttempts: number;
 }
 
 /**
@@ -286,6 +313,7 @@ export interface FormSummaryDto {
   description?: string | null;
   rewardPerResponse: number;
   expectedCompletions: number;
+  estimatedDurationMinutes?: number | null;
   latestVersionNumber: number;
   createdAt: string;
   updatedAt: string;

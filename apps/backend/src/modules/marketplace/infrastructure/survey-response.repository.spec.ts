@@ -97,6 +97,10 @@ describe('Story 4.3: SurveyResponseRepository Implementations', () => {
           groupBy: jest.fn(),
           create: jest.fn(),
         },
+        surveyAttempt: {
+          findMany: jest.fn().mockResolvedValue([]),
+          groupBy: jest.fn().mockResolvedValue([]),
+        },
       };
       repo = new PrismaSurveyResponseRepository(mockPrisma as PrismaService);
     });
@@ -121,6 +125,22 @@ describe('Story 4.3: SurveyResponseRepository Implementations', () => {
       expect(result.has('form-2')).toBe(true);
     });
 
+    it('also treats COMPLETED attempts (External completions, disputed Responses) as completed (review P3)', async () => {
+      mockPrisma.response.findMany.mockResolvedValue([{ formId: 'form-1' }]);
+      mockPrisma.surveyAttempt.findMany.mockResolvedValue([
+        { surveyId: 'form-1' },
+        { surveyId: 'form-external' },
+      ]);
+
+      const result = await repo.findCompletedFormIdsByRespondent('user-123');
+
+      expect(mockPrisma.surveyAttempt.findMany).toHaveBeenCalledWith({
+        where: { respondentId: 'user-123', status: 'COMPLETED' },
+        select: { surveyId: true },
+      });
+      expect([...result].sort()).toEqual(['form-1', 'form-external']);
+    });
+
     it('should query prisma groupBy for completed counts', async () => {
       mockPrisma.response.groupBy.mockResolvedValue([
         { formId: 'form-1', _count: { _all: 5 } },
@@ -142,6 +162,35 @@ describe('Story 4.3: SurveyResponseRepository Implementations', () => {
       });
       expect(counts.get('form-1')).toBe(5);
       expect(counts.get('form-2')).toBe(3);
+    });
+
+    it('adds COMPLETED attempts without a Response (External completions) to the counts (review P3)', async () => {
+      mockPrisma.response.groupBy.mockResolvedValue([
+        { formId: 'form-1', _count: { _all: 2 } },
+      ]);
+      mockPrisma.surveyAttempt.groupBy.mockResolvedValue([
+        { surveyId: 'form-1', _count: { _all: 1 } },
+        { surveyId: 'form-external', _count: { _all: 4 } },
+      ]);
+
+      const counts = await repo.getCompletedCountsByFormIds([
+        'form-1',
+        'form-external',
+        'form-empty',
+      ]);
+
+      expect(mockPrisma.surveyAttempt.groupBy).toHaveBeenCalledWith({
+        by: ['surveyId'],
+        where: {
+          surveyId: { in: ['form-1', 'form-external', 'form-empty'] },
+          status: 'COMPLETED',
+          response: null,
+        },
+        _count: { _all: true },
+      });
+      expect(counts.get('form-1')).toBe(3);
+      expect(counts.get('form-external')).toBe(4);
+      expect(counts.get('form-empty')).toBe(0);
     });
 
     it('should return empty map without querying prisma when formIds is empty', async () => {

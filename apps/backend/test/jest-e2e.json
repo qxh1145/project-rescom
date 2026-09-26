@@ -1,5 +1,9 @@
 {
-  "moduleFileExtensions": ["js", "json", "ts"],
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
   "rootDir": "..",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
@@ -9,5 +13,8 @@
     "^@rescom/schemas/(.*)$": "<rootDir>/../../packages/schemas/src/$1",
     "^@rescom/schemas$": "<rootDir>/../../packages/schemas/src"
   },
-  "testEnvironment": "node"
+  "testEnvironment": "node",
+  "setupFilesAfterEnv": [
+    "<rootDir>/test/setup-e2e.ts"
+  ]
 }

@@ -10,7 +10,7 @@ context:
 
 # Story 6.1: Double-Entry Ledger Core & Idempotency
 
-Status: review
+Status: done
 
 ## Story
 
@@ -149,6 +149,22 @@ So that point balances are strictly auditable and immune to race conditions or l
   - [x] 5.3 Author controller tests and E2E integration test in `apps/backend/test/ledger.e2e-spec.ts`.
   - [x] 5.4 Run all tests across workspaces and verify clean builds.
 
+### Review Findings
+
+- [x] [Review][Patch] Add authorization/ownership controls to journal posting, reversal, account inspection, reconciliation, and ledger-integrity endpoints [apps/backend/src/modules/economy/presentation/ledger.controller.ts:29]
+- [x] [Review][Patch] Make concurrent identical idempotent requests return the winning journal instead of `IDEMPOTENCY_CONFLICT` [apps/backend/src/modules/economy/infrastructure/prisma-ledger.repository.ts:149]
+- [x] [Review][Patch] Compare journal descriptions and entry multisets during idempotency replay validation [apps/backend/src/modules/economy/application/ledger.service.ts:588]
+- [x] [Review][Patch] Make reversal retries idempotent and reject keys belonging to unrelated journals [apps/backend/src/modules/economy/application/ledger.service.ts:330]
+- [x] [Review][Patch] Apply `reverseJournalInputSchema` at the HTTP/service boundary and implement its deterministic default key [packages/schemas/src/economy/ledger-journal.schema.ts:39]
+- [x] [Review][Patch] Enforce one ledger account per user/account-class/currency and make account creation race-safe [apps/backend/prisma/migrations/20260924120000_harden_double_entry_ledger/migration.sql:2]
+- [x] [Review][Patch] Enforce append-only journal and entry rows at the database/runtime-role boundary [apps/backend/prisma/migrations/20260924120000_harden_double_entry_ledger/migration.sql:36]
+- [x] [Review][Patch] Reconcile balances under an account lock in the same transaction as entry summation and projection update [apps/backend/src/modules/economy/application/ledger.service.ts:562]
+- [x] [Review][Patch] Enforce user-account versus system-account ownership/class invariants [packages/schemas/src/economy/ledger-account.schema.ts:34]
+- [x] [Review][Patch] Reject journals that mix currencies or fail zero-sum validation per currency [apps/backend/src/modules/economy/infrastructure/prisma-ledger.repository.ts:107]
+- [x] [Review][Patch] Add real PostgreSQL integration coverage for locking, uniqueness races, transactions, and migration protections [apps/backend/test/ledger.e2e-spec.ts:75]
+- [x] [Review][Patch] Bound entry amounts to PostgreSQL integer limits so exact reversals cannot overflow [apps/backend/src/modules/economy/domain/ledger-journal.entity.ts:53]
+- [x] [Review][Patch] Make the in-memory repository reserve idempotency keys atomically under concurrent requests [apps/backend/src/modules/economy/infrastructure/in-memory-ledger.repository.ts:87]
+
 ---
 
 ## Dev Notes
@@ -219,9 +235,11 @@ So that point balances are strictly auditable and immune to race conditions or l
 - `apps/backend/src/app.module.ts`
 - `apps/backend/src/common/http/http-exception.filter.ts`
 - `apps/backend/prisma/migrations/20260917153000_double_entry_ledger/migration.sql`
+- `apps/backend/prisma/migrations/20260924120000_harden_double_entry_ledger/migration.sql`
 - `apps/backend/test/ledger.e2e-spec.ts`
 
 ---
 
 ## Change Log
 - 2026-09-17: Implemented Story 6.1 Double-Entry Ledger Core & Idempotency per BMAD dev-story workflow. All acceptance criteria AC1-AC7 implemented and verified. Status moved to `review`.
+- 2026-09-24: Applied all code-review patches covering authorization, concurrency-safe idempotency, exact reversal replay, database immutability, atomic reconciliation, account invariants, currency isolation, numeric bounds, and PostgreSQL integration coverage. Status moved to `done`.

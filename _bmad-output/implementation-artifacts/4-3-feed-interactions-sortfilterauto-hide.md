@@ -12,7 +12,7 @@ context:
 
 # Story 4.3: Feed Interactions (Sort/Filter/Auto-Hide)
 
-Status: review
+Status: done
 
 ## Story
 
@@ -137,13 +137,27 @@ So that I can easily find new earning opportunities.
   - [x] 6.3 Run frontend production build (`next build`).
   - [x] 6.4 Verify all Acceptance Criteria are met and mark story for review.
 
+### Review Findings
+
+_Epic 4 code review, 2026-09-26 (triage IDs in brackets)._
+
+- [x] [Review][Decision] Cursor pagination for the Marketplace feed (DN1, shared with Story 4.2 — resolve once, recorded in both stories) — the spine requires cursor pagination for list APIs, but the feed returns every match and sorts/filters in Node, so a cursor (which would encode 4.3's sort key + `id`) cannot bound the load until matching moves into SQL; a contract change also churns the human-owned mock journey. Options: (A) `cursor` + `limit` (default 20, max 50) and `nextCursor` now; (B) defer to the live-API swap / SQL feed projection and record the spine deviation (P11 already limits per-request load); (C) hard cap with no cursor (not recommended). **Triage recommendation: B.** See the matching item in `4-2-automated-marketplace-matching.md`. [packages/schemas/src/marketplace/marketplace.schema.ts:27] — **Resolved 2026-09-26:** option B accepted by Quan; the feed keeps returning every match (sorted/filtered in Node) until the SQL feed projection / live-API swap, where `cursor` + `limit` + an opaque `nextCursor` (4.3 sort key + `id`) will be added together with the mock journey; the deviation from the spine's cursor rule is recorded in `deferred-work.md` ("code-review decisions 2026-09-26 (Batch B)"); P11's per-request load reduction verified in place.
+- [x] [Review][Patch] The feed ignores External completions and uses a different completion source than participation (P3, high) — fixed: per-user "completed" = SUBMITTED/VALIDATED Response OR COMPLETED attempt; quota = those Responses + COMPLETED attempts without a Response (same definitions as participation). Implemented once in the shared `countCompletionsByFormIds` / `findCompletedFormIdsForRespondent` (`src/common/database/completion-counts.ts`) so the Epic 6 close-refund fix (DF1) can reuse it; in-memory adapter gained `recordExternalCompletion`/`recordCompletedAttempt`. [apps/backend/src/modules/marketplace/infrastructure/prisma-survey-response.repository.ts:14]
+- [x] [Review][Patch] Invalid feed query parameters return 500 instead of 400 (P8) — fixed: `@Query(new ZodValidationPipe(marketplaceFeedQuerySchema, 'VALIDATION_ERROR', 'query'))`; controller-spec and e2e cases for `sortBy=bogus`, `minReward=abc`, `hideCompleted=yes`, repeated params. [apps/backend/src/modules/marketplace/presentation/marketplace.controller.ts:17]
+- [x] [Review][Patch] The Marketplace page keeps stale error/results on filter changes and fetches on every keystroke (P18) — fixed: per-request loading/error reset, empty list on failure, ~300 ms search debounce (`lib/use-debounced-value.ts`); still mock-backed as the spec requires. [apps/frontend/my-app/app/marketplace/page.tsx:69]
+- [x] [Review][Patch] `best_match` ordering has no test although Task 3.6 is checked (P22) — fixed: service test asserts matching targeted first, then untargeted, ties by reward (desc) then newest. [apps/backend/src/modules/marketplace/application/marketplace.service.spec.ts]
+- [x] [Review][Defer] Guest (public-link) responses count toward the Marketplace quota and the close refund (DF2) [apps/backend/src/modules/marketplace/infrastructure/prisma-survey-response.repository.ts:48] — deferred: Story 4.4 is Phase 2; participation counts guests the same way, so feed, participation and close refund must change together (`isGuest: false`) when 4.4 is finalized.
+- [x] [Review][Defer] Feed quota hiding ignores active reservations, so a fully reserved survey stays listed and returns 409 (DF3) [apps/backend/src/modules/marketplace/application/marketplace.service.ts:63] — deferred: AC3.2 defines hiding as `completed >= expected`; reservations are transient (30 min) and a correct fix must exclude the viewer's own reservation. Revisit with the feed projection work.
+- [x] [Review][Defer] `best_match` can be gamed with a no-op criterion such as ageRange 13–100 (DF9) [apps/backend/src/modules/marketplace/application/marketplace.service.ts:175] — deferred: AC3.3 defines the ordering exactly; match-quality scoring belongs to Story 9.5 (Phase 2).
+- [x] [Review][Defer] `SurveyResponseRepositoryPort.recordResponse` departs from the AC2.1 signature and the Prisma adapter writes a placeholder FK and `127.0.0.1` (DF12) [apps/backend/src/modules/marketplace/application/ports/survey-response.repository.port.ts:8] — deferred: test-only (no production caller); align or move it to the in-memory adapter when the port is next touched.
+
 ---
 
 ## Dev Notes
 
 ### Architecture Context
 - **Ownership (AD-16 / ARCHITECTURE-SPINE):** `Marketplace` is a projection and discovery service. It consumes read projections from `Forms` and `Responses` to determine feed availability without modifying response or form aggregate roots.
-- **Auto-Hide Completed Logic:** A response counts as "completed" if `status` is `SUBMITTED` or `VALIDATED`. In-progress or abandoned drafts do not hide the survey from the feed.
+- **Auto-Hide Completed Logic:** A response counts as "completed" if `status` is `SUBMITTED` or `VALIDATED`. In-progress or abandoned drafts do not hide the survey from the feed. _(Code review 2026-09-26, P3: a COMPLETED SurveyAttempt also counts — External completions create no Response, and an Internal Response later DISPUTED/REJECTED keeps its COMPLETED attempt; quota adds COMPLETED attempts without a Response. Same definitions as participation.)_
 - **Quota Auto-Hide (FR-38):** If the total count of completed responses for a form reaches `expectedCompletions`, it is automatically hidden from the active marketplace feed.
 - **Sorting Performance:** In-memory sorting and filtering on the projected candidate set is fast and deterministic for candidate surveys matched to a respondent.
 
@@ -171,6 +185,8 @@ So that I can easily find new earning opportunities.
 - **AC4 — Marketplace API Endpoints:** Extended `MarketplaceController.getFeed` with validated `@Query()` parameters and wired dependencies in `MarketplaceModule`.
 - **AC5 — Frontend Feed Interactions UI:** Created `MarketplaceFilterBar.tsx` featuring instant keyword search, sort selector (Best Match, Highest Reward, Shortest Time, Newest), survey type filter (All, Internal, External), and "Hide completed" toggle. Updated `MarketplaceCard.tsx` with a distinct "Completed" badge and status, and updated `page.tsx` with reactive filter state and empty states.
 - **AC6 — Comprehensive Test Coverage:** Added unit test suites for schema validation and repository implementations, updated `marketplace.service.spec.ts` with 15 tests, added E2E tests in `marketplace-feed.e2e-spec.ts` testing auto-hide, sorting, and filtering via HTTP requests. All 480 unit tests and 124 E2E tests pass.
+- **Code review 2026-09-26 (Epic 4):** applied P3 (feed counts External completions/COMPLETED attempts like participation, via the shared `completion-counts.ts` helper that the Epic 6 close-refund fix can reuse), P8 (feed query validated by `ZodValidationPipe` → 400), P18 (per-request loading/error reset, debounced search on the mock-backed page) and P22 (`best_match` ordering test); DN1 (cursor pagination, shared with 4.2) awaits a product decision.
+- **Decision follow-up 2026-09-26 (E4-DN1 option B, accepted by Quan):** no code change — cursor pagination deferred and the spine deviation recorded in `deferred-work.md`; P11 (newest published version only per form) verified as the interim load reduction. Related (E4-DN2, Story 4.2): the feed now also hides the caller's own surveys. Verification: schemas 418 (23 suites), backend unit 1419 (98 suites), backend e2e 291 passed / 3 skipped (30 suites), frontend 238, typecheck + lint clean, `prisma validate` clean.
 
 ---
 
@@ -193,9 +209,16 @@ So that I can easily find new earning opportunities.
 - `apps/frontend/my-app/app/marketplace/page.tsx`
 - `_bmad-output/implementation-artifacts/4-3-feed-interactions-sortfilterauto-hide.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `apps/backend/src/common/database/completion-counts.ts`
+- `apps/frontend/my-app/lib/use-debounced-value.ts`
+- `_bmad-output/implementation-artifacts/deferred-work.md`
+- Decision follow-up 2026-09-26 (E4-DN1):
+  - `_bmad-output/implementation-artifacts/deferred-work.md`, `_bmad-output/implementation-artifacts/code-review-decisions-2026-09-26.md`, `_bmad-output/implementation-artifacts/sprint-status.yaml` (no code change)
 
 ---
 
 ## Change Log
 - 2026-09-15: Initial story specification created for Story 4.3: Feed Interactions (Sort/Filter/Auto-Hide). Status set to ready-for-dev.
 - 2026-09-15: Implemented Story 4.3 Feed Interactions (Sort/Filter/Auto-Hide). Added shared query schema with sorting options/aliases, response repository port with in-memory and prisma adapters, feed service auto-hide for completed surveys and quota completion, manual sorting (reward desc/asc, duration asc/desc, newest, best match), search and type filtering, controller query integration, frontend filter bar and card completed badges, and comprehensive test suites (480 unit tests, 124 E2E tests, clean Next.js build). Status updated to review.
+- 2026-09-26: Code review 2026-09-26: Epic 4 review findings written (1 shared decision open, 4 patches applied — P3, P8, P18, P22, 4 deferred); status set to in-progress pending DN1.
+- 2026-09-26: Decision follow-up 2026-09-26: E4-DN1 → option B (cursor pagination deferred to the SQL feed projection / live-API swap; spine deviation recorded in `deferred-work.md`; P11 verified). No unchecked decision/patch items remain → Status `done`.

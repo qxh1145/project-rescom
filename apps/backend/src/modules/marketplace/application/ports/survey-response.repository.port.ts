@@ -34,12 +34,17 @@ export interface GuestSubmissionEntity {
 
 export interface SurveyResponseRepositoryPort {
   /**
-   * Finds all form IDs that the given respondent has completed (SUBMITTED or VALIDATED).
+   * Finds all form IDs the given respondent has completed: a SUBMITTED or
+   * VALIDATED Response OR a COMPLETED SurveyAttempt (External completions
+   * create no Response; an Internal Response later DISPUTED/REJECTED keeps its
+   * COMPLETED attempt). Mirrors participation's one-completion-per-form rule.
    */
   findCompletedFormIdsByRespondent(respondentId: string): Promise<Set<string>>;
 
   /**
-   * Aggregates completed response count (SUBMITTED or VALIDATED) for the given form IDs.
+   * Completed participations per form (quota, FR-38): SUBMITTED/VALIDATED
+   * Responses plus COMPLETED attempts without a Response (External
+   * completions). Mirrors participation's quota check.
    */
   getCompletedCountsByFormIds(formIds: string[]): Promise<Map<string, number>>;
 

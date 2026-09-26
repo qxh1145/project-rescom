@@ -1,7 +1,9 @@
 import {
+  FormCloseKind,
   FormStatusEnum,
   FormTypeEnum,
   isFormImmutable,
+  isOwnerReopenableClose,
   isValidStatusTransition,
 } from '@rescom/schemas';
 import { FormVersionEntity } from './form-version.entity';
@@ -20,6 +22,25 @@ export class FormEntity {
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
     public readonly versions?: FormVersionEntity[],
+    /**
+     * How many times the survey entered CLOSED (Epic 6 review P3). It is the
+     * close identity of the Escrow keys `close-refund:{formId}:c{closeCount}`
+     * and `reopen-escrow:{formId}:c{closeCount}`, so every close/reopen cycle
+     * posts its own journal.
+     */
+    public readonly closeCount: number = 0,
+    /**
+     * Publisher's estimated completion time in whole minutes (decision
+     * E6-D2): picks the FR-14 pricing band enforced at publish. Optional on
+     * drafts.
+     */
+    public readonly estimatedDurationMinutes: number | null = null,
+    /**
+     * Who closed the survey most recently (decision E8-D1): written by the
+     * same conditional update as the CLOSED transition. `null` when it was
+     * never closed, or closed before the close kind was recorded.
+     */
+    public readonly closeKind: FormCloseKind | null = null,
   ) {}
 
   isDraft(): boolean {
@@ -50,6 +71,14 @@ export class FormEntity {
     return this.status === 'CLOSED';
   }
 
+  /**
+   * Decision E8-D1: only a survey its owner closed can be reopened; Admin
+   * takedowns and moderation rejections are final.
+   */
+  isReopenableByOwner(): boolean {
+    return this.isClosed() && isOwnerReopenableClose(this.closeKind);
+  }
+
   canTransitionTo(nextStatus: FormStatusEnum): boolean {
     return isValidStatusTransition(this.status, nextStatus);
   }
@@ -62,7 +91,27 @@ export class FormEntity {
         nextStatus,
       );
     }
-    return this.copyWith({ status: nextStatus, updatedAt });
+    return this.copyWith({
+      status: nextStatus,
+      updatedAt,
+      // Persisted by the same conditional update that performs the
+      // transition, so concurrent closes cannot share a close number.
+      closeCount:
+        nextStatus === 'CLOSED' ? this.closeCount + 1 : this.closeCount,
+    });
+  }
+
+  /**
+   * The CLOSED transition that records who closed the survey (decision
+   * E8-D1). Every production close path goes through here; `closeKind` is
+   * persisted by the same conditional update as the transition and
+   * `closeCount`.
+   */
+  close(closeKind: FormCloseKind, closedAt = new Date()): FormEntity {
+    return this.transitionTo('CLOSED', closedAt).copyWith({
+      updatedAt: closedAt,
+      closeKind,
+    });
   }
 
   isOwnedBy(userId: string): boolean {
@@ -78,6 +127,11 @@ export class FormEntity {
     expectedCompletions?: number;
     updatedAt?: Date;
     versions?: FormVersionEntity[];
+    closeCount?: number;
+    /** `undefined` keeps the current value; `null` clears it. */
+    estimatedDurationMinutes?: number | null;
+    /** `undefined` keeps the current value; `null` clears it. */
+    closeKind?: FormCloseKind | null;
   }): FormEntity {
     return new FormEntity(
       this.id,
@@ -93,6 +147,11 @@ export class FormEntity {
       this.createdAt,
       updates.updatedAt ?? new Date(),
       updates.versions ?? this.versions,
+      updates.closeCount ?? this.closeCount,
+      updates.estimatedDurationMinutes !== undefined
+        ? updates.estimatedDurationMinutes
+        : this.estimatedDurationMinutes,
+      updates.closeKind !== undefined ? updates.closeKind : this.closeKind,
     );
   }
 }

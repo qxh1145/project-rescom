@@ -16,6 +16,16 @@ import { EnvService } from '../src/common/config/env.service';
 import { PrismaService } from '../src/common/database/prisma.service';
 import { HttpExceptionFilter } from '../src/common/http/http-exception.filter';
 import { AUTH_COOKIE_NAME } from '../src/modules/auth/presentation/cookie-options.helper';
+import {
+  PassThroughUnitOfWork,
+  UNIT_OF_WORK_PORT,
+} from '../src/common/database/unit-of-work.port';
+import { ADMIN_CAPABILITY_PORT } from '../src/modules/economy/application/ports/admin-capability.port';
+import { InMemoryAdminCapabilityRepository } from '../src/modules/economy/infrastructure/in-memory-admin-capability.repository';
+import { SURVEY_MODERATION_REPOSITORY_PORT } from '../src/modules/moderation/application/ports/survey-moderation-repository.port';
+import { InMemorySurveyModerationRepository } from '../src/modules/moderation/infrastructure/in-memory-survey-moderation.repository';
+import { NOTIFICATION_REPOSITORY_PORT } from '../src/modules/notifications/application/ports/notification-repository.port';
+import { InMemoryNotificationRepository } from '../src/modules/notifications/infrastructure/in-memory-notification.repository';
 
 describe('Story 2.7: Form Versioning E2E Tests', () => {
   let app: INestApplication;
@@ -82,6 +92,18 @@ describe('Story 2.7: Form Versioning E2E Tests', () => {
       .useValue(formRepo)
       .overrideProvider(EnvService)
       .useValue(envService)
+      // Story 8.1: publish runs under the shared Unit of Work; approval goes
+      // through the moderation endpoint (in-memory adapters).
+      .overrideProvider(UNIT_OF_WORK_PORT)
+      .useValue(new PassThroughUnitOfWork())
+      .overrideProvider(ADMIN_CAPABILITY_PORT)
+      .useValue(
+        new InMemoryAdminCapabilityRepository((id) => userRepo.findById(id)),
+      )
+      .overrideProvider(SURVEY_MODERATION_REPOSITORY_PORT)
+      .useValue(new InMemorySurveyModerationRepository())
+      .overrideProvider(NOTIFICATION_REPOSITORY_PORT)
+      .useValue(new InMemoryNotificationRepository())
       .compile();
 
     sessionService = moduleFixture.get(SessionService);
@@ -137,6 +159,26 @@ describe('Story 2.7: Form Versioning E2E Tests', () => {
     required: true,
   };
 
+  let moderatorCount = 0;
+
+  /** Story 8.1: a (different) Admin approves the queued version. */
+  async function approveViaModeration(formId: string, formVersionId: string) {
+    moderatorCount += 1;
+    const { tokens } = await createTestUserWithSession(
+      `moderator${moderatorCount}@example.com`,
+      'ADMIN',
+    );
+    const res = await request(app.getHttpServer())
+      .post(`/admin/moderation/surveys/${formId}/approve`)
+      .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
+      .set('X-CSRF-Token', tokens.csrfToken)
+      .set('Origin', ALLOWED_ORIGIN)
+      .set('Content-Type', 'application/json')
+      .send({ formVersionId });
+    expect(res.status).toBe(200);
+    return res;
+  }
+
   async function createPublishedForm(tokens: {
     accessToken: string;
     csrfToken: string;
@@ -169,7 +211,12 @@ describe('Story 2.7: Form Versioning E2E Tests', () => {
       .send();
 
     expect(publishRes.status).toBe(200);
-    expect(publishRes.body.data.status).toBe('PUBLISHED');
+    expect(publishRes.body.data.status).toBe('MODERATION_QUEUE');
+    const approveRes = await approveViaModeration(
+      formId,
+      publishRes.body.data.currentVersion.id,
+    );
+    expect(approveRes.body.data.form.status).toBe('PUBLISHED');
 
     return formId;
   }
@@ -202,6 +249,49 @@ describe('Story 2.7: Form Versioning E2E Tests', () => {
       expect(res.body.meta.message).toContain(
         'New form version created successfully',
       );
+    });
+
+    it('decision E5-D4: warns the Publisher about in-progress attempts before and after the strict cut-off', async () => {
+      const { tokens } = await createTestUserWithSession(
+        'publisher-e5d4@example.com',
+      );
+      const formId = await createPublishedForm(tokens);
+      formRepo.useInProgressAttemptsSource((id) => (id === formId ? 2 : 0));
+
+      const impact = await request(app.getHttpServer())
+        .get(`/forms/${formId}/in-progress-attempts`)
+        .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`]);
+      expect(impact.status).toBe(200);
+      expect(impact.body.data).toEqual({
+        formId,
+        status: 'PUBLISHED',
+        inProgressAttempts: 2,
+        reservationWindowMinutes: 30,
+      });
+
+      const stranger = await createTestUserWithSession(
+        'stranger-e5d4@example.com',
+      );
+      await request(app.getHttpServer())
+        .get(`/forms/${formId}/in-progress-attempts`)
+        .set('Cookie', [`${AUTH_COOKIE_NAME}=${stranger.tokens.accessToken}`])
+        .expect(403);
+
+      const res = await request(app.getHttpServer())
+        .post(`/forms/${formId}/versions`)
+        .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
+        .set('X-CSRF-Token', tokens.csrfToken)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Content-Type', 'application/json')
+        .send();
+      expect(res.status).toBe(201);
+      // Strict (option A): the survey leaves PUBLISHED at once.
+      expect(res.body.data.status).toBe('DRAFT');
+      expect(res.body.data.interruptedAttempts).toBe(2);
+      expect(res.body.meta.message).toContain(
+        '2 in-progress attempt(s) on the previous version were cut off',
+      );
+      formRepo.useInProgressAttemptsSource(() => 0);
     });
 
     it('rejects version creation if form is not in PUBLISHED status (e.g. still DRAFT)', async () => {
@@ -354,9 +444,20 @@ describe('Story 2.7: Form Versioning E2E Tests', () => {
         .send();
 
       expect(publishV2Res.status).toBe(200);
-      expect(publishV2Res.body.data.status).toBe('PUBLISHED');
+      // Story 8.1: the re-published version waits for moderation.
+      expect(publishV2Res.body.data.status).toBe('MODERATION_QUEUE');
       expect(publishV2Res.body.data.currentVersion.versionNumber).toBe(2);
-      expect(publishV2Res.body.data.currentVersion.isPublished).toBe(true);
+      expect(publishV2Res.body.data.currentVersion.isPublished).toBe(false);
+
+      const approveV2Res = await approveViaModeration(
+        formId,
+        publishV2Res.body.data.currentVersion.id,
+      );
+      expect(approveV2Res.body.data.form.status).toBe('PUBLISHED');
+      expect(approveV2Res.body.data.form.currentVersionId).toBe(
+        publishV2Res.body.data.currentVersion.id,
+      );
+      expect(approveV2Res.body.data.form.isPublished).toBe(true);
 
       // 4. Verify version history shows both versions
       const versionsRes = await request(app.getHttpServer())

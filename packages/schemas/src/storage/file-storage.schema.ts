@@ -15,7 +15,14 @@ export const DISALLOWED_MIME_TYPES = [
   "application/javascript",
   "text/html",
   "application/xhtml+xml",
+  "image/svg+xml",
+  "application/x-httpd-php",
+  "application/java-archive",
 ];
+
+const sha256ChecksumSchema = z
+  .string()
+  .regex(/^[a-fA-F0-9]{64}$/, "Checksum must be a 64-character hex string (SHA-256)");
 
 // --- Enums ---
 export const storedObjectStatusEnum = z.enum([
@@ -84,12 +91,20 @@ export const initiateUploadInputSchema = z
     ownerContext: storageOwnerContextEnum,
     ownerRecordId: z.string().uuid("Invalid owner record UUID"),
     questionId: z.string().max(100).optional(),
-    checksum: z
-      .string()
-      .regex(/^[a-fA-F0-9]{64}$/, "Checksum must be a 64-character hex string (SHA-256)")
-      .optional(),
+    checksum: sha256ChecksumSchema.optional(),
   })
-  .strict();
+  .strict()
+  // Participation uploads are always bound to a file-upload question of the
+  // pinned form version, so the per-question policy is always enforced.
+  .superRefine((input, ctx) => {
+    if (input.ownerContext === "participation" && !input.questionId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["questionId"],
+        message: "questionId is required for participation uploads",
+      });
+    }
+  });
 
 export type InitiateUploadInput = z.infer<typeof initiateUploadInputSchema>;
 
@@ -106,13 +121,18 @@ export type InitiateUploadResponse = z.infer<
 >;
 
 // --- Finalize Upload Schema ---
-export const finalizeUploadInputSchema = z
+/** Request body of `POST uploads/:id/finalize` (the object id is a path param). */
+export const finalizeUploadBodySchema = z
   .object({
+    checksum: sha256ChecksumSchema.optional(),
+  })
+  .strict();
+
+export type FinalizeUploadBody = z.infer<typeof finalizeUploadBodySchema>;
+
+export const finalizeUploadInputSchema = finalizeUploadBodySchema
+  .extend({
     objectId: z.string().uuid("Invalid object UUID"),
-    checksum: z
-      .string()
-      .regex(/^[a-fA-F0-9]{64}$/, "Checksum must be a 64-character hex string (SHA-256)")
-      .optional(),
   })
   .strict();
 

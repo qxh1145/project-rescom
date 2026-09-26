@@ -1,4 +1,8 @@
 import { randomUUID } from 'crypto';
+import {
+  POSTGRES_INTEGER_MAX,
+  REVERSIBLE_LEDGER_AMOUNT_MIN,
+} from '@rescom/schemas';
 
 export interface LedgerEntryProps {
   id?: string;
@@ -16,8 +20,15 @@ export class LedgerEntryEntity {
   readonly createdAt: Date;
 
   constructor(props: LedgerEntryProps) {
-    if (props.amount === 0) {
-      throw new Error('Ledger entry amount cannot be zero');
+    if (
+      !Number.isInteger(props.amount) ||
+      props.amount === 0 ||
+      props.amount < REVERSIBLE_LEDGER_AMOUNT_MIN ||
+      props.amount > POSTGRES_INTEGER_MAX
+    ) {
+      throw new Error(
+        `Ledger entry amount must be a non-zero reversible PostgreSQL integer (${REVERSIBLE_LEDGER_AMOUNT_MIN}..${POSTGRES_INTEGER_MAX})`,
+      );
     }
     this.id = props.id ?? randomUUID();
     this.journalId = props.journalId;

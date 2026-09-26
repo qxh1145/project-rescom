@@ -14,6 +14,7 @@ import {
   GoogleIdentityConflictException,
   UserLockedException,
 } from './exceptions/auth.exceptions';
+import { StarterPointsCoordinator } from '../../economy/application/starter-points.coordinator';
 
 export interface GoogleOAuthConfig {
   oauthIntentTtlSeconds: number;
@@ -41,6 +42,7 @@ export class GoogleOAuthService {
     private readonly generateId: () => string = randomUUID,
     private readonly generateSecret: () => string = () =>
       randomBytes(32).toString('hex'),
+    private readonly starterPointsCoordinator?: StarterPointsCoordinator,
   ) {}
 
   async initiateLogin(
@@ -354,6 +356,10 @@ export class GoogleOAuthService {
           sub: googleIdentity.sub,
           email: googleIdentity.email,
         });
+
+        // FR-4 on every login, not only the first: a grant that failed when
+        // the account was provisioned is recovered here (never throws).
+        await this.starterPointsCoordinator?.ensureStarterGrant(user.id);
 
         // Local session issuance only AFTER durable user resolution (AC8)
         const sessionTokens = await this.sessionService.createSession(user.id);

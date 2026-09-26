@@ -4,11 +4,14 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Post,
   Put,
   UseGuards,
   UsePipes,
 } from '@nestjs/common';
 import {
+  submitDemographicSurveySchema,
+  SubmitDemographicSurveyInput,
   updateDemographicProfileSchema,
   UpdateDemographicProfileInput,
 } from '@rescom/schemas';
@@ -21,7 +24,7 @@ import { JsonOnlyGuard } from '../../../common/http/json-only.guard';
 import { ZodValidationPipe } from '../../../common/http/zod-validation.pipe';
 import { createSuccessEnvelope } from '../../../common/http/response.envelope';
 
-@Controller('demographics')
+@Controller(['demographics', 'api/demographics'])
 @UseGuards(SessionAuthGuard)
 export class DemographicsController {
   constructor(private readonly demographicsService: DemographicsService) {}
@@ -43,6 +46,28 @@ export class DemographicsController {
     const result = await this.demographicsService.updateProfile(user.id, dto);
     return createSuccessEnvelope(result, {
       message: 'Demographic profile updated successfully',
+    });
+  }
+
+  /**
+   * Mandatory Demographic Survey submission (Story 7.1, FR-6). Every field is
+   * required; the response tells the client to open the Marketplace
+   * activation step (FR-7).
+   */
+  @Post('survey')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(CsrfGuard, JsonOnlyGuard)
+  @UsePipes(new ZodValidationPipe(submitDemographicSurveySchema))
+  async submitSurvey(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SubmitDemographicSurveyInput,
+  ) {
+    const result = await this.demographicsService.submitMandatorySurvey(
+      user.id,
+      dto,
+    );
+    return createSuccessEnvelope(result, {
+      message: 'Mandatory demographic survey completed',
     });
   }
 }

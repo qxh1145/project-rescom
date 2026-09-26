@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
@@ -9,6 +10,7 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { EnvService } from '../../../common/config/env.service';
 import {
+  CopyObjectOutcome,
   ObjectStoragePort,
   StoredObjectMetadata,
 } from '../application/ports/object-storage.port';
@@ -80,16 +82,43 @@ export class S3ObjectStorageService implements ObjectStoragePort {
         checksumSha256: result.ChecksumSHA256
           ? Buffer.from(result.ChecksumSHA256, 'base64').toString('hex')
           : null,
+        etag: result.ETag ?? null,
       };
     } catch (error: any) {
-      const status = error?.$metadata?.httpStatusCode;
+      if (isNotFound(error)) return null;
+      throw error;
+    }
+  }
+
+  async copyObject(
+    bucket: string,
+    sourceKey: string,
+    destinationKey: string,
+    ifMatchEtag: string,
+  ): Promise<CopyObjectOutcome> {
+    try {
+      await this.client.send(
+        new CopyObjectCommand({
+          Bucket: bucket,
+          Key: destinationKey,
+          // CopySource must be URL-encoded; keep the key's `/` separators.
+          CopySource: `${bucket}/${sourceKey
+            .split('/')
+            .map(encodeURIComponent)
+            .join('/')}`,
+          CopySourceIfMatch: ifMatchEtag,
+          MetadataDirective: 'COPY',
+        }),
+      );
+      return 'COPIED';
+    } catch (error: any) {
       if (
-        status === 404 ||
-        error?.name === 'NotFound' ||
-        error?.name === 'NoSuchKey'
+        error?.$metadata?.httpStatusCode === 412 ||
+        error?.name === 'PreconditionFailed'
       ) {
-        return null;
+        return 'PRECONDITION_FAILED';
       }
+      if (isNotFound(error)) return 'SOURCE_NOT_FOUND';
       throw error;
     }
   }
@@ -107,4 +136,12 @@ export class S3ObjectStorageService implements ObjectStoragePort {
       new DeleteObjectCommand({ Bucket: bucket, Key: storageKey }),
     );
   }
+}
+
+function isNotFound(error: any): boolean {
+  return (
+    error?.$metadata?.httpStatusCode === 404 ||
+    error?.name === 'NotFound' ||
+    error?.name === 'NoSuchKey'
+  );
 }

@@ -8,6 +8,7 @@ import {
   EmailAlreadyRegisteredException,
   InvalidCredentialsException,
 } from './exceptions/auth.exceptions';
+import { StarterPointsCoordinator } from '../../economy/application/starter-points.coordinator';
 
 export interface AuthResult {
   user: SanitizedUser;
@@ -24,6 +25,7 @@ export class AuthService {
     private readonly tokenService: TokenServicePort,
     private readonly generateId: () => string = randomUUID,
     private readonly sessionService?: SessionService,
+    private readonly starterPointsCoordinator?: StarterPointsCoordinator,
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResult> {
@@ -54,6 +56,8 @@ export class AuthService {
         status: 'ACTIVE',
       });
 
+      await this.starterPointsCoordinator?.ensureStarterGrant(user.id);
+
       return {
         user: {
           id: user.id,
@@ -73,6 +77,10 @@ export class AuthService {
       role: 'RESPONDENT',
       status: 'ACTIVE',
     });
+
+    // FR-4: non-fatal — a failed grant is recovered by the next login or
+    // starter-points status read, so it never fails the registration.
+    await this.starterPointsCoordinator?.ensureStarterGrant(user.id);
 
     const sessionTokens = await this.sessionService.createSession(user.id);
 
@@ -121,6 +129,9 @@ export class AuthService {
     if (!isMatch) {
       throw new InvalidCredentialsException();
     }
+
+    // Recovers a starter grant that failed at registration (never throws).
+    await this.starterPointsCoordinator?.ensureStarterGrant(user.id);
 
     if (!this.sessionService) {
       const token = await this.tokenService.signToken({

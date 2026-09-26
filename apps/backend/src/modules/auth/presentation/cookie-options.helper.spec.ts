@@ -43,6 +43,9 @@ describe('Cookie Options Helper (AC6)', () => {
       TRUST_PROXY_HOPS: 1,
       STORAGE_ACCESS_KEY_ID: 'prod-access-key',
       STORAGE_SECRET_ACCESS_KEY: 'prod-secret-key-12345',
+      TOPUP_BANK_ACCOUNT_NUMBER: '1234567890',
+      TOPUP_BANK_ACCOUNT_NAME: 'CONG TY RESCOM',
+      PARTICIPATION_RATE_LIMIT_POLICY_VERSION: 'participation-rate-limit-v1',
     });
 
     const options = getAuthCookieOptions(envService);
@@ -68,6 +71,9 @@ describe('Cookie Options Helper (AC6)', () => {
       TRUST_PROXY_HOPS: 1,
       STORAGE_ACCESS_KEY_ID: 'prod-access-key',
       STORAGE_SECRET_ACCESS_KEY: 'prod-secret-key-12345',
+      TOPUP_BANK_ACCOUNT_NUMBER: '1234567890',
+      TOPUP_BANK_ACCOUNT_NAME: 'CONG TY RESCOM',
+      PARTICIPATION_RATE_LIMIT_POLICY_VERSION: 'participation-rate-limit-v1',
     });
 
     const clearOptions = getAuthClearCookieOptions(envService);

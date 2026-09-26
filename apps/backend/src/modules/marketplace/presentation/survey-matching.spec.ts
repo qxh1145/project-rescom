@@ -321,9 +321,96 @@ describe('Story 4.2: Automated Marketplace Matching Logic', () => {
     });
   });
 
+  describe('isSurveyTargetingMatch - Unicode and whitespace normalization', () => {
+    // "Hà Nội" composed (NFC, Windows/Android keyboards) vs decomposed (NFD,
+    // macOS input): canonically equivalent, different code points.
+    const hanoiNfc = 'Hà Nội'.normalize('NFC');
+    const hanoiNfd = 'Hà Nội'.normalize('NFD');
+
+    it('uses distinct code points for the NFC and NFD fixtures', () => {
+      expect(hanoiNfc).not.toBe(hanoiNfd);
+    });
+
+    it('matches canonically equivalent locations (NFC target, NFD profile)', () => {
+      expect(
+        isSurveyTargetingMatch(
+          { locations: [hanoiNfc] },
+          { ...baseProfile, location: hanoiNfd },
+        ),
+      ).toBe(true);
+    });
+
+    it('matches canonically equivalent occupations and fields of study (NFD target, NFC profile)', () => {
+      const occupationNfc = 'Sinh viên đại học'.normalize('NFC');
+      const fieldNfc = 'Công nghệ thông tin'.normalize('NFC');
+      expect(
+        isSurveyTargetingMatch(
+          {
+            occupations: [occupationNfc.normalize('NFD')],
+            fieldOfStudy: [fieldNfc.normalize('NFD')],
+          },
+          { ...baseProfile, occupation: occupationNfc, fieldOfStudy: fieldNfc },
+        ),
+      ).toBe(true);
+    });
+
+    it('collapses repeated internal whitespace on both sides', () => {
+      expect(
+        isSurveyTargetingMatch(
+          { locations: ['Ho  Chi\tMinh City'] },
+          { ...baseProfile, location: '  ho chi   minh city ' },
+        ),
+      ).toBe(true);
+      expect(
+        isSurveyTargetingMatch(
+          { occupations: ['Software   Engineer'] },
+          { ...baseProfile, occupation: 'software engineer' },
+        ),
+      ).toBe(true);
+    });
+
+    it('lower-cases Vietnamese capitals with diacritics', () => {
+      expect(
+        isSurveyTargetingMatch(
+          { locations: ['ĐÀ NẴNG'] },
+          { ...baseProfile, location: 'đà nẵng' },
+        ),
+      ).toBe(true);
+    });
+
+    it('still rejects different places (no diacritic folding)', () => {
+      expect(
+        isSurveyTargetingMatch(
+          { locations: [hanoiNfc] },
+          { ...baseProfile, location: 'Ha Noi' },
+        ),
+      ).toBe(false);
+    });
+
+    it('treats empty criterion arrays as no criterion (open to all)', () => {
+      const emptyCriteria: SurveyTargetingCriteria = {
+        locations: [],
+        genders: [],
+        occupations: [],
+        fieldOfStudy: [],
+      };
+      expect(isSurveyTargetingMatch(emptyCriteria, baseProfile)).toBe(true);
+      expect(isSurveyTargetingMatch(emptyCriteria, null)).toBe(true);
+      expect(
+        isSurveyTargetingMatch(
+          { locations: [], ageRange: { min: 30, max: 40 } },
+          baseProfile,
+        ),
+      ).toBe(false);
+    });
+  });
+
   describe('isProfileCompleted', () => {
-    it('should return true when core fields (age, gender, location) are present', () => {
-      expect(isProfileCompleted(baseProfile)).toBe(true);
+    it('should return true only when every FR-6 field is present (Story 7.1)', () => {
+      expect(isProfileCompleted(baseProfile)).toBe(false);
+      expect(
+        isProfileCompleted({ ...baseProfile, specificInterests: ['AI'] }),
+      ).toBe(true);
     });
 
     it('should return false when profile is null or empty', () => {
@@ -336,6 +423,13 @@ describe('Story 4.2: Automated Marketplace Matching Logic', () => {
       expect(isProfileCompleted({ ...baseProfile, age: null })).toBe(false);
       expect(isProfileCompleted({ ...baseProfile, gender: null })).toBe(false);
       expect(isProfileCompleted({ ...baseProfile, location: '' })).toBe(false);
+      expect(
+        isProfileCompleted({
+          ...baseProfile,
+          specificInterests: ['AI'],
+          householdIncome: null,
+        }),
+      ).toBe(false);
     });
   });
 });

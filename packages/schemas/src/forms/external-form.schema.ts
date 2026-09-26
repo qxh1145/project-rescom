@@ -1,26 +1,15 @@
 import { z } from "zod";
 import { surveyTargetingSchema } from "./form-targeting.schema";
+import { externalSurveyUrlSchema } from "./external-url.schema";
+import { estimatedDurationMinutesSchema } from "../economy/pricing.schema";
 import type { FormDetailDto } from "./form-draft.schema";
 
-/**
- * Validates whether a URL belongs to Google Forms.
- */
-export function isGoogleFormsUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    const host = parsed.hostname.toLowerCase();
-    return (
-      host === "docs.google.com" ||
-      host === "forms.google.com" ||
-      host === "forms.gle"
-    );
-  } catch {
-    return false;
-  }
-}
+// `isGoogleFormsUrl` lives in `./external-url.schema` (decision E4-DN3: it is
+// now the server-side allowlist enforced by `externalSurveyUrlSchema`).
 
 /**
- * Input schema for creating an external survey (e.g. Google Forms).
+ * Input schema for creating an external survey (Google Forms only in Phase 1,
+ * decision E4-DN3).
  */
 export const createExternalSurveySchema = z
   .object({
@@ -30,18 +19,11 @@ export const createExternalSurveySchema = z
       .min(1, "Title is required")
       .max(200, "Title cannot exceed 200 characters"),
     description: z.string().max(2000).optional().nullable(),
-    externalUrl: z
-      .string()
-      .trim()
-      .url("Invalid external survey URL")
-      .refine(
-        (url) => url.startsWith("https://"),
-        "External survey URL must use HTTPS",
-      ),
+    externalUrl: externalSurveyUrlSchema,
     rewardPerResponse: z
       .number()
       .int("Reward must be an integer")
-      .min(0, "Reward cannot be negative")
+      .min(1, "Reward must be at least 1 point")
       .max(10000, "Reward cannot exceed 10,000 points")
       .default(10),
     expectedCompletions: z
@@ -50,6 +32,25 @@ export const createExternalSurveySchema = z
       .min(1, "Expected completions must be at least 1")
       .max(100000, "Expected completions cannot exceed 100,000")
       .default(50),
+    /**
+     * PRD FR-12 Step 1 "estimated completion time". Stored in
+     * `metadata.expectedEffortSeconds` (same bounds as
+     * `formIntegrityMetadataSchema`) so the Marketplace duration sort/filter
+     * reflects the real survey length.
+     */
+    expectedEffortSeconds: z
+      .number()
+      .int("Estimated completion time must be a whole number of seconds")
+      .min(10, "Estimated completion time must be at least 10 seconds")
+      .max(86400, "Estimated completion time cannot exceed 24 hours")
+      .default(60),
+    /**
+     * Estimated completion time in whole minutes (decision E6-D2): picks the
+     * FR-14 pricing band enforced when the survey is published
+     * (`autoPublish` or a later publish). The wizard sends the same estimate
+     * as `expectedEffortSeconds`.
+     */
+    estimatedDurationMinutes: estimatedDurationMinutesSchema.optional(),
     targetingJson: surveyTargetingSchema.optional().nullable(),
     autoPublish: z.boolean().default(false),
   })

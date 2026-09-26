@@ -25,8 +25,20 @@ export class LedgerAccountEntity {
   private _updatedAt: Date;
 
   constructor(props: LedgerAccountProps) {
+    const userId = props.userId ?? null;
+    const isSystemAccount = canAccountClassOverdraft(props.accountClass);
+    if (isSystemAccount && userId !== null) {
+      throw new Error('System ledger accounts cannot belong to a user');
+    }
+    if (!isSystemAccount && userId === null) {
+      throw new Error('User ledger accounts require a userId');
+    }
+    if (!props.currency?.trim() && props.currency !== undefined) {
+      throw new Error('Ledger account currency cannot be empty');
+    }
+
     this.id = props.id ?? randomUUID();
-    this.userId = props.userId ?? null;
+    this.userId = userId;
     this.accountClass = props.accountClass;
     this.currency = props.currency ?? 'POINTS';
     this._balance = props.balance ?? 0;

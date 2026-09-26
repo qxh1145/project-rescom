@@ -17,6 +17,8 @@ import { PrismaService } from '../src/common/database/prisma.service';
 import { HttpExceptionFilter } from '../src/common/http/http-exception.filter';
 import { AUTH_COOKIE_NAME } from '../src/modules/auth/presentation/cookie-options.helper';
 import { LedgerService } from '../src/modules/economy/application/ledger.service';
+import { PrismaLedgerRepository } from '../src/modules/economy/infrastructure/prisma-ledger.repository';
+import { randomUUID } from 'crypto';
 
 describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
   let app: INestApplication;
@@ -33,6 +35,8 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
 
   let authCookie: string;
   let csrfToken: string;
+  let respondentCookie: string;
+  let respondentCsrfToken: string;
   let respondentUserId: string;
 
   beforeAll(async () => {
@@ -107,6 +111,16 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
     const tokens = await sessionService.createSession(user.id);
     authCookie = `${AUTH_COOKIE_NAME}=${tokens.accessToken}`;
     csrfToken = tokens.csrfToken;
+
+    const respondent = await userRepo.create({
+      email: 'ledger-respondent@rescom.test',
+      passwordHash: '$2a$12$someOtherHashedPassword',
+      role: 'RESPONDENT',
+      status: 'ACTIVE',
+    });
+    const respondentTokens = await sessionService.createSession(respondent.id);
+    respondentCookie = `${AUTH_COOKIE_NAME}=${respondentTokens.accessToken}`;
+    respondentCsrfToken = respondentTokens.csrfToken;
   });
 
   afterAll(async () => {
@@ -114,8 +128,37 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
   });
 
   describe('POST /economy/journals (AC1, AC2, AC3)', () => {
+    it('forbids non-admin users from posting arbitrary ledger commands', async () => {
+      const systemAccount = await ledgerService.getOrCreateAccount(
+        null,
+        'SYSTEM_ISSUANCE',
+      );
+      const userAccount = await ledgerService.getOrCreateAccount(
+        respondentUserId,
+        'USER_AVAILABLE',
+      );
+
+      const response = await request(app.getHttpServer())
+        .post('/economy/journals')
+        .set('Cookie', [respondentCookie])
+        .set('x-csrf-token', respondentCsrfToken)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Content-Type', 'application/json')
+        .send({
+          idempotencyKey: 'forbidden-direct-ledger-command',
+          entries: [
+            { accountId: systemAccount.id, amount: -100 },
+            { accountId: userAccount.id, amount: 100 },
+          ],
+        });
+
+      expect(response.status).toBe(403);
+    });
     it('creates a balanced double-entry journal and updates balances', async () => {
-      const systemAccount = await ledgerService.getOrCreateAccount(null, 'SYSTEM_ISSUANCE');
+      const systemAccount = await ledgerService.getOrCreateAccount(
+        null,
+        'SYSTEM_ISSUANCE',
+      );
       const userAccount = await ledgerService.getOrCreateAccount(
         respondentUserId,
         'USER_AVAILABLE',
@@ -147,7 +190,10 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
     });
 
     it('rejects an unbalanced journal with HTTP 400 JOURNAL_UNBALANCED', async () => {
-      const systemAccount = await ledgerService.getOrCreateAccount(null, 'SYSTEM_ISSUANCE');
+      const systemAccount = await ledgerService.getOrCreateAccount(
+        null,
+        'SYSTEM_ISSUANCE',
+      );
       const userAccount = await ledgerService.getOrCreateAccount(
         respondentUserId,
         'USER_AVAILABLE',
@@ -200,7 +246,10 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
     });
 
     it('returns existing journal on identical replay without duplicate balance changes (FR-ADD-11)', async () => {
-      const systemAccount = await ledgerService.getOrCreateAccount(null, 'SYSTEM_ISSUANCE');
+      const systemAccount = await ledgerService.getOrCreateAccount(
+        null,
+        'SYSTEM_ISSUANCE',
+      );
       const userAccount = await ledgerService.getOrCreateAccount(
         respondentUserId,
         'USER_AVAILABLE',
@@ -224,7 +273,8 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
         .send(payload);
 
       expect(res1.status).toBe(201);
-      const balanceAfterFirst = (await ledgerService.getAccount(userAccount.id)).balance;
+      const balanceAfterFirst = (await ledgerService.getAccount(userAccount.id))
+        .balance;
 
       const res2 = await request(app.getHttpServer())
         .post('/economy/journals')
@@ -237,12 +287,17 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
       expect(res2.status).toBe(201);
       expect(res2.body.data.id).toBe(res1.body.data.id);
 
-      const balanceAfterSecond = (await ledgerService.getAccount(userAccount.id)).balance;
+      const balanceAfterSecond = (
+        await ledgerService.getAccount(userAccount.id)
+      ).balance;
       expect(balanceAfterSecond).toBe(balanceAfterFirst); // Idempotent, not incremented again
     });
 
     it('rejects conflicting transaction on existing idempotency key with HTTP 409 IDEMPOTENCY_CONFLICT', async () => {
-      const systemAccount = await ledgerService.getOrCreateAccount(null, 'SYSTEM_ISSUANCE');
+      const systemAccount = await ledgerService.getOrCreateAccount(
+        null,
+        'SYSTEM_ISSUANCE',
+      );
       const userAccount = await ledgerService.getOrCreateAccount(
         respondentUserId,
         'USER_AVAILABLE',
@@ -270,7 +325,10 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
 
   describe('POST /economy/journals/:id/reverse (AC4)', () => {
     it('successfully reverses an existing journal with exact negation entries', async () => {
-      const systemAccount = await ledgerService.getOrCreateAccount(null, 'SYSTEM_ISSUANCE');
+      const systemAccount = await ledgerService.getOrCreateAccount(
+        null,
+        'SYSTEM_ISSUANCE',
+      );
       const userAccount = await ledgerService.getOrCreateAccount(
         respondentUserId,
         'USER_AVAILABLE',
@@ -285,7 +343,8 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
         ],
       });
 
-      const balanceBefore = (await ledgerService.getAccount(userAccount.id)).balance;
+      const balanceBefore = (await ledgerService.getAccount(userAccount.id))
+        .balance;
 
       const res = await request(app.getHttpServer())
         .post(`/economy/journals/${initial.id}/reverse`)
@@ -299,12 +358,16 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
       expect(res.body.data.reversesJournalId).toBe(initial.id);
       expect(res.body.data.entries).toHaveLength(2);
 
-      const balanceAfter = (await ledgerService.getAccount(userAccount.id)).balance;
+      const balanceAfter = (await ledgerService.getAccount(userAccount.id))
+        .balance;
       expect(balanceAfter).toBe(balanceBefore - 75);
     });
 
     it('rejects second reversal of already-reversed journal with HTTP 409 JOURNAL_ALREADY_REVERSED', async () => {
-      const systemAccount = await ledgerService.getOrCreateAccount(null, 'SYSTEM_ISSUANCE');
+      const systemAccount = await ledgerService.getOrCreateAccount(
+        null,
+        'SYSTEM_ISSUANCE',
+      );
       const userAccount = await ledgerService.getOrCreateAccount(
         respondentUserId,
         'USER_AVAILABLE',
@@ -326,7 +389,7 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
         .set('x-csrf-token', csrfToken)
         .set('Origin', ALLOWED_ORIGIN)
         .set('Content-Type', 'application/json')
-        .send();
+        .send({ idempotencyKey: 'e2e-distinct-second-reversal' });
 
       expect(res.status).toBe(409);
       expect(res.body.error.code).toBe('JOURNAL_ALREADY_REVERSED');
@@ -348,7 +411,9 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
       expect(res.status).toBe(200);
       expect(res.body.data.accountId).toBe(userAccount.id);
       expect(res.body.data.isConsistent).toBe(true);
-      expect(res.body.data.projectedBalance).toBe(res.body.data.calculatedBalance);
+      expect(res.body.data.projectedBalance).toBe(
+        res.body.data.calculatedBalance,
+      );
     });
 
     it('audits entire ledger and verifies closed zero-sum invariant', async () => {
@@ -361,5 +426,179 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
       expect(res.body.data.totalSystemBalance).toBe(0);
       expect(res.body.data.isZeroSum).toBe(true);
     });
+  });
+
+  describe('GET /economy/wallet (Story 6.2 - FR-31)', () => {
+    it('returns complete wallet aggregate for authenticated user', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/economy/wallet')
+        .set('Cookie', [authCookie])
+        .set('Origin', ALLOWED_ORIGIN);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toBeDefined();
+      expect(res.body.data.balance).toBeDefined();
+      expect(typeof res.body.data.balance.available).toBe('number');
+      expect(typeof res.body.data.balance.pending).toBe('number');
+      expect(typeof res.body.data.balance.escrow).toBe('number');
+      expect(typeof res.body.data.balance.frozen).toBe('number');
+      expect(typeof res.body.data.balance.integrityHold).toBe('number');
+      expect(typeof res.body.data.balance.total).toBe('number');
+      expect(Array.isArray(res.body.data.transactions)).toBe(true);
+      expect(res.body.data.accounts).toHaveLength(5);
+    });
+
+    it('supports GET /api/economy/wallet as direct route alias (AC3)', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/economy/wallet')
+        .set('Cookie', [authCookie])
+        .set('Origin', ALLOWED_ORIGIN);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.balance).toBeDefined();
+    });
+
+    it('accurately reflects non-zero balances and transaction history after transfer (AC4, AC5)', async () => {
+      const systemAccount = await ledgerService.getOrCreateAccount(
+        null,
+        'SYSTEM_ISSUANCE',
+      );
+      const userAccount = await ledgerService.getOrCreateAccount(
+        respondentUserId,
+        'USER_AVAILABLE',
+      );
+
+      // Post 300 points to user
+      await request(app.getHttpServer())
+        .post('/economy/journals')
+        .set('Cookie', [authCookie])
+        .set('x-csrf-token', csrfToken)
+        .set('Origin', ALLOWED_ORIGIN)
+        .send({
+          idempotencyKey: 'e2e-wallet-funded-tx',
+          description: 'Survey Reward Payout',
+          entries: [
+            { accountId: systemAccount.id, amount: -300 },
+            { accountId: userAccount.id, amount: 300 },
+          ],
+        });
+
+      const res = await request(app.getHttpServer())
+        .get('/economy/wallet')
+        .set('Cookie', [authCookie])
+        .set('Origin', ALLOWED_ORIGIN);
+
+      expect(res.status).toBe(200);
+      const data = res.body.data;
+      expect(data.balance.available).toBeGreaterThanOrEqual(300);
+      expect(data.balance.total).toBe(
+        data.balance.available +
+          data.balance.pending +
+          data.balance.escrow +
+          data.balance.frozen +
+          data.balance.integrityHold,
+      );
+      expect(data.transactions.length).toBeGreaterThanOrEqual(1);
+      const rewardTx = data.transactions.find(
+        (t: any) => t.idempotencyKey === 'e2e-wallet-funded-tx',
+      );
+      expect(rewardTx).toBeDefined();
+      expect(rewardTx.amount).toBe(300);
+      expect(rewardTx.accountClass).toBe('USER_AVAILABLE');
+      expect(rewardTx.description).toBe('Survey Reward Payout');
+    });
+
+    it('respects limit query parameter for transaction pagination', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/economy/wallet?limit=1')
+        .set('Cookie', [authCookie])
+        .set('Origin', ALLOWED_ORIGIN);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.transactions.length).toBeLessThanOrEqual(1);
+    });
+
+    it('rejects unauthenticated request to /economy/wallet with HTTP 401', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/economy/wallet')
+        .set('Origin', ALLOWED_ORIGIN);
+
+      expect(res.status).toBe(401);
+    });
+  });
+});
+
+const describePostgres =
+  process.env.RUN_LEDGER_POSTGRES_E2E === 'true' ? describe : describe.skip;
+
+describePostgres('Story 6.1 PostgreSQL ledger invariants', () => {
+  let prisma: PrismaService;
+  let service: LedgerService;
+
+  beforeAll(async () => {
+    prisma = new PrismaService();
+    await prisma.$connect();
+    service = new LedgerService(new PrismaLedgerRepository(prisma));
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  it('deduplicates concurrent identical commands through the database constraint', async () => {
+    const issuance = await service.getOrCreateAccount(null, 'SYSTEM_ISSUANCE');
+    const clearing = await service.getOrCreateAccount(null, 'SYSTEM_CLEARING');
+    const beforeIssuance = (await service.getAccount(issuance.id)).balance;
+    const beforeClearing = (await service.getAccount(clearing.id)).balance;
+    const command = {
+      idempotencyKey: `postgres-concurrent:${randomUUID()}`,
+      description: 'PostgreSQL concurrent idempotency check',
+      entries: [
+        { accountId: issuance.id, amount: -17 },
+        { accountId: clearing.id, amount: 17 },
+      ],
+    };
+
+    const [first, second] = await Promise.all([
+      service.postJournal(command),
+      service.postJournal(command),
+    ]);
+
+    expect(second.id).toBe(first.id);
+    expect((await service.getAccount(issuance.id)).balance).toBe(
+      beforeIssuance - 17,
+    );
+    expect((await service.getAccount(clearing.id)).balance).toBe(
+      beforeClearing + 17,
+    );
+  });
+
+  it('creates one account for concurrent provisioning of the same tuple', async () => {
+    const currency = `TEST_${randomUUID()}`;
+    const [first, second] = await Promise.all([
+      service.getOrCreateAccount(null, 'SYSTEM_SINK', currency),
+      service.getOrCreateAccount(null, 'SYSTEM_SINK', currency),
+    ]);
+
+    expect(second.id).toBe(first.id);
+  });
+
+  it('rejects direct mutation of a posted journal', async () => {
+    const issuance = await service.getOrCreateAccount(null, 'SYSTEM_ISSUANCE');
+    const clearing = await service.getOrCreateAccount(null, 'SYSTEM_CLEARING');
+    const journal = await service.postJournal({
+      idempotencyKey: `postgres-immutable:${randomUUID()}`,
+      entries: [
+        { accountId: issuance.id, amount: -1 },
+        { accountId: clearing.id, amount: 1 },
+      ],
+    });
+
+    await expect(
+      prisma.ledgerJournal.update({
+        where: { id: journal.id },
+        data: { description: 'illegal mutation' },
+      }),
+    ).rejects.toThrow();
   });
 });

@@ -43,25 +43,71 @@ const FORBIDDEN_METADATA_KEYS = [
   'token',
 ];
 
+/** Epic 5 review P14: nesting deeper than this is rejected outright. */
+export const TELEMETRY_METADATA_MAX_DEPTH = 4;
+
+/** PostgreSQL `integer` upper bound (`integrity_events.sequence`). */
+export const TELEMETRY_SEQUENCE_MAX = 2_147_483_647;
+
+/**
+ * First forbidden key found anywhere in the metadata tree (objects and
+ * arrays), or a depth violation (Epic 5 review P14).
+ */
+function findForbiddenMetadataKey(
+  value: unknown,
+  path: Array<string | number>,
+  depth: number,
+): { path: Array<string | number>; message: string } | null {
+  if (value === null || typeof value !== 'object') {
+    return null;
+  }
+  if (depth > TELEMETRY_METADATA_MAX_DEPTH) {
+    return {
+      path,
+      message: `Telemetry metadata must not be nested deeper than ${TELEMETRY_METADATA_MAX_DEPTH} levels.`,
+    };
+  }
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index++) {
+      const found = findForbiddenMetadataKey(
+        value[index],
+        [...path, index],
+        depth + 1,
+      );
+      if (found) return found;
+    }
+    return null;
+  }
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    const lowerKey = key.toLowerCase();
+    if (FORBIDDEN_METADATA_KEYS.some((forbidden) => lowerKey.includes(forbidden))) {
+      return {
+        path: [...path, key],
+        message: `Prohibited telemetry metadata key "${key}" violates privacy guardrails (FR-58).`,
+      };
+    }
+    const found = findForbiddenMetadataKey(child, [...path, key], depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
 /**
  * Privacy-preserving telemetry metadata schema.
- * Rejects keystroke logging, clipboard content, sensitive credentials, and oversized payloads.
+ * Rejects keystroke logging, clipboard content, sensitive credentials (at any
+ * nesting level), deep nesting, and oversized payloads.
  */
 export const telemetryMetadataSchema = z
   .record(z.unknown())
   .superRefine((val, ctx) => {
-    for (const key of Object.keys(val)) {
-      const lowerKey = key.toLowerCase();
-      for (const forbidden of FORBIDDEN_METADATA_KEYS) {
-        if (lowerKey.includes(forbidden)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `Prohibited telemetry metadata key "${key}" violates privacy guardrails (FR-58).`,
-            path: [key],
-          });
-          return;
-        }
-      }
+    const forbidden = findForbiddenMetadataKey(val, [], 1);
+    if (forbidden) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: forbidden.message,
+        path: forbidden.path,
+      });
+      return;
     }
 
     try {
@@ -92,8 +138,9 @@ export const telemetryEventItemSchema = z.object({
   formVersionId: z.string().uuid(),
   responseId: z.string().uuid().nullable().optional(),
   questionId: z.string().min(1).max(100).optional(),
-  sequence: z.number().int().nonnegative().optional(),
-  occurredAt: z.string().refine((val) => !isNaN(Date.parse(val)), {
+  sequence: z.number().int().nonnegative().max(TELEMETRY_SEQUENCE_MAX).optional(),
+  occurredAt: z.string().datetime({
+    offset: true,
     message: 'occurredAt must be a valid ISO date-time string',
   }),
   metadata: telemetryMetadataSchema.optional(),

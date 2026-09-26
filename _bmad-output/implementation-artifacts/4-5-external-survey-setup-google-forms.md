@@ -12,7 +12,7 @@ context:
 
 # Story 4.5: External Survey Setup (Google Forms)
 
-Status: review
+Status: done
 
 ## Story
 
@@ -133,6 +133,31 @@ So that I can use RESCOM to drive traffic to my external surveys.
   - [x] 5.3 Run monorepo typecheck, lint, and Next.js build (`npm run verify`).
   - [x] 5.4 Update story artifact to `review` and update `sprint-status.yaml`.
 
+### Review Findings
+
+_Epic 4 code review, 2026-09-26 (triage IDs in brackets)._
+
+- [x] [Review][Decision] Should External surveys be restricted to Google Forms hosts? (DN3, low) — `isGoogleFormsUrl` only drives a UI badge, the backend accepts any HTTPS host and the stepper copy allows "other secure survey links", while PRD FR-12/UJ-2 say "Google Forms link" and the completion-code guide is Google-Forms-only. Options: (A) server-side allowlist for Phase 1 (`docs.google.com/forms/…`, `forms.gle`, `forms.google.com`); (B) any HTTPS host relying on 8.1 moderation, with an accurate badge and a generic "External link" label for other hosts; (C) a configurable allowlist of approved platforms. **Triage recommendation: A** (C as a later extension). Decision-independent parts already applied: `isGoogleFormsUrl` now requires a `/forms` path on `docs.google.com`, and the stepper shows the Google badge only for valid Google Forms links (other valid HTTPS hosts get a neutral label — current behaviour, i.e. B-like, until this is decided). [packages/schemas/src/forms/external-form.schema.ts:8] — **Resolved 2026-09-26:** option A accepted by Quan (C recorded as the later extension); the shared `externalSurveyUrlSchema` (create-external, draft create/update, publish, and the publish-time re-check of the stored URL) now also requires a Google Forms link — `https://docs.google.com/forms/<id…>`, `https://forms.gle/<id>`, `https://forms.google.com/<path>` (no credentials or custom port); `isGoogleFormsUrl` moved to `external-url.schema.ts` and requires a `/forms/<id>` path; the stepper rejects other hosts inline (P19 completed) with Google-only copy; tests in the schemas, backend and frontend suites.
+- [x] [Review][Patch] External surveys cannot use the standard publish path; "Create New Version" strands a live External survey (P1, high) — fixed: `publishForm` validates `formDefinitionSchema` only for INTERNAL; EXTERNAL checks `metadata` with `formIntegrityMetadataSchema` plus the HTTPS URL; service + e2e tests for draft → publish and PUBLISHED → new version → rotate → publish. The matching pre-existing observation in `deferred-work.md` (8.1) is marked resolved. [apps/backend/src/modules/forms/application/forms.service.ts:488]
+- [x] [Review][Patch] `publishForm` silently mints a completion code nobody can see; Prisma never persists it; new External versions carry a null verifier (P2, high) — fixed: the silent branch is removed and publishing an EXTERNAL version without a verifier fails with 422 `EXTERNAL_COMPLETION_CODE_REQUIRED` ("rotate first"); Prisma `update()` now writes `completionCode`; the edit page blocks publishing without a code and points to Rotate. Optional follow-up (auto-issue a code on `createNewVersion`) not done. [apps/backend/src/modules/forms/application/forms.service.ts:530]
+- [x] [Review][Patch] Rotation clones the last *published* version instead of the current one, dropping draft/queued edits (P4) — fixed: Prisma `createVersion` clones the newest version (same as in-memory); Prisma unit test + service test. [apps/backend/src/modules/forms/infrastructure/prisma-form.repository.ts:291]
+- [x] [Review][Patch] Rotation writes the form status without a precondition, so a concurrent close can be reverted to PUBLISHED after the Escrow refund (P5) — fixed: `CreateVersionOptions.targetStatus` replaced by `expectedStatus` (status kept, `updateMany where { id, status }`, null on a lost race); `rotateCompletionCode` re-reads and throws `FormAlreadyClosedException` or 409 `FormConflictException`. [apps/backend/src/modules/forms/infrastructure/prisma-form.repository.ts:280]
+- [x] [Review][Patch] HTTPS-only external URL rule bypassable; AC1.1 URL/reward limits not enforced; Marketplace `window.open` lacks `noopener` (P6) — fixed: shared `externalSurveyUrlSchema` (trim, ≤2000, URL, `https:` only) used by create-external, draft create/update and publish; `publishForm` re-checks the stored URL; reward `.min(1)`; `window.open(…, "noopener,noreferrer")`. [packages/schemas/src/forms/external-url.schema.ts]
+- [x] [Review][Patch] Completion-code HMAC key reuses `JWT_SECRET`, ignores the dedicated secret, has a hard-coded fallback, and `keyVersion` does not select a key (P7) — fixed: optional `COMPLETION_CODE_HMAC_SECRET` (min 32) in env schema/`.env.example`, `EnvService.completionCodeHmacSecret` (dedicated → JWT), fail-fast without a key, unknown `keyVersion` rejected (single-key ring; a multi-key ring stays out of scope), `timingSafeEqual` asserted in tests. [apps/backend/src/modules/forms/infrastructure/completion-code.service.ts:15]
+- [x] [Review][Patch] External surveys always report 60 s of effort; external creation lacks the FR-12 "estimated completion time" (P9) — fixed: `createExternalSurveySchema.expectedEffortSeconds` (10–86400, default 60) stored in `metadata` (barrier `min(15, effort)`, External barrier policy unchanged); stepper Step 1 asks for minutes. [apps/backend/src/modules/forms/application/forms.service.ts:198]
+- [x] [Review][Patch] Stepper Step 3 does not summarize the Escrow budget (P10) — fixed: Step 3 shows `calculateEscrowCost` (effective reward/response, discount row — the shared function has no separate fee — and total) plus the reserve-on-submit note when auto-publish is on. [apps/frontend/my-app/app/forms/components/CreateExternalSurveyModal.tsx:344]
+- [x] [Review][Patch] Rotation resets `publishedAt`, re-promoting the survey in the "newest" sort (P16) — fixed: rotation keeps the current version's `publishedAt`. [apps/backend/src/modules/forms/application/forms.service.ts:817]
+- [x] [Review][Patch] The edit page does not refresh its autosave concurrency token after a rotation, so the next autosave gets 409 (P17) — fixed: `onRotated(version, updatedAt)` → `autosave.setServerUpdatedAt(updatedAt)` and `hasCompletionCode = true`. [apps/frontend/my-app/app/forms/[id]/edit/page.tsx:1135]
+- [x] [Review][Patch] Step-2 URL validation is not real-time and the badge claims "Secure HTTPS … ready" for any text (P19; badge logic depends on DN3) — decision-independent part applied: real-time `externalSurveyUrlSchema` validation with inline error and Next disabled while invalid; Google badge only for valid Google Forms links; neutral label for other valid HTTPS hosts. Rejecting non-Google hosts waits for DN3. [apps/frontend/my-app/app/forms/components/CreateExternalSurveyModal.tsx:297] — **Completed 2026-09-26 with E4-DN3 (A):** `validateExternalSurveyUrl` rejects non-Google hosts with an inline Vietnamese error (same allowlist as the backend), every valid link shows the Google badge, and the neutral label was removed.
+- [x] [Review][Patch] The copy-code buttons do not guard the Clipboard API (P20) — fixed in both modals via `lib/clipboard.ts` (missing API or rejected write → "copy manually" error, never "Copied"). [apps/frontend/my-app/app/forms/[id]/edit/RotateCompletionCodeModal.tsx:73]
+- [x] [Review][Patch] The forms-list refresh after the external modal closes wipes the list on a non-OK response (P21) — fixed: `setForms` only on `res.ok`; failures keep the list and set the page error. [apps/frontend/my-app/app/forms/page.tsx:239]
+- [x] [Review][Defer] Close refund counts only Response rows, so closing an External survey refunds already-paid rewards (DF1, high) [apps/backend/src/modules/forms/infrastructure/prisma-form.repository.ts:387] — cross-reference only: owned by the Epic 6 review (Story 6.3 escrow coordinator). The fix should reuse `countCompletionsByFormIds` from `apps/backend/src/common/database/completion-counts.ts` (added by P3).
+- [x] [Review][Defer] After a rotation a leaked old code still works for attempts pinned to the old version for up to 30 min, and honest in-flight respondents who read the new code fail (DF4) [apps/backend/src/modules/participation/application/participation.service.ts:713] — deferred: settled by the spine (code bound to the attempt's exact FormVersion) and FR-22; FR-23 missing-code report covers the honest case. Raise with the PO only if rotation becomes frequent.
+- [x] [Review][Defer] No `Idempotency-Key` on `POST /forms/external`: a retry after a lost response creates a duplicate survey and a second Escrow reservation (DF5) [apps/backend/src/modules/forms/application/forms.service.ts:242] — deferred: no idempotency infrastructure exists yet (same deferral as 6.6 top-ups); a lost code can be recovered by rotating and the duplicate closed for a full refund.
+- [x] [Review][Defer] Rotation `reason` is validated then discarded; no audit event is written, including for admin rotations (DF6) [apps/backend/src/modules/forms/application/forms.service.ts:786] — deferred: no Forms audit sink / Outbox consumer yet and no AC requires storing it; add with the Moderation/admin-audit projection.
+- [x] [Review][Defer] Rotating a queued survey bumps `updatedAt` and moves it to the back of the FIFO moderation queue (DF7) [apps/backend/src/modules/forms/infrastructure/prisma-form.repository.ts:280] — deferred: cosmetic ordering effect; the bump is still needed as the autosave concurrency token. Revisit if moderation SLA reporting lands.
+- [x] [Review][Defer] External DTO contract shape: `externalSurveyResponseSchema` does not extend form detail, `FormVersionDto.completionCode` is still typed, `FormSummaryDto` has no `hasCompletionCode` (DF13) [packages/schemas/src/forms/external-form.schema.ts:82] — deferred: sanitization works (`completionCode` always null, list items carry no versions); contract tidy-up with the live-API typed clients.
+
 ---
 
 ## Dev Notes
@@ -167,6 +192,8 @@ So that I can use RESCOM to drive traffic to my external surveys.
 - Backend E2E test suite: 14/14 test suites passed (137/137 tests).
 - Frontend Next.js build compiled successfully with zero type errors.
 - Monorepo `npm run verify` passed with 0 errors.
+- **Code review 2026-09-26 (Epic 4):** applied P1 (External publish path without blocks), P2 (no silent code minting — 422 `EXTERNAL_COMPLETION_CODE_REQUIRED`, Prisma persists the verifier), P4/P5/P16 (rotation clones the newest version, keeps status under a precondition, keeps `publishedAt`), P6 (shared HTTPS `externalSurveyUrlSchema`, reward ≥ 1, `noopener`), P7 (dedicated `COMPLETION_CODE_HMAC_SECRET`, no hard-coded key, unknown `keyVersion` rejected), P9 (estimated completion time), P10, P17, P19 (decision-independent part), P20, P21; DN3 (Google-Forms host allowlist) awaits a product decision.
+- **Decision follow-up 2026-09-26 (E4-DN3 option A, accepted by Quan):** Phase 1 server-side allowlist — `externalSurveyUrlSchema` accepts only `docs.google.com/forms/…`, `forms.gle/…` and `forms.google.com/…` HTTPS links (every entry point, plus the stored-URL re-check at publish); `isGoogleFormsUrl` tightened (non-empty `/forms/<id>` path; no credentials/port) and moved next to the URL rule; stepper copy and P19 badge logic completed (other hosts rejected inline). Existing fixtures/tests already used Google hosts; the tests that expected other hosts to be accepted were changed deliberately. A configurable allowlist (option C) is recorded as the later extension. Verification: schemas 418 (23 suites), backend unit 1419 (98 suites), backend e2e 291 passed / 3 skipped (30 suites), frontend 238, typecheck + lint clean, `prisma validate` clean.
 
 ---
 
@@ -194,10 +221,32 @@ So that I can use RESCOM to drive traffic to my external surveys.
 - `apps/frontend/my-app/app/forms/[id]/edit/PublishConfirmationModal.tsx`
 - `_bmad-output/implementation-artifacts/4-5-external-survey-setup-google-forms.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `packages/schemas/src/forms/external-url.schema.ts`
+- `packages/schemas/src/forms/external-url.schema.spec.ts`
+- `packages/schemas/src/forms/form-publish.schema.ts`
+- `apps/backend/.env.example`
+- `apps/backend/src/common/config/env.schema.ts`
+- `apps/backend/src/common/config/env.service.ts`
+- `apps/backend/src/modules/forms/application/exceptions/form.exceptions.ts`
+- `apps/backend/src/modules/forms/infrastructure/prisma-form.repository.spec.ts`
+- `apps/backend/src/modules/moderation/application/survey-moderation.service.spec.ts`
+- `apps/backend/test/forms-publish.e2e-spec.ts`
+- `apps/backend/test/forms-escrow.e2e-spec.ts`
+- `apps/frontend/my-app/app/forms/components/external-survey-form.ts`
+- `apps/frontend/my-app/app/marketplace/MarketplaceCard.tsx`
+- `apps/frontend/my-app/lib/clipboard.ts`
+- `apps/frontend/my-app/tests/external-survey-form.test.mjs`
+- `_bmad-output/implementation-artifacts/deferred-work.md`
+- Decision follow-up 2026-09-26 (E4-DN3):
+  - `packages/schemas/src/forms/external-url.schema.ts` (+ spec), `packages/schemas/src/forms/external-form.schema.ts`
+  - `apps/backend/src/modules/forms/application/form-publishability.ts`, `apps/backend/src/modules/forms/application/forms.service.spec.ts`, `apps/backend/src/modules/forms/presentation/external-form.schema.spec.ts`
+  - `apps/frontend/my-app/app/forms/components/external-survey-form.ts`, `apps/frontend/my-app/app/forms/components/CreateExternalSurveyModal.tsx`, `apps/frontend/my-app/tests/external-survey-form.test.mjs`
+  - `_bmad-output/implementation-artifacts/code-review-decisions-2026-09-26.md`, `_bmad-output/implementation-artifacts/sprint-status.yaml`, `_bmad-output/implementation-artifacts/deferred-work.md`
 
 ---
 
 ## Change Log
 - 2026-09-15: Initial story specification created for Story 4.5: External Survey Setup (Google Forms). Status set to in-progress.
 - 2026-09-15: Completed implementation across schemas, backend cryptography, forms service, controller, E2E tests, and frontend stepper & rotation UI. Verified clean build, typecheck, lint, and test pass. Status updated to review.
-
+- 2026-09-26: Code review 2026-09-26: Epic 4 review findings written (1 decision open, 13 patches applied — P1, P2, P4–P7, P9, P10, P16, P17, P19–P21, 6 deferred incl. the Epic 6 DF1 cross-reference); status set to in-progress pending DN3.
+- 2026-09-26: Decision follow-up 2026-09-26: E4-DN3 → option A (Google Forms-only server-side allowlist in the shared `externalSurveyUrlSchema`, tightened `isGoogleFormsUrl`, P19 badge logic completed, Google-only stepper copy; configurable allowlist deferred as option C). No unchecked decision/patch items remain → Status `done`.

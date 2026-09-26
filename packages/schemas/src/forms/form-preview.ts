@@ -5,6 +5,7 @@ import {
   type FormSubmission,
   type BlockAnswer,
 } from "./form-answer.schema";
+import { fileAttachmentAnswerSchema } from "../storage/file-storage.schema";
 
 export interface AnswerValidationResult {
   isValid: boolean;
@@ -222,8 +223,12 @@ export function validateBlockAnswer(
     }
 
     case "file_upload": {
+      // Epic 5 review P3: an answer is a list of files. Real uploads carry the
+      // server-issued `objectId` (FileAttachmentAnswer, Story 5.3); builder
+      // previews carry a MockFileValue (`name`/`size`/`type`). A bare string
+      // is never a file.
       if (typeof value === "string") {
-        return { isValid: true };
+        return { isValid: false, error: "Invalid file format" };
       }
       const files = Array.isArray(value) ? value : [value];
       if (files.length > block.maxFiles) {
@@ -232,15 +237,30 @@ export function validateBlockAnswer(
           error: `You may upload at most ${block.maxFiles} files`,
         };
       }
-      if (files.every((file) => typeof file === "object" && file !== null)) {
-        for (const file of files) {
-          const fileObj = file as MockFileValue;
-          if (typeof fileObj.name !== "string" || !fileObj.name.trim()) {
+      for (const file of files) {
+        if (typeof file !== "object" || file === null || Array.isArray(file)) {
+          return { isValid: false, error: "Invalid file format" };
+        }
+        let fileSize: unknown;
+        let fileType: string | undefined;
+        if ("objectId" in file) {
+          const attachment = fileAttachmentAnswerSchema.safeParse(file);
+          if (!attachment.success) {
+            return { isValid: false, error: "Invalid file reference" };
+          }
+          fileSize = attachment.data.fileSize;
+          fileType = attachment.data.mimeType;
+        } else {
+          const mockFile = file as MockFileValue;
+          if (typeof mockFile.name !== "string" || !mockFile.name.trim()) {
             return { isValid: false, error: "Invalid file format" };
           }
-        if (typeof fileObj.size === "number" && block.maxFileSizeMb) {
+          fileSize = mockFile.size;
+          fileType = typeof mockFile.type === "string" ? mockFile.type : undefined;
+        }
+        if (typeof fileSize === "number" && block.maxFileSizeMb) {
           const maxBytes = block.maxFileSizeMb * 1024 * 1024;
-          if (fileObj.size > maxBytes) {
+          if (fileSize > maxBytes) {
             return {
               isValid: false,
               error: `File exceeds maximum size of ${block.maxFileSizeMb}MB`,
@@ -248,28 +268,27 @@ export function validateBlockAnswer(
           }
         }
         if (
-          fileObj.type &&
+          fileType &&
           block.allowedMimeTypes &&
           block.allowedMimeTypes.length > 0
         ) {
+          const type = fileType;
           const isAllowed = block.allowedMimeTypes.some((allowed) => {
             if (allowed.endsWith("/*")) {
               const prefix = allowed.slice(0, -2);
-              return fileObj.type?.startsWith(prefix);
+              return type.startsWith(prefix);
             }
-            return fileObj.type === allowed;
+            return type === allowed;
           });
           if (!isAllowed) {
             return {
               isValid: false,
-              error: `File type ${fileObj.type} is not permitted. Allowed: ${block.allowedMimeTypes.join(", ")}`,
+              error: `File type ${type} is not permitted. Allowed: ${block.allowedMimeTypes.join(", ")}`,
             };
           }
         }
-        }
-        return { isValid: true };
       }
-      return { isValid: false, error: "Invalid file format" };
+      return { isValid: true };
     }
 
     default:

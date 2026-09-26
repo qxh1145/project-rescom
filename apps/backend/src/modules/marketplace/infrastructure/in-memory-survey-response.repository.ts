@@ -18,11 +18,41 @@ interface StoredResponse {
   submittedAt?: Date;
 }
 
+interface StoredCompletedAttempt {
+  formId: string;
+  respondentId: string;
+  hasResponse: boolean;
+}
+
 export class InMemorySurveyResponseRepository implements SurveyResponseRepositoryPort {
   private readonly responses: StoredResponse[] = [];
+  private readonly completedAttempts: StoredCompletedAttempt[] = [];
 
   clear(): void {
     this.responses.length = 0;
+    this.completedAttempts.length = 0;
+  }
+
+  /**
+   * Test helper: a COMPLETED SurveyAttempt. External completions have no
+   * Response (`hasResponse: false`) and count toward the quota; an Internal
+   * attempt keeps its Response (whose status decides the quota count).
+   */
+  recordCompletedAttempt(params: {
+    formId: string;
+    respondentId: string;
+    hasResponse?: boolean;
+  }): void {
+    this.completedAttempts.push({
+      formId: params.formId,
+      respondentId: params.respondentId,
+      hasResponse: params.hasResponse ?? false,
+    });
+  }
+
+  /** Test helper: a verified External completion (attempt, no Response). */
+  recordExternalCompletion(formId: string, respondentId: string): void {
+    this.recordCompletedAttempt({ formId, respondentId, hasResponse: false });
   }
 
   async recordResponse(params: RecordResponseParams): Promise<void> {
@@ -49,6 +79,11 @@ export class InMemorySurveyResponseRepository implements SurveyResponseRepositor
         completedSet.add(r.formId);
       }
     }
+    for (const attempt of this.completedAttempts) {
+      if (attempt.respondentId === respondentId) {
+        completedSet.add(attempt.formId);
+      }
+    }
     return completedSet;
   }
 
@@ -66,6 +101,11 @@ export class InMemorySurveyResponseRepository implements SurveyResponseRepositor
       ) {
         const current = counts.get(r.formId) ?? 0;
         counts.set(r.formId, current + 1);
+      }
+    }
+    for (const attempt of this.completedAttempts) {
+      if (!attempt.hasResponse && formIds.includes(attempt.formId)) {
+        counts.set(attempt.formId, (counts.get(attempt.formId) ?? 0) + 1);
       }
     }
     return counts;

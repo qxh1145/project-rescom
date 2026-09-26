@@ -14,7 +14,7 @@ context:
 
 # Story 5.2: Internal Form Rendering & Execution
 
-Status: review
+Status: done
 
 ## Story
 
@@ -147,6 +147,20 @@ So that I can easily navigate questions even with unstable internet.
   - [x] 6.3 Run Next.js production build (`npm run build --prefix apps/frontend/my-app`).
   - [x] 6.4 Verify zero regressions and update status to review.
 
+### Review Findings
+
+_Epic 5 code review, 2026-09-26 (triage IDs in brackets; applied after the Epic 4 and Epic 6 review patches). Dismissed items are summarized in Story 5.1._
+
+- [x] [Review][Patch] FormRenderer enters a perpetual re-render loop once a local draft exists (P5, high) — fixed: `useSurveyOfflineCache` keeps `onAnswersLoaded` in a ref and restores at most once per `attemptId` (`restoredForRef`; the restore effect depends on `[attemptId]` only); `FormRenderer` wraps the callback in `useCallback`; the once-per-attempt decision is the pure `shouldRestoreDraft` in `offline-cache.mjs`, tested (including a simulated 50-render loop that restores once). Manual check still recommended on `/forms/[id]/respond`: type, wait 1 s, type again — no "Maximum update depth" warning, and the "Restored saved draft" banner only after a reload. [apps/frontend/my-app/app/forms/hooks/useSurveyOfflineCache.ts:39]
+- [x] [Review][Patch] Anyone who knows an attempt id can inject telemetry, and events are accepted for finished, locked or External attempts (P8, medium) — fixed: an account's attempt requires that account's session (anonymous → 403); a guest attempt (latent today) requires its `x-storage-capability` header, which the controller now forwards; attempts without an Internal Response (External) → 400 `TELEMETRY_REJECTED` (FR-58); events are accepted only while the attempt is IN_PROGRESS within the reservation window or ≤ 2 min after its submission (final `SURVEY_SUBMITTED` flush), otherwise 409 `ATTEMPT_EXPIRED`; each event's `attemptId`, `formVersionId` and `responseId` must match the attempt (400). Service and controller tests. [apps/backend/src/modules/participation/application/participation.service.ts:370]
+- [x] [Review][Patch] The renderer never emits the required telemetry events, and ANSWER_CHANGED fires on every keystroke (P13, medium) — fixed: `onFocusCapture/onBlurCapture` on each question wrapper → `QUESTION_FOCUSED` / `QUESTION_BLURRED` on transitions only; one guarded `IntersectionObserver` → `QUESTION_SHOWN` once per block; choice, rating, scale and date answers → `ANSWER_SELECTED`; text, textarea, number and "Other" text → `ANSWER_CHANGED` only on blur, after 1.5 s idle or on submit, never per keystroke; metadata stays `{ valuePresent }`. Pure helpers in `telemetry-buffer.mjs` (`answerEventTypeFor`, commit debouncer, focus tracker, `createQuestionTelemetryController`) with tests. Production telemetry stays behind DF3's gate. [apps/frontend/my-app/app/forms/components/renderer/FormRenderer.tsx:152]
+- [x] [Review][Patch] Telemetry schema: nested forbidden keys pass, `sequence` can overflow int4 (500), `occurredAt` is not ISO and unbounded (P14, low) — fixed: recursive forbidden-key walk over objects and arrays with depth ≤ 4 (deeper is rejected); `sequence ≤ 2_147_483_647`; `occurredAt: z.string().datetime({ offset: true })`; the service rejects events more than 5 min in the future or more than 5 min before `attempt.startedAt` (400). Schema and service tests. [packages/schemas/src/participation/survey-telemetry.schema.ts:56]
+- [x] [Review][Patch] The client telemetry buffer drops events on any failure, and its non-UUID fallback id poisons whole batches (P15, low) — fixed: the URL is resolved before the queue is drained; a network error, 5xx or 429 re-queues the batch at the front (bounded to 100 events, oldest dropped; the 10-event early flush backs off 5 s after a retryable failure); any other 4xx drops the batch; the fallback `clientEventId` is a UUID v4 from `crypto.getRandomValues`. `.mjs` tests. [apps/frontend/my-app/app/forms/hooks/telemetry-buffer.mjs:40]
+- [x] [Review][Patch] Offline survey drafts stay in localStorage indefinitely (P25, low) — fixed: drafts older than 2 h are ignored and removed on load (`isDraftStale`); `purgeStaleDrafts(storage, now)` over the `rescom_survey_draft_*` keys runs on hook mount; every storage access is guarded. Tests. Clearing on logout stays with the mock session code (DF12). [apps/frontend/my-app/app/forms/hooks/offline-cache.mjs:14]
+- [x] [Review][Patch] `RespondentFileUploadBlock` ignores a draft restored after mount and renders a stray "0" (P26, low) — fixed: a `[value]` effect adopts restored items when there are no local items (`itemsFromValue`); `(block.allowedMimeTypes?.length ?? 0) > 0 && …`. Component-only logic (no unit test). [apps/frontend/my-app/app/forms/components/renderer/blocks/RespondentFileUploadBlock.tsx:110]
+- [x] [Review][Defer] Telemetry is not consent-aware: `consentNoticeVersion` is discarded, `consentId` never set, there is no `responseId` column, and the client hardcodes "v1.0" (DF3, medium) [apps/frontend/my-app/app/forms/hooks/useSurveyTelemetry.ts] — deferred: FR-58 keeps production telemetry disabled until OQ17 and the AD-21 gates close; the consent flow and Epic 10 are Phase 2. **Launch-gate item:** add `INTEGRITY_TELEMETRY_ENABLED` (default off in production; endpoints reply 202 with `ingestedCount: 0`) before any production launch.
+- [x] [Review][Defer] Mock-journey issues: the respond page sends live telemetry and upload calls with mock ids; a reload without `attemptId` starts a new mock attempt; the code form is offered for an expired/abandoned attempt; an `attemptId` from another form is accepted; removing a file while it is being initiated orphans the object (DF12, low) [apps/frontend/my-app/app/forms/[id]/respond/page.tsx] — deferred: owned by the human-owned `spec-mock-respondent-journey.md` (in progress) and the live API swap; route to that spec's owner, not patched in Epic 5.
+
 ---
 
 ## Dev Notes
@@ -222,9 +236,12 @@ So that I can easily navigate questions even with unstable internet.
 - `apps/frontend/my-app/app/marketplace/MarketplaceCard.tsx`
 - `apps/frontend/my-app/tests/offline-cache.test.mjs`
 - `apps/frontend/my-app/tests/telemetry-buffer.test.mjs`
+- `apps/backend/src/modules/participation/application/exceptions/participation.exceptions.ts`
+- `apps/backend/src/common/http/http-exception.filter.ts`
+- `apps/frontend/my-app/app/forms/components/renderer/blocks/RespondentFileUploadBlock.tsx`
 
 ---
 
 ## Change Log
 - 2026-09-15: Initialized Story 5.2 specification and completed implementation of Internal Form Rendering & Execution with behavioral telemetry collection, offline caching/reconnection, and dedicated respondent execution page. Transitioned to review.
-
+- 2026-09-26: Code review 2026-09-26: Epic 5 review findings written (7 patches applied — P5 render-loop fix, P8, P13, P14, P15, P25, P26; 2 deferred — DF3 launch gate, DF12 mock spec); no decisions open; status set to done.

@@ -1,5 +1,5 @@
-import { z } from 'zod';
-import { ledgerEntrySchema, postEntryInputSchema } from './ledger-entry.schema';
+import { z } from "zod";
+import { ledgerEntrySchema, postEntryInputSchema } from "./ledger-entry.schema";
 
 export const ledgerJournalSchema = z.object({
   id: z.string().uuid(),
@@ -16,12 +16,12 @@ export const postJournalInputSchema = z
   .object({
     idempotencyKey: z
       .string()
-      .min(1, 'Idempotency key is required')
-      .max(255, 'Idempotency key must be at most 255 characters'),
+      .min(1, "Idempotency key is required")
+      .max(255, "Idempotency key must be at most 255 characters"),
     description: z.string().max(500).optional(),
     entries: z
       .array(postEntryInputSchema)
-      .min(2, 'A ledger journal must have at least two entries'),
+      .min(2, "A ledger journal must have at least two entries"),
   })
   .refine(
     (data) => {
@@ -29,25 +29,32 @@ export const postJournalInputSchema = z
       return sum === 0;
     },
     {
-      message: 'Ledger journal entries must balance to zero (sum of debits and credits must be 0)',
-      path: ['entries'],
+      message:
+        "Ledger journal entries must balance to zero (sum of debits and credits must be 0)",
+      path: ["entries"],
     },
   );
 
 export type PostJournalInput = z.infer<typeof postJournalInputSchema>;
 
-export const reverseJournalInputSchema = z.object({
-  targetJournalId: z.string().uuid('Invalid target journal ID'),
-  idempotencyKey: z.string().min(1).max(255).optional(),
-  reason: z.string().max(500).optional(),
-});
+export const reverseJournalInputSchema = z
+  .object({
+    targetJournalId: z.string().uuid("Invalid target journal ID"),
+    idempotencyKey: z.string().min(1).max(255).optional(),
+    reason: z.string().max(500).optional(),
+  })
+  .transform((input) => ({
+    ...input,
+    idempotencyKey: input.idempotencyKey ?? `reversal:${input.targetJournalId}`,
+  }));
 
-export type ReverseJournalInput = z.infer<typeof reverseJournalInputSchema>;
+export type ReverseJournalInput = z.input<typeof reverseJournalInputSchema>;
+export type ReverseJournalDto = z.infer<typeof reverseJournalInputSchema>;
 
 export const transferPointsInputSchema = z.object({
-  fromAccountId: z.string().uuid('Invalid fromAccountId'),
-  toAccountId: z.string().uuid('Invalid toAccountId'),
-  amount: z.number().int().positive('Transfer amount must be positive'),
+  fromAccountId: z.string().uuid("Invalid fromAccountId"),
+  toAccountId: z.string().uuid("Invalid toAccountId"),
+  amount: z.number().int().positive("Transfer amount must be positive"),
   idempotencyKey: z.string().min(1).max(255),
   description: z.string().max(500).optional(),
 });

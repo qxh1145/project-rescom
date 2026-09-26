@@ -2,11 +2,29 @@ import { FormsController } from './forms.controller';
 import { FormsService } from '../application/forms.service';
 import { InMemoryFormRepository } from '../infrastructure/in-memory-form.repository';
 import { CompletionCodeService } from '../infrastructure/completion-code.service';
+import type { EnvService } from '../../../common/config/env.service';
 import { AuthenticatedUser } from '../../auth/presentation/types/authenticated-request.type';
+import { FormModerationCommands } from '../application/form-moderation.commands';
+import { FormEntity } from '../domain/form.entity';
+import { FormVersionEntity } from '../domain/form-version.entity';
+
+const TEST_COMPLETION_CODE_ENV = {
+  completionCodeHmacSecret: 'unit_test_completion_code_hmac_secret_0123456789',
+} as EnvService;
 
 describe('FormsController', () => {
   let controller: FormsController;
   let service: FormsService;
+  let repository: InMemoryFormRepository;
+
+  /** Story 8.1: the Admin approval that turns a queued survey PUBLISHED. */
+  async function approveQueued(formId: string) {
+    const snapshot = await repository.findById(formId);
+    await new FormModerationCommands(repository).approvePublication(
+      snapshot!,
+      new Date(),
+    );
+  }
 
   const mockUser: AuthenticatedUser = {
     id: '11111111-1111-4111-8111-111111111111',
@@ -16,8 +34,10 @@ describe('FormsController', () => {
   };
 
   beforeEach(() => {
-    const repository = new InMemoryFormRepository();
-    const completionCodeService = new CompletionCodeService();
+    repository = new InMemoryFormRepository();
+    const completionCodeService = new CompletionCodeService(
+      TEST_COMPLETION_CODE_ENV,
+    );
     service = new FormsService(repository, completionCodeService);
     controller = new FormsController(service);
   });
@@ -154,8 +174,9 @@ describe('FormsController', () => {
     const response = await controller.publishForm(mockUser, created.data!.id);
 
     expect(response.error).toBeNull();
-    expect(response.data!.status).toBe('PUBLISHED');
-    expect(response.data!.currentVersion.isPublished).toBe(true);
+    // Story 8.1: publishing submits the survey to the moderation queue.
+    expect(response.data!.status).toBe('MODERATION_QUEUE');
+    expect(response.data!.currentVersion.isPublished).toBe(false);
     expect(response.meta.message).toBe('Form published successfully');
   });
 
@@ -180,6 +201,7 @@ describe('FormsController', () => {
     });
 
     await controller.publishForm(mockUser, created.data!.id);
+    await approveQueued(created.data!.id);
 
     const response = await controller.closeForm(mockUser, created.data!.id, {
       reason: 'Campaign ended',
@@ -191,26 +213,57 @@ describe('FormsController', () => {
   });
 
   it('should transition form status and return wrapped success envelope', async () => {
-    const created = await controller.createDraft(mockUser, {
-      title: 'Survey to Escrow',
-      type: 'INTERNAL',
-      rewardPerResponse: 10,
-      schema: {
-        schemaVersion: 1,
-        title: 'Survey to Escrow',
-        blocks: [
-          {
-            id: 'b-1',
-            type: 'text',
-            order: 0,
-            title: 'Your feedback',
-            required: false,
+    // Story 8.1: the generic endpoint only moves legacy ESCROW_LOCKED rows
+    // into the moderation queue.
+    const now = new Date();
+    const legacy = new FormEntity(
+      '33333333-3333-4333-8333-333333333333',
+      mockUser.id,
+      'INTERNAL',
+      'ESCROW_LOCKED',
+      'Legacy Escrow Survey',
+      null,
+      10,
+      50,
+      now,
+      now,
+    );
+    await repository.create(
+      legacy,
+      new FormVersionEntity(
+        '44444444-4444-4444-8444-444444444444',
+        legacy.id,
+        1,
+        {
+          schemaVersion: 1,
+          title: 'Legacy Escrow Survey',
+          // Epic 8 review P2: the legacy move re-runs the publish validations.
+          blocks: [
+            {
+              id: 'legacy-q1',
+              type: 'text',
+              order: 0,
+              title: 'Question',
+              required: false,
+            },
+          ],
+          settings: {
+            shuffleBlocks: false,
+            progressBar: true,
+            requireAuth: false,
+            allowPublicAccess: true,
+            submitButtonText: 'Submit',
           },
-        ],
-      },
-    });
-
-    await controller.publishForm(mockUser, created.data!.id);
+          metadata: { expectedEffortSeconds: 60, minTimeBarrierSeconds: 15 },
+        },
+        null,
+        false,
+        null,
+        null,
+        null,
+        now,
+      ),
+    );
 
     const adminUser: AuthenticatedUser = {
       ...mockUser,
@@ -218,11 +271,9 @@ describe('FormsController', () => {
       role: 'ADMIN',
     };
 
-    const response = await controller.transitionStatus(
-      adminUser,
-      created.data!.id,
-      { targetStatus: 'MODERATION_QUEUE' },
-    );
+    const response = await controller.transitionStatus(adminUser, legacy.id, {
+      targetStatus: 'MODERATION_QUEUE',
+    });
 
     expect(response.error).toBeNull();
     expect(response.data!.status).toBe('MODERATION_QUEUE');
@@ -250,6 +301,7 @@ describe('FormsController', () => {
     });
 
     await controller.publishForm(mockUser, created.data!.id);
+    await approveQueued(created.data!.id);
 
     const response = await controller.createNewVersion(
       mockUser,
@@ -261,6 +313,51 @@ describe('FormsController', () => {
     expect(response.data!.currentVersion.versionNumber).toBe(2);
     expect(response.meta.message).toBe(
       'New form version created successfully. The form is now in DRAFT status for editing.',
+    );
+    expect(response.data!.interruptedAttempts).toBe(0);
+  });
+
+  it('warns the Publisher about in-progress attempts before and after "Create New Version" (decision E5-D4)', async () => {
+    const created = await controller.createDraft(mockUser, {
+      title: 'Live Survey',
+      type: 'INTERNAL',
+      rewardPerResponse: 0,
+      schema: {
+        schemaVersion: 1,
+        title: 'Live Survey',
+        blocks: [
+          {
+            id: 'b-1',
+            type: 'text',
+            order: 0,
+            title: 'Your feedback',
+            required: false,
+          },
+        ],
+      },
+    });
+    await controller.publishForm(mockUser, created.data!.id);
+    await approveQueued(created.data!.id);
+    repository.useInProgressAttemptsSource(() => 4);
+
+    const impact = await controller.getInProgressAttempts(
+      mockUser,
+      created.data!.id,
+    );
+    expect(impact.data).toEqual({
+      formId: created.data!.id,
+      status: 'PUBLISHED',
+      inProgressAttempts: 4,
+      reservationWindowMinutes: 30,
+    });
+
+    const response = await controller.createNewVersion(
+      mockUser,
+      created.data!.id,
+    );
+    expect(response.data!.interruptedAttempts).toBe(4);
+    expect(response.meta.message).toMatch(
+      /4 in-progress attempt\(s\) on the previous version were cut off/,
     );
   });
 
@@ -285,6 +382,7 @@ describe('FormsController', () => {
     });
 
     await controller.publishForm(mockUser, created.data!.id);
+    await approveQueued(created.data!.id);
     await controller.createNewVersion(mockUser, created.data!.id);
 
     const response = await controller.listVersions(mockUser, created.data!.id);
@@ -331,5 +429,80 @@ describe('FormsController', () => {
     expect(response.data!.plaintextCompletionCode).toMatch(/^\d{6}$/);
     expect(response.data!.hasCompletionCode).toBe(true);
     expect(response.meta.message).toBe('Completion code rotated successfully');
+  });
+
+  it('should reopen a closed form with additional quota and return wrapped success envelope (FR-33)', async () => {
+    const created = await controller.createDraft(mockUser, {
+      title: 'Survey to Reopen',
+      type: 'INTERNAL',
+      rewardPerResponse: 0,
+      schema: {
+        schemaVersion: 1,
+        title: 'Survey to Reopen',
+        blocks: [
+          {
+            id: 'b-1',
+            type: 'text',
+            order: 0,
+            title: 'Your feedback',
+            required: false,
+          },
+        ],
+      },
+    });
+
+    await controller.publishForm(mockUser, created.data!.id);
+    await approveQueued(created.data!.id);
+    await controller.closeForm(mockUser, created.data!.id);
+
+    const response = await controller.reopenForm(mockUser, created.data!.id, {
+      additionalCompletions: 30,
+    });
+
+    expect(response.error).toBeNull();
+    expect(response.data).toBeDefined();
+    expect(response.data!.status).toBe('PUBLISHED');
+    expect(response.data!.expectedCompletions).toBe(
+      created.data!.expectedCompletions + 30,
+    );
+    expect(response.meta.message).toBe(
+      'Form reopened successfully with additional quota',
+    );
+  });
+
+  it('should get pricing quote for a form with 20% internal discount comparison (FR-14, FR-19)', async () => {
+    const created = await controller.createDraft(mockUser, {
+      title: 'Quote Survey',
+      type: 'INTERNAL',
+      rewardPerResponse: 20,
+      expectedCompletions: 50,
+      estimatedDurationMinutes: 16,
+    });
+
+    const response = await controller.getPricingQuote(
+      mockUser,
+      created.data!.id,
+    );
+
+    expect(response.error).toBeNull();
+    expect(response.data).toEqual({
+      type: 'INTERNAL',
+      expectedCompletions: 50,
+      baseRewardPerResponse: 20,
+      effectiveRewardPerResponse: 16,
+      baseCost: 1000,
+      effectiveCost: 800,
+      discountPercent: 20,
+      discountAmount: 200,
+      // Decision E6-D2: the pricing band of the estimated duration.
+      estimatedDurationMinutes: 16,
+      pricingBand: {
+        min: 20,
+        max: 40,
+        suggested: 20,
+        durationBand: '> 15 min',
+      },
+      bandCheck: 'WITHIN_BAND',
+    });
   });
 });

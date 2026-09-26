@@ -7,13 +7,14 @@ paradigm: 'Pragmatic Clean Architecture + Modular Monolith'
 scope: 'RESCOM platform (Frontend, Backend, DB, AI Integration)'
 status: final
 created: '2026-08-08'
-updated: '2026-08-16'
+updated: '2026-09-26'
 binds: [all]
 sources:
   - '../../../specs/spec-rescom/SPEC.md'
   - '../../prds/prd-project-rescom-2026-08-08/prd.md'
   - '../../prds/prd-project-rescom-2026-08-08/addendum.md'
   - '../../epics.md'
+  - '../../sprint-change-proposal-2026-09-26.md'
 companions: ['solution-design.md', 'reconcile-integrity-prd.md']
 historical_proposals:
   - '../RESCOM-Architecture-V2.archive.md'
@@ -100,10 +101,14 @@ flowchart TD
 - **Prevents:** Public exposure of the local GPU server.
 - **Rule:** The AI server must never expose port 11434 to the internet. Communication between the VPS Backend and the AI Laptop happens exclusively over private Tailscale reachability with a least-privilege Grant permitting only the backend identity to the required AI port. Deployment validation must prove unauthorized tailnet identities and public paths are denied. The backend AI Adapter is the only authorized application client.
 
+> **Amendment 2026-09-26 (sprint-change-proposal-2026-09-26) — AD-3/AD-4 in the pilot.** Epic 3 is deferred to Phase 2, so the pilot deployment (AD-23) provisions no AI host, no Tailscale tailnet and no AI Gateway credentials. The AI Adapter stays unconfigured; the backend answers AI generation requests with the graceful-failure path of AD-3 and the Form Builder hides the "Generate with AI" entry point while the gateway is unconfigured. AD-4 applies unchanged when an AI host is introduced.
+
 ### AD-5 — One Backend Artifact, API and Worker Entrypoints [ADOPTED]
 - **Binds:** Outbox processing, auto-refund, pending expiry, Integrity processing, notifications, deployment topology.
 - **Prevents:** Conflicting in-API and separate-service implementations, request latency contention, duplicated domain logic, and accidental microservice boundaries.
 - **Rule:** RESCOM has one NestJS backend codebase and one build artifact/image. Production runs an API entrypoint and a worker entrypoint as separate processes; the initial worker may have one replica. Local or explicitly small deployments may co-locate worker execution inside the API process only through configuration that guarantees one logical scheduler owner. Both entrypoints call the same application/domain services and use PostgreSQL durable claims. This is a process topology inside one modular monolith, not microservices.
+
+> **Amendment 2026-09-26 (sprint-change-proposal-2026-09-26) — pilot uses the co-located mode.** The pilot deployment (AD-23) is an explicitly small deployment: one API replica runs scheduled durable work (pending-credit release, frozen-starter expiry, reservation expiry, Outbox dispatch) in-process, enabled by a single configuration flag so exactly one logical scheduler owner exists. PostgreSQL claims per AD-10/AD-17 remain mandatory. The dedicated worker entrypoint returns when Epic 10 processing lands, when a second API replica is added, or when scheduled work measurably degrades API latency.
 
 ### AD-6 — Redis Is Optional Ephemeral Infrastructure [ADOPTED]
 - **Binds:** Cache, distributed rate limiting, ephemeral coordination, session lookup acceleration.
@@ -190,6 +195,11 @@ flowchart TD
 - **Prevents:** Public object exposure, client-declared type trust, unscanned active content, cross-tenant/object-key access, and orphaned sensitive files.
 - **Rule:** Storage is accessed through an application port and environment-isolated private S3-compatible buckets. Platform Infrastructure owns technical `StoredObject` metadata (`ownerContext`, owner-record reference, data class, opaque key, checksum, observed size/type, scan policy/version/result, timestamps) and the durable state machine `INITIATED → UPLOADED → QUARANTINED → CLEAN → ATTACHED`, with terminal `REJECTED`, `EXPIRED`, and `DELETED`. The owning context alone owns the domain attachment reference; only `CLEAN` objects may become `ATTACHED` or downloadable. The backend authorizes upload initiation, issues short-lived scoped URLs, and finalizes after server-side size/type/signature validation; scan outage remains `QUARANTINED` and fails closed. Operations owns provider, scanning, quarantine/release, outage, and failed-upload-cleanup policy; the owning context plus Privacy owns retention/deletion/classification. Object keys are owner-bound; downloads require row authorization and short-lived signed access. AI and frontend clients never receive unrestricted bucket credentials.
 
+### AD-23 — Portable Single-VM Pilot Topology [ADOPTED 2026-09-26]
+- **Binds:** Production and staging deployment, hosting providers, object storage, database hosting, edge, CI/CD, observability, provider exit.
+- **Prevents:** Provider lock-in, operating more infrastructure than the pilot needs, multi-provider latency between the API and its database, and a silent storage rewrite when changing host.
+- **Rule:** The pilot runs in one region, Google Cloud `asia-southeast1`: one Compute Engine VM running Docker Compose with Caddy (reverse proxy), the NestJS API (one replica, `REDIS_DISABLED_SINGLE_REPLICA`, co-located scheduler per the AD-5 amendment) and ClamAV (AD-22 scanner); Cloud SQL for PostgreSQL reached over private IP with automated backups and point-in-time recovery; one private Google Cloud Storage bucket per environment reached through its S3-compatible API with HMAC credentials. The frontend stays on Vercel (function region `sin1`, `/api/*` rewrite to the backend). Cloudflare is the only public ingress to the VM: the firewall admits 80/443 from Cloudflare ranges only, Caddy restores the client address from `CF-Connecting-IP`, and the API trusts exactly one proxy hop (`TRUST_PROXY_HOPS=1`). No business data lives on the VM disk, so a lost VM is replaced by provisioning a new one and redeploying the image. Application code uses only portable interfaces — Docker images, PostgreSQL connection strings, the S3 API through the storage port, and environment variables — and never a provider SDK (no `@google-cloud/*` clients, no in-code Secret Manager reads, no mandatory Cloud SQL Auth Proxy). Moving to another host (FPT Cloud is the named candidate) is therefore a configuration and data-migration task: `pg_dump`/`pg_restore`, object copy (e.g. `rclone`), environment changes and a DNS switch; because `StoredObject.bucket` is persisted, the target bucket reuses the name or a reviewed data migration rewrites it. Observability is Sentry (frontend and backend, request bodies and personal data scrubbed) plus an external uptime check on the frontend and `/health` readiness; CI/CD is GitHub Actions → GHCR → SSH deploy with the previous image tag kept for rollback. Redis, a dedicated worker container, Grafana/Alloy, an AI host and Tailscale are out of the pilot topology (see Deferred).
+
 ## Module and Durable-State Ownership Map
 
 These names are target contracts for the next schema design, not claims that the current Prisma draft implements them.
@@ -245,18 +255,22 @@ This map specializes AD-16. All command IDs shown are stable unique identities; 
 | Next.js / React | Existing scaffold: 16.3.0 / 19.2.8 |
 | Node.js | 22 LTS baseline; enforce in manifests, CI, and deployment image |
 | NestJS | Backend target; select one compatible package family in the manifest when scaffolding |
-| PostgreSQL | Local image: 15-alpine; managed production PostgreSQL |
-| Frontend hosting | Vercel production target from the final PRD; not configured or deployed |
-| Backend edge/hosting | Cloudflare in front of Docker on a VPS per the final PRD; not configured or deployed |
+| PostgreSQL | Local image: 15-alpine; production Cloud SQL for PostgreSQL, `asia-southeast1`, private IP (AD-23) |
+| Frontend hosting | Vercel, function region `sin1` (AD-23); not yet deployed |
+| Backend edge/hosting | Cloudflare → one Google Compute Engine VM in `asia-southeast1`, Docker Compose + Caddy (AD-23); not yet deployed |
 | Redis | Conditional ephemeral dependency per AD-6; not scaffolded |
 | Prisma | Existing CLI/client 6.0.0 and config 7.9.1 are misaligned; select one major family and use that major's public `prisma/config` contract before schema generation/migration |
-| Object storage | S3-compatible private storage target; provider not selected |
-| Ollama / Qwen | Optional AI Form Generator dependency |
-| Tailscale | Private backend-to-AI transport |
+| Object storage | Production: Google Cloud Storage via S3 interoperability (HMAC); local: MinIO pinned to a fixed tag (Community Edition archived upstream); malware scanning: ClamAV |
+| Ollama / Qwen | Optional AI Form Generator dependency; no host in the pilot (Epic 3 deferred) |
+| Tailscale | Private backend-to-AI transport; not provisioned until an AI host exists |
+| Observability | Sentry + external uptime monitor (AD-23) |
+| CI/CD | GitHub Actions → GHCR → SSH deploy (AD-23) |
 
 Exact framework/library patch versions are package-manifest and lockfile concerns, not architectural invariants.
 
 ## Current Reality Boundary
+
+> **Amendment 2026-09-26:** The bullets below describe the repository on 2026-08-16. Since then the npm workspace, `packages/schemas`, the NestJS API (one entrypoint, `src/main.ts`) and Phase 1 Epics 1, 2, 4–9 have been implemented (see `sprint-status.yaml`); Docker Compose now runs PostgreSQL, MinIO and ClamAV for local development. No production environment exists yet; AD-23 defines the target.
 
 - `apps/frontend/my-app` is a default Next.js scaffold; one application is ratified initially.
 - `apps/backend` contains Prisma configuration/schema only; NestJS, API/worker entrypoints, tests, and migrations do not yet exist.
@@ -311,6 +325,9 @@ rescom-monorepo/
 - **Semantic/LLM Integrity Scoring:** Deferred until reviewed labels and governance approval exist.
 - **Personalized Behavioral Models and Graph Anomaly Detection:** Deferred until evidence volume and fairness validation justify them.
 - **TrustEdge projection:** Deferred until authoritative relations are stable and a measured query/evidence need passes AD-15.
+- **Dedicated worker container:** Deferred per the AD-5 amendment until Epic 10 processing, a second API replica, or measured scheduler contention.
+- **Grafana Cloud / Alloy metrics stack:** Deferred until Sentry plus uptime checks are insufficient for incident diagnosis.
+- **AI host and Tailscale tailnet:** Deferred with Epic 3 (AD-3/AD-4 amendment).
 - **Microservices, Kafka/streaming, Kubernetes, Graph Database, Feature Store:** Deferred until measured load/query/team boundaries justify a separate architecture update; none is an MVP dependency.
 
 ## Open Questions
@@ -320,7 +337,10 @@ rescom-monorepo/
 - **Before Publisher-visible Survey Quality:** Product and Research must approve eligible-response threshold, minimum aggregation, pseudonymous linkability, and export fields.
 - **Before `ADVISORY` or review routing:** Operations/Admin must own review, appeal, access policy, and turnaround expectations.
 - **Before production readiness:** Operations must approve deployment/rollback, secrets rotation, backup retention, restore-drill cadence, RPO/RTO, alerts, and incident ownership. Vercel plus Cloudflare/VPS are PRD targets; the managed PostgreSQL choice (Neon or Supabase), object-storage/email providers, and all regions remain open.
+  > **Amendment 2026-09-26 (sprint-change-proposal-2026-09-26) — providers and region selected.** AD-23 selects Google Cloud `asia-southeast1` (Compute Engine VM, Cloud SQL for PostgreSQL, Cloud Storage), Vercel `sin1` and Cloudflare. Still open: email provider, RPO/RTO, backup retention, restore-drill cadence, secrets rotation, incident ownership, and the post-trial hosting decision (Google Cloud paid vs FPT Cloud, Story 11.6).
 - **Before schema/client generation:** Engineering must select one Prisma major family compatible with Node 22 and prove FormVersion, Ledger, Outbox, session, ownership, and append-only contracts with schema tests and independent review.
 - **Before file-upload production use:** Operations must select the private provider and own scanning/quarantine/release/outage/cleanup policy; the owning context plus Privacy must approve classification and retention/deletion.
+  > **Amendment 2026-09-26 (sprint-change-proposal-2026-09-26) — provider and scanner selected.** Private Google Cloud Storage bucket per environment (S3 API, bucket CORS limited to the frontend origin) with ClamAV co-located on the VM; scan outage stays fail-closed. Still open: named owner of quarantine/release/cleanup policy and the Privacy-approved retention/deletion schedule.
 - **Before enabling Guest Internal in any shared/production environment:** Product, Security, and Privacy must approve the abuse-control artifact (rate-limit scopes, bot challenge, reservation expiry, retention, monitoring, and appeal/support posture).
 - **Before schema/client generation:** Product/Research/Moderation plus Engineering must approve and contract-test the Form publication/moderation lifecycle transition table; the schema may not infer it from enum names alone.
+  > **Amendment 2026-09-26 (code-review decision E8-D1, option B) — lifecycle transition table signed off.** Quan (Product owner) approved the Story 8.1 table, the single source of truth in `packages/schemas/src/forms/form-publish.schema.ts` (`FORM_STATUS_TRANSITIONS`): `DRAFT → MODERATION_QUEUE`; `ESCROW_LOCKED → MODERATION_QUEUE | CLOSED` (legacy rows only); `MODERATION_QUEUE → PUBLISHED | CLOSED`; `PUBLISHED → CLOSED`; `CLOSED →` (none). Only an Admin approval reaches `PUBLISHED` (FR-20). Out-of-table commands: new version `PUBLISHED → DRAFT` (Story 2.7) and owner reopen `CLOSED → PUBLISHED` (Story 6.3), which requires an approved current version **and** that the last close was the owner's own: every close records `Form.closeKind` (`OWNER` | `ADMIN` | `MODERATION`), so an Admin takedown or a moderation rejection is final (`409 FORM_NOT_REOPENABLE`). Contract test: the exhaustive from→to matrix in `apps/backend/src/modules/forms/presentation/form-publish.schema.spec.ts`. Follow-up (not in Phase 1): route Admin takedowns of live surveys through a Moderation command with a reason, an audit event and a Publisher notification.

@@ -2,7 +2,7 @@
 title: RESCOM Solution Design and Developer Guide
 status: final
 created: 2026-08-08
-updated: 2026-08-16
+updated: 2026-09-26
 audience: developers and epic authors
 ---
 
@@ -338,6 +338,8 @@ No production personal-data processing launches until Product plus qualified Pri
 Private object storage is isolated per environment. Platform Infrastructure owns technical StoredObject metadata and `INITIATED → UPLOADED → QUARANTINED → CLEAN → ATTACHED`, with terminal `REJECTED`, `EXPIRED`, and `DELETED`; the domain owner owns only the attachment relation. Uploads use backend-authorized initiation/finalization, short-lived scoped URLs, allowlisted size/type plus server signature verification, and approved scanning. Scan outage stays quarantined and fails closed; only clean objects attach/download. Operations owns provider, scanning, quarantine/release, outage and cleanup; the record-owning context plus Privacy owns classification, access, retention, and deletion.
 
 ## 16. Operations and Observability
+
+> **Amendment 2026-09-26 (sprint-change-proposal-2026-09-26) — pilot deployment profile.** The pilot follows Architecture Spine AD-23: one Compute Engine VM in Google Cloud `asia-southeast1` (Caddy, NestJS API with the co-located scheduler of the AD-5 amendment, ClamAV), Cloud SQL for PostgreSQL over private IP, a private Cloud Storage bucket through the S3 API, Vercel `sin1`, Cloudflare as the only ingress, Sentry plus an external uptime check, and GitHub Actions → GHCR deploys with image-tag rollback. The monitoring list below stays the target; for the pilot, Epic 11 delivers health/readiness, error tracking, uptime alerts, a restore drill and backup-failure alerts first. The Operations approvals in the last paragraph of this section are still required before launch.
 
 Monitor:
 

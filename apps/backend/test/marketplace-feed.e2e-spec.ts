@@ -18,10 +18,17 @@ import { InMemorySurveyResponseRepository } from '../src/modules/marketplace/inf
 import { SessionService } from '../src/modules/auth/application/session.service';
 import { EnvService } from '../src/common/config/env.service';
 import { PrismaService } from '../src/common/database/prisma.service';
+import { LEDGER_REPOSITORY_PORT } from '../src/modules/economy/application/ports/ledger-repository.port';
+import { InMemoryLedgerRepository } from '../src/modules/economy/infrastructure/in-memory-ledger.repository';
+import { NOTIFICATION_REPOSITORY_PORT } from '../src/modules/notifications/application/ports/notification-repository.port';
+import { InMemoryNotificationRepository } from '../src/modules/notifications/infrastructure/in-memory-notification.repository';
+import { STARTER_POINTS_DATA_PROVIDER } from '../src/modules/economy/economy.module';
+import { InMemoryStarterPointsDataProvider } from '../src/modules/economy/infrastructure/in-memory-starter-points-data-provider';
 import { HttpExceptionFilter } from '../src/common/http/http-exception.filter';
 import { AUTH_COOKIE_NAME } from '../src/modules/auth/presentation/cookie-options.helper';
 import { FormEntity } from '../src/modules/forms/domain/form.entity';
 import { FormVersionEntity } from '../src/modules/forms/domain/form-version.entity';
+import { seedCompleteDemographicProfile } from './fixtures/demographic-profile.fixture';
 
 describe('Story 4.2: Automated Marketplace Matching E2E Tests', () => {
   let app: INestApplication;
@@ -81,6 +88,12 @@ describe('Story 4.2: Automated Marketplace Matching E2E Tests', () => {
     })
       .overrideProvider(PrismaService)
       .useValue(mockPrisma)
+      .overrideProvider(LEDGER_REPOSITORY_PORT)
+      .useValue(new InMemoryLedgerRepository())
+      .overrideProvider(NOTIFICATION_REPOSITORY_PORT)
+      .useValue(new InMemoryNotificationRepository())
+      .overrideProvider(STARTER_POINTS_DATA_PROVIDER)
+      .useValue(new InMemoryStarterPointsDataProvider())
       .overrideProvider(USER_REPOSITORY_PORT)
       .useValue(userRepo)
       .overrideProvider(SESSION_REPOSITORY_PORT)
@@ -133,6 +146,7 @@ describe('Story 4.2: Automated Marketplace Matching E2E Tests', () => {
   async function createTestUserWithSession(
     email: string,
     role: 'ADMIN' | 'PUBLISHER' | 'RESPONDENT' = 'RESPONDENT',
+    options: { onboarded?: boolean } = {},
   ) {
     const user = await userRepo.create({
       email,
@@ -140,6 +154,11 @@ describe('Story 4.2: Automated Marketplace Matching E2E Tests', () => {
       role,
       status: 'ACTIVE',
     });
+
+    // Story 7.1: the feed requires a completed Mandatory Demographic Survey.
+    if (options.onboarded ?? true) {
+      await seedCompleteDemographicProfile(demoRepo, user.id);
+    }
 
     const tokens = await sessionService.createSession(user.id);
     return {
@@ -161,6 +180,7 @@ describe('Story 4.2: Automated Marketplace Matching E2E Tests', () => {
     const { accessToken, csrfToken } = await createTestUserWithSession(
       'respondent1@example.com',
       'RESPONDENT',
+      { onboarded: false },
     );
 
     // 1. Initial profile check
@@ -171,8 +191,9 @@ describe('Story 4.2: Automated Marketplace Matching E2E Tests', () => {
 
     expect(initialRes.status).toBe(200);
     expect(initialRes.body.data.isComplete).toBe(false);
+    expect(initialRes.body.data.missingFields).toHaveLength(7);
 
-    // 2. Update profile
+    // 2. Update profile (partial: FR-6 still needs income + interests)
     const updateRes = await request(app.getHttpServer())
       .put('/demographics')
       .set('Cookie', [`${AUTH_COOKIE_NAME}=${accessToken}`])
@@ -189,7 +210,25 @@ describe('Story 4.2: Automated Marketplace Matching E2E Tests', () => {
     expect(updateRes.status).toBe(200);
     expect(updateRes.body.data.profile.age).toBe(21);
     expect(updateRes.body.data.profile.location).toBe('Hanoi');
-    expect(updateRes.body.data.isComplete).toBe(true);
+    expect(updateRes.body.data.isComplete).toBe(false);
+    expect(updateRes.body.data.missingFields).toEqual([
+      'householdIncome',
+      'specificInterests',
+    ]);
+
+    const completeRes = await request(app.getHttpServer())
+      .put('/demographics')
+      .set('Cookie', [`${AUTH_COOKIE_NAME}=${accessToken}`])
+      .set('X-CSRF-Token', csrfToken)
+      .set('Origin', ALLOWED_ORIGIN)
+      .send({
+        householdIncome: 'Under 5M VND',
+        specificInterests: ['Technology'],
+      });
+
+    expect(completeRes.status).toBe(200);
+    expect(completeRes.body.data.isComplete).toBe(true);
+    expect(completeRes.body.data.missingFields).toEqual([]);
 
     // 3. Retrieve updated profile
     const getRes = await request(app.getHttpServer())
@@ -360,10 +399,11 @@ describe('Story 4.2: Automated Marketplace Matching E2E Tests', () => {
     expect(olderRes.body.data.total).toBe(1);
     expect(olderRes.body.data.surveys[0].id).toBe('form-open');
 
-    // ── 3. Authenticated Respondent with no demographic profile ─────────
+    // ── 3. Respondent without a demographic profile cannot open the feed ──
     const newRespondentSession = await createTestUserWithSession(
       'new_user@example.com',
       'RESPONDENT',
+      { onboarded: false },
     );
 
     const newRes = await request(app.getHttpServer())
@@ -373,10 +413,11 @@ describe('Story 4.2: Automated Marketplace Matching E2E Tests', () => {
       ])
       .set('Origin', ALLOWED_ORIGIN);
 
-    expect(newRes.status).toBe(200);
-    expect(newRes.body.data.total).toBe(1);
-    expect(newRes.body.data.surveys[0].id).toBe('form-open');
-    expect(newRes.body.data.profileCompleted).toBe(false);
+    // Story 7.1 (FR-6): Marketplace access requires the mandatory survey.
+    expect(newRes.status).toBe(403);
+    expect(newRes.body.data).toBeNull();
+    expect(newRes.body.error.code).toBe('DEMOGRAPHIC_PROFILE_REQUIRED');
+    expect(newRes.body.error.details.missingFields).toHaveLength(7);
   });
 
   describe('Story 4.3: Feed Interactions (Sort/Filter/Auto-Hide) E2E', () => {
@@ -511,6 +552,40 @@ describe('Story 4.2: Automated Marketplace Matching E2E Tests', () => {
       );
       expect(completedCard.isCompletedByCurrentUser).toBe(true);
     });
+
+    it('hides an External survey the respondent completed through code verification (review P3)', async () => {
+      const user = await createTestUserWithSession('external_done@example.com');
+      // A verified External completion is a COMPLETED attempt without a
+      // Response row.
+      responseRepo.recordExternalCompletion('form-medium-poll', user.user.id);
+
+      const res = await request(app.getHttpServer())
+        .get('/marketplace/feed')
+        .set('Cookie', [`${AUTH_COOKIE_NAME}=${user.accessToken}`])
+        .set('Origin', ALLOWED_ORIGIN);
+
+      expect(res.status).toBe(200);
+      const ids = res.body.data.surveys.map((s: any) => s.id);
+      expect(ids).not.toContain('form-medium-poll');
+      expect(ids).toHaveLength(2);
+    });
+
+    it.each(['sortBy=bogus', 'minReward=abc', 'hideCompleted=yes'])(
+      'returns 400 VALIDATION_ERROR (not 500) for an invalid query: %s (review P8)',
+      async (queryString) => {
+        const user = await createTestUserWithSession(
+          `bad_query_${queryString.split('=')[0]}@example.com`,
+        );
+
+        const res = await request(app.getHttpServer())
+          .get(`/marketplace/feed?${queryString}`)
+          .set('Cookie', [`${AUTH_COOKIE_NAME}=${user.accessToken}`])
+          .set('Origin', ALLOWED_ORIGIN);
+
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      },
+    );
 
     it('should sort feed surveys via HTTP query parameters', async () => {
       const user = await createTestUserWithSession('sort_user@example.com');

@@ -1,4 +1,5 @@
 import {
+  clientContextSchema,
   startSurveyAttemptInputSchema,
   surveyAttemptResponseSchema,
   StartSurveyAttemptInput,
@@ -89,6 +90,75 @@ describe('Survey Attempt Schemas', () => {
 
       const result = surveyAttemptResponseSchema.safeParse(payload);
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe('Epic 5 review P2 — bounded clientContext', () => {
+    it('accepts a flat context of primitives', () => {
+      expect(
+        clientContextSchema.safeParse({
+          device: 'desktop',
+          width: 1920,
+          touch: false,
+          referrer: null,
+        }).success,
+      ).toBe(true);
+    });
+
+    it('rejects nested objects, long values, too many keys and oversized payloads', () => {
+      expect(
+        clientContextSchema.safeParse({
+          reportedMissingCode: { reportedAt: '2020-01-01' },
+        }).success,
+      ).toBe(false);
+      expect(clientContextSchema.safeParse({ a: 'x'.repeat(257) }).success).toBe(
+        false,
+      );
+      expect(clientContextSchema.safeParse({ ['k'.repeat(65)]: 1 }).success).toBe(
+        false,
+      );
+      const manyKeys = Object.fromEntries(
+        Array.from({ length: 21 }, (_, i) => [`k${i}`, i]),
+      );
+      expect(clientContextSchema.safeParse(manyKeys).success).toBe(false);
+      const large = Object.fromEntries(
+        Array.from({ length: 10 }, (_, i) => [`key${i}`, 'v'.repeat(250)]),
+      );
+      expect(clientContextSchema.safeParse(large).success).toBe(false);
+    });
+
+    it('is enforced on attempt start', () => {
+      expect(
+        startSurveyAttemptInputSchema.safeParse({
+          clientContext: { nested: { deep: true } },
+        }).success,
+      ).toBe(false);
+    });
+  });
+
+  describe('Epic 5 review P27 — attempt DTO contract', () => {
+    const dto = {
+      attemptId: '11111111-1111-4111-8111-111111111111',
+      responseId: null,
+      formId: '22222222-2222-4222-8222-222222222222',
+      formVersionId: '33333333-3333-4333-8333-333333333333',
+      type: 'EXTERNAL',
+      status: 'IN_PROGRESS',
+      startedAt: '2026-09-26T10:00:00.000Z',
+      expiresAt: '2026-09-26T10:30:00.000Z',
+      storageCapability: 'c'.repeat(43),
+    };
+
+    it('only allows IN_PROGRESS and ISO timestamps', () => {
+      expect(surveyAttemptResponseSchema.safeParse(dto).success).toBe(true);
+      expect(
+        surveyAttemptResponseSchema.safeParse({ ...dto, status: 'LOCKED' })
+          .success,
+      ).toBe(false);
+      expect(
+        surveyAttemptResponseSchema.safeParse({ ...dto, startedAt: 'yesterday' })
+          .success,
+      ).toBe(false);
     });
   });
 });

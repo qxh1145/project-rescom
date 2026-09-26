@@ -1,5 +1,12 @@
+import * as crypto from 'crypto';
 import { CompletionCodeService } from './completion-code.service';
 import { EnvService } from '../../../common/config/env.service';
+
+// Wrap timingSafeEqual so AC2.4 (constant-time comparison) is observable.
+jest.mock('crypto', () => {
+  const actual = jest.requireActual<typeof import('crypto')>('crypto');
+  return { ...actual, timingSafeEqual: jest.fn(actual.timingSafeEqual) };
+});
 
 describe('CompletionCodeService', () => {
   let service: CompletionCodeService;
@@ -120,6 +127,129 @@ describe('CompletionCodeService', () => {
       expect(service.verifyCode(formVersionId, '123456', null)).toBe(false);
       expect(service.verifyCode(formVersionId, '123456', 'corrupted')).toBe(
         false,
+      );
+    });
+
+    it('rejects a verifier whose keyVersion is not a configured key', () => {
+      const digest = service
+        .computeVerifier(formVersionId, '123456')
+        .split(':')[1];
+      // Same digest relabelled with an unknown key version must not verify.
+      expect(service.verifyCode(formVersionId, '123456', `v2:${digest}`)).toBe(
+        false,
+      );
+    });
+
+    it('compares digests with crypto.timingSafeEqual (AC2.4)', () => {
+      const timingSafeEqual = jest.mocked(crypto.timingSafeEqual);
+      timingSafeEqual.mockClear();
+      const verifier = service.computeVerifier(formVersionId, '123456');
+      expect(service.verifyCode(formVersionId, '123456', verifier)).toBe(true);
+      expect(service.verifyCode(formVersionId, '654321', verifier)).toBe(false);
+      expect(timingSafeEqual).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('canVerify (Epic 5 review P9)', () => {
+    it('accepts a well-formed verifier of the configured key version', () => {
+      expect(
+        service.canVerify(service.computeVerifier(formVersionId, '123456')),
+      ).toBe(true);
+    });
+
+    it('rejects null, malformed, truncated and unknown-key verifiers', () => {
+      const digest = service
+        .computeVerifier(formVersionId, '123456')
+        .split(':')[1];
+      expect(service.canVerify(null)).toBe(false);
+      expect(service.canVerify(undefined)).toBe(false);
+      expect(service.canVerify('corrupted')).toBe(false);
+      expect(service.canVerify('v1:abc')).toBe(false);
+      expect(service.canVerify(`v2:${digest}`)).toBe(false);
+    });
+  });
+
+  describe('HMAC key selection (AC2.3)', () => {
+    const baseEnv = {
+      NODE_ENV: 'test',
+      PORT: 4000,
+      DATABASE_URL: 'postgresql://localhost:5432/test',
+      JWT_SECRET: testSecret,
+      JWT_ACCESS_TTL_SECONDS: 900,
+      BCRYPT_ROUNDS: 12,
+      FRONTEND_ORIGINS: 'http://localhost:3000',
+    };
+    const dedicatedSecret = 'dedicated_completion_code_hmac_secret_0123456789';
+    const savedEnv = {
+      COMPLETION_CODE_HMAC_SECRET: process.env.COMPLETION_CODE_HMAC_SECRET,
+      JWT_SECRET: process.env.JWT_SECRET,
+    };
+
+    afterEach(() => {
+      for (const [key, value] of Object.entries(savedEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    });
+
+    it('uses COMPLETION_CODE_HMAC_SECRET in preference to JWT_SECRET', () => {
+      const dedicated = new CompletionCodeService(
+        new EnvService({
+          ...baseEnv,
+          COMPLETION_CODE_HMAC_SECRET: dedicatedSecret,
+        }),
+      );
+      const expected = crypto
+        .createHmac('sha256', dedicatedSecret)
+        .update(`${formVersionId}:123456`)
+        .digest('hex');
+      expect(dedicated.computeVerifier(formVersionId, '123456')).toBe(
+        `v1:${expected}`,
+      );
+      // Rotating JWT_SECRET no longer invalidates live completion codes.
+      const afterJwtRotation = new CompletionCodeService(
+        new EnvService({
+          ...baseEnv,
+          JWT_SECRET: 'a_completely_different_rotated_jwt_secret_value!',
+          COMPLETION_CODE_HMAC_SECRET: dedicatedSecret,
+        }),
+      );
+      expect(
+        afterJwtRotation.verifyCode(formVersionId, '123456', `v1:${expected}`),
+      ).toBe(true);
+    });
+
+    it('falls back to JWT_SECRET when no dedicated secret is configured', () => {
+      const expected = crypto
+        .createHmac('sha256', testSecret)
+        .update(`${formVersionId}:123456`)
+        .digest('hex');
+      expect(service.computeVerifier(formVersionId, '123456')).toBe(
+        `v1:${expected}`,
+      );
+    });
+
+    it('reads process.env when no EnvService is injected', () => {
+      process.env.COMPLETION_CODE_HMAC_SECRET = dedicatedSecret;
+      const fromProcess = new CompletionCodeService();
+      const expected = crypto
+        .createHmac('sha256', dedicatedSecret)
+        .update(`${formVersionId}:123456`)
+        .digest('hex');
+      expect(fromProcess.computeVerifier(formVersionId, '123456')).toBe(
+        `v1:${expected}`,
+      );
+    });
+
+    it('fails fast instead of using a hard-coded key when no secret is configured', () => {
+      delete process.env.COMPLETION_CODE_HMAC_SECRET;
+      delete process.env.JWT_SECRET;
+      expect(() => new CompletionCodeService()).toThrow(
+        /Completion code HMAC secret/,
+      );
+      process.env.JWT_SECRET = 'too-short';
+      expect(() => new CompletionCodeService()).toThrow(
+        /Completion code HMAC secret/,
       );
     });
   });

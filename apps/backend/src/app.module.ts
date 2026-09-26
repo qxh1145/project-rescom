@@ -14,6 +14,8 @@ import { MarketplaceModule } from './modules/marketplace/marketplace.module';
 import { ParticipationModule } from './modules/participation/participation.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { EconomyModule } from './modules/economy/economy.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ModerationModule } from './modules/moderation/moderation.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { EconomyModule } from './modules/economy/economy.module';
     ParticipationModule,
     StorageModule,
     EconomyModule,
+    NotificationsModule,
+    ModerationModule,
   ],
   providers: [
     {

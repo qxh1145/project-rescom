@@ -103,6 +103,9 @@ describe('EnvService', () => {
         AUTH_FRONTEND_ERROR_URL: 'https://app.rescom.io/error',
         STORAGE_ACCESS_KEY_ID: 'production-storage-key',
         STORAGE_SECRET_ACCESS_KEY: 'production-storage-secret',
+        TOPUP_BANK_ACCOUNT_NUMBER: '1234567890',
+        TOPUP_BANK_ACCOUNT_NAME: 'CONG TY RESCOM',
+        PARTICIPATION_RATE_LIMIT_POLICY_VERSION: 'participation-rate-limit-v1',
       };
 
       expect(() => new EnvService(productionEnv)).toThrow(
@@ -210,6 +213,231 @@ describe('EnvService', () => {
             AUTH_FRONTEND_ERROR_URL: 'https://app.rescom.io/error',
           }),
       ).toThrow(/must use HTTPS in production/);
+    });
+  });
+
+  describe('Story 6.6: top-up bank configuration', () => {
+    it('provides safe development defaults', () => {
+      const service = new EnvService(validBaseEnv);
+      expect(service.topUpBankName).toBe('Vietcombank');
+      expect(service.topUpBankBin).toBe('970436');
+      expect(service.topUpBankAccountNumber).toBe('0000000000');
+      expect(service.topUpBankAccountName).toBe('RESCOM DEMO');
+    });
+
+    it('accepts explicit values and rejects malformed BIN/account numbers', () => {
+      const service = new EnvService({
+        ...validBaseEnv,
+        TOPUP_BANK_NAME: 'MB Bank',
+        TOPUP_BANK_BIN: '970422',
+        TOPUP_BANK_ACCOUNT_NUMBER: '0123456789012',
+        TOPUP_BANK_ACCOUNT_NAME: 'CONG TY RESCOM',
+      });
+      expect(service.topUpBankBin).toBe('970422');
+      expect(service.topUpBankAccountNumber).toBe('0123456789012');
+
+      expect(
+        () => new EnvService({ ...validBaseEnv, TOPUP_BANK_BIN: '97042' }),
+      ).toThrow(/TOPUP_BANK_BIN/);
+      expect(
+        () =>
+          new EnvService({
+            ...validBaseEnv,
+            TOPUP_BANK_ACCOUNT_NUMBER: '12-34',
+          }),
+      ).toThrow(/TOPUP_BANK_ACCOUNT_NUMBER/);
+    });
+
+    it('refuses the placeholder bank account in production', () => {
+      expect(
+        () =>
+          new EnvService({
+            ...validBaseEnv,
+            NODE_ENV: 'production',
+            TRUST_PROXY_HOPS: '1',
+            AUTH_SECRET_PROTECTION_KEY:
+              'super_secret_protection_key_at_least_32_chars!',
+            GOOGLE_CLIENT_ID: 'real-client-id',
+            GOOGLE_CLIENT_SECRET: 'real-client-secret',
+            FRONTEND_ORIGINS: 'https://app.rescom.io',
+            GOOGLE_REDIRECT_URI: 'https://api.rescom.io/auth/google/callback',
+            AUTH_FRONTEND_SUCCESS_URL: 'https://app.rescom.io/callback',
+            AUTH_FRONTEND_ERROR_URL: 'https://app.rescom.io/error',
+            STORAGE_ACCESS_KEY_ID: 'production-storage-key',
+            STORAGE_SECRET_ACCESS_KEY: 'production-storage-secret',
+          }),
+      ).toThrow(/Production requires the real top-up bank account/);
+    });
+  });
+
+  describe('Story 8.2: participation rate-limit policy (FR-46, AD-6)', () => {
+    it('defaults to the provisional central policy and the single-replica profile', () => {
+      const service = new EnvService(validBaseEnv);
+      expect(service.abuseControlProfile).toBe('REDIS_DISABLED_SINGLE_REPLICA');
+      expect(service.participationRateLimitPolicy).toEqual({
+        completionLimit: 20,
+        completionWindowSeconds: 3600,
+        burstLimit: 10,
+        burstWindowSeconds: 60,
+        policyVersion: 'participation-rate-limit-v1',
+      });
+    });
+
+    it('accepts explicit limits', () => {
+      const service = new EnvService({
+        ...validBaseEnv,
+        PARTICIPATION_COMPLETION_LIMIT: '5',
+        PARTICIPATION_COMPLETION_WINDOW_SECONDS: '600',
+        PARTICIPATION_BURST_LIMIT: '3',
+        PARTICIPATION_BURST_WINDOW_SECONDS: '30',
+      });
+      expect(service.participationRateLimitPolicy).toEqual({
+        completionLimit: 5,
+        completionWindowSeconds: 600,
+        burstLimit: 3,
+        burstWindowSeconds: 30,
+        // Outside production an unset version falls back to the default name.
+        policyVersion: 'participation-rate-limit-v1',
+      });
+    });
+
+    it('rejects non-positive limits', () => {
+      expect(
+        () =>
+          new EnvService({
+            ...validBaseEnv,
+            PARTICIPATION_COMPLETION_LIMIT: '0',
+          }),
+      ).toThrow(/PARTICIPATION_COMPLETION_LIMIT/);
+      expect(
+        () =>
+          new EnvService({
+            ...validBaseEnv,
+            PARTICIPATION_BURST_WINDOW_SECONDS: '0',
+          }),
+      ).toThrow(/PARTICIPATION_BURST_WINDOW_SECONDS/);
+    });
+
+    describe('decision E8-D4: explicit policy version', () => {
+      const productionEnv = {
+        ...validBaseEnv,
+        NODE_ENV: 'production',
+        TRUST_PROXY_HOPS: '1',
+        AUTH_SECRET_PROTECTION_KEY:
+          'super_secret_protection_key_at_least_32_chars!',
+        GOOGLE_CLIENT_ID: 'real-client-id',
+        GOOGLE_CLIENT_SECRET: 'real-client-secret',
+        FRONTEND_ORIGINS: 'https://app.rescom.io',
+        GOOGLE_REDIRECT_URI: 'https://api.rescom.io/auth/google/callback',
+        AUTH_FRONTEND_SUCCESS_URL: 'https://app.rescom.io/callback',
+        AUTH_FRONTEND_ERROR_URL: 'https://app.rescom.io/error',
+        STORAGE_ACCESS_KEY_ID: 'production-storage-key',
+        STORAGE_SECRET_ACCESS_KEY: 'production-storage-secret',
+        TOPUP_BANK_ACCOUNT_NUMBER: '1234567890',
+        TOPUP_BANK_ACCOUNT_NAME: 'CONG TY RESCOM',
+      };
+
+      it('is required in production', () => {
+        expect(() => new EnvService(productionEnv)).toThrow(
+          /PARTICIPATION_RATE_LIMIT_POLICY_VERSION is required in production/,
+        );
+      });
+
+      it('names the policy in production, also for tuned values', () => {
+        const service = new EnvService({
+          ...productionEnv,
+          PARTICIPATION_RATE_LIMIT_POLICY_VERSION:
+            ' participation-rate-limit-2026-10-pilot ',
+          PARTICIPATION_COMPLETION_LIMIT: '15',
+        });
+        expect(service.participationRateLimitPolicyVersion).toBe(
+          'participation-rate-limit-2026-10-pilot',
+        );
+        expect(service.participationRateLimitPolicy).toMatchObject({
+          completionLimit: 15,
+          policyVersion: 'participation-rate-limit-2026-10-pilot',
+        });
+      });
+
+      it('accepts the default name for the default values in production', () => {
+        const service = new EnvService({
+          ...productionEnv,
+          PARTICIPATION_RATE_LIMIT_POLICY_VERSION:
+            'participation-rate-limit-v1',
+        });
+        expect(service.participationRateLimitPolicy.policyVersion).toBe(
+          'participation-rate-limit-v1',
+        );
+      });
+
+      it('refuses the default name for custom values in any environment', () => {
+        for (const env of [validBaseEnv, productionEnv]) {
+          expect(
+            () =>
+              new EnvService({
+                ...env,
+                PARTICIPATION_RATE_LIMIT_POLICY_VERSION:
+                  'participation-rate-limit-v1',
+                PARTICIPATION_BURST_LIMIT: '25',
+              }),
+          ).toThrow(/names the default participation limits/);
+        }
+      });
+
+      it('rejects a malformed version name', () => {
+        for (const version of ['has space', '-dash-first', 'x'.repeat(65)]) {
+          expect(
+            () =>
+              new EnvService({
+                ...validBaseEnv,
+                PARTICIPATION_RATE_LIMIT_POLICY_VERSION: version,
+              }),
+          ).toThrow(/PARTICIPATION_RATE_LIMIT_POLICY_VERSION/);
+        }
+      });
+    });
+
+    it('refuses the REDIS_SHARED profile until a Redis counter store is installed', () => {
+      expect(
+        () =>
+          new EnvService({
+            ...validBaseEnv,
+            ABUSE_CONTROL_PROFILE: 'REDIS_SHARED',
+          }),
+      ).toThrow(/ABUSE_CONTROL_PROFILE/);
+      expect(
+        () =>
+          new EnvService({
+            ...validBaseEnv,
+            ABUSE_CONTROL_PROFILE: 'SOMETHING',
+          }),
+      ).toThrow(/ABUSE_CONTROL_PROFILE/);
+    });
+  });
+
+  describe('Epic 5 review P22: storage capability secret', () => {
+    it('falls back to JWT_SECRET when no dedicated secret is configured', () => {
+      const service = new EnvService(validBaseEnv);
+      expect(service.storageCapabilitySecret).toBe(validBaseEnv.JWT_SECRET);
+    });
+
+    it('uses the dedicated STORAGE_CAPABILITY_SECRET when set', () => {
+      const secret = 'dedicated_storage_capability_secret_32_chars_min!!';
+      const service = new EnvService({
+        ...validBaseEnv,
+        STORAGE_CAPABILITY_SECRET: secret,
+      });
+      expect(service.storageCapabilitySecret).toBe(secret);
+    });
+
+    it('rejects a short STORAGE_CAPABILITY_SECRET', () => {
+      expect(
+        () =>
+          new EnvService({
+            ...validBaseEnv,
+            STORAGE_CAPABILITY_SECRET: 'too-short',
+          }),
+      ).toThrow(/STORAGE_CAPABILITY_SECRET/);
     });
   });
 });

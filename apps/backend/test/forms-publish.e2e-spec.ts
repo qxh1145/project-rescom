@@ -11,11 +11,24 @@ import { IDENTITY_AUDIT_PORT } from '../src/modules/auth/application/ports/ident
 import { InMemoryIdentityAuditRepository } from '../src/modules/auth/infrastructure/in-memory-identity-audit.repository';
 import { FORM_REPOSITORY_PORT } from '../src/modules/forms/application/ports/form-repository.port';
 import { InMemoryFormRepository } from '../src/modules/forms/infrastructure/in-memory-form.repository';
+import { LEDGER_REPOSITORY_PORT } from '../src/modules/economy/application/ports/ledger-repository.port';
+import { InMemoryLedgerRepository } from '../src/modules/economy/infrastructure/in-memory-ledger.repository';
+import { LedgerService } from '../src/modules/economy/application/ledger.service';
 import { SessionService } from '../src/modules/auth/application/session.service';
 import { EnvService } from '../src/common/config/env.service';
 import { PrismaService } from '../src/common/database/prisma.service';
 import { HttpExceptionFilter } from '../src/common/http/http-exception.filter';
 import { AUTH_COOKIE_NAME } from '../src/modules/auth/presentation/cookie-options.helper';
+import {
+  PassThroughUnitOfWork,
+  UNIT_OF_WORK_PORT,
+} from '../src/common/database/unit-of-work.port';
+import { ADMIN_CAPABILITY_PORT } from '../src/modules/economy/application/ports/admin-capability.port';
+import { InMemoryAdminCapabilityRepository } from '../src/modules/economy/infrastructure/in-memory-admin-capability.repository';
+import { SURVEY_MODERATION_REPOSITORY_PORT } from '../src/modules/moderation/application/ports/survey-moderation-repository.port';
+import { InMemorySurveyModerationRepository } from '../src/modules/moderation/infrastructure/in-memory-survey-moderation.repository';
+import { NOTIFICATION_REPOSITORY_PORT } from '../src/modules/notifications/application/ports/notification-repository.port';
+import { InMemoryNotificationRepository } from '../src/modules/notifications/infrastructure/in-memory-notification.repository';
 
 describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
   let app: INestApplication;
@@ -23,6 +36,8 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
   let sessionRepo: InMemorySessionRepository;
   let auditRepo: InMemoryIdentityAuditRepository;
   let formRepo: InMemoryFormRepository;
+  let ledgerRepo: InMemoryLedgerRepository;
+  let ledgerService: LedgerService;
   let sessionService: SessionService;
   let envService: EnvService;
 
@@ -38,6 +53,7 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
     auditRepo = new InMemoryIdentityAuditRepository();
     sessionRepo = new InMemorySessionRepository(auditRepo);
     formRepo = new InMemoryFormRepository();
+    ledgerRepo = new InMemoryLedgerRepository();
 
     envService = new EnvService({
       NODE_ENV: 'test',
@@ -75,11 +91,26 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
       .useValue(auditRepo)
       .overrideProvider(FORM_REPOSITORY_PORT)
       .useValue(formRepo)
+      .overrideProvider(LEDGER_REPOSITORY_PORT)
+      .useValue(ledgerRepo)
       .overrideProvider(EnvService)
       .useValue(envService)
+      // Story 8.1: publish/close run under the shared Unit of Work, and the
+      // moderation approval used below needs in-memory adapters.
+      .overrideProvider(UNIT_OF_WORK_PORT)
+      .useValue(new PassThroughUnitOfWork())
+      .overrideProvider(ADMIN_CAPABILITY_PORT)
+      .useValue(
+        new InMemoryAdminCapabilityRepository((id) => userRepo.findById(id)),
+      )
+      .overrideProvider(SURVEY_MODERATION_REPOSITORY_PORT)
+      .useValue(new InMemorySurveyModerationRepository())
+      .overrideProvider(NOTIFICATION_REPOSITORY_PORT)
+      .useValue(new InMemoryNotificationRepository())
       .compile();
 
     sessionService = moduleFixture.get(SessionService);
+    ledgerService = moduleFixture.get(LedgerService);
 
     app = moduleFixture.createNestApplication();
     app.use(cookieParser());
@@ -108,6 +139,7 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
     sessionRepo.clear();
     auditRepo.clear();
     formRepo.clear();
+    ledgerRepo.clear();
   });
 
   async function createTestUserWithSession(
@@ -120,8 +152,52 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
       role,
       status: 'ACTIVE',
     });
+
+    if (role === 'PUBLISHER' || role === 'ADMIN') {
+      const sys = await ledgerService.getOrCreateAccount(
+        null,
+        'SYSTEM_ISSUANCE',
+      );
+      const userAcc = await ledgerService.getOrCreateAccount(
+        user.id,
+        'USER_AVAILABLE',
+      );
+      await ledgerService.postJournal({
+        idempotencyKey: `seed-user-${user.id}-${Date.now()}-${Math.random()}`,
+        entries: [
+          { accountId: sys.id, amount: -10000 },
+          { accountId: userAcc.id, amount: 10000 },
+        ],
+      });
+    }
+
     const tokens = await sessionService.createSession(user.id);
     return { user, tokens };
+  }
+
+  let moderatorCount = 0;
+
+  /**
+   * Story 8.1: publishing only queues a survey; a (different) Admin approves
+   * it through the moderation endpoint to make it PUBLISHED.
+   */
+  async function approveViaModeration(formId: string) {
+    moderatorCount += 1;
+    const { tokens } = await createTestUserWithSession(
+      `moderator${moderatorCount}@example.com`,
+      'ADMIN',
+    );
+    const stored = await formRepo.findById(formId);
+    const res = await request(app.getHttpServer())
+      .post(`/admin/moderation/surveys/${formId}/approve`)
+      .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
+      .set('X-CSRF-Token', tokens.csrfToken)
+      .set('Origin', ALLOWED_ORIGIN)
+      .set('Content-Type', 'application/json')
+      .send({ formVersionId: stored!.currentVersion.id });
+    expect(res.status).toBe(200);
+    expect(res.body.data.form.status).toBe('PUBLISHED');
+    return res;
   }
 
   const validQuestionBlock = {
@@ -146,7 +222,7 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
   }
 
   describe('AC1 & AC3: POST /forms/:id/publish', () => {
-    it('successfully publishes internal non-reward survey directly to PUBLISHED status', async () => {
+    it('queues an internal non-reward survey for moderation; only approval publishes it (Story 8.1)', async () => {
       const { tokens } = await createTestUserWithSession('pub@example.com');
       const draftRes = await createDraft(tokens, {
         title: 'Academic Survey',
@@ -171,18 +247,55 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
 
       expect(publishRes.status).toBe(200);
       expect(publishRes.body.error).toBeNull();
-      expect(publishRes.body.data.status).toBe('PUBLISHED');
-      expect(publishRes.body.data.currentVersion.isPublished).toBe(true);
-      expect(publishRes.body.data.currentVersion.publishedAt).toBeDefined();
+      expect(publishRes.body.data.status).toBe('MODERATION_QUEUE');
+      expect(publishRes.body.data.currentVersion.isPublished).toBe(false);
+      expect(publishRes.body.data.currentVersion.publishedAt).toBeNull();
       expect(publishRes.body.meta.message).toBe('Form published successfully');
+
+      await approveViaModeration(formId);
+
+      const getRes = await request(app.getHttpServer())
+        .get(`/forms/${formId}`)
+        .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`]);
+      expect(getRes.body.data.status).toBe('PUBLISHED');
+      expect(getRes.body.data.currentVersion.isPublished).toBe(true);
+      expect(getRes.body.data.currentVersion.publishedAt).not.toBeNull();
     });
 
-    it('transitions survey with rewards (> 0 points) to ESCROW_LOCKED status', async () => {
+    it('rejects a publisher-requested targetStatus that bypasses moderation with 400', async () => {
+      const { tokens } = await createTestUserWithSession('bypass@example.com');
+      const draftRes = await createDraft(tokens, {
+        title: 'Bypass Survey',
+        type: 'INTERNAL',
+        rewardPerResponse: 0,
+        schema: {
+          schemaVersion: 1,
+          title: 'Bypass Survey',
+          blocks: [validQuestionBlock],
+        },
+      });
+      const formId = draftRes.body.data.id;
+
+      const publishRes = await request(app.getHttpServer())
+        .post(`/forms/${formId}/publish`)
+        .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
+        .set('X-CSRF-Token', tokens.csrfToken)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Content-Type', 'application/json')
+        .send({ targetStatus: 'PUBLISHED' });
+
+      expect(publishRes.status).toBe(400);
+      expect(publishRes.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+      expect((await formRepo.findById(formId))!.form.status).toBe('DRAFT');
+    });
+
+    it('queues a survey with rewards (> 0 points) for moderation after locking escrow', async () => {
       const { tokens } = await createTestUserWithSession('pub2@example.com');
       const draftRes = await createDraft(tokens, {
         title: 'Rewarded Feedback Survey',
         type: 'INTERNAL',
         rewardPerResponse: 25,
+        estimatedDurationMinutes: 12, // FR-14 band 15–25 (E6-D2)
         expectedCompletions: 50,
         schema: {
           schemaVersion: 1,
@@ -202,16 +315,98 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
         .send({});
 
       expect(publishRes.status).toBe(200);
-      expect(publishRes.body.data.status).toBe('ESCROW_LOCKED');
+      expect(publishRes.body.data.status).toBe('MODERATION_QUEUE');
       expect(publishRes.body.data.currentVersion.isPublished).toBe(false);
+      // 50 completions x 20 effective points (25 - 20% internal discount)
+      expect(
+        await ledgerService.getEscrowReservation(
+          publishRes.body.data.currentVersion.id,
+        ),
+      ).toBe(1000);
     });
 
-    it('transitions external survey with valid URL to ESCROW_LOCKED status', async () => {
+    it('enforces the FR-14 pricing band at publish only: 400 PRICING_REWARD_OUT_OF_BAND with the band, 422 without a duration (decision E6-D2)', async () => {
+      const { tokens } = await createTestUserWithSession(
+        'pub-pricing-band@example.com',
+      );
+      const draftRes = await createDraft(tokens, {
+        title: 'Overpriced Survey',
+        type: 'INTERNAL',
+        rewardPerResponse: 60, // drafts accept anything up to 10,000
+        expectedCompletions: 5,
+        schema: {
+          schemaVersion: 1,
+          title: 'Overpriced Survey',
+          blocks: [validQuestionBlock],
+        },
+      });
+      expect(draftRes.status).toBe(201);
+      const formId = draftRes.body.data.id;
+      const publish = (body: Record<string, unknown>) =>
+        request(app.getHttpServer())
+          .post(`/forms/${formId}/publish`)
+          .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
+          .set('X-CSRF-Token', tokens.csrfToken)
+          .set('Origin', ALLOWED_ORIGIN)
+          .set('Content-Type', 'application/json')
+          .send(body);
+
+      const noDuration = await publish({});
+      expect(noDuration.status).toBe(422);
+      expect(noDuration.body.error.code).toBe('ESTIMATED_DURATION_REQUIRED');
+
+      const outOfBand = await publish({ estimatedDurationMinutes: 20 });
+      expect(outOfBand.status).toBe(400);
+      expect(outOfBand.body.error.code).toBe('PRICING_REWARD_OUT_OF_BAND');
+      expect(outOfBand.body.error.details).toEqual({
+        min: 20,
+        max: 40,
+        suggested: 20,
+      });
+
+      const quote = await request(app.getHttpServer())
+        .get(`/forms/${formId}/pricing-quote`)
+        .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
+        .expect(200);
+      // A rejected publish stores nothing: the draft still has no duration.
+      expect(quote.body.data).toMatchObject({
+        estimatedDurationMinutes: null,
+        pricingBand: null,
+        bandCheck: 'DURATION_REQUIRED',
+      });
+
+      // Still a draft: the Publisher lowers the reward, then publishes.
+      const current = await request(app.getHttpServer())
+        .get(`/forms/${formId}`)
+        .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
+        .expect(200);
+      expect(current.body.data.status).toBe('DRAFT');
+      await request(app.getHttpServer())
+        .patch(`/forms/${formId}/draft`)
+        .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
+        .set('X-CSRF-Token', tokens.csrfToken)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Content-Type', 'application/json')
+        .send({
+          clientUpdatedAt: current.body.data.updatedAt,
+          rewardPerResponse: 40,
+          estimatedDurationMinutes: 20,
+        })
+        .expect(200);
+
+      const published = await publish({});
+      expect(published.status).toBe(200);
+      expect(published.body.data.status).toBe('MODERATION_QUEUE');
+      expect(published.body.data.estimatedDurationMinutes).toBe(20);
+    });
+
+    it('queues an external survey with valid URL for moderation', async () => {
       const { tokens } = await createTestUserWithSession('pub3@example.com');
       const draftRes = await createDraft(tokens, {
         title: 'External Research Survey',
         type: 'EXTERNAL',
         rewardPerResponse: 10,
+        estimatedDurationMinutes: 8,
         externalUrl: 'https://docs.google.com/forms/d/e/123/viewform',
         schema: {
           schemaVersion: 1,
@@ -221,9 +416,62 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
       });
 
       const formId = draftRes.body.data.id;
+      const publish = () =>
+        request(app.getHttpServer())
+          .post(`/forms/${formId}/publish`)
+          .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
+          .set('X-CSRF-Token', tokens.csrfToken)
+          .set('Origin', ALLOWED_ORIGIN)
+          .set('Content-Type', 'application/json')
+          .send({});
+
+      // Epic 4 review P2: publishing never mints an invisible completion
+      // code; the publisher must generate (rotate) one first.
+      const blocked = await publish();
+      expect(blocked.status).toBe(422);
+      expect(blocked.body.error.code).toBe('EXTERNAL_COMPLETION_CODE_REQUIRED');
+
+      const rotateRes = await request(app.getHttpServer())
+        .post(`/forms/${formId}/rotate-code`)
+        .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
+        .set('X-CSRF-Token', tokens.csrfToken)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Content-Type', 'application/json')
+        .send({});
+      expect(rotateRes.status).toBe(200);
+      expect(rotateRes.body.data.plaintextCompletionCode).toMatch(/^\d{6}$/);
+
+      const publishRes = await publish();
+
+      expect(publishRes.status).toBe(200);
+      expect(publishRes.body.data.status).toBe('MODERATION_QUEUE');
+      expect(publishRes.body.data.type).toBe('EXTERNAL');
+      expect(publishRes.body.data.currentVersion.hasCompletionCode).toBe(true);
+    });
+
+    it('publishes an External draft created without auto-publish (no question blocks) through the standard path (review P1)', async () => {
+      const { tokens } = await createTestUserWithSession(
+        'pub-external-draft@example.com',
+      );
+      const createRes = await request(app.getHttpServer())
+        .post('/forms/external')
+        .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
+        .set('X-CSRF-Token', tokens.csrfToken)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Content-Type', 'application/json')
+        .send({
+          title: 'External Draft Survey',
+          externalUrl: 'https://forms.gle/external-draft',
+          rewardPerResponse: 5,
+          estimatedDurationMinutes: 3,
+          expectedCompletions: 2,
+          autoPublish: false,
+        });
+      expect(createRes.status).toBe(201);
+      expect(createRes.body.data.currentVersion.schemaJson.blocks).toEqual([]);
 
       const publishRes = await request(app.getHttpServer())
-        .post(`/forms/${formId}/publish`)
+        .post(`/forms/${createRes.body.data.id}/publish`)
         .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
         .set('X-CSRF-Token', tokens.csrfToken)
         .set('Origin', ALLOWED_ORIGIN)
@@ -231,8 +479,8 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
         .send({});
 
       expect(publishRes.status).toBe(200);
-      expect(publishRes.body.data.status).toBe('ESCROW_LOCKED');
-      expect(publishRes.body.data.type).toBe('EXTERNAL');
+      expect(publishRes.body.data.status).toBe('MODERATION_QUEUE');
+      expect(publishRes.body.data.currentVersion.hasCompletionCode).toBe(true);
     });
 
     it('rejects publishing an empty form (0 blocks) with 422 FORM_VALIDATION_ERROR', async () => {
@@ -261,6 +509,56 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
       expect(publishRes.body.error.message).toContain(
         'Form must contain at least one question block',
       );
+    });
+
+    it('decision E5-D2: refuses a survey longer than the 30-minute attempt reservation with 422 SURVEY_DURATION_EXCEEDS_RESERVATION', async () => {
+      const { tokens } = await createTestUserWithSession(
+        'pub-e5d2@example.com',
+      );
+      const draftRes = await createDraft(tokens, {
+        title: 'Very Long Survey',
+        rewardPerResponse: 0,
+        schema: {
+          schemaVersion: 1,
+          title: 'Very Long Survey',
+          blocks: [
+            {
+              id: 'block-q1',
+              type: 'text',
+              order: 0,
+              title: 'Question',
+              required: true,
+            },
+          ],
+          // A 30-minute minimum can never be met inside a 30-minute attempt.
+          metadata: {
+            expectedEffortSeconds: 3600,
+            minTimeBarrierSeconds: 1800,
+          },
+        },
+      });
+      expect(draftRes.status).toBe(201);
+      const formId = draftRes.body.data.id;
+
+      const publishRes = await request(app.getHttpServer())
+        .post(`/forms/${formId}/publish`)
+        .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
+        .set('X-CSRF-Token', tokens.csrfToken)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Content-Type', 'application/json')
+        .send({});
+
+      expect(publishRes.status).toBe(422);
+      expect(publishRes.body.error.code).toBe(
+        'SURVEY_DURATION_EXCEEDS_RESERVATION',
+      );
+      expect(publishRes.body.error.message).toContain(
+        'Phase 1 does not support surveys longer than 30 minutes',
+      );
+      expect(
+        publishRes.body.error.details.map((v: { rule: string }) => v.rule),
+      ).toEqual(['TIME_BARRIER', 'EXPECTED_EFFORT']);
+      expect((await formRepo.findById(formId))!.form.status).toBe('DRAFT');
     });
 
     it('rejects publishing external survey without externalUrl with 422', async () => {
@@ -308,7 +606,7 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
 
       const formId = draftRes.body.data.id;
 
-      // First publish
+      // First publish (queued), then approved by moderation
       await request(app.getHttpServer())
         .post(`/forms/${formId}/publish`)
         .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
@@ -316,6 +614,7 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
         .set('Origin', ALLOWED_ORIGIN)
         .set('Content-Type', 'application/json')
         .send({});
+      await approveViaModeration(formId);
 
       // Second publish
       const publishRes = await request(app.getHttpServer())
@@ -459,6 +758,7 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
         .set('Origin', ALLOWED_ORIGIN)
         .set('Content-Type', 'application/json')
         .send({});
+      await approveViaModeration(formId);
 
       const closeRes = await request(app.getHttpServer())
         .post(`/forms/${formId}/close`)
@@ -495,7 +795,7 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
   });
 
   describe('AC2: POST /forms/:id/status (Lifecycle Progression)', () => {
-    it('allows valid transition ESCROW_LOCKED -> MODERATION_QUEUE -> PUBLISHED by Admin', async () => {
+    it('refuses to move a queued survey out of the queue with 409 FORM_MODERATION_REQUIRED (Story 8.1)', async () => {
       const { tokens: pubTokens } =
         await createTestUserWithSession('pub11@example.com');
       const { tokens: admTokens } = await createTestUserWithSession(
@@ -507,6 +807,7 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
         title: 'Lifecycle Form',
         type: 'INTERNAL',
         rewardPerResponse: 10,
+        estimatedDurationMinutes: 8,
         schema: {
           schemaVersion: 1,
           title: 'Lifecycle Form',
@@ -516,7 +817,7 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
 
       const formId = draftRes.body.data.id;
 
-      // Publish moves to ESCROW_LOCKED
+      // Publish moves to MODERATION_QUEUE
       await request(app.getHttpServer())
         .post(`/forms/${formId}/publish`)
         .set('Cookie', [`${AUTH_COOKIE_NAME}=${pubTokens.accessToken}`])
@@ -525,30 +826,24 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
         .set('Content-Type', 'application/json')
         .send({});
 
-      // Move to MODERATION_QUEUE
-      const modRes = await request(app.getHttpServer())
-        .post(`/forms/${formId}/status`)
-        .set('Cookie', [`${AUTH_COOKIE_NAME}=${admTokens.accessToken}`])
-        .set('X-CSRF-Token', admTokens.csrfToken)
-        .set('Origin', ALLOWED_ORIGIN)
-        .set('Content-Type', 'application/json')
-        .send({ targetStatus: 'MODERATION_QUEUE' });
+      for (const targetStatus of ['PUBLISHED', 'CLOSED']) {
+        const res = await request(app.getHttpServer())
+          .post(`/forms/${formId}/status`)
+          .set('Cookie', [`${AUTH_COOKIE_NAME}=${admTokens.accessToken}`])
+          .set('X-CSRF-Token', admTokens.csrfToken)
+          .set('Origin', ALLOWED_ORIGIN)
+          .set('Content-Type', 'application/json')
+          .send({ targetStatus });
 
-      expect(modRes.status).toBe(200);
-      expect(modRes.body.data.status).toBe('MODERATION_QUEUE');
+        expect(res.status).toBe(409);
+        expect(res.body.error.code).toBe('FORM_MODERATION_REQUIRED');
+      }
+      expect((await formRepo.findById(formId))!.form.status).toBe(
+        'MODERATION_QUEUE',
+      );
 
-      // Admin approves -> moves to PUBLISHED
-      const pubRes = await request(app.getHttpServer())
-        .post(`/forms/${formId}/status`)
-        .set('Cookie', [`${AUTH_COOKIE_NAME}=${admTokens.accessToken}`])
-        .set('X-CSRF-Token', admTokens.csrfToken)
-        .set('Origin', ALLOWED_ORIGIN)
-        .set('Content-Type', 'application/json')
-        .send({ targetStatus: 'PUBLISHED' });
-
-      expect(pubRes.status).toBe(200);
-      expect(pubRes.body.data.status).toBe('PUBLISHED');
-      expect(pubRes.body.data.currentVersion.isPublished).toBe(true);
+      // The moderation endpoint is the only way to publish it.
+      await approveViaModeration(formId);
     });
 
     it('rejects invalid transition PUBLISHED -> DRAFT with 400', async () => {
@@ -579,6 +874,7 @@ describe('Story 2.6: Form Publish Lifecycle & Immutability E2E Tests', () => {
         .set('Origin', ALLOWED_ORIGIN)
         .set('Content-Type', 'application/json')
         .send({});
+      await approveViaModeration(formId);
 
       const invalidRes = await request(app.getHttpServer())
         .post(`/forms/${formId}/status`)

@@ -138,7 +138,9 @@ describe('Story 5.2: Behavioral Telemetry Ingestion E2E Tests', () => {
       1,
       {
         title: 'Telemetry Survey',
-        blocks: [{ id: 'q1', type: 'text', title: 'Question 1', required: true }],
+        blocks: [
+          { id: 'q1', type: 'text', title: 'Question 1', required: true },
+        ],
       } as any,
       null,
       true,
@@ -148,7 +150,6 @@ describe('Story 5.2: Behavioral Telemetry Ingestion E2E Tests', () => {
       new Date(),
     );
     await formRepo.create(form, version);
-
 
     // Seed attempt
     const attempt = new SurveyAttemptEntity(
@@ -273,7 +274,9 @@ describe('Story 5.2: Behavioral Telemetry Ingestion E2E Tests', () => {
     it('should return 404 if attempt does not match form', async () => {
       const otherFormId = '99999999-9999-4999-8999-000000000000';
       const res = await request(app.getHttpServer())
-        .post(`/api/forms/${otherFormId}/attempts/${attemptId}/integrity-events`)
+        .post(
+          `/api/forms/${otherFormId}/attempts/${attemptId}/integrity-events`,
+        )
         .set('Cookie', [authCookie])
         .send({
           events: [

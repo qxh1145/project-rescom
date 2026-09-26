@@ -25,6 +25,10 @@ import { InMemoryOAuthIntentRepository } from '../src/modules/auth/infrastructur
 import { OAUTH_PERSISTENCE_PORT } from '../src/modules/auth/application/ports/oauth-persistence.port';
 import { InMemoryOAuthRepository } from '../src/modules/auth/infrastructure/in-memory-oauth.repository';
 import { PrismaService } from '../src/common/database/prisma.service';
+import { LEDGER_REPOSITORY_PORT } from '../src/modules/economy/application/ports/ledger-repository.port';
+import { InMemoryLedgerRepository } from '../src/modules/economy/infrastructure/in-memory-ledger.repository';
+import { STARTER_POINTS_DATA_PROVIDER } from '../src/modules/economy/economy.module';
+import { InMemoryStarterPointsDataProvider } from '../src/modules/economy/infrastructure/in-memory-starter-points-data-provider';
 import { GoogleProviderUnavailableException } from '../src/modules/auth/application/exceptions/auth.exceptions';
 
 function getCookies(res: request.Response): string[] {
@@ -95,6 +99,10 @@ describe('Google OAuth E2E Tests (AC1 - AC7, AC11 - AC13)', () => {
     })
       .overrideProvider(PrismaService)
       .useValue(mockPrisma)
+      .overrideProvider(LEDGER_REPOSITORY_PORT)
+      .useValue(new InMemoryLedgerRepository())
+      .overrideProvider(STARTER_POINTS_DATA_PROVIDER)
+      .useValue(new InMemoryStarterPointsDataProvider())
       .overrideProvider(USER_REPOSITORY_PORT)
       .useValue(userRepo)
       .overrideProvider(SESSION_REPOSITORY_PORT)

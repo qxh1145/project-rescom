@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: "2026-08-16 17:09:30"
-last_updated: "2026-09-17 19:30:00"
+last_updated: "2026-09-27 00:30:00"
 project: "project-rescom"
 project_key: "NOKEY"
 tracking_system: "file-system"
@@ -70,39 +70,48 @@ development_status:
   2-6-form-publish-lifecycle-immutability: done
   2-7-form-versioning: done
   epic-2-retrospective: optional
-  epic-4: in-progress
+  epic-4: done
   4-1-survey-targeting-criteria: done
-  4-2-automated-marketplace-matching: review
-  4-3-feed-interactions-sortfilterauto-hide: review
-  4-5-external-survey-setup-google-forms: review
+  4-2-automated-marketplace-matching: done
+  4-3-feed-interactions-sortfilterauto-hide: done
+  4-5-external-survey-setup-google-forms: done
   epic-4-retrospective: optional
-  epic-5: in-progress
-  5-1-survey-attempt-initialization-concurrency: review
-  5-2-internal-form-rendering-execution: review
-  5-3-file-upload-validation-secure-storage: in-progress
-  5-4-internal-form-submission: backlog
-  5-5-external-form-completion-code-verification: backlog
+  epic-5: done
+  5-1-survey-attempt-initialization-concurrency: done
+  5-2-internal-form-rendering-execution: done
+  5-3-file-upload-validation-secure-storage: done
+  5-4-internal-form-submission: done
+  5-5-external-form-completion-code-verification: done
   epic-5-retrospective: optional
-  epic-6: in-progress
-  6-1-double-entry-ledger-core-idempotency: review
-  6-2-wallet-balance-aggregation-presentation: backlog
-  6-3-escrow-lock-release-refund: backlog
-  6-4-respondent-point-credit-pending-logic: backlog
-  6-5-frozen-starter-points-lifecycle: backlog
-  6-6-point-top-up-request-admin-approval: backlog
+  epic-6: done
+  6-1-double-entry-ledger-core-idempotency: done
+  6-2-wallet-balance-aggregation-presentation: done
+  6-3-escrow-lock-release-refund: done
+  6-4-respondent-point-credit-pending-logic: done
+  6-5-frozen-starter-points-lifecycle: done
+  6-6-point-top-up-request-admin-approval: done
   epic-6-retrospective: optional
-  epic-7: backlog
-  7-1-mandatory-demographic-survey: backlog
-  7-2-secondary-deep-onboarding: backlog
+  epic-7: done
+  7-1-mandatory-demographic-survey: done
+  7-2-secondary-deep-onboarding: done
   epic-7-retrospective: optional
-  epic-8: backlog
-  8-1-survey-moderation-queue: backlog
-  8-2-automated-bot-protection-time-barrier-rate-limit: backlog
+  epic-8: done
+  8-1-survey-moderation-queue: done
+  8-2-automated-bot-protection-time-barrier-rate-limit: done
   epic-8-retrospective: optional
-  epic-9: backlog
-  9-2-respondent-post-completion-feedback: backlog
-  9-6-event-notification-system: backlog
+  epic-9: done
+  9-2-respondent-post-completion-feedback: done
+  9-6-event-notification-system: done
   epic-9-retrospective: optional
+  # Added 2026-09-26 by sprint-change-proposal-2026-09-26 (pilot hosting, Architecture AD-23)
+  epic-11: backlog
+  11-1-deployment-ready-backend-packaging: backlog
+  11-2-google-cloud-pilot-infrastructure-provisioning: backlog
+  11-3-ci-cd-pipeline-with-rollback: backlog
+  11-4-observability-alerting-backup-restore-drill: backlog
+  11-5-pilot-launch-readiness: backlog
+  11-6-post-trial-hosting-decision-portability-rehearsal: backlog
+  epic-11-retrospective: optional
 
 # ==============================================================================
 # PHASE 2 DEFERRED EPICS & SUB-EPICS (Post-MVP Scope)

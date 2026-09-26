@@ -4,7 +4,18 @@ export interface StoredObjectMetadata {
   contentLength: number;
   contentType: string | null;
   checksumSha256: string | null;
+  /** Provider entity tag of the current bytes; changes whenever the key is re-written. */
+  etag: string | null;
 }
+
+/**
+ * Outcome of a conditional server-side copy (Epic 5 review P10).
+ * - `COPIED`: the destination now holds exactly the bytes the ETag named.
+ * - `PRECONDITION_FAILED`: the source was re-written after it was inspected.
+ * - `SOURCE_NOT_FOUND`: the source key no longer exists.
+ */
+export type CopyObjectOutcome =
+  'COPIED' | 'PRECONDITION_FAILED' | 'SOURCE_NOT_FOUND';
 
 export interface ObjectStoragePort {
   /**
@@ -34,6 +45,17 @@ export interface ObjectStoragePort {
     bucket: string,
     storageKey: string,
   ): Promise<StoredObjectMetadata | null>;
+
+  /**
+   * Copies `sourceKey` to `destinationKey` inside `bucket` only if the source
+   * still carries `ifMatchEtag` (S3 `x-amz-copy-source-if-match`).
+   */
+  copyObject(
+    bucket: string,
+    sourceKey: string,
+    destinationKey: string,
+    ifMatchEtag: string,
+  ): Promise<CopyObjectOutcome>;
 
   /** Reads quarantined bytes for malware inspection. */
   readObject(bucket: string, storageKey: string): Promise<Uint8Array>;

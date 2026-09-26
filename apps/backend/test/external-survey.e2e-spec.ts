@@ -41,8 +41,6 @@ describe('Story 4.5: External Survey Setup & Rotation E2E Tests', () => {
     auditRepo = new InMemoryIdentityAuditRepository();
     sessionRepo = new InMemorySessionRepository(auditRepo);
     formRepo = new InMemoryFormRepository();
-    completionCodeService = new CompletionCodeService();
-
     envService = new EnvService({
       NODE_ENV: 'test',
       PORT: 4000,
@@ -52,6 +50,7 @@ describe('Story 4.5: External Survey Setup & Rotation E2E Tests', () => {
       BCRYPT_ROUNDS: 12,
       FRONTEND_ORIGINS: ALLOWED_ORIGIN,
     });
+    completionCodeService = new CompletionCodeService(envService);
 
     const mockPrisma = {
       $connect: jest.fn().mockResolvedValue(undefined),

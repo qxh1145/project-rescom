@@ -6,18 +6,54 @@ import {
   FormUpdateExpectation,
   FormWithVersion,
   ListFormsParams,
+  ModerationQueuePage,
+  ModerationQueueParams,
 } from '../application/ports/form-repository.port';
 import { FormEntity } from '../domain/form.entity';
 import { FormVersionEntity } from '../domain/form-version.entity';
+import type { FormCompletionRefs } from '../application/ports/form-repository.port';
+
+type CompletionRefsSource = (
+  formId: string,
+) => FormCompletionRefs | Promise<FormCompletionRefs>;
+
+type InProgressAttemptsSource = (
+  formId: string,
+  startedSince: Date,
+) => number | Promise<number>;
 
 @Injectable()
 export class InMemoryFormRepository implements FormRepositoryPort {
   private readonly forms = new Map<string, FormEntity>();
   private readonly versions = new Map<string, FormVersionEntity>();
+  private readonly completionRefs = new Map<string, FormCompletionRefs>();
+  private completionSource?: CompletionRefsSource;
+  private inProgressAttemptsSource?: InProgressAttemptsSource;
 
   clear(): void {
     this.forms.clear();
     this.versions.clear();
+    this.completionRefs.clear();
+    this.completionSource = undefined;
+    this.inProgressAttemptsSource = undefined;
+  }
+
+  /**
+   * Test helper (decision E5-D4): read in-progress attempts from another
+   * in-memory store (e.g. `InMemoryParticipationRepository
+   * .countInProgressAttemptsFor`); without one the count is 0.
+   */
+  useInProgressAttemptsSource(source: InProgressAttemptsSource): void {
+    this.inProgressAttemptsSource = source;
+  }
+
+  async countInProgressAttempts(
+    formId: string,
+    startedSince: Date,
+  ): Promise<number> {
+    return this.inProgressAttemptsSource
+      ? this.inProgressAttemptsSource(formId, startedSince)
+      : 0;
   }
 
   async create(
@@ -153,8 +189,11 @@ export class InMemoryFormRepository implements FormRepositoryPort {
   ): Promise<FormWithVersion | null> {
     const existingForm = this.forms.get(formId);
     if (!existingForm) return null;
-    if (!options?.targetStatus && existingForm.status !== 'PUBLISHED')
+    if (options?.expectedStatus) {
+      if (existingForm.status !== options.expectedStatus) return null;
+    } else if (existingForm.status !== 'PUBLISHED') {
       return null;
+    }
 
     const existingVersions = Array.from(this.versions.values()).filter(
       (version) => version.formId === formId,
@@ -187,7 +226,7 @@ export class InMemoryFormRepository implements FormRepositoryPort {
 
     this.versions.set(newVersion.id, newVersion);
 
-    const targetStatus = options?.targetStatus ?? 'DRAFT';
+    const targetStatus = options?.expectedStatus ?? 'DRAFT';
     const updatedForm = existingForm.copyWith({
       status: targetStatus,
       updatedAt: createdAt,
@@ -223,17 +262,77 @@ export class InMemoryFormRepository implements FormRepositoryPort {
         .filter((v) => v.formId === form.id)
         .sort((a, b) => b.versionNumber - a.versionNumber);
 
-      const publishedVersion =
-        versions.find((v) => v.isPublished) ?? versions[0];
-      if (publishedVersion) {
-        result.push({
-          form,
-          currentVersion: publishedVersion,
-          versions,
-        });
-      }
+      // Never fall back to an unpublished (draft/queued) version.
+      const publishedVersion = versions.find((v) => v.isPublished);
+      if (!publishedVersion) continue;
+      result.push({
+        form,
+        currentVersion: publishedVersion,
+        versions: [publishedVersion],
+      });
     }
 
     return result;
   }
+
+  /**
+   * Test helper: the quota count only (no settleable completions, so no
+   * reward is owed for them).
+   */
+  setCompletedResponsesCount(formId: string, count: number): void {
+    this.setRewardableCompletions(formId, { completedCount: count });
+  }
+
+  /** Test helper: the completions `listRewardableCompletions` reports. */
+  setRewardableCompletions(
+    formId: string,
+    refs: Partial<FormCompletionRefs>,
+  ): void {
+    const current = this.completionRefs.get(formId) ?? emptyCompletionRefs();
+    this.completionRefs.set(formId, { ...current, ...refs });
+  }
+
+  /**
+   * Test helper: read completions from another in-memory store (for example
+   * `InMemoryParticipationRepository.completionRefsFor`), so e2e flows that
+   * really submit/verify see them.
+   */
+  useCompletionSource(source: CompletionRefsSource): void {
+    this.completionSource = source;
+  }
+
+  async listRewardableCompletions(formId: string): Promise<FormCompletionRefs> {
+    if (this.completionSource) {
+      return this.completionSource(formId);
+    }
+    const refs = this.completionRefs.get(formId) ?? emptyCompletionRefs();
+    return {
+      completedCount: refs.completedCount,
+      internalResponses: [...refs.internalResponses],
+      externalAttemptIds: [...refs.externalAttemptIds],
+    };
+  }
+
+  async findModerationQueue(
+    params: ModerationQueueParams,
+  ): Promise<ModerationQueuePage> {
+    const queued = Array.from(this.forms.values())
+      .filter((form) => form.status === 'MODERATION_QUEUE')
+      .sort(
+        (a, b) =>
+          a.updatedAt.getTime() - b.updatedAt.getTime() ||
+          a.id.localeCompare(b.id),
+      );
+    const page = queued.slice(params.offset, params.offset + params.limit);
+    const items: FormWithVersion[] = [];
+    for (const form of page) {
+      const record = await this.findById(form.id);
+      if (record) items.push(record);
+    }
+    return { items, total: queued.length };
+  }
+}
+
+function emptyCompletionRefs(): FormCompletionRefs {
+  return { completedCount: 0, internalResponses: [], externalAttemptIds: [] };
 }

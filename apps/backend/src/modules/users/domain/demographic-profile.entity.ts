@@ -1,4 +1,9 @@
-import { Gender, DemographicProfileDto } from '@rescom/schemas';
+import {
+  Gender,
+  DemographicProfileDto,
+  DemographicProfileField,
+  getMissingDemographicFields,
+} from '@rescom/schemas';
 
 export class DemographicProfileEntity {
   constructor(
@@ -16,13 +21,13 @@ export class DemographicProfileEntity {
     public readonly updatedAt: Date,
   ) {}
 
+  /** FR-6 fields still missing; shared rule from `@rescom/schemas` (Story 7.1). */
+  missingFields(): DemographicProfileField[] {
+    return getMissingDemographicFields(this.toDto());
+  }
+
   isComplete(): boolean {
-    return (
-      typeof this.age === 'number' &&
-      this.age >= 13 &&
-      Boolean(this.gender) &&
-      Boolean(this.location && this.location.trim().length > 0)
-    );
+    return this.missingFields().length === 0;
   }
 
   toDto(): DemographicProfileDto {

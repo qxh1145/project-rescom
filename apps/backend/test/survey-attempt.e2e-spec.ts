@@ -22,6 +22,7 @@ import { HttpExceptionFilter } from '../src/common/http/http-exception.filter';
 import { AUTH_COOKIE_NAME } from '../src/modules/auth/presentation/cookie-options.helper';
 import { FormEntity } from '../src/modules/forms/domain/form.entity';
 import { FormVersionEntity } from '../src/modules/forms/domain/form-version.entity';
+import { seedCompleteDemographicProfile } from './fixtures/demographic-profile.fixture';
 
 describe('Story 5.1: Survey Attempt Initialization & Concurrency E2E Tests', () => {
   let app: INestApplication;
@@ -123,8 +124,8 @@ describe('Story 5.1: Survey Attempt Initialization & Concurrency E2E Tests', () 
     authCookie = `${AUTH_COOKIE_NAME}=${tokens.accessToken}`;
     csrfToken = tokens.csrfToken;
 
-    // Set respondent demographic profile: Age 22, Hanoi
-    await demoRepo.upsert(respondentUserId, {
+    // Set respondent demographic profile: Age 22, Hanoi (complete FR-6 set, Story 7.1)
+    await seedCompleteDemographicProfile(demoRepo, respondentUserId, {
       age: 22,
       gender: 'MALE',
       location: 'Hanoi',
@@ -221,6 +222,35 @@ describe('Story 5.1: Survey Attempt Initialization & Concurrency E2E Tests', () 
 
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('CONFLICTING_ACTIVE_ATTEMPT');
+    // Epic 5 review P24: the caller's own attempt, so the client can resume.
+    expect(res.body.error.details).toMatchObject({
+      attemptId: expect.any(String),
+      responseId: expect.any(String),
+      type: 'INTERNAL',
+      expiresAt: expect.any(String),
+    });
+  });
+
+  it('POST /forms/:id/attempts — rejects a nested or oversized clientContext with 400 (Epic 5 review P2)', async () => {
+    const nested = await request(app.getHttpServer())
+      .post(`/forms/${externalFormId}/attempts`)
+      .set('Cookie', [authCookie])
+      .set('Origin', ALLOWED_ORIGIN)
+      .set('x-csrf-token', csrfToken)
+      .send({ clientContext: { failedVerifications: { $inc: -1 } } });
+    expect(nested.status).toBe(400);
+
+    const oversized = await request(app.getHttpServer())
+      .post(`/forms/${externalFormId}/attempts`)
+      .set('Cookie', [authCookie])
+      .set('Origin', ALLOWED_ORIGIN)
+      .set('x-csrf-token', csrfToken)
+      .send({
+        clientContext: Object.fromEntries(
+          Array.from({ length: 30 }, (_, i) => [`k${i}`, i]),
+        ),
+      });
+    expect(oversized.status).toBe(400);
   });
 
   it('POST /forms/:id/attempts — initializes EXTERNAL attempt with null responseId and externalUrl', async () => {
@@ -333,5 +363,65 @@ describe('Story 5.1: Survey Attempt Initialization & Concurrency E2E Tests', () 
 
     expect(res.status).toBe(404);
     expect(res.body.error.code).toBe('SURVEY_NOT_AVAILABLE');
+  });
+
+  describe('Story 7.1: mandatory demographic survey gate', () => {
+    async function sessionFor(email: string) {
+      const user = await userRepo.create({
+        email,
+        passwordHash: '$2a$12$someHashedPassword',
+        role: 'RESPONDENT',
+        status: 'ACTIVE',
+      });
+      const tokens = await sessionService.createSession(user.id);
+      return {
+        userId: user.id,
+        cookie: `${AUTH_COOKIE_NAME}=${tokens.accessToken}`,
+        csrf: tokens.csrfToken,
+      };
+    }
+
+    it('rejects a user without a demographic profile with 403 DEMOGRAPHIC_PROFILE_REQUIRED and reserves nothing', async () => {
+      const newcomer = await sessionFor('newcomer@rescom.test');
+      const attemptsBefore = partRepo.attempts.size;
+
+      const res = await request(app.getHttpServer())
+        .post(`/forms/${externalFormId}/attempts`)
+        .set('Cookie', [newcomer.cookie])
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('x-csrf-token', newcomer.csrf)
+        .send({});
+
+      expect(res.status).toBe(403);
+      expect(res.body.data).toBeNull();
+      expect(res.body.error.code).toBe('DEMOGRAPHIC_PROFILE_REQUIRED');
+      expect(res.body.error.details.missingFields).toHaveLength(7);
+      expect(partRepo.attempts.size).toBe(attemptsBefore);
+    });
+
+    it('rejects a partially completed profile on the /surveys alias too', async () => {
+      const partial = await sessionFor('partial@rescom.test');
+      await demoRepo.upsert(partial.userId, {
+        age: 30,
+        gender: 'FEMALE',
+        location: 'Hanoi',
+      });
+
+      const res = await request(app.getHttpServer())
+        .post(`/surveys/${externalFormId}/attempts`)
+        .set('Cookie', [partial.cookie])
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('x-csrf-token', partial.csrf)
+        .send({});
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('DEMOGRAPHIC_PROFILE_REQUIRED');
+      expect(res.body.error.details.missingFields).toEqual([
+        'occupation',
+        'fieldOfStudy',
+        'householdIncome',
+        'specificInterests',
+      ]);
+    });
   });
 });

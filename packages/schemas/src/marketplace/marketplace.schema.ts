@@ -77,6 +77,11 @@ export const marketplaceSurveyCardSchema = z.object({
 export const marketplaceFeedResponseSchema = z.object({
   surveys: z.array(marketplaceSurveyCardSchema),
   total: z.number().int().nonnegative(),
+  /**
+   * Since Story 7.1 the feed is only served to respondents with a complete
+   * demographic profile (403 DEMOGRAPHIC_PROFILE_REQUIRED otherwise), so a
+   * successful response always carries `true`. Kept for compatibility.
+   */
   profileCompleted: z.boolean(),
 });
 

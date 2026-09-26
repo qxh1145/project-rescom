@@ -1,13 +1,13 @@
 import { FormRepositoryPort } from '../../forms/application/ports/form-repository.port';
 import { DemographicProfileRepositoryPort } from '../../users/application/ports/demographic-profile.repository.port';
 import { SurveyResponseRepositoryPort } from './ports/survey-response.repository.port';
+import { requireCompleteDemographicProfile } from '../../users/application/demographic-profile.gate';
 import {
   isSurveyTargetingMatch,
-  isProfileCompleted,
   MarketplaceFeedQueryDto,
   MarketplaceFeedResponseDto,
   MarketplaceSurveyCardDto,
-  SurveyTargetingCriteria,
+  parseStoredTargeting,
 } from '@rescom/schemas';
 
 export class MarketplaceService {
@@ -28,10 +28,14 @@ export class MarketplaceService {
     const minReward = query?.minReward;
     const maxDuration = query?.maxDuration;
 
-    // 1. Fetch respondent's demographic profile
-    const profileEntity = await this.demographicRepository.findByUserId(userId);
-    const profileDto = profileEntity ? profileEntity.toDto() : null;
-    const profileCompleted = isProfileCompleted(profileDto);
+    // 1. Mandatory Demographic Survey gate (Story 7.1, FR-6): the Marketplace
+    // is unreachable until the respondent's profile is complete.
+    const profileDto = await requireCompleteDemographicProfile(
+      this.demographicRepository,
+      userId,
+    );
+    // Kept for contract compatibility; always true once the gate passes.
+    const profileCompleted = true;
 
     // 2. Fetch completed form IDs by this respondent
     const completedFormIds = this.responseRepository
@@ -51,6 +55,12 @@ export class MarketplaceService {
     const matchingCards: MarketplaceSurveyCardDto[] = [];
 
     for (const item of publishedForms) {
+      // Decision E4-DN2 (option A): a Publisher never sees (or takes) their
+      // own survey; `ParticipationService.startAttempt` refuses it with 403.
+      if (item.form.isOwnedBy(userId)) {
+        continue;
+      }
+
       const formId = item.form.id;
       const completedCompletions = completedCounts.get(formId) ?? 0;
       const isCompletedByCurrentUser = completedFormIds.has(formId);
@@ -94,9 +104,16 @@ export class MarketplaceService {
         }
       }
 
-      // Demographic targeting check
-      const targeting = (item.currentVersion.targetingJson ??
-        null) as SurveyTargetingCriteria | null;
+      // Demographic targeting check. Stored targeting is runtime-validated:
+      // a malformed row excludes only that survey (fail closed) instead of
+      // matching everyone or crashing the whole feed.
+      const parsedTargeting = parseStoredTargeting(
+        item.currentVersion.targetingJson,
+      );
+      if (!parsedTargeting.ok) {
+        continue;
+      }
+      const targeting = parsedTargeting.targeting;
 
       const matches = isSurveyTargetingMatch(targeting, profileDto);
       if (!matches) {

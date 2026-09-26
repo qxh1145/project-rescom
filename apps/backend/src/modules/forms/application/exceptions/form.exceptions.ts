@@ -1,3 +1,5 @@
+import type { FormCloseKind } from '@rescom/schemas';
+
 export class FormNotFoundException extends Error {
   readonly code = 'FORM_NOT_FOUND';
 
@@ -75,11 +77,11 @@ export class InvalidFormStatusTransitionException extends Error {
 }
 
 export class FormValidationException extends Error {
-  readonly code = 'FORM_VALIDATION_ERROR';
-
   constructor(
     message: string,
     public readonly errors: any[] = [],
+    /** Machine-readable code; specific pre-publish rules use their own. */
+    readonly code: string = 'FORM_VALIDATION_ERROR',
   ) {
     super(message);
     this.name = 'FormValidationException';
@@ -182,5 +184,103 @@ export class InvalidGuestSubmissionException extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'InvalidGuestSubmissionException';
+  }
+}
+
+/**
+ * Story 8.1: a form waiting in `MODERATION_QUEUE` can only leave the queue
+ * through the Admin moderation workflow (approve / reject), never through the
+ * generic status endpoint or another user's `POST /forms/:id/close` (Epic 8
+ * review P1; the owner may still withdraw it). Maps to HTTP 409 Conflict.
+ */
+export class FormModerationRequiredException extends Error {
+  readonly code = 'FORM_MODERATION_REQUIRED';
+
+  constructor(id: string) {
+    super(
+      `Form "${id}" is awaiting moderation. Approve or reject it through the moderation queue.`,
+    );
+    this.name = 'FormModerationRequiredException';
+  }
+}
+
+/**
+ * Why a closed survey cannot be reopened:
+ * - `CLOSED_BY_ADMIN_OR_MODERATION` (decision E8-D1): only the owner's own
+ *   close can be reopened; an Admin takedown, a moderation rejection or a
+ *   close recorded before the close kind existed is final.
+ * - `VERSION_NOT_APPROVED` (Story 8.1): the current version never went live
+ *   (a withdrawn submission cannot be put live by reopening it).
+ */
+export type FormNotReopenableReason =
+  'CLOSED_BY_ADMIN_OR_MODERATION' | 'VERSION_NOT_APPROVED';
+
+/**
+ * Story 8.1 / decision E8-D1: the survey cannot be reopened with additional
+ * quota. Maps to HTTP 409 Conflict with `details: { reason, closeKind }`.
+ */
+export class FormNotReopenableException extends Error {
+  readonly code = 'FORM_NOT_REOPENABLE';
+  readonly reason: FormNotReopenableReason;
+  readonly closeKind: FormCloseKind | null;
+
+  constructor(
+    id: string,
+    options: {
+      reason?: FormNotReopenableReason;
+      closeKind?: FormCloseKind | null;
+    } = {},
+  ) {
+    const reason = options.reason ?? 'VERSION_NOT_APPROVED';
+    super(
+      reason === 'CLOSED_BY_ADMIN_OR_MODERATION'
+        ? `Form "${id}" cannot be reopened: it was closed by an Admin or rejected by moderation, which is final. Only a survey its owner closed can be reopened.`
+        : `Form "${id}" cannot be reopened because its current version was never approved for the Marketplace.`,
+    );
+    this.name = 'FormNotReopenableException';
+    this.reason = reason;
+    this.closeKind = options.closeKind ?? null;
+  }
+}
+
+/**
+ * Epic 8 review P2: a survey enters the moderation queue or is approved only
+ * when the Escrow for its open quota is fully reserved (FR-15). An Admin never
+ * reserves on the Publisher's behalf: an unfunded (legacy) survey is rejected
+ * or closed instead, which refunds whatever it holds. Maps to HTTP 409
+ * Conflict with `details.shortfall`.
+ */
+export class ModerationEscrowNotFundedException extends Error {
+  readonly code = 'MODERATION_ESCROW_NOT_FUNDED';
+
+  constructor(
+    readonly formId: string,
+    readonly shortfall: number,
+  ) {
+    super(
+      `Form "${formId}" is not fully funded: ${shortfall} Escrow points are missing. Reject or close it instead; the Escrow it holds is refunded.`,
+    );
+    this.name = 'ModerationEscrowNotFundedException';
+  }
+}
+
+/**
+ * Story 6.3 AC1.2 / decision E6-D2: the reward per response is outside the
+ * FR-14 pricing band of the survey's estimated duration when it is published
+ * (both the band minimum and maximum apply; drafts are never checked).
+ * Maps to HTTP 400 with `details: { min, max, suggested }`.
+ */
+export class PricingRewardOutOfBandException extends Error {
+  readonly code = 'PRICING_REWARD_OUT_OF_BAND';
+
+  constructor(
+    public readonly rewardPerResponse: number,
+    public readonly band: { min: number; max: number; suggested: number },
+    durationBand: string,
+  ) {
+    super(
+      `A reward of ${rewardPerResponse} points per response is outside the ${band.min}–${band.max} point pricing band for surveys of ${durationBand}. Suggested reward: ${band.suggested} points.`,
+    );
+    this.name = 'PricingRewardOutOfBandException';
   }
 }
