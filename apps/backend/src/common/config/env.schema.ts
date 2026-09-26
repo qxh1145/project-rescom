@@ -27,6 +27,38 @@ function checkNoCredentialsOrFragmentOrWildcard(value: string): boolean {
   }
 }
 
+// BE-9: z.coerce.boolean() treats ANY non-empty string (including "false"
+// and "0") as truthy, so env values meant to disable a flag silently enable
+// it instead. This accepts real booleans plus the common textual forms and
+// rejects anything else, so misconfigured env values fail validation loudly
+// rather than flipping the flag on.
+const BOOLEAN_ENV_TRUE_VALUES = new Set(['true', '1', 'yes', 'on']);
+const BOOLEAN_ENV_FALSE_VALUES = new Set(['false', '0', 'no', 'off']);
+
+function booleanEnv(defaultValue: boolean) {
+  return z
+    .union([z.boolean(), z.string()])
+    .default(defaultValue)
+    .transform((value, ctx) => {
+      if (typeof value === 'boolean') {
+        return value;
+      }
+      const normalized = value.trim().toLowerCase();
+      if (BOOLEAN_ENV_TRUE_VALUES.has(normalized)) {
+        return true;
+      }
+      if (BOOLEAN_ENV_FALSE_VALUES.has(normalized)) {
+        return false;
+      }
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'must be a boolean-like value: true/false, 1/0, yes/no, or on/off (case-insensitive)',
+      });
+      return z.NEVER;
+    });
+}
+
 const TOPUP_PLACEHOLDER_ACCOUNT_NUMBER = '0000000000';
 const TOPUP_PLACEHOLDER_ACCOUNT_NAME = 'RESCOM DEMO';
 
@@ -216,7 +248,7 @@ export const envSchema = z
     STORAGE_BUCKET: z.string().min(3).default('rescom-private-storage'),
     STORAGE_ACCESS_KEY_ID: z.string().min(1).default('minioadmin'),
     STORAGE_SECRET_ACCESS_KEY: z.string().min(8).default('minioadmin'),
-    STORAGE_FORCE_PATH_STYLE: z.coerce.boolean().default(true),
+    STORAGE_FORCE_PATH_STYLE: booleanEnv(true),
     MALWARE_SCANNER_HOST: z.string().min(1).default('127.0.0.1'),
     MALWARE_SCANNER_PORT: z.coerce
       .number()

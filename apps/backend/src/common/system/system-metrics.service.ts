@@ -15,21 +15,48 @@ import {
   SystemMetrics,
 } from './system-metrics.interface';
 
+/**
+ * BE-10: a CPU sampling baseline. Kept separate per consumer so that an
+ * on-demand probe (e.g. a burst of /system/health requests) does not
+ * overwrite the baseline the periodic background logger relies on to
+ * compute its own CPU delta, and vice versa.
+ */
+interface CpuBaseline {
+  lastCpuUsage: NodeJS.CpuUsage;
+  lastCpuTime: [number, number];
+}
+
 @Injectable()
 export class SystemMetricsService
   implements OnApplicationBootstrap, OnModuleDestroy
 {
   private readonly logger = new Logger('SystemMetrics');
-  private lastCpuUsage: NodeJS.CpuUsage;
-  private lastCpuTime: [number, number];
   private intervalId: NodeJS.Timeout | null = null;
+
+  private readonly periodicCpuBaseline: CpuBaseline;
+  private readonly onDemandCpuBaseline: CpuBaseline;
+
+  // BE-10: collectMetrics() is memoized for a short window (with the
+  // in-flight promise shared too) so a burst of concurrent on-demand callers
+  // (health checks, dashboards) doesn't each pay for a fresh DB round trip
+  // and CPU sample.
+  private static readonly METRICS_CACHE_TTL_MS = 2000;
+  private cachedMetrics: { expiresAt: number; metrics: SystemMetrics } | null =
+    null;
+  private inFlightMetrics: Promise<SystemMetrics> | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly envService: EnvService,
   ) {
-    this.lastCpuUsage = process.cpuUsage();
-    this.lastCpuTime = process.hrtime();
+    this.periodicCpuBaseline = {
+      lastCpuUsage: process.cpuUsage(),
+      lastCpuTime: process.hrtime(),
+    };
+    this.onDemandCpuBaseline = {
+      lastCpuUsage: process.cpuUsage(),
+      lastCpuTime: process.hrtime(),
+    };
   }
 
   onApplicationBootstrap(): void {
@@ -40,8 +67,10 @@ export class SystemMetricsService
       return;
     }
 
-    // Immediate log on bootstrap
-    this.collectMetrics()
+    // Immediate log on bootstrap. The periodic logger always uses its own
+    // baseline and bypasses the on-demand cache so it reflects the interval
+    // that just elapsed, not whatever an unrelated caller last cached.
+    this.collectMetricsUncached(this.periodicCpuBaseline)
       .then((metrics) => this.logSystemMetrics(metrics))
       .catch((err) => {
         this.logger.error('Failed to log initial system metrics', err);
@@ -50,7 +79,9 @@ export class SystemMetricsService
     const intervalMs = this.envService.systemMetricsLogIntervalSeconds * 1000;
     this.intervalId = setInterval(async () => {
       try {
-        const metrics = await this.collectMetrics();
+        const metrics = await this.collectMetricsUncached(
+          this.periodicCpuBaseline,
+        );
         this.logSystemMetrics(metrics);
       } catch (err) {
         this.logger.error('Failed to collect system metrics', err);
@@ -69,13 +100,13 @@ export class SystemMetricsService
     }
   }
 
-  getCpuMetrics(): CpuMetrics {
-    const elapsedHr = process.hrtime(this.lastCpuTime);
+  getCpuMetrics(baseline: CpuBaseline = this.onDemandCpuBaseline): CpuMetrics {
+    const elapsedHr = process.hrtime(baseline.lastCpuTime);
     const elapsedMicroseconds = elapsedHr[0] * 1e6 + elapsedHr[1] / 1e3;
-    const currentCpuUsage = process.cpuUsage(this.lastCpuUsage);
+    const currentCpuUsage = process.cpuUsage(baseline.lastCpuUsage);
 
-    this.lastCpuTime = process.hrtime();
-    this.lastCpuUsage = process.cpuUsage();
+    baseline.lastCpuTime = process.hrtime();
+    baseline.lastCpuUsage = process.cpuUsage();
 
     const totalCpuMicroseconds = currentCpuUsage.user + currentCpuUsage.system;
     const cores = os.cpus()?.length || 1;
@@ -149,14 +180,25 @@ export class SystemMetricsService
         Array<{ max_connections: string }>
       >(Prisma.sql`SHOW max_connections;`);
 
-      const timeoutPromise = (ms: number) =>
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Database query timed out')), ms),
-        );
+      // BE-10: each race's timer must be cleared once its promise settles
+      // (either way), or a timer per collectMetrics() call leaks until it
+      // fires on its own several seconds later.
+      const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
+        let timeoutHandle: NodeJS.Timeout;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(
+            () => reject(new Error('Database query timed out')),
+            ms,
+          );
+        });
+        return Promise.race([promise, timeoutPromise]).finally(() => {
+          clearTimeout(timeoutHandle);
+        });
+      };
 
       const [stats, maxConn] = await Promise.all([
-        Promise.race([statsQuery, timeoutPromise(3000)]),
-        Promise.race([maxConnQuery, timeoutPromise(3000)]),
+        withTimeout(statsQuery, 3000),
+        withTimeout(maxConnQuery, 3000),
       ]);
 
       const stat = stats[0];
@@ -190,9 +232,43 @@ export class SystemMetricsService
     }
   }
 
+  /**
+   * Public entry point used by on-demand callers (the /system controller
+   * endpoints). Memoized for METRICS_CACHE_TTL_MS: a burst of concurrent
+   * calls within that window share one in-flight computation and its
+   * result, instead of each re-querying the database and re-sampling CPU
+   * against the on-demand baseline.
+   */
   async collectMetrics(): Promise<SystemMetrics> {
+    const now = Date.now();
+    if (this.cachedMetrics && this.cachedMetrics.expiresAt > now) {
+      return this.cachedMetrics.metrics;
+    }
+    if (this.inFlightMetrics) {
+      return this.inFlightMetrics;
+    }
+
+    const inFlight = this.collectMetricsUncached(this.onDemandCpuBaseline)
+      .then((metrics) => {
+        this.cachedMetrics = {
+          metrics,
+          expiresAt: Date.now() + SystemMetricsService.METRICS_CACHE_TTL_MS,
+        };
+        return metrics;
+      })
+      .finally(() => {
+        this.inFlightMetrics = null;
+      });
+
+    this.inFlightMetrics = inFlight;
+    return inFlight;
+  }
+
+  private async collectMetricsUncached(
+    cpuBaseline: CpuBaseline,
+  ): Promise<SystemMetrics> {
     const uptimeSeconds = Math.round(process.uptime());
-    const cpu = this.getCpuMetrics();
+    const cpu = this.getCpuMetrics(cpuBaseline);
     const memory = this.getMemoryMetrics();
     const database = await this.getDatabaseMetrics();
 

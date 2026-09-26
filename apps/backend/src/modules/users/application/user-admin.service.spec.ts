@@ -10,6 +10,7 @@ import {
   CannotLockLastAdminException,
   CannotDemoteSelfException,
   CannotDemoteLastAdminException,
+  UserAdminActorNotActiveAdminException,
 } from './exceptions/user-admin.exceptions';
 
 describe('UserAdminService', () => {
@@ -184,9 +185,11 @@ describe('UserAdminService', () => {
     });
 
     it('audits a concurrent duplicate lock as a changed:false no-op', async () => {
+      // BE-8: both concurrent callers must themselves be active admins, so
+      // this uses admin-1 for both legs instead of a non-admin actor id.
       const results = await Promise.all([
         service.updateUserStatus('admin-1', 'admin-2', 'LOCKED'),
-        service.updateUserStatus('user-normal', 'admin-2', 'LOCKED'),
+        service.updateUserStatus('admin-1', 'admin-2', 'LOCKED'),
       ]);
 
       expect(results.every((user) => user.status === 'LOCKED')).toBe(true);
@@ -232,6 +235,56 @@ describe('UserAdminService', () => {
           targetUserId: 'admin-1',
           outcome: 'FAILURE',
           errorCode: 'CANNOT_LOCK_LAST_ADMIN',
+        }),
+      );
+    });
+
+    it('should reject the action if the acting admin was concurrently locked (BE-8)', async () => {
+      // Simulate a concurrent lock of the acting admin's own row that lands
+      // between the controller's auth check and the transaction acquiring
+      // the active-admin lock.
+      userRepo.save(
+        new User({
+          id: admin1.id,
+          email: admin1.email,
+          passwordHash: admin1.passwordHash,
+          role: admin1.role,
+          status: 'LOCKED',
+          createdAt: admin1.createdAt,
+          updatedAt: new Date(),
+        }),
+      );
+
+      await expect(
+        service.updateUserStatus('admin-1', 'user-normal', 'LOCKED'),
+      ).rejects.toThrow(UserAdminActorNotActiveAdminException);
+
+      expect(auditRepo.records).toContainEqual(
+        expect.objectContaining({
+          action: 'USER_STATUS_CHANGED',
+          userId: 'admin-1',
+          targetUserId: 'user-normal',
+          outcome: 'FAILURE',
+          errorCode: 'USER_ADMIN_ACTOR_NOT_ACTIVE_ADMIN',
+        }),
+      );
+
+      // Target must remain untouched.
+      expect((await userRepo.findById('user-normal'))?.status).toBe('ACTIVE');
+    });
+
+    it('should reject the action if the acting user no longer exists (BE-8)', async () => {
+      await expect(
+        service.updateUserStatus('ghost-admin', 'user-normal', 'LOCKED'),
+      ).rejects.toThrow(UserAdminActorNotActiveAdminException);
+
+      expect(auditRepo.records).toContainEqual(
+        expect.objectContaining({
+          action: 'USER_STATUS_CHANGED',
+          userId: 'ghost-admin',
+          targetUserId: 'user-normal',
+          outcome: 'FAILURE',
+          errorCode: 'USER_ADMIN_ACTOR_NOT_ACTIVE_ADMIN',
         }),
       );
     });
@@ -365,6 +418,56 @@ describe('UserAdminService', () => {
         'RESPONDENT',
       );
       expect(result.role).toBe('RESPONDENT');
+    });
+
+    it('should reject the action if the acting admin was concurrently demoted (BE-8)', async () => {
+      // Simulate a concurrent demotion of the acting admin's own row that
+      // lands between the controller's auth check and the transaction
+      // acquiring the active-admin lock.
+      userRepo.save(
+        new User({
+          id: admin1.id,
+          email: admin1.email,
+          passwordHash: admin1.passwordHash,
+          role: 'RESPONDENT',
+          status: admin1.status,
+          createdAt: admin1.createdAt,
+          updatedAt: new Date(),
+        }),
+      );
+
+      await expect(
+        service.updateUserRole('admin-1', 'user-normal', 'PUBLISHER'),
+      ).rejects.toThrow(UserAdminActorNotActiveAdminException);
+
+      expect(auditRepo.records).toContainEqual(
+        expect.objectContaining({
+          action: 'USER_ROLE_CHANGED',
+          userId: 'admin-1',
+          targetUserId: 'user-normal',
+          outcome: 'FAILURE',
+          errorCode: 'USER_ADMIN_ACTOR_NOT_ACTIVE_ADMIN',
+        }),
+      );
+
+      // Target must remain untouched.
+      expect((await userRepo.findById('user-normal'))?.role).toBe('RESPONDENT');
+    });
+
+    it('should reject the action if the acting user no longer exists (BE-8)', async () => {
+      await expect(
+        service.updateUserRole('ghost-admin', 'user-normal', 'PUBLISHER'),
+      ).rejects.toThrow(UserAdminActorNotActiveAdminException);
+
+      expect(auditRepo.records).toContainEqual(
+        expect.objectContaining({
+          action: 'USER_ROLE_CHANGED',
+          userId: 'ghost-admin',
+          targetUserId: 'user-normal',
+          outcome: 'FAILURE',
+          errorCode: 'USER_ADMIN_ACTOR_NOT_ACTIVE_ADMIN',
+        }),
+      );
     });
   });
 });

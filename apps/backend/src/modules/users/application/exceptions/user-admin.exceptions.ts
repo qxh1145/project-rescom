@@ -49,3 +49,18 @@ export class CannotDemoteLastAdminException extends Error {
     Object.setPrototypeOf(this, CannotDemoteLastAdminException.prototype);
   }
 }
+
+export class UserAdminActorNotActiveAdminException extends Error {
+  readonly code = 'USER_ADMIN_ACTOR_NOT_ACTIVE_ADMIN';
+
+  constructor(
+    message = 'Acting user is no longer an active admin and cannot perform this action.',
+  ) {
+    super(message);
+    this.name = 'UserAdminActorNotActiveAdminException';
+    Object.setPrototypeOf(
+      this,
+      UserAdminActorNotActiveAdminException.prototype,
+    );
+  }
+}

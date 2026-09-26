@@ -1,5 +1,5 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { SkipThrottle } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import { SystemMetricsService } from './system-metrics.service';
 import { createSuccessEnvelope } from '../http/response.envelope';
 import { SessionAuthGuard } from '../../modules/auth/presentation/guards/session-auth.guard';
@@ -19,7 +19,10 @@ export class SystemController {
   }
 
   @Get('health')
-  @SkipThrottle()
+  // BE-10: was fully exempt from throttling, letting a naive polling client
+  // hammer collectMetrics()/DB unbounded. A generous per-minute cap still
+  // allows normal health-check polling while capping abuse.
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
   async getHealth() {
     const metrics = await this.systemMetricsService.collectMetrics();
     return createSuccessEnvelope({

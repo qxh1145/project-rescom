@@ -54,6 +54,35 @@ describe('SystemMetricsService', () => {
       expect(cpu.cores).toBeGreaterThanOrEqual(1);
       expect(cpu.loadAvg).toHaveLength(3);
     });
+
+    it('keeps the periodic logger baseline isolated from on-demand probes (BE-10)', () => {
+      const periodicBaseline = (service as any).periodicCpuBaseline;
+      const onDemandBaseline = (service as any).onDemandCpuBaseline;
+      expect(periodicBaseline).not.toBe(onDemandBaseline);
+
+      const periodicTimeBefore = periodicBaseline.lastCpuTime;
+      const periodicUsageBefore = periodicBaseline.lastCpuUsage;
+
+      // Repeated on-demand sampling (default baseline) must not disturb the
+      // periodic logger's own baseline.
+      service.getCpuMetrics();
+      service.getCpuMetrics();
+
+      expect(periodicBaseline.lastCpuTime).toBe(periodicTimeBefore);
+      expect(periodicBaseline.lastCpuUsage).toBe(periodicUsageBefore);
+
+      const onDemandTimeBefore = onDemandBaseline.lastCpuTime;
+      const onDemandUsageBefore = onDemandBaseline.lastCpuUsage;
+
+      // Sampling against the periodic baseline (as the background logger
+      // does) must not disturb the on-demand baseline either.
+      service.getCpuMetrics(periodicBaseline);
+
+      expect(onDemandBaseline.lastCpuTime).toBe(onDemandTimeBefore);
+      expect(onDemandBaseline.lastCpuUsage).toBe(onDemandUsageBefore);
+      // ...but it must have updated its own baseline.
+      expect(periodicBaseline.lastCpuTime).not.toBe(periodicTimeBefore);
+    });
   });
 
   describe('Memory Metrics', () => {
@@ -105,6 +134,29 @@ describe('SystemMetricsService', () => {
       expect(db.activeConnections).toBeNull();
       expect(db.error).toContain("Can't reach database server");
     });
+
+    it('clears the internal query-timeout timers once both queries settle (BE-10)', async () => {
+      const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+
+      mockPrisma.$queryRaw
+        .mockResolvedValueOnce([
+          {
+            totalConnections: 1,
+            activeConnections: 1,
+            idleConnections: 0,
+            idleInTransactionConnections: 0,
+            distinctClientIps: 1,
+          },
+        ])
+        .mockResolvedValueOnce([{ max_connections: '100' }]);
+
+      await service.getDatabaseMetrics();
+
+      // One race (and one timer) per query: stats + max_connections.
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(2);
+
+      clearTimeoutSpy.mockRestore();
+    });
   });
 
   describe('collectMetrics', () => {
@@ -128,6 +180,71 @@ describe('SystemMetricsService', () => {
       expect(metrics.cpu).toBeDefined();
       expect(metrics.memory).toBeDefined();
       expect(metrics.database.status).toBe('connected');
+    });
+
+    it('memoizes the result within the cache window and shares the in-flight promise (BE-10)', async () => {
+      let resolveQuery!: (value: unknown) => void;
+      const pendingQuery = new Promise((resolve) => {
+        resolveQuery = resolve;
+      });
+      mockPrisma.$queryRaw.mockReturnValue(pendingQuery);
+
+      // Two concurrent callers before the DB query even settles.
+      const call1 = service.collectMetrics();
+      const call2 = service.collectMetrics();
+
+      resolveQuery([
+        {
+          totalConnections: 1,
+          activeConnections: 1,
+          idleConnections: 0,
+          idleInTransactionConnections: 0,
+          distinctClientIps: 1,
+          max_connections: '100',
+        },
+      ]);
+
+      const [result1, result2] = await Promise.all([call1, call2]);
+      expect(result1).toBe(result2);
+      // Only one collection ran: one query for stats, one for max_connections.
+      expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(2);
+
+      // Still within the TTL: the cached result is reused, no new queries.
+      const result3 = await service.collectMetrics();
+      expect(result3).toBe(result1);
+      expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(2);
+    });
+
+    it('recomputes once the cache TTL has elapsed (BE-10)', async () => {
+      mockPrisma.$queryRaw.mockResolvedValue([
+        {
+          totalConnections: 1,
+          activeConnections: 1,
+          idleConnections: 0,
+          idleInTransactionConnections: 0,
+          distinctClientIps: 1,
+          max_connections: '100',
+        },
+      ]);
+
+      const nowSpy = jest.spyOn(Date, 'now');
+      try {
+        nowSpy.mockReturnValue(1_000_000);
+        const first = await service.collectMetrics();
+        expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(2);
+
+        nowSpy.mockReturnValue(1_000_000 + 500);
+        const cached = await service.collectMetrics();
+        expect(cached).toBe(first);
+        expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(2);
+
+        nowSpy.mockReturnValue(1_000_000 + 2500);
+        const fresh = await service.collectMetrics();
+        expect(fresh).not.toBe(first);
+        expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(4);
+      } finally {
+        nowSpy.mockRestore();
+      }
     });
   });
 

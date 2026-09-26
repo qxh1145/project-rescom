@@ -99,4 +99,14 @@ describe('SystemController', () => {
     expect(response.data?.status).toBe('degraded');
     expect(response.data?.database).toBe('disconnected');
   });
+
+  it('throttles the health endpoint instead of skipping it entirely (BE-10)', () => {
+    const handler = SystemController.prototype.getHealth;
+
+    expect(
+      Reflect.getMetadata('THROTTLER:SKIPdefault', handler),
+    ).toBeUndefined();
+    expect(Reflect.getMetadata('THROTTLER:LIMITdefault', handler)).toBe(60);
+    expect(Reflect.getMetadata('THROTTLER:TTLdefault', handler)).toBe(60000);
+  });
 });

@@ -6,6 +6,7 @@ import { AdminUsersController } from '../src/modules/admin/presentation/admin-us
 import {
   CannotDemoteLastAdminException,
   CannotLockLastAdminException,
+  UserAdminActorNotActiveAdminException,
 } from '../src/modules/users/application/exceptions/user-admin.exceptions';
 import { UserAdminService } from '../src/modules/users/application/user-admin.service';
 import { CsrfGuard } from '../src/modules/auth/presentation/guards/csrf.guard';
@@ -79,5 +80,18 @@ describe('Admin last-admin HTTP error envelopes', () => {
       .expect(400);
 
     expect(response.body.error.code).toBe('CANNOT_DEMOTE_LAST_ADMIN');
+  });
+
+  it('formats USER_ADMIN_ACTOR_NOT_ACTIVE_ADMIN as 403', async () => {
+    service.updateUserStatus.mockRejectedValueOnce(
+      new UserAdminActorNotActiveAdminException(),
+    );
+
+    const response = await request(app.getHttpServer())
+      .patch('/admin/users/123e4567-e89b-12d3-a456-426614174000/status')
+      .send({ status: 'LOCKED' })
+      .expect(403);
+
+    expect(response.body.error.code).toBe('USER_ADMIN_ACTOR_NOT_ACTIVE_ADMIN');
   });
 });

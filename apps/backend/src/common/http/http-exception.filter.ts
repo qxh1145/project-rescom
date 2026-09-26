@@ -34,6 +34,7 @@ import {
   CannotLockLastAdminException,
   CannotDemoteSelfException,
   CannotDemoteLastAdminException,
+  UserAdminActorNotActiveAdminException,
 } from '../../modules/users/application/exceptions/user-admin.exceptions';
 import { DemographicProfileRequiredException } from '../../modules/users/application/exceptions/demographics.exceptions';
 import {
@@ -402,6 +403,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
       exception instanceof CannotDemoteLastAdminException
     ) {
       status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof UserAdminActorNotActiveAdminException) {
+      status = HttpStatus.FORBIDDEN;
       code = exception.code;
       message = exception.message;
     } else if (

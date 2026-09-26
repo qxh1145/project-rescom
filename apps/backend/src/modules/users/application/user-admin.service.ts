@@ -12,6 +12,7 @@ import {
   CannotLockLastAdminException,
   CannotDemoteSelfException,
   CannotDemoteLastAdminException,
+  UserAdminActorNotActiveAdminException,
 } from './exceptions/user-admin.exceptions';
 
 export class UserAdminService {
@@ -94,6 +95,16 @@ export class UserAdminService {
           }
         }
 
+        // BE-8: the acting admin may have been locked/demoted concurrently
+        // between the controller's auth check and this transaction acquiring
+        // the lock. Re-verify their privilege against the locked snapshot
+        // right before applying the mutation (the last-admin invariant above
+        // still takes precedence over actor liveness).
+        const actor = await ctx.findUserById(actorUserId);
+        if (!actor || actor.role !== 'ADMIN' || actor.status !== 'ACTIVE') {
+          throw new UserAdminActorNotActiveAdminException();
+        }
+
         const updated = await ctx.updateUserStatus(targetUserId, newStatus);
         if (newStatus === 'LOCKED') {
           await ctx.revokeUserSessions(targetUserId);
@@ -117,7 +128,8 @@ export class UserAdminService {
     } catch (err: any) {
       if (
         err instanceof UserNotFoundException ||
-        err instanceof CannotLockLastAdminException
+        err instanceof CannotLockLastAdminException ||
+        err instanceof UserAdminActorNotActiveAdminException
       ) {
         await this.auditPort.append({
           action: 'USER_STATUS_CHANGED',
@@ -190,6 +202,16 @@ export class UserAdminService {
           }
         }
 
+        // BE-8: the acting admin may have been locked/demoted concurrently
+        // between the controller's auth check and this transaction acquiring
+        // the lock. Re-verify their privilege against the locked snapshot
+        // right before applying the mutation (the last-admin invariant above
+        // still takes precedence over actor liveness).
+        const actor = await ctx.findUserById(actorUserId);
+        if (!actor || actor.role !== 'ADMIN' || actor.status !== 'ACTIVE') {
+          throw new UserAdminActorNotActiveAdminException();
+        }
+
         const updated = await ctx.updateUserRole(targetUserId, newRole);
         await ctx.revokeUserSessions(targetUserId);
 
@@ -211,7 +233,8 @@ export class UserAdminService {
     } catch (err: any) {
       if (
         err instanceof UserNotFoundException ||
-        err instanceof CannotDemoteLastAdminException
+        err instanceof CannotDemoteLastAdminException ||
+        err instanceof UserAdminActorNotActiveAdminException
       ) {
         await this.auditPort.append({
           action: 'USER_ROLE_CHANGED',

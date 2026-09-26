@@ -440,4 +440,78 @@ describe('EnvService', () => {
       ).toThrow(/STORAGE_CAPABILITY_SECRET/);
     });
   });
+
+  describe('BE-9: STORAGE_FORCE_PATH_STYLE boolean parsing', () => {
+    it('defaults to true when unset', () => {
+      const service = new EnvService(validBaseEnv);
+      expect(service.storageForcePathStyle).toBe(true);
+    });
+
+    it('parses "false" as false', () => {
+      const service = new EnvService({
+        ...validBaseEnv,
+        STORAGE_FORCE_PATH_STYLE: 'false',
+      });
+      expect(service.storageForcePathStyle).toBe(false);
+    });
+
+    it('parses "0" as false', () => {
+      const service = new EnvService({
+        ...validBaseEnv,
+        STORAGE_FORCE_PATH_STYLE: '0',
+      });
+      expect(service.storageForcePathStyle).toBe(false);
+    });
+
+    it('parses "true" as true', () => {
+      const service = new EnvService({
+        ...validBaseEnv,
+        STORAGE_FORCE_PATH_STYLE: 'true',
+      });
+      expect(service.storageForcePathStyle).toBe(true);
+    });
+
+    it('accepts case-insensitive/trimmed textual forms (1/yes/on, no/off)', () => {
+      expect(
+        new EnvService({
+          ...validBaseEnv,
+          STORAGE_FORCE_PATH_STYLE: ' 1 ',
+        }).storageForcePathStyle,
+      ).toBe(true);
+      expect(
+        new EnvService({
+          ...validBaseEnv,
+          STORAGE_FORCE_PATH_STYLE: 'YES',
+        }).storageForcePathStyle,
+      ).toBe(true);
+      expect(
+        new EnvService({
+          ...validBaseEnv,
+          STORAGE_FORCE_PATH_STYLE: 'On',
+        }).storageForcePathStyle,
+      ).toBe(true);
+      expect(
+        new EnvService({
+          ...validBaseEnv,
+          STORAGE_FORCE_PATH_STYLE: 'NO',
+        }).storageForcePathStyle,
+      ).toBe(false);
+      expect(
+        new EnvService({
+          ...validBaseEnv,
+          STORAGE_FORCE_PATH_STYLE: 'Off',
+        }).storageForcePathStyle,
+      ).toBe(false);
+    });
+
+    it('rejects a garbage value instead of silently coercing it to true', () => {
+      expect(
+        () =>
+          new EnvService({
+            ...validBaseEnv,
+            STORAGE_FORCE_PATH_STYLE: 'garbage',
+          }),
+      ).toThrow(/STORAGE_FORCE_PATH_STYLE/);
+    });
+  });
 });
