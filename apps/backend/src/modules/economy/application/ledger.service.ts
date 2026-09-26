@@ -1514,7 +1514,9 @@ export class LedgerService {
    * lock (review F1): a reversal or dispute hold of the same credit locks the
    * same account, so one committed between the pre-checks and the post is
    * visible there, and the release never moves pooled points that back
-   * another credit.
+   * another credit. Any unreversed dispute hold of the attempt blocks the
+   * release, resolved or not (BE-5): a resolved hold already moved the
+   * credit's points out of Pending.
    */
   async releasePendingReward(
     params: ReleasePendingRewardParams,
@@ -1612,9 +1614,7 @@ export class LedgerService {
             params.attemptId,
             'The pending reward of this attempt was reversed and can no longer be released.',
           );
-          if (await this.hasOpenLedgerDisputeHold(params.attemptId)) {
-            throw new DisputeHoldActiveException(params.attemptId);
-          }
+          await this.assertNoLiveDisputeHold(params.attemptId);
         },
       },
     );
@@ -1632,25 +1632,27 @@ export class LedgerService {
   }
 
   /**
-   * True when an unreversed dispute hold of the attempt has no unreversed
-   * resolution, i.e. its points still sit in Integrity Hold.
+   * Refuses a release while the attempt has an unreversed dispute hold: an
+   * open hold (points still in Integrity Hold) throws
+   * `DisputeHoldActiveException`; a resolved hold (points already released
+   * or refunded from Integrity Hold) throws `PendingCreditNotFoundException`,
+   * since nothing of the credit is left in Pending (BE-5).
    */
-  private async hasOpenLedgerDisputeHold(attemptId: string): Promise<boolean> {
+  private async assertNoLiveDisputeHold(attemptId: string): Promise<void> {
     for (const hold of await this.findDisputeHoldsForAttempt(attemptId)) {
       if (await this.isJournalReversed(hold.id)) {
         continue;
       }
-      let resolved = false;
       for (const resolution of await this.findDisputeResolutions([hold])) {
         if (!(await this.isJournalReversed(resolution.id))) {
-          resolved = true;
+          throw new PendingCreditNotFoundException(
+            attemptId,
+            `The pending reward of this attempt was settled by "${resolution.idempotencyKey}" and can no longer be released.`,
+          );
         }
       }
-      if (!resolved) {
-        return true;
-      }
+      throw new DisputeHoldActiveException(attemptId);
     }
-    return false;
   }
 
   /**

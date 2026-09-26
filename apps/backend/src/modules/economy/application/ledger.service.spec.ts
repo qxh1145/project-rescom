@@ -2189,6 +2189,83 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
         });
       });
 
+      describe('releasePendingReward after a dispute hold', () => {
+        it.each(['RELEASE_TO_RESPONDENT', 'REFUND_TO_PUBLISHER'] as const)(
+          'refuses a release once the hold is resolved (%s)',
+          async (outcome) => {
+            await hold();
+            await resolve(outcome);
+            const before = await service.getWallet(respondentId);
+
+            const error = await release().catch((e) => e);
+
+            expect(error).toBeInstanceOf(PendingCreditNotFoundException);
+            expect(
+              await service.findJournalByIdempotencyKey(
+                `release-pending:${attemptId}`,
+              ),
+            ).toBeNull();
+            const wallet = await service.getWallet(respondentId);
+            // The other attempt's 20 pooled points stay Pending.
+            expect(wallet.balance.pending).toBe(20);
+            expect(wallet.balance.available).toBe(before.balance.available);
+          },
+        );
+
+        it('still refuses a release under an open hold', async () => {
+          await hold();
+
+          await expect(release()).rejects.toThrow(DisputeHoldActiveException);
+        });
+
+        it('allows a release once the hold is reversed', async () => {
+          const first = await hold();
+          await service.reverseJournal({ targetJournalId: first.id });
+
+          await expect(release()).resolves.toBeDefined();
+          const wallet = await service.getWallet(respondentId);
+          expect(wallet.balance.pending).toBe(20);
+          expect(wallet.balance.integrityHold).toBe(0);
+          expect(wallet.balance.available).toBe(20);
+        });
+
+        it('keeps a resolved-hold credit out of the maturity scan', async () => {
+          await hold();
+          await resolve('REFUND_TO_PUBLISHER');
+          now = new Date(creditTime.getTime() + 49 * HOUR_MS);
+
+          const matured = await service.findMaturedPendingCredits({
+            cutoff: new Date(creditTime.getTime() + HOUR_MS),
+            limit: 10,
+          });
+
+          expect(matured.map((journal) => journal.idempotencyKey)).toEqual([
+            `external-completion:${otherAttemptId}`,
+          ]);
+        });
+
+        it('rescans the credit once its hold or resolution is reversed', async () => {
+          const first = await hold();
+          const refund = await resolve('REFUND_TO_PUBLISHER');
+          await service.reverseJournal({ targetJournalId: refund.id });
+          const scan = () =>
+            service.findMaturedPendingCredits({
+              cutoff: new Date(creditTime.getTime() + HOUR_MS),
+              limit: 10,
+            });
+
+          // Open hold again: scanned, and the release reports the dispute.
+          expect((await scan()).map((j) => j.idempotencyKey)).toContain(
+            `external-completion:${attemptId}`,
+          );
+          await service.reverseJournal({ targetJournalId: first.id });
+          expect((await scan()).map((j) => j.idempotencyKey)).toContain(
+            `external-completion:${attemptId}`,
+          );
+          await expect(release()).resolves.toBeDefined();
+        });
+      });
+
       describe('getExternalCreditState', () => {
         it('reads PENDING again once the release is reversed', async () => {
           const releaseJournal = await release();

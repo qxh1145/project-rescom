@@ -154,6 +154,34 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
         .map((j) => j.reversesJournalId)
         .filter((id): id is string => Boolean(id)),
     );
+    // BE-5: an unreversed dispute hold with an unreversed resolution settled
+    // the credit; it can never be released, so it is not rescanned.
+    const byKey = new Map(
+      Array.from(this.journals.values()).map((j) => [j.idempotencyKey, j]),
+    );
+    const settledByDispute = new Set<string>();
+    for (const hold of this.journals.values()) {
+      if (
+        !hold.idempotencyKey.startsWith('external-dispute:') ||
+        reversed.has(hold.id)
+      ) {
+        continue;
+      }
+      const caseId = hold.idempotencyKey.slice('external-dispute:'.length);
+      const match = /external attempt: (\S+) \(Case (.*)\)$/.exec(
+        hold.description ?? '',
+      );
+      if (!match || match[2] !== caseId) {
+        continue;
+      }
+      const resolved = ['release', 'refund'].some((action) => {
+        const resolution = byKey.get(`dispute-resolution:${caseId}:${action}`);
+        return resolution !== undefined && !reversed.has(resolution.id);
+      });
+      if (resolved) {
+        settledByDispute.add(match[1]);
+      }
+    }
     return Array.from(this.journals.values())
       .filter(
         (j) =>
@@ -162,7 +190,8 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
           !keys.has(
             `release-pending:${j.idempotencyKey.slice(prefix.length)}`,
           ) &&
-          !reversed.has(j.id),
+          !reversed.has(j.id) &&
+          !settledByDispute.has(j.idempotencyKey.slice(prefix.length)),
       )
       .sort(
         (a, b) =>

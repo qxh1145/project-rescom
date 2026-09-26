@@ -7,7 +7,10 @@ import {
   ReleasePendingRewardParams,
   releasePendingKey,
 } from './ledger.service';
-import { DisputeHoldActiveException } from './exceptions/economy.exceptions';
+import {
+  DisputeHoldActiveException,
+  PendingCreditNotFoundException,
+} from './exceptions/economy.exceptions';
 import { LedgerJournalEntity } from '../domain/ledger-journal.entity';
 import { NotificationPublisherPort } from '../../notifications/application/ports/notification-publisher.port';
 import { StarterPointsCoordinator } from './starter-points.coordinator';
@@ -293,6 +296,8 @@ export class RewardSettlementCoordinator {
    * caller can never release early — that were neither released nor
    * reversed, oldest first, `limit` per call. One failure never stops the
    * batch. The recurring scheduler is deferred (no worker infrastructure).
+   * Credits settled by a resolved dispute hold are not scanned (BE-5); one
+   * settled or reversed after the scan read counts as disputed, not failed.
    */
   async releaseMaturedPendingRewards(
     params: ReleaseMaturedPendingRewardsParams = {},
@@ -331,7 +336,10 @@ export class RewardSettlementCoordinator {
         await this.releasePendingReward({ attemptId });
         releasedCount++;
       } catch (err) {
-        if (err instanceof DisputeHoldActiveException) {
+        if (
+          err instanceof DisputeHoldActiveException ||
+          err instanceof PendingCreditNotFoundException
+        ) {
           disputedCount++;
         } else {
           failedCount++;

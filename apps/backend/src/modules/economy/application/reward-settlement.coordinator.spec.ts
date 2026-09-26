@@ -376,6 +376,86 @@ describe('Story 6.4: RewardSettlementCoordinator', () => {
     });
   });
 
+  describe('releaseMaturedPendingRewards after a resolved dispute hold (BE-5)', () => {
+    const otherAttemptId = '77777777-7777-4777-8777-777777777777';
+    const caseId = '55555555-5555-4555-8555-555555555555';
+
+    beforeEach(async () => {
+      for (const id of [attemptId, otherAttemptId]) {
+        await coordinator.settleExternalReward({
+          attemptId: id,
+          publisherId,
+          respondentId,
+          rewardPerResponse: 20,
+        });
+      }
+      await ledgerService.placeDisputeHold({
+        caseId,
+        attemptId,
+        respondentId,
+        amount: 20,
+      });
+      await ledgerService.resolveDisputeHold({
+        caseId,
+        respondentId,
+        publisherId,
+        amount: 20,
+        outcome: 'REFUND_TO_PUBLISHER',
+      });
+      matured();
+    });
+
+    it('does not rescan the settled credit and releases the others', async () => {
+      const summary = await coordinator.releaseMaturedPendingRewards();
+
+      expect(summary).toMatchObject({
+        processed: 1,
+        releasedCount: 1,
+        disputedCount: 0,
+        failedCount: 0,
+        hasMore: false,
+      });
+      expect(
+        await ledgerService.findJournalByIdempotencyKey(
+          `release-pending:${attemptId}`,
+        ),
+      ).toBeNull();
+      const wallet = await ledgerService.getWallet(respondentId);
+      expect(wallet.balance.pending).toBe(0);
+      expect(wallet.balance.available).toBe(20);
+
+      // Nothing is left to rescan.
+      expect((await coordinator.releaseMaturedPendingRewards()).processed).toBe(
+        0,
+      );
+    });
+
+    it('counts a credit settled after the scan read as disputed, not failed, and continues the batch', async () => {
+      const settled = await ledgerService.findJournalByIdempotencyKey(
+        `external-completion:${attemptId}`,
+      );
+      const other = await ledgerService.findJournalByIdempotencyKey(
+        `external-completion:${otherAttemptId}`,
+      );
+      // A stale scan read that still lists the settled credit first.
+      jest
+        .spyOn(ledgerService, 'findMaturedPendingCredits')
+        .mockResolvedValueOnce([settled!, other!]);
+
+      const summary = await coordinator.releaseMaturedPendingRewards();
+
+      expect(summary).toMatchObject({
+        processed: 2,
+        releasedCount: 1,
+        disputedCount: 1,
+        failedCount: 0,
+      });
+      const wallet = await ledgerService.getWallet(respondentId);
+      expect(wallet.balance.pending).toBe(0);
+      expect(wallet.balance.available).toBe(20);
+    });
+  });
+
   describe('releasePendingReward (Epic 6 review P2)', () => {
     beforeEach(async () => {
       await coordinator.settleExternalReward({

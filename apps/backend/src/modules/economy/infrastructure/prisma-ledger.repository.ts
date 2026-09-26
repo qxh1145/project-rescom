@@ -202,7 +202,9 @@ export class PrismaLedgerRepository implements LedgerRepositoryPort {
     limit: number;
   }): Promise<LedgerJournalEntity[]> {
     // External completion credits old enough to mature that were neither
-    // released (`release-pending:{attemptId}`) nor reversed, oldest first.
+    // released (`release-pending:{attemptId}`) nor reversed, nor settled by a
+    // resolved dispute hold (BE-5: an unreversed `external-dispute:{caseId}`
+    // hold of the attempt with an unreversed resolution), oldest first.
     const rows: Array<{ id: string }> = await this.client.$queryRaw`
       SELECT j.id
       FROM ledger_journals j
@@ -215,6 +217,27 @@ export class PrismaLedgerRepository implements LedgerRepositoryPort {
         )
         AND NOT EXISTS (
           SELECT 1 FROM ledger_journals v WHERE v.reverses_journal_id = j.id
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM ledger_journals h
+          -- 18 = length('external-dispute:') + 1: the case id suffix.
+          JOIN ledger_journals s
+            ON s.idempotency_key IN (
+              'dispute-resolution:' || substr(h.idempotency_key, 18) || ':release',
+              'dispute-resolution:' || substr(h.idempotency_key, 18) || ':refund'
+            )
+          WHERE h.idempotency_key LIKE 'external-dispute:%'
+            AND right(
+              h.description,
+              length('external attempt: ' || substr(j.idempotency_key, 21) || ' (Case ' || substr(h.idempotency_key, 18) || ')')
+            ) = 'external attempt: ' || substr(j.idempotency_key, 21) || ' (Case ' || substr(h.idempotency_key, 18) || ')'
+            AND NOT EXISTS (
+              SELECT 1 FROM ledger_journals hv WHERE hv.reverses_journal_id = h.id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM ledger_journals sv WHERE sv.reverses_journal_id = s.id
+            )
         )
       ORDER BY j.created_at ASC, j.id ASC
       LIMIT ${params.limit}
