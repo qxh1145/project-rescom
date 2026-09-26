@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { formBlockSchema } from "./form-blocks.schema";
 import { formIntegrityMetadataSchema } from "./form-integrity.schema";
+import { validateAttentionChecks } from "./attention-check.validation";
+import { computeInternalTimeBarrier } from "../participation/bot-protection";
 
 export const formSettingsSchema = z
   .object({
@@ -109,85 +111,9 @@ export const formDefinitionSchema = z
         }
         pairMap.set(block.id, pairedBlockId);
       }
-
-      // Attention Check expectedValue validity against host block options/ranges
-      const attentionCheck = block.integrity?.attentionCheck;
-      if (attentionCheck && attentionCheck.isAttentionCheck) {
-        const expected = attentionCheck.expectedValue;
-        if (block.type === "single_choice") {
-          const validValues = new Set(block.options.map((o) => o.value));
-          if (typeof expected !== "string" || !validValues.has(expected)) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: [
-                "blocks",
-                i,
-                "integrity",
-                "attentionCheck",
-                "expectedValue",
-              ],
-              message: `Attention check expectedValue "${String(expected)}" does not match any selectable option in block "${block.id}"`,
-            });
-          }
-        } else if (block.type === "multiple_choice") {
-          const validValues = new Set(block.options.map((o) => o.value));
-          const expectedList = Array.isArray(expected) ? expected : [expected];
-          const invalid = expectedList.some(
-            (v) => typeof v !== "string" || !validValues.has(v),
-          );
-          if (invalid) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: [
-                "blocks",
-                i,
-                "integrity",
-                "attentionCheck",
-                "expectedValue",
-              ],
-              message: `Attention check expectedValue contains values not present in block "${block.id}" options`,
-            });
-          }
-        } else if (block.type === "rating") {
-          if (
-            typeof expected !== "number" ||
-            !Number.isInteger(expected) ||
-            expected < 1 ||
-            expected > block.maxRating
-          ) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: [
-                "blocks",
-                i,
-                "integrity",
-                "attentionCheck",
-                "expectedValue",
-              ],
-              message: `Attention check expectedValue must be an integer between 1 and ${block.maxRating} for rating block "${block.id}"`,
-            });
-          }
-        } else if (block.type === "linear_scale") {
-          if (
-            typeof expected !== "number" ||
-            expected < block.min ||
-            expected > block.max
-          ) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: [
-                "blocks",
-                i,
-                "integrity",
-                "attentionCheck",
-                "expectedValue",
-              ],
-              message: `Attention check expectedValue must be within range [${block.min}, ${block.max}] for linear scale block "${block.id}"`,
-            });
-          }
-        }
-      }
     }
+
+    validateAttentionChecks(data.blocks, ctx);
 
     if (
       data.metadata.minTimeBarrierSeconds > data.metadata.expectedEffortSeconds
@@ -197,6 +123,18 @@ export const formDefinitionSchema = z
         path: ["metadata", "minTimeBarrierSeconds"],
         message: "minTimeBarrierSeconds cannot exceed expectedEffortSeconds",
       });
+    } else {
+      // FR-14: the effective Internal barrier (answerable questions x 2 s or
+      // the publisher minimum) is a floor on the real completion time, so the
+      // declared effort cannot be shorter than it.
+      const { requiredSeconds } = computeInternalTimeBarrier(data);
+      if (requiredSeconds > data.metadata.expectedEffortSeconds) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["metadata", "expectedEffortSeconds"],
+          message: `expectedEffortSeconds (${data.metadata.expectedEffortSeconds} s) cannot be shorter than the required minimum completion time (${requiredSeconds} s)`,
+        });
+      }
     }
   });
 

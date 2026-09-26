@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_PAGINATION_OFFSET } from "../common/pagination.schema";
 
 export const userRoleSchema = z.enum(["ADMIN", "PUBLISHER", "RESPONDENT"]);
 export type UserRole = z.infer<typeof userRoleSchema>;
@@ -8,7 +9,12 @@ export type UserStatus = z.infer<typeof userStatusSchema>;
 
 export const listUsersQuerySchema = z
   .object({
-    page: z.coerce.number().int().min(1).default(1),
+    page: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_PAGINATION_OFFSET, `page must be at most ${MAX_PAGINATION_OFFSET}`)
+      .default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
     search: z.string().trim().optional(),
     role: userRoleSchema.optional(),

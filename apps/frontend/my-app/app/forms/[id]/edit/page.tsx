@@ -139,6 +139,10 @@ export default function FormDraftEditorPage({ params }: PageProps) {
     type: formType,
     rewardPerResponse,
     estimatedDurationMinutes,
+    definition: { blocks, metadata },
+    // Internal forms only get a version above 1 through "Create New Version"
+    // on a published form, whose reward is then frozen (review F3).
+    frozenReward: formType === "INTERNAL" && versionNumber > 1,
   });
 
   const autosave = useFormAutosave({

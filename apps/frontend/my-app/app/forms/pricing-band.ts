@@ -1,6 +1,8 @@
 import {
   checkPublishRewardBand,
+  resolveRewardBandDurationOptions,
   type FormTypeEnum,
+  type RewardBandDefinitionLike,
   type RewardPricingRange,
 } from "@rescom/schemas";
 
@@ -29,12 +31,28 @@ export function durationBandLabel(band: RewardPricingRange["durationBand"]): str
   return DURATION_BAND_LABELS[band] ?? band;
 }
 
+/**
+ * `definition` (blocks and integrity metadata) lets the band follow the same
+ * effective duration as the backend: the longest of the estimate, the
+ * declared effort and the required minimum completion time (review F5).
+ */
 export function describePricingBand(input: {
   type: FormTypeEnum;
   rewardPerResponse: number;
   estimatedDurationMinutes: number | null | undefined;
+  definition?: RewardBandDefinitionLike | null;
+  /**
+   * Review F3: the reward was frozen by an earlier publication, so the band
+   * minimum no longer applies (the maximum still does), matching the backend.
+   */
+  frozenReward?: boolean;
 }): PricingBandHint {
-  const check = checkPublishRewardBand(input);
+  const check = checkPublishRewardBand(input, {
+    ...(input.definition
+      ? resolveRewardBandDurationOptions(input.type, input.definition)
+      : {}),
+    frozenReward: input.frozenReward ?? false,
+  });
   switch (check.status) {
     case "EXEMPT":
       return {

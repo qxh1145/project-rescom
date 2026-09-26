@@ -66,6 +66,15 @@ export function CreateExternalSurveyModal({
     type: "EXTERNAL",
     rewardPerResponse,
     estimatedDurationMinutes: effort.valid ? estimatedMinutes : null,
+    // The metadata the backend stores for this survey (effort = estimate).
+    definition: effort.valid
+      ? {
+          metadata: {
+            expectedEffortSeconds: effort.seconds,
+            minTimeBarrierSeconds: Math.min(15, effort.seconds),
+          },
+        }
+      : null,
   });
   const pricingBlocksSubmit = autoPublish && pricingBand.blocksPublish;
 

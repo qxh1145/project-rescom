@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import type { FormTypeEnum } from '../forms/form-draft.schema';
 import type { EscrowCostCalculationResult } from './escrow.schema';
+import {
+  computeInternalTimeBarrier,
+  resolveExternalTimeBarrierSeconds,
+} from '../participation/bot-protection';
 
 /**
  * Bounds of the Publisher's estimated completion time in whole minutes
@@ -146,24 +150,136 @@ export type PublishRewardBandCheck =
 export type PublishRewardBandStatus = PublishRewardBandCheck['status'];
 
 /**
+ * The duration (whole minutes) the FR-14 band is picked from: the longest of
+ * the Publisher's `estimatedDurationMinutes`, the declared
+ * `metadata.expectedEffortSeconds` and the required minimum completion time
+ * (the time barrier), rounded up. A survey whose effort or barrier is longer
+ * than its claimed duration is priced for the longer time. Null without an
+ * estimated duration (the band check then answers `DURATION_REQUIRED`).
+ */
+export function resolveEffectiveDurationMinutes(input: {
+  estimatedDurationMinutes: number | null | undefined;
+  expectedEffortSeconds?: number | null;
+  requiredTimeBarrierSeconds?: number | null;
+}): number | null {
+  if (input.estimatedDurationMinutes == null) {
+    return null;
+  }
+  const seconds = Math.max(
+    input.estimatedDurationMinutes * 60,
+    finiteSecondsOrZero(input.expectedEffortSeconds),
+    finiteSecondsOrZero(input.requiredTimeBarrierSeconds),
+  );
+  return Math.ceil(seconds / 60);
+}
+
+function finiteSecondsOrZero(value: number | null | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : 0;
+}
+
+/** The parts of a Form Definition the FR-14 duration options read. */
+export interface RewardBandDefinitionLike {
+  blocks?: ReadonlyArray<{ type?: unknown }> | null;
+  metadata?: {
+    expectedEffortSeconds?: number | null;
+    minTimeBarrierSeconds?: number | null;
+  } | null;
+}
+
+export interface RewardBandDurationOptions {
+  expectedEffortSeconds: number | null;
+  requiredTimeBarrierSeconds: number;
+}
+
+/**
+ * The declared effort and required minimum completion time of a Form
+ * Definition (Internal: `computeInternalTimeBarrier`; External: the
+ * configured minimum or the default), which lengthen the FR-14 pricing
+ * duration when they exceed the Publisher's `estimatedDurationMinutes`.
+ * Shared by the backend publish check and the frontend hints, so both pick
+ * the same band.
+ */
+export function resolveRewardBandDurationOptions(
+  type: FormTypeEnum,
+  definition: RewardBandDefinitionLike | null | undefined,
+): RewardBandDurationOptions {
+  return {
+    expectedEffortSeconds: definition?.metadata?.expectedEffortSeconds ?? null,
+    requiredTimeBarrierSeconds:
+      type === 'EXTERNAL'
+        ? resolveExternalTimeBarrierSeconds(definition?.metadata)
+        : computeInternalTimeBarrier(definition).requiredSeconds,
+  };
+}
+
+/** Default `metadata.expectedEffortSeconds` of a Form Definition. */
+const DEFAULT_EXPECTED_EFFORT_SECONDS = 60;
+
+/**
+ * The `metadata.expectedEffortSeconds` an Internal Form Definition is stored
+ * with (review F2): the stored value raised to at least the estimated
+ * duration (when set) and the required minimum completion time
+ * (`computeInternalTimeBarrier`), so a long survey never fails the
+ * "effort >= barrier" rule only because the builder sent the default effort.
+ * The value never goes down; it does not change the FR-14 effective duration.
+ */
+export function normalizeExpectedEffortSeconds(
+  definition: RewardBandDefinitionLike | null | undefined,
+  estimatedDurationMinutes: number | null | undefined,
+): number {
+  const stored = definition?.metadata?.expectedEffortSeconds;
+  return Math.max(
+    typeof stored === 'number' && Number.isFinite(stored)
+      ? stored
+      : DEFAULT_EXPECTED_EFFORT_SECONDS,
+    typeof estimatedDurationMinutes === 'number' &&
+      Number.isFinite(estimatedDurationMinutes)
+      ? estimatedDurationMinutes * 60
+      : 0,
+    computeInternalTimeBarrier(definition).requiredSeconds,
+  );
+}
+
+/**
  * The FR-14 band check a publication must pass (decision E6-D2). The band
  * minimum and maximum both apply; the absolute 10,000-point schema cap stays
  * the hard input limit for drafts. External surveys always pay at least 1
- * point, so only Internal surveys can be exempt.
+ * point, so only Internal surveys can be exempt. The band is picked from the
+ * effective duration (`resolveEffectiveDurationMinutes`) when the declared
+ * effort / required time barrier are given in `options`.
+ *
+ * `frozenReward` (review F3): the reward of a survey that already had a
+ * published version cannot change (decision D2), so a re-versioned draft
+ * whose longer questionnaire moved it to a higher band is not held to the
+ * band minimum; the maximum still applies.
  */
-export function checkPublishRewardBand(form: {
-  type: FormTypeEnum;
-  rewardPerResponse: number;
-  estimatedDurationMinutes?: number | null;
-}): PublishRewardBandCheck {
+export function checkPublishRewardBand(
+  form: {
+    type: FormTypeEnum;
+    rewardPerResponse: number;
+    estimatedDurationMinutes?: number | null;
+  },
+  options: {
+    expectedEffortSeconds?: number | null;
+    requiredTimeBarrierSeconds?: number | null;
+    frozenReward?: boolean;
+  } = {},
+): PublishRewardBandCheck {
   if (form.type === 'INTERNAL' && form.rewardPerResponse === 0) {
     return { status: 'EXEMPT', range: null };
   }
-  if (form.estimatedDurationMinutes == null) {
+  const durationMinutes = resolveEffectiveDurationMinutes({
+    estimatedDurationMinutes: form.estimatedDurationMinutes,
+    expectedEffortSeconds: options.expectedEffortSeconds,
+    requiredTimeBarrierSeconds: options.requiredTimeBarrierSeconds,
+  });
+  if (durationMinutes === null) {
     return { status: 'DURATION_REQUIRED', range: null };
   }
-  const range = getRewardPricingRange(form.estimatedDurationMinutes);
-  return form.rewardPerResponse >= range.min &&
+  const range = getRewardPricingRange(durationMinutes);
+  return (options.frozenReward || form.rewardPerResponse >= range.min) &&
     form.rewardPerResponse <= range.max
     ? { status: 'WITHIN_BAND', range }
     : { status: 'OUT_OF_BAND', range };

@@ -22,6 +22,22 @@ const normalizeSortBy = (val: unknown): unknown => {
 };
 
 /**
+ * Query-string integer: an empty or whitespace-only value means "not set";
+ * only plain decimal digits are converted (so `"1e3"`, `"0x10"` or `" "` are
+ * never silently read as numbers). Any other string fails validation.
+ */
+const queryInteger = (val: unknown): unknown => {
+  if (typeof val !== "string") return val;
+  const trimmed = val.trim();
+  if (trimmed === "") return undefined;
+  return /^\d+$/.test(trimmed) ? Number(trimmed) : val;
+};
+
+export const MARKETPLACE_FEED_MAX_MIN_REWARD = 10_000;
+/** Upper bound of `maxDuration`, in seconds (24 hours). */
+export const MARKETPLACE_FEED_MAX_DURATION_SECONDS = 86_400;
+
+/**
  * Query schema for GET /api/marketplace/feed
  */
 export const marketplaceFeedQuerySchema = z.object({
@@ -39,14 +55,23 @@ export const marketplaceFeedQuerySchema = z.object({
   }, z.boolean().default(true)),
   search: z.string().trim().max(100).optional(),
   type: z.enum(["ALL", "INTERNAL", "EXTERNAL"]).default("ALL"),
-  minReward: z.preprocess((val) => {
-    if (typeof val === "string" && val.trim() !== "") return Number(val);
-    return val;
-  }, z.number().int().nonnegative().optional()),
-  maxDuration: z.preprocess((val) => {
-    if (typeof val === "string" && val.trim() !== "") return Number(val);
-    return val;
-  }, z.number().int().positive().optional()),
+  minReward: z.preprocess(
+    queryInteger,
+    z.number().int().nonnegative().max(MARKETPLACE_FEED_MAX_MIN_REWARD).optional(),
+  ),
+  /**
+   * Longest expected effort to show, in SECONDS (compared with the survey's
+   * `metadata.expectedEffortSeconds`), not minutes.
+   */
+  maxDuration: z.preprocess(
+    queryInteger,
+    z
+      .number()
+      .int()
+      .positive()
+      .max(MARKETPLACE_FEED_MAX_DURATION_SECONDS)
+      .optional(),
+  ),
 });
 
 export type MarketplaceFeedQueryDto = z.infer<

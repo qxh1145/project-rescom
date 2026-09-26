@@ -1,7 +1,15 @@
 import { z } from "zod";
 
+/** Hard cap for any free-text answer, also the default text/textarea limit. */
+export const MAX_ANSWER_STRING_LENGTH = 10_000;
+
 export const blockAnswerValueSchema = z.union([
-  z.string().max(10000, "Answer string cannot exceed 10000 characters"),
+  z
+    .string()
+    .max(
+      MAX_ANSWER_STRING_LENGTH,
+      `Answer string cannot exceed ${MAX_ANSWER_STRING_LENGTH} characters`,
+    ),
   z.number().finite(),
   z.boolean(),
   z

@@ -1,5 +1,8 @@
 import {
   checkPublishRewardBand,
+  normalizeExpectedEffortSeconds,
+  resolveEffectiveDurationMinutes,
+  resolveRewardBandDurationOptions,
   estimatedDurationMinutesSchema,
   getRewardPricingRange,
   validateRewardPricing,
@@ -190,6 +193,241 @@ describe('Pricing Table & Reward Validation (FR-14)', () => {
           estimatedDurationMinutes: 60,
         }).status,
       ).toBe('WITHIN_BAND');
+    });
+  });
+
+  describe('resolveEffectiveDurationMinutes (FR-14 effective duration)', () => {
+    it('is null without an estimated duration', () => {
+      expect(
+        resolveEffectiveDurationMinutes({
+          estimatedDurationMinutes: null,
+          expectedEffortSeconds: 1500,
+          requiredTimeBarrierSeconds: 60,
+        }),
+      ).toBeNull();
+      expect(
+        resolveEffectiveDurationMinutes({ estimatedDurationMinutes: undefined }),
+      ).toBeNull();
+    });
+
+    it('keeps the estimated duration when effort and barrier fit inside it', () => {
+      expect(
+        resolveEffectiveDurationMinutes({ estimatedDurationMinutes: 12 }),
+      ).toBe(12);
+      expect(
+        resolveEffectiveDurationMinutes({
+          estimatedDurationMinutes: 12,
+          expectedEffortSeconds: 720,
+          requiredTimeBarrierSeconds: 30,
+        }),
+      ).toBe(12);
+    });
+
+    it('uses the longest of estimate, expected effort and required barrier, rounded up', () => {
+      expect(
+        resolveEffectiveDurationMinutes({
+          estimatedDurationMinutes: 1,
+          expectedEffortSeconds: 1500,
+        }),
+      ).toBe(25);
+      expect(
+        resolveEffectiveDurationMinutes({
+          estimatedDurationMinutes: 1,
+          expectedEffortSeconds: 60,
+          requiredTimeBarrierSeconds: 601,
+        }),
+      ).toBe(11);
+      expect(
+        resolveEffectiveDurationMinutes({
+          estimatedDurationMinutes: 2,
+          expectedEffortSeconds: 121,
+          requiredTimeBarrierSeconds: null,
+        }),
+      ).toBe(3);
+    });
+
+    it('ignores non-finite or non-positive effort and barrier values', () => {
+      expect(
+        resolveEffectiveDurationMinutes({
+          estimatedDurationMinutes: 4,
+          expectedEffortSeconds: Number.NaN,
+          requiredTimeBarrierSeconds: -600,
+        }),
+      ).toBe(4);
+    });
+
+    it('prices a 25-minute effort survey in the > 15 min band, not the claimed 1-minute band', () => {
+      const claimed = {
+        type: 'INTERNAL' as const,
+        rewardPerResponse: 5,
+        estimatedDurationMinutes: 1,
+      };
+      expect(checkPublishRewardBand(claimed).status).toBe('WITHIN_BAND');
+      expect(
+        checkPublishRewardBand(claimed, {
+          expectedEffortSeconds: 1500,
+          requiredTimeBarrierSeconds: 20,
+        }),
+      ).toEqual({ status: 'OUT_OF_BAND', range: getRewardPricingRange(25) });
+      expect(
+        checkPublishRewardBand(
+          { ...claimed, rewardPerResponse: 20 },
+          { expectedEffortSeconds: 1500 },
+        ).status,
+      ).toBe('WITHIN_BAND');
+    });
+
+    it('prices by the required time barrier when it exceeds the claimed duration', () => {
+      expect(
+        checkPublishRewardBand(
+          { type: 'EXTERNAL', rewardPerResponse: 5, estimatedDurationMinutes: 1 },
+          { requiredTimeBarrierSeconds: 360 },
+        ),
+      ).toEqual({ status: 'OUT_OF_BAND', range: getRewardPricingRange(6) });
+    });
+
+    it('still requires a duration and still exempts free Internal surveys', () => {
+      expect(
+        checkPublishRewardBand(
+          { type: 'EXTERNAL', rewardPerResponse: 5, estimatedDurationMinutes: null },
+          { expectedEffortSeconds: 1500 },
+        ).status,
+      ).toBe('DURATION_REQUIRED');
+      expect(
+        checkPublishRewardBand(
+          { type: 'INTERNAL', rewardPerResponse: 0, estimatedDurationMinutes: 1 },
+          { expectedEffortSeconds: 1500 },
+        ).status,
+      ).toBe('EXEMPT');
+    });
+  });
+
+  describe('frozenReward (review F3)', () => {
+    it('skips the band minimum but keeps the maximum', () => {
+      const band = getRewardPricingRange(10);
+      expect(
+        checkPublishRewardBand(
+          { type: 'INTERNAL', rewardPerResponse: 5, estimatedDurationMinutes: 4 },
+          { expectedEffortSeconds: 600, frozenReward: true },
+        ),
+      ).toEqual({ status: 'WITHIN_BAND', range: band });
+      expect(
+        checkPublishRewardBand(
+          { type: 'INTERNAL', rewardPerResponse: 5, estimatedDurationMinutes: 4 },
+          { expectedEffortSeconds: 600 },
+        ),
+      ).toEqual({ status: 'OUT_OF_BAND', range: band });
+      expect(
+        checkPublishRewardBand(
+          { type: 'INTERNAL', rewardPerResponse: 21, estimatedDurationMinutes: 4 },
+          { expectedEffortSeconds: 600, frozenReward: true },
+        ),
+      ).toEqual({ status: 'OUT_OF_BAND', range: band });
+    });
+
+    it('still requires a duration', () => {
+      expect(
+        checkPublishRewardBand(
+          { type: 'EXTERNAL', rewardPerResponse: 5, estimatedDurationMinutes: null },
+          { frozenReward: true },
+        ).status,
+      ).toBe('DURATION_REQUIRED');
+    });
+  });
+
+  describe('resolveRewardBandDurationOptions (review F5)', () => {
+    const blocks = Array.from({ length: 31 }, () => ({ type: 'text' }));
+
+    it('uses the Internal time barrier and the declared effort', () => {
+      expect(
+        resolveRewardBandDurationOptions('INTERNAL', {
+          blocks,
+          metadata: { expectedEffortSeconds: 90, minTimeBarrierSeconds: 15 },
+        }),
+      ).toEqual({ expectedEffortSeconds: 90, requiredTimeBarrierSeconds: 62 });
+    });
+
+    it('uses the External configured minimum or its default', () => {
+      expect(
+        resolveRewardBandDurationOptions('EXTERNAL', {
+          metadata: { expectedEffortSeconds: 300, minTimeBarrierSeconds: 240 },
+        }),
+      ).toEqual({ expectedEffortSeconds: 300, requiredTimeBarrierSeconds: 240 });
+      expect(resolveRewardBandDurationOptions('EXTERNAL', null)).toEqual({
+        expectedEffortSeconds: null,
+        requiredTimeBarrierSeconds: 15,
+      });
+    });
+
+    it('lets the band follow the effective duration', () => {
+      const options = resolveRewardBandDurationOptions('INTERNAL', {
+        blocks,
+        metadata: { expectedEffortSeconds: 600, minTimeBarrierSeconds: 15 },
+      });
+      expect(
+        checkPublishRewardBand(
+          { type: 'INTERNAL', rewardPerResponse: 5, estimatedDurationMinutes: 4 },
+          options,
+        ),
+      ).toEqual({ status: 'OUT_OF_BAND', range: getRewardPricingRange(10) });
+    });
+  });
+
+  describe('normalizeExpectedEffortSeconds (review F2)', () => {
+    const blocks = (count: number) =>
+      Array.from({ length: count }, () => ({ type: 'text' }));
+
+    it('raises the default effort to the required barrier of a long survey', () => {
+      expect(
+        normalizeExpectedEffortSeconds(
+          { blocks: blocks(31), metadata: { expectedEffortSeconds: 60 } },
+          null,
+        ),
+      ).toBe(62);
+    });
+
+    it('raises the effort to the estimated duration', () => {
+      expect(
+        normalizeExpectedEffortSeconds(
+          { blocks: blocks(3), metadata: { expectedEffortSeconds: 60 } },
+          4,
+        ),
+      ).toBe(240);
+    });
+
+    it('never lowers the stored effort and defaults a missing one to 60 s', () => {
+      expect(
+        normalizeExpectedEffortSeconds(
+          { blocks: blocks(3), metadata: { expectedEffortSeconds: 900 } },
+          4,
+        ),
+      ).toBe(900);
+      expect(normalizeExpectedEffortSeconds({ blocks: [] }, null)).toBe(60);
+    });
+
+    it('does not change the FR-14 effective duration', () => {
+      const definition = {
+        blocks: blocks(31),
+        metadata: { expectedEffortSeconds: 60, minTimeBarrierSeconds: 15 },
+      };
+      const normalized = {
+        ...definition,
+        metadata: {
+          ...definition.metadata,
+          expectedEffortSeconds: normalizeExpectedEffortSeconds(definition, 4),
+        },
+      };
+      expect(
+        resolveEffectiveDurationMinutes({
+          estimatedDurationMinutes: 4,
+          ...resolveRewardBandDurationOptions('INTERNAL', normalized),
+        }),
+      ).toBe(
+        resolveEffectiveDurationMinutes({
+          estimatedDurationMinutes: 4,
+          ...resolveRewardBandDurationOptions('INTERNAL', definition),
+        }),
+      );
     });
   });
 

@@ -13,3 +13,4 @@ export * from "./economy";
 export * from "./notifications";
 export * from "./moderation";
 export * from "./common/unicode-text";
+export * from "./common/pagination.schema";

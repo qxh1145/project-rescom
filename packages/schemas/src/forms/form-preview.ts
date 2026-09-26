@@ -2,9 +2,11 @@ import { z } from "zod";
 import type { FormBlock } from "./form-blocks.schema";
 import { draftFormDefinitionSchema, type DraftFormDefinition } from "./form-draft.schema";
 import {
+  MAX_ANSWER_STRING_LENGTH,
   type FormSubmission,
   type BlockAnswer,
 } from "./form-answer.schema";
+import { isoDateUpperBound, parseStrictIsoDate } from "./iso-date";
 import { fileAttachmentAnswerSchema } from "../storage/file-storage.schema";
 
 export interface AnswerValidationResult {
@@ -81,10 +83,11 @@ export function validateBlockAnswer(
           error: `Minimum length is ${block.minLength} characters`,
         };
       }
-      if (block.maxLength !== undefined && trimmed.length > block.maxLength) {
+      const maxLength = block.maxLength ?? MAX_ANSWER_STRING_LENGTH;
+      if (trimmed.length > maxLength) {
         return {
           isValid: false,
-          error: `Maximum length is ${block.maxLength} characters`,
+          error: `Maximum length is ${maxLength} characters`,
         };
       }
       if (block.pattern && !new RegExp(block.pattern).test(value)) {
@@ -104,10 +107,11 @@ export function validateBlockAnswer(
           error: `Minimum length is ${block.minLength} characters`,
         };
       }
-      if (block.maxLength !== undefined && trimmed.length > block.maxLength) {
+      const maxLength = block.maxLength ?? MAX_ANSWER_STRING_LENGTH;
+      if (trimmed.length > maxLength) {
         return {
           isValid: false,
-          error: `Maximum length is ${block.maxLength} characters`,
+          error: `Maximum length is ${maxLength} characters`,
         };
       }
       return { isValid: true };
@@ -205,18 +209,19 @@ export function validateBlockAnswer(
       if (typeof value !== "string") {
         return { isValid: false, error: "Invalid date format" };
       }
-      const dateStringRegex = /^\d{4}-\d{2}-\d{2}/;
-      if (!dateStringRegex.test(value)) {
-        return { isValid: false, error: "Date must be in YYYY-MM-DD format" };
+      const parsedDate = parseStrictIsoDate(value);
+      if (!parsedDate) {
+        return {
+          isValid: false,
+          error: "Date must be a valid date in YYYY-MM-DD format",
+        };
       }
-      const parsedDate = new Date(value);
-      if (Number.isNaN(parsedDate.getTime())) {
-        return { isValid: false, error: "Invalid date value" };
-      }
-      if (block.minDate && value < block.minDate) {
+      const minDate = block.minDate ? parseStrictIsoDate(block.minDate) : null;
+      if (minDate && parsedDate.time < minDate.time) {
         return { isValid: false, error: `Date cannot be earlier than ${block.minDate}` };
       }
-      if (block.maxDate && value > block.maxDate) {
+      const maxDate = block.maxDate ? parseStrictIsoDate(block.maxDate) : null;
+      if (maxDate && parsedDate.time > isoDateUpperBound(maxDate)) {
         return { isValid: false, error: `Date cannot be later than ${block.maxDate}` };
       }
       return { isValid: true };

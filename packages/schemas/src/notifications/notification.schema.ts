@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { replaceLoneSurrogates } from '../common/unicode-text';
+import { MAX_PAGINATION_OFFSET } from '../common/pagination.schema';
 
 /**
  * In-app notification contracts (Story 9.6, FR-57).
@@ -34,7 +35,7 @@ export const NOTIFICATION_DEDUPE_KEY_MAX_LENGTH = 200;
  * Upper bound on `offset` (Epic 9 review P10): larger values would overflow
  * the database `skip` and surface as a 500 instead of a 400.
  */
-export const NOTIFICATION_LIST_MAX_OFFSET = 10_000;
+export const NOTIFICATION_LIST_MAX_OFFSET = MAX_PAGINATION_OFFSET;
 
 export const notificationSchema = z.object({
   id: z.string().uuid(),

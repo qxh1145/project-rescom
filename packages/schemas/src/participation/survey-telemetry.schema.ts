@@ -155,7 +155,13 @@ export type TelemetryEventItem = z.infer<typeof telemetryEventItemSchema>;
  */
 export const batchTelemetryEventsInputSchema = z.object({
   events: z.array(telemetryEventItemSchema).min(1, 'At least 1 event is required in a batch').max(100, 'Maximum 100 events per batch'),
-  consentNoticeVersion: z.string().min(1).max(50).optional(),
+  /**
+   * The consent notice the respondent accepted: a label, or the integer
+   * `IntegrityConsent.noticeVersion` stored by the backend.
+   */
+  consentNoticeVersion: z
+    .union([z.string().min(1).max(50), z.number().int().positive()])
+    .optional(),
 });
 
 export type BatchTelemetryEventsInput = z.infer<

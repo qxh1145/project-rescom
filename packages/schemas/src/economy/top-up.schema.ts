@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_PAGINATION_OFFSET } from "../common/pagination.schema";
 
 /**
  * Manual Point top-up contracts (Story 6.6, FR-34/FR-35, AD-16).
@@ -117,6 +118,7 @@ export const listTopUpRequestsQuerySchema = z
       .number()
       .int("offset must be an integer")
       .min(0, "offset cannot be negative")
+      .max(MAX_PAGINATION_OFFSET, `offset must be at most ${MAX_PAGINATION_OFFSET}`)
       .default(0),
     status: topUpStatusSchema.optional(),
   })

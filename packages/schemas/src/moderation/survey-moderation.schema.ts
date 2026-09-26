@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { formStatusEnum, formTypeEnum } from "../forms/form-draft.schema";
 import { surveyTargetingSchema } from "../forms/form-targeting.schema";
+import { MAX_PAGINATION_OFFSET } from "../common/pagination.schema";
 
 /**
  * Survey moderation contracts (Story 8.1, FR-20, FR-53, AD-16).
@@ -17,7 +18,7 @@ export const MODERATION_QUEUE_MAX_LIMIT = 50;
  * Upper bound of the queue `offset` (Epic 8 review P7): an unbounded value
  * (e.g. `1e20`) would reach the database `skip` and fail with a 500.
  */
-export const MODERATION_QUEUE_MAX_OFFSET = 10_000;
+export const MODERATION_QUEUE_MAX_OFFSET = MAX_PAGINATION_OFFSET;
 export const MODERATION_REJECTION_REASON_MIN_LENGTH = 5;
 export const MODERATION_REJECTION_REASON_MAX_LENGTH = 500;
 export const MODERATION_APPROVAL_NOTE_MAX_LENGTH = 500;

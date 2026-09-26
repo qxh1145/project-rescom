@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { blockIntegrityMetadataSchema } from "./form-integrity.schema";
+import { MAX_ANSWER_STRING_LENGTH } from "./form-answer.schema";
+import { isoDateUpperBound, parseStrictIsoDate } from "./iso-date";
+import { DISALLOWED_MIME_TYPES } from "../storage/file-storage.schema";
 
 export const formBlockTypeEnum = z.enum([
   "text",
@@ -44,7 +47,7 @@ export const textBlockBaseSchema = baseBlockSchema
     type: z.literal("text"),
     placeholder: z.string().max(200).optional(),
     minLength: z.number().int().min(0).optional(),
-    maxLength: z.number().int().min(1).optional(),
+    maxLength: z.number().int().min(1).max(MAX_ANSWER_STRING_LENGTH).optional(),
     pattern: z.string().trim().max(500).optional(),
   })
   .strict();
@@ -87,7 +90,7 @@ export const textareaBlockBaseSchema = baseBlockSchema
     type: z.literal("textarea"),
     placeholder: z.string().max(200).optional(),
     minLength: z.number().int().min(0).optional(),
-    maxLength: z.number().int().min(1).optional(),
+    maxLength: z.number().int().min(1).max(MAX_ANSWER_STRING_LENGTH).optional(),
   })
   .strict();
 
@@ -323,25 +326,22 @@ export const linearScaleBlockSchema = linearScaleBlockBaseSchema.superRefine(
 export type LinearScaleBlock = z.infer<typeof linearScaleBlockSchema>;
 
 // --- Date Block ---
-const dateStringRegex =
-  /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2})?)?$/;
-
 export const dateBlockBaseSchema = baseBlockSchema
   .extend({
     type: z.literal("date"),
     minDate: z
       .string()
       .trim()
-      .regex(
-        dateStringRegex,
+      .refine(
+        (value) => parseStrictIsoDate(value) !== null,
         "minDate must be a valid ISO date string (YYYY-MM-DD)",
       )
       .optional(),
     maxDate: z
       .string()
       .trim()
-      .regex(
-        dateStringRegex,
+      .refine(
+        (value) => parseStrictIsoDate(value) !== null,
         "maxDate must be a valid ISO date string (YYYY-MM-DD)",
       )
       .optional(),
@@ -354,9 +354,9 @@ function validateDateBlock(
   ctx: z.RefinementCtx,
 ) {
   if (b.minDate && b.maxDate) {
-    const minTime = new Date(b.minDate).getTime();
-    const maxTime = new Date(b.maxDate).getTime();
-    if (minTime > maxTime) {
+    const min = parseStrictIsoDate(b.minDate);
+    const max = parseStrictIsoDate(b.maxDate);
+    if (min && max && min.time > isoDateUpperBound(max)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["minDate"],
@@ -385,7 +385,13 @@ export const fileUploadBlockBaseSchema = baseBlockSchema
         z
           .string()
           .trim()
-          .regex(/^[-\w.]+\/[-\w.+]+$/, "Invalid MIME type format"),
+          .regex(/^[-\w.]+\/[-\w.+]+$/, "Invalid MIME type format")
+          .refine(
+            (mime) => !DISALLOWED_MIME_TYPES.includes(mime.trim().toLowerCase()),
+            (mime) => ({
+              message: `MIME type "${mime}" is not permitted for security reasons`,
+            }),
+          ),
       )
       .min(1, "At least one allowed MIME type must be specified")
       .max(50),

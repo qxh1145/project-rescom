@@ -1,7 +1,12 @@
 import { z } from 'zod';
-import { blockAnswerSchema, BlockAnswer } from './form-answer.schema';
+import {
+  blockAnswerSchema,
+  BlockAnswer,
+  MAX_ANSWER_STRING_LENGTH,
+} from './form-answer.schema';
 import { FormBlock } from './form-blocks.schema';
 import { validateAllAnswers } from './form-preview';
+import { parseStrictIsoDate } from './iso-date';
 import {
   rewardPolicyModeSchema,
   RewardPolicyMode,
@@ -177,14 +182,33 @@ function isAnswerProvided(value: unknown): boolean {
 
 /**
  * Epic 5 review P3/P23: server-side type strictness on top of the lenient
- * preview rules — no numeric coercion, unique string choices, a bounded
- * "Other" value, and file answers that are real attachment references.
+ * preview rules — no numeric coercion, bounded free text, real calendar
+ * dates, unique string choices, a bounded "Other" value, and file answers
+ * that are real attachment references.
  */
 function strictAnswerCheck(
   block: FormBlock,
   value: unknown,
 ): { error?: string; normalized?: unknown } {
   switch (block.type) {
+    case 'text':
+    case 'textarea':
+      if (typeof value !== 'string') {
+        return { error: 'Answer must be text' };
+      }
+      if (value.length > MAX_ANSWER_STRING_LENGTH) {
+        return {
+          error: `Answer must not exceed ${MAX_ANSWER_STRING_LENGTH} characters`,
+        };
+      }
+      return {};
+
+    case 'date':
+      if (typeof value !== 'string' || parseStrictIsoDate(value) === null) {
+        return { error: 'Date must be a valid date in YYYY-MM-DD format' };
+      }
+      return {};
+
     case 'number':
     case 'rating':
     case 'linear_scale':

@@ -2,9 +2,11 @@ import { z } from "zod";
 import { formBlockSchema } from "./form-blocks.schema";
 import { formIntegrityMetadataSchema } from "./form-integrity.schema";
 import { formSettingsSchema } from "./form-definition.schema";
+import { validateAttentionChecks } from "./attention-check.validation";
 import { surveyTargetingSchema, SurveyTargetingCriteria } from "./form-targeting.schema";
 import { externalSurveyUrlSchema } from "./external-url.schema";
 import { estimatedDurationMinutesSchema } from "../economy/pricing.schema";
+import { MAX_PAGINATION_OFFSET } from "../common/pagination.schema";
 
 export const formTypeEnum = z.enum(["INTERNAL", "EXTERNAL"]);
 export type FormTypeEnum = z.infer<typeof formTypeEnum>;
@@ -114,6 +116,8 @@ export const draftFormDefinitionSchema = z
         pairMap.set(block.id, pairedBlockId);
       }
     }
+
+    validateAttentionChecks(data.blocks, ctx);
   });
 
 export type DraftFormDefinition = z.infer<typeof draftFormDefinitionSchema>;
@@ -228,7 +232,12 @@ export type UpdateFormDraftInput = z.input<typeof updateFormDraftSchema>;
  */
 export const listFormsQuerySchema = z
   .object({
-    page: z.coerce.number().int().min(1).default(1),
+    page: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_PAGINATION_OFFSET, `page must be at most ${MAX_PAGINATION_OFFSET}`)
+      .default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
     status: formStatusEnum.optional(),
     type: formTypeEnum.optional(),

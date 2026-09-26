@@ -19,6 +19,7 @@ import {
   topUpReviewResultSchema,
   topUpStatusSchema,
 } from './top-up.schema';
+import { MAX_PAGINATION_OFFSET } from '../common/pagination.schema';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const ADMIN_ID = '22222222-2222-4222-8222-222222222222';
@@ -251,6 +252,21 @@ describe('Top-up schemas (Story 6.6, FR-34/FR-35)', () => {
       expect(
         listTopUpRequestsQuerySchema.safeParse({ status: 'UNKNOWN' }).success,
       ).toBe(false);
+    });
+
+    it('caps the list offset at MAX_PAGINATION_OFFSET', () => {
+      expect(
+        listTopUpRequestsQuerySchema.parse({
+          offset: String(MAX_PAGINATION_OFFSET),
+        }).offset,
+      ).toBe(MAX_PAGINATION_OFFSET);
+      for (const offset of ['1e20', String(MAX_PAGINATION_OFFSET + 1)]) {
+        const result = listTopUpRequestsQuerySchema.safeParse({ offset });
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error.issues[0].path).toEqual(['offset']);
+        }
+      }
     });
 
     it('requires a meaningful, trimmed rejection reason', () => {

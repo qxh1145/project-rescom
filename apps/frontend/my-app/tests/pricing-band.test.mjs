@@ -65,6 +65,84 @@ test("Decision E6-D2: FR-14 pricing band hints for the builder and the External 
     assert.equal(durationBandLabel("5–10 min"), "5–10 phút");
   });
 
+  await t.test("follows the backend effective duration when the definition is given (review F5)", () => {
+    const blocks = Array.from({ length: 200 }, (_, index) => ({
+      id: `b${index}`,
+      type: "text",
+      title: `Q${index}`,
+      order: index,
+      required: true,
+    }));
+    const withoutDefinition = describePricingBand({
+      type: "INTERNAL",
+      rewardPerResponse: 5,
+      estimatedDurationMinutes: 1,
+    });
+    assert.equal(withoutDefinition.blocksPublish, false);
+
+    // 200 questions x 2 s = 400 s barrier: effective 7 minutes (10–20 points).
+    const barrier = describePricingBand({
+      type: "INTERNAL",
+      rewardPerResponse: 5,
+      estimatedDurationMinutes: 1,
+      definition: {
+        blocks,
+        metadata: { expectedEffortSeconds: 60, minTimeBarrierSeconds: 15 },
+      },
+    });
+    assert.equal(barrier.blocksPublish, true);
+    assert.deepEqual([barrier.range.min, barrier.range.max], [10, 20]);
+
+    // A declared effort of 25 minutes picks the "> 15 min" band.
+    const effort = describePricingBand({
+      type: "EXTERNAL",
+      rewardPerResponse: 5,
+      estimatedDurationMinutes: 1,
+      definition: { metadata: { expectedEffortSeconds: 1500, minTimeBarrierSeconds: 15 } },
+    });
+    assert.equal(effort.blocksPublish, true);
+    assert.equal(effort.range.durationBand, "> 15 min");
+
+    // An External configured minimum above the estimate lengthens it too.
+    const externalBarrier = describePricingBand({
+      type: "EXTERNAL",
+      rewardPerResponse: 10,
+      estimatedDurationMinutes: 1,
+      definition: { metadata: { expectedEffortSeconds: 360, minTimeBarrierSeconds: 360 } },
+    });
+    assert.equal(externalBarrier.blocksPublish, false);
+    assert.equal(externalBarrier.range.durationBand, "5–10 min");
+  });
+
+  await t.test("a frozen reward skips the band minimum but keeps the maximum (review F3)", () => {
+    const definition = { metadata: { expectedEffortSeconds: 600 } };
+    const firstPublish = describePricingBand({
+      type: "INTERNAL",
+      rewardPerResponse: 5,
+      estimatedDurationMinutes: 4,
+      definition,
+    });
+    assert.equal(firstPublish.blocksPublish, true);
+
+    const republish = describePricingBand({
+      type: "INTERNAL",
+      rewardPerResponse: 5,
+      estimatedDurationMinutes: 4,
+      definition,
+      frozenReward: true,
+    });
+    assert.equal(republish.blocksPublish, false);
+
+    const aboveMaximum = describePricingBand({
+      type: "INTERNAL",
+      rewardPerResponse: 500,
+      estimatedDurationMinutes: 4,
+      definition,
+      frozenReward: true,
+    });
+    assert.equal(aboveMaximum.blocksPublish, true);
+  });
+
   await t.test("maps the backend publish errors to Vietnamese copy", () => {
     assert.match(
       pricingPublishErrorMessage("PRICING_REWARD_OUT_OF_BAND", {

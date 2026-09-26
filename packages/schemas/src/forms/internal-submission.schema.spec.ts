@@ -7,6 +7,7 @@ import {
 } from './internal-submission.schema';
 import { FormBlock } from './form-blocks.schema';
 import { validateBlockAnswer } from './form-preview';
+import { MAX_ANSWER_STRING_LENGTH } from './form-answer.schema';
 
 describe('Internal Form Submission Schemas & Validation', () => {
   const sampleBlocks: FormBlock[] = [
@@ -341,6 +342,45 @@ describe('Epic 5 review — answer contract (P3/P23)', () => {
       expect(check(['a', 'x', 'y'])).toMatch(/one "Other"/);
       expect(check(['a', 'x'.repeat(501)])).toMatch(/1-500/);
       expect(check(['a', 'my own answer'])).toBeUndefined();
+    });
+
+    it('caps free text at MAX_ANSWER_STRING_LENGTH even without a block maxLength', () => {
+      const textBlock = {
+        id: 'q-text',
+        order: 0,
+        title: 'Comment',
+        type: 'textarea',
+        required: true,
+      } as unknown as FormBlock;
+      const check = (value: unknown) =>
+        validateAnswersAgainstFormDefinition([textBlock], { 'q-text': value })
+          .errors['q-text'];
+      expect(check('x'.repeat(MAX_ANSWER_STRING_LENGTH))).toBeUndefined();
+      expect(check('x'.repeat(MAX_ANSWER_STRING_LENGTH + 1))).toMatch(
+        /Maximum length is 10000/,
+      );
+      // Whitespace padding is not trimmed away by the strict server pass.
+      expect(
+        check('x'.repeat(MAX_ANSWER_STRING_LENGTH - 1) + ' '.repeat(10)),
+      ).toBe(`Answer must not exceed ${MAX_ANSWER_STRING_LENGTH} characters`);
+    });
+
+    it('rejects impossible calendar dates', () => {
+      const dateBlock = {
+        id: 'q-date',
+        order: 0,
+        title: 'When',
+        type: 'date',
+        required: true,
+        includeTime: false,
+      } as unknown as FormBlock;
+      const check = (value: unknown) =>
+        validateAnswersAgainstFormDefinition([dateBlock], { 'q-date': value })
+          .errors['q-date'];
+      expect(check('2026-02-29')).toMatch(/valid date/);
+      expect(check('2026-05-01-2026')).toMatch(/valid date/);
+      expect(check('2024-02-29')).toBeUndefined();
+      expect(check('2026-05-01T10:00+07:00')).toBeUndefined();
     });
   });
 });

@@ -77,6 +77,53 @@ describe('Story 4.3: Marketplace Feed Interaction Schemas', () => {
       expect(parsed.maxDuration).toBe(300);
     });
 
+    it('treats empty or whitespace-only numeric parameters as not set', () => {
+      for (const blank of ['', ' ', '\t  ']) {
+        const parsed = marketplaceFeedQuerySchema.parse({
+          minReward: blank,
+          maxDuration: blank,
+        });
+        expect(parsed.minReward).toBeUndefined();
+        expect(parsed.maxDuration).toBeUndefined();
+      }
+    });
+
+    it('accepts only plain decimal digits for numeric parameters', () => {
+      expect(
+        marketplaceFeedQuerySchema.parse({
+          minReward: ' 7 ',
+          maxDuration: '60',
+        }),
+      ).toMatchObject({ minReward: 7, maxDuration: 60 });
+      for (const bad of ['1e3', '0x10', '-5', '1.5', '12abc', 'Infinity']) {
+        expect(
+          marketplaceFeedQuerySchema.safeParse({ minReward: bad }).success,
+        ).toBe(false);
+        expect(
+          marketplaceFeedQuerySchema.safeParse({ maxDuration: bad }).success,
+        ).toBe(false);
+      }
+    });
+
+    it('caps minReward at 10,000 points and maxDuration at 86,400 seconds', () => {
+      expect(
+        marketplaceFeedQuerySchema.parse({
+          minReward: '10000',
+          maxDuration: '86400',
+        }),
+      ).toMatchObject({ minReward: 10_000, maxDuration: 86_400 });
+      expect(
+        marketplaceFeedQuerySchema.safeParse({ minReward: '10001' }).success,
+      ).toBe(false);
+      expect(
+        marketplaceFeedQuerySchema.safeParse({ maxDuration: '86401' }).success,
+      ).toBe(false);
+      expect(
+        marketplaceFeedQuerySchema.safeParse({ maxDuration: '1'.repeat(25) })
+          .success,
+      ).toBe(false);
+    });
+
     it('should validate survey type filter', () => {
       expect(marketplaceFeedQuerySchema.parse({ type: 'INTERNAL' }).type).toBe(
         'INTERNAL',

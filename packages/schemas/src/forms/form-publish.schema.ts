@@ -15,6 +15,10 @@ import { estimatedDurationMinutesSchema } from "../economy/pricing.schema";
  *   reaches the Marketplace (FR-20, FR-53). There is no direct DRAFT -> PUBLISHED path.
  * - Only an Admin approval moves MODERATION_QUEUE -> PUBLISHED; an Admin rejection
  *   (or Publisher withdrawal) moves MODERATION_QUEUE -> CLOSED and refunds the Escrow.
+ * - DRAFT -> CLOSED (decision D2, Bug 3.1) is allowed only for a re-versioned draft
+ *   (a survey with a published version back in DRAFT after "Create New Version"):
+ *   closing it refunds the Escrow it still holds. A never-published draft is deleted,
+ *   not closed — `FormsService.closeForm` enforces that precondition.
  * - ESCROW_LOCKED is a legacy state: rows published before Story 8.1 may still hold it.
  *   Nothing enters it any more; such rows can only be moved into moderation or closed.
  * - Out-of-table transitions owned by other stories: new version (PUBLISHED -> DRAFT,
@@ -29,7 +33,7 @@ import { estimatedDurationMinutesSchema } from "../economy/pricing.schema";
  * rejection (`MODERATION`) is final (`409 FORM_NOT_REOPENABLE`).
  */
 export const FORM_STATUS_TRANSITIONS: Record<FormStatusEnum, readonly FormStatusEnum[]> = {
-  DRAFT: ["MODERATION_QUEUE"] as const,
+  DRAFT: ["MODERATION_QUEUE", "CLOSED"] as const,
   ESCROW_LOCKED: ["MODERATION_QUEUE", "CLOSED"] as const,
   MODERATION_QUEUE: ["PUBLISHED", "CLOSED"] as const,
   PUBLISHED: ["CLOSED"] as const,

@@ -166,6 +166,36 @@ describe('Survey Telemetry Schemas', () => {
       const result = batchTelemetryEventsInputSchema.safeParse({ events: tooManyEvents });
       expect(result.success).toBe(false);
     });
+
+    it('accepts consentNoticeVersion as a label or a positive integer (IntegrityConsent.noticeVersion)', () => {
+      const events = [
+        {
+          clientEventId,
+          eventType: 'QUESTION_SHOWN' as const,
+          attemptId,
+          formVersionId,
+          occurredAt: new Date().toISOString(),
+        },
+      ];
+      for (const consentNoticeVersion of ['v1.0', 1, 42]) {
+        const result = batchTelemetryEventsInputSchema.safeParse({
+          events,
+          consentNoticeVersion,
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.consentNoticeVersion).toBe(consentNoticeVersion);
+        }
+      }
+      for (const consentNoticeVersion of ['', 'x'.repeat(51), 0, -1, 1.5]) {
+        expect(
+          batchTelemetryEventsInputSchema.safeParse({
+            events,
+            consentNoticeVersion,
+          }).success,
+        ).toBe(false);
+      }
+    });
   });
 });
 

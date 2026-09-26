@@ -70,7 +70,9 @@ export function moveBlockDown(blocks: FormBlock[], index: number): FormBlock[] {
 /**
  * Duplicates a block at the given index:
  * - Generates a new unique block ID.
- * - For choice blocks, generates new unique option IDs and non-colliding values.
+ * - For choice blocks, generates new unique option IDs and non-colliding values,
+ *   and remaps an attention check's expectedValue onto the renamed values.
+ * - Drops the clone's consistencyPair (a pair belongs to the original only).
  * - Inserts the clone immediately after the target block.
  * - Reindexes the entire array.
  * - Returns the updated array and the index of the newly created block.
@@ -92,11 +94,27 @@ export function duplicateBlock(
 
   // If choice block, generate fresh unique option IDs and values
   if (clone.type === "single_choice" || clone.type === "multiple_choice") {
-    clone.options = clone.options.map((opt, optIdx) => ({
-      ...opt,
-      id: generateOptionId(),
-      value: `${opt.value.slice(0, 286)}_copy_${optIdx + 1}`,
-    }));
+    const renamedValues = new Map<string, string>();
+    clone.options = clone.options.map((opt, optIdx) => {
+      const value = `${opt.value.slice(0, 286)}_copy_${optIdx + 1}`;
+      renamedValues.set(opt.value, value);
+      return { ...opt, id: generateOptionId(), value };
+    });
+    const attentionCheck = clone.integrity?.attentionCheck;
+    if (attentionCheck) {
+      const expected = attentionCheck.expectedValue;
+      if (typeof expected === "string") {
+        attentionCheck.expectedValue = renamedValues.get(expected) ?? expected;
+      } else if (Array.isArray(expected)) {
+        attentionCheck.expectedValue = expected.map(
+          (value) => renamedValues.get(value) ?? value,
+        );
+      }
+    }
+  }
+
+  if (clone.integrity) {
+    delete clone.integrity.consistencyPair;
   }
 
   const result = [...blocks];
@@ -113,13 +131,24 @@ export function duplicateBlock(
 
 /**
  * Deletes a block at the given index and returns a newly reindexed array.
+ * Any consistencyPair on the remaining blocks that pointed at the deleted
+ * block is removed so no pair dangles.
  */
 export function deleteBlock(blocks: FormBlock[], index: number): FormBlock[] {
   if (index < 0 || index >= blocks.length) {
     return [...blocks];
   }
-  const result = blocks.filter((_, idx) => idx !== index);
-  return reindexBlocks(result);
+  const deletedId = blocks[index].id;
+  const result = blocks
+    .filter((_, idx) => idx !== index)
+    .map((block) => {
+      if (block.integrity?.consistencyPair?.pairedBlockId !== deletedId) {
+        return block;
+      }
+      const { consistencyPair: _removed, ...integrity } = block.integrity;
+      return { ...block, integrity };
+    });
+  return reindexBlocks(result as FormBlock[]);
 }
 
 /**
