@@ -1,5 +1,9 @@
 import { StoredObjectStatus } from '@rescom/schemas';
-import { StorageRepositoryPort } from '../application/ports/storage-repository.port';
+import {
+  REJECTED_PURGE_BATCH_SIZE,
+  STORAGE_CLEANUP_BATCH_SIZE,
+  StorageRepositoryPort,
+} from '../application/ports/storage-repository.port';
 import { StoredObjectEntity } from '../domain/stored-object.entity';
 
 /**
@@ -28,13 +32,15 @@ export class InMemoryStorageRepository implements StorageRepositoryPort {
   async claimForFinalization(
     id: string,
     entity: StoredObjectEntity,
+    now: Date,
   ): Promise<boolean> {
     const stored = this.objects.get(id);
     if (
       !stored ||
       stored.storageKey !== entity.storageKey ||
       !(
-        stored.status === 'INITIATED' ||
+        (stored.status === 'INITIATED' &&
+          Boolean(stored.expiresAt && stored.expiresAt > now)) ||
         (stored.status === 'QUARANTINED' && stored.scanStatus === 'OUTAGE')
       )
     ) {
@@ -74,19 +80,50 @@ export class InMemoryStorageRepository implements StorageRepositoryPort {
 
   async findExpiredUnattached(
     now: Date,
-    limit = 200,
+    limit = STORAGE_CLEANUP_BATCH_SIZE,
   ): Promise<StoredObjectEntity[]> {
     return [...this.objects.values()]
       .filter(
         (object) =>
-          !['ATTACHED', 'DELETED', 'EXPIRED'].includes(object.status) &&
-          Boolean(object.expiresAt && object.expiresAt <= now),
+          !['ATTACHED', 'DELETED', 'EXPIRED', 'REJECTED'].includes(
+            object.status,
+          ) && Boolean(object.expiresAt && object.expiresAt <= now),
       )
-      .sort(
-        (a, b) => (a.expiresAt?.getTime() ?? 0) - (b.expiresAt?.getTime() ?? 0),
-      )
+      .sort(byExpiryThenId)
       .slice(0, limit)
       .map(copyOf);
+  }
+
+  async findRejectedPendingPurge(
+    due: Date,
+    limit = REJECTED_PURGE_BATCH_SIZE,
+  ): Promise<StoredObjectEntity[]> {
+    return [...this.objects.values()]
+      .filter(
+        (object) =>
+          object.status === 'REJECTED' &&
+          Boolean(object.expiresAt && object.expiresAt <= due),
+      )
+      .sort(byExpiryThenId)
+      .slice(0, limit)
+      .map(copyOf);
+  }
+
+  async recordRejectedPurge(
+    id: string,
+    expectedExpiresAt: Date,
+    entity: StoredObjectEntity,
+  ): Promise<boolean> {
+    const stored = this.objects.get(id);
+    if (
+      !stored ||
+      stored.status !== 'REJECTED' ||
+      stored.expiresAt?.getTime() !== expectedExpiresAt.getTime()
+    ) {
+      return false;
+    }
+    this.objects.set(id, copyOf(entity));
+    return true;
   }
 
   async delete(id: string): Promise<void> {
@@ -96,6 +133,14 @@ export class InMemoryStorageRepository implements StorageRepositoryPort {
   clear(): void {
     this.objects.clear();
   }
+}
+
+/** Mirrors Prisma's `orderBy: [{ expiresAt: 'asc' }, { id: 'asc' }]`. */
+function byExpiryThenId(a: StoredObjectEntity, b: StoredObjectEntity): number {
+  return (
+    (a.expiresAt?.getTime() ?? 0) - (b.expiresAt?.getTime() ?? 0) ||
+    a.id.localeCompare(b.id)
+  );
 }
 
 function copyOf(entity: StoredObjectEntity): StoredObjectEntity {

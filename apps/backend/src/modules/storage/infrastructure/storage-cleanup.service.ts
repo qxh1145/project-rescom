@@ -34,7 +34,7 @@ export class StorageCleanupService implements OnModuleInit, OnModuleDestroy {
 
   async runCleanup(): Promise<void> {
     try {
-      const { expired, purged, failures } =
+      const { expired, purged, failures, purgeFailures, purgeBatchFailure } =
         await this.storageService.cleanupExpired();
       if (expired > 0) {
         this.logger.log(`Expired ${expired} unattached stored object(s).`);
@@ -47,6 +47,16 @@ export class StorageCleanupService implements OnModuleInit, OnModuleDestroy {
       for (const failure of failures) {
         this.logger.error(
           `Failed to expire stored object ${failure.objectId}: ${failure.reason}`,
+        );
+      }
+      for (const failure of purgeFailures) {
+        this.logger.error(
+          `Failed to purge bytes of rejected stored object ${failure.objectId}: ${failure.reason}`,
+        );
+      }
+      if (purgeBatchFailure) {
+        this.logger.error(
+          `Failed to select rejected stored objects for purge: ${purgeBatchFailure}`,
         );
       }
     } catch (error) {

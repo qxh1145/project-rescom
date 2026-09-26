@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { StoredObjectStatus } from '@rescom/schemas';
 import { PrismaService } from '../../../common/database/prisma.service';
-import { StorageRepositoryPort } from '../application/ports/storage-repository.port';
+import {
+  REJECTED_PURGE_BATCH_SIZE,
+  STORAGE_CLEANUP_BATCH_SIZE,
+  StorageRepositoryPort,
+} from '../application/ports/storage-repository.port';
 import { StoredObjectEntity } from '../domain/stored-object.entity';
 
 @Injectable()
@@ -53,13 +57,14 @@ export class PrismaStorageRepository implements StorageRepositoryPort {
   async claimForFinalization(
     id: string,
     entity: StoredObjectEntity,
+    now: Date,
   ): Promise<boolean> {
     const result = await this.prisma.storedObject.updateMany({
       where: {
         id,
         storageKey: entity.storageKey,
         OR: [
-          { status: 'INITIATED' },
+          { status: 'INITIATED', expiresAt: { gt: now } },
           { status: 'QUARANTINED', scanStatus: 'OUTAGE' },
         ],
       },
@@ -100,17 +105,43 @@ export class PrismaStorageRepository implements StorageRepositoryPort {
 
   async findExpiredUnattached(
     now: Date,
-    limit = 200,
+    limit = STORAGE_CLEANUP_BATCH_SIZE,
   ): Promise<StoredObjectEntity[]> {
     const rows = await this.prisma.storedObject.findMany({
       where: {
         expiresAt: { lte: now },
-        status: { notIn: ['ATTACHED', 'DELETED', 'EXPIRED'] },
+        status: { notIn: ['ATTACHED', 'DELETED', 'EXPIRED', 'REJECTED'] },
       },
-      orderBy: { expiresAt: 'asc' },
+      // Ties broken by id so a batch boundary is stable across runs.
+      orderBy: [{ expiresAt: 'asc' }, { id: 'asc' }],
       take: limit,
     });
     return rows.map((row) => this.toEntity(row));
+  }
+
+  async findRejectedPendingPurge(
+    due: Date,
+    limit = REJECTED_PURGE_BATCH_SIZE,
+  ): Promise<StoredObjectEntity[]> {
+    const rows = await this.prisma.storedObject.findMany({
+      where: { status: 'REJECTED', expiresAt: { lte: due } },
+      // Ties broken by id so a batch boundary is stable across runs.
+      orderBy: [{ expiresAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+    return rows.map((row) => this.toEntity(row));
+  }
+
+  async recordRejectedPurge(
+    id: string,
+    expectedExpiresAt: Date,
+    entity: StoredObjectEntity,
+  ): Promise<boolean> {
+    const result = await this.prisma.storedObject.updateMany({
+      where: { id, status: 'REJECTED', expiresAt: expectedExpiresAt },
+      data: this.mutableState(entity),
+    });
+    return result.count === 1;
   }
 
   async delete(id: string): Promise<void> {

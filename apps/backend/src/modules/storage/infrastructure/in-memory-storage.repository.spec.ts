@@ -29,24 +29,52 @@ describe('InMemoryStorageRepository', () => {
   });
 
   describe('claimForFinalization', () => {
+    const now = new Date();
+    const open = new Date(now.getTime() + 60 * 1000);
+
     it('claims INITIATED objects and OUTAGE retries only', async () => {
-      await repository.save(entity());
+      await repository.save(entity({ expiresAt: open }));
       await expect(
-        repository.claimForFinalization('object-1', entity()),
+        repository.claimForFinalization('object-1', entity(), now),
       ).resolves.toBe(true);
 
       await repository.save(
         entity({ status: 'QUARANTINED', scanStatus: 'PENDING' }),
       );
       await expect(
-        repository.claimForFinalization('object-1', entity()),
+        repository.claimForFinalization('object-1', entity(), now),
       ).resolves.toBe(false);
 
       await repository.save(
         entity({ status: 'QUARANTINED', scanStatus: 'OUTAGE' }),
       );
       await expect(
-        repository.claimForFinalization('object-1', entity()),
+        repository.claimForFinalization('object-1', entity(), now),
+      ).resolves.toBe(true);
+    });
+
+    it('refuses an INITIATED object whose upload window has closed', async () => {
+      for (const expiresAt of [now, new Date(now.getTime() - 1), null]) {
+        await repository.save(entity({ expiresAt }));
+        await expect(
+          repository.claimForFinalization('object-1', entity(), now),
+        ).resolves.toBe(false);
+        expect((await repository.findById('object-1'))?.status).toBe(
+          'INITIATED',
+        );
+      }
+    });
+
+    it('still claims an OUTAGE retry after the upload window', async () => {
+      await repository.save(
+        entity({
+          status: 'QUARANTINED',
+          scanStatus: 'OUTAGE',
+          expiresAt: new Date(now.getTime() - 1),
+        }),
+      );
+      await expect(
+        repository.claimForFinalization('object-1', entity(), now),
       ).resolves.toBe(true);
     });
 
@@ -60,7 +88,7 @@ describe('InMemoryStorageRepository', () => {
       );
 
       await expect(
-        repository.claimForFinalization('object-1', entity()),
+        repository.claimForFinalization('object-1', entity(), now),
       ).resolves.toBe(false);
       expect((await repository.findById('object-1'))?.storageKey).toBe(
         'verified/participation/attempt-1/object-1',
@@ -68,20 +96,52 @@ describe('InMemoryStorageRepository', () => {
     });
   });
 
-  it('selects lapsed REJECTED objects until their expiresAt is cleared', async () => {
+  describe('REJECTED purge selection', () => {
     const now = new Date();
     const lapsed = new Date(now.getTime() - 1000);
-    await repository.save(
-      entity({ status: 'REJECTED', scanStatus: 'INFECTED', expiresAt: lapsed }),
-    );
+    const rejected = (expiresAt: Date | null) =>
+      entity({ status: 'REJECTED', scanStatus: 'INFECTED', expiresAt });
 
-    await expect(repository.findExpiredUnattached(now)).resolves.toHaveLength(
-      1,
-    );
+    it('keeps REJECTED objects out of the expiry batch', async () => {
+      await repository.save(rejected(lapsed));
+      await expect(repository.findExpiredUnattached(now)).resolves.toEqual([]);
+    });
 
-    await repository.save(
-      entity({ status: 'REJECTED', scanStatus: 'INFECTED', expiresAt: null }),
-    );
-    await expect(repository.findExpiredUnattached(now)).resolves.toEqual([]);
+    it('selects a lapsed REJECTED object until its expiresAt is cleared', async () => {
+      await repository.save(rejected(lapsed));
+      await expect(
+        repository.findRejectedPendingPurge(now),
+      ).resolves.toHaveLength(1);
+      await expect(
+        repository.findRejectedPendingPurge(new Date(lapsed.getTime() - 1)),
+      ).resolves.toEqual([]);
+
+      await repository.save(rejected(null));
+      await expect(repository.findRejectedPendingPurge(now)).resolves.toEqual(
+        [],
+      );
+    });
+
+    it('breaks expiresAt ties by id, like the Prisma ordering', async () => {
+      for (const id of ['object-c', 'object-a', 'object-b']) {
+        await repository.save(Object.assign(rejected(lapsed), { id }));
+      }
+      const batch = await repository.findRejectedPendingPurge(now, 2);
+      expect(batch.map((object) => object.id)).toEqual([
+        'object-a',
+        'object-b',
+      ]);
+    });
+
+    it('records a purge outcome only against the selected expiresAt', async () => {
+      await repository.save(rejected(lapsed));
+
+      await expect(
+        repository.recordRejectedPurge('object-1', lapsed, rejected(null)),
+      ).resolves.toBe(true);
+      await expect(
+        repository.recordRejectedPurge('object-1', lapsed, rejected(null)),
+      ).resolves.toBe(false);
+    });
   });
 });

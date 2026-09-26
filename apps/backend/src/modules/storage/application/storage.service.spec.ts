@@ -285,6 +285,47 @@ describe('StorageService', () => {
       });
     });
 
+    describe('upload window at the claim', () => {
+      it('refuses the claim when the window closes during the pre-claim checks', async () => {
+        const init = await initiate();
+        putPdf(init.storageKey, 1024);
+        const stored = await repository.findById(init.objectId);
+        const closesAt = stored!.expiresAt!.getTime();
+        const realHead = objectStorage.getObjectMetadata.bind(objectStorage);
+        jest
+          .spyOn(objectStorage, 'getObjectMetadata')
+          .mockImplementationOnce(async (b, key) => {
+            // The slow HEAD finishes just after the upload window closed.
+            jest.spyOn(Date, 'now').mockReturnValue(closesAt + 10);
+            return realHead(b, key);
+          });
+        const readSpy = jest.spyOn(objectStorage, 'readObject');
+
+        await expect(service.finalizeUpload(init.objectId)).rejects.toThrow(
+          'The upload session has expired.',
+        );
+
+        expect((await repository.findById(init.objectId))?.status).toBe(
+          'INITIATED',
+        );
+        expect(readSpy).not.toHaveBeenCalled();
+      });
+
+      it('treats expiresAt === now as closed, like the claim', async () => {
+        const init = await initiate();
+        putPdf(init.storageKey, 1024);
+        const stored = await repository.findById(init.objectId);
+        jest.spyOn(Date, 'now').mockReturnValue(stored!.expiresAt!.getTime());
+
+        await expect(service.finalizeUpload(init.objectId)).rejects.toThrow(
+          'The upload session has expired.',
+        );
+        expect((await repository.findById(init.objectId))?.status).toBe(
+          'EXPIRED',
+        );
+      });
+    });
+
     describe('verified copy (P10)', () => {
       it('serves and scans a server-owned copy that a re-PUT cannot change', async () => {
         const init = await initiate();
@@ -424,10 +465,10 @@ describe('StorageService', () => {
         const realClaim = repository.claimForFinalization.bind(repository);
         jest
           .spyOn(repository, 'claimForFinalization')
-          .mockImplementationOnce(async (id, entity) => {
+          .mockImplementationOnce(async (id, entity, now) => {
             // Another request finalizes the object to CLEAN in between.
             await service.finalizeUpload(init.objectId);
-            return realClaim(id, entity);
+            return realClaim(id, entity, now);
           });
 
         await expect(
@@ -681,6 +722,41 @@ describe('StorageService', () => {
       });
     });
 
+    it('still counts an INITIATED upload just after its window closes', async () => {
+      await initiate();
+      // 15-minute upload window + 1 minute: inside the 5-minute grace, where
+      // a finalize that passed its expiry check may still be claiming.
+      jest
+        .spyOn(Date, 'now')
+        .mockReturnValue(new Date().getTime() + 16 * 60 * 1000);
+
+      await expect(initiate({ fileName: 'second.pdf' })).rejects.toThrow(
+        'This question allows at most 1 uploaded file(s).',
+      );
+    });
+
+    it('does not count an INITIATED upload past its window and grace', async () => {
+      const lapsed = await initiate();
+      jest
+        .spyOn(Date, 'now')
+        .mockReturnValue(new Date().getTime() + 21 * 60 * 1000);
+
+      // maxFiles is 1 here; the lapsed upload can never be finalized.
+      await expect(initiate({ fileName: 'replacement.pdf' })).resolves.toEqual(
+        expect.objectContaining({ objectId: expect.any(String) }),
+      );
+      await expect(service.finalizeUpload(lapsed.objectId)).rejects.toThrow(
+        'The upload session has expired.',
+      );
+    });
+
+    it('still counts an INITIATED upload inside its window', async () => {
+      await initiate();
+      await expect(initiate({ fileName: 'second.pdf' })).rejects.toThrow(
+        'This question allows at most 1 uploaded file(s).',
+      );
+    });
+
     it('does not count an outage object toward maxFiles', async () => {
       const init = await initiate();
       putPdf(init.storageKey, 1024);
@@ -919,8 +995,20 @@ describe('StorageService', () => {
     });
 
     describe('lapsed REJECTED objects (F1)', () => {
-      async function rejectedWithLeftoverBytes() {
-        const init = await initiate({ fileName: 'test_virus.malware' });
+      const minutes = (count: number) =>
+        new Date(Date.now() + count * 60 * 1000);
+      /** Upload window (15 min) plus the purge margin (5 min) has passed. */
+      const afterPurgeMargin = () => minutes(21);
+      const empty = {
+        expired: 0,
+        purged: 0,
+        failures: [],
+        purgeFailures: [],
+        purgeBatchFailure: null,
+      };
+
+      async function rejectedWithLeftoverBytes(fileName = 'test.malware') {
+        const init = await initiate({ fileName, questionId: fileName });
         putPdf(init.storageKey, 1024);
         await service.finalizeUpload(init.objectId);
         // A re-PUT before the upload URL expired, and a legacy verified copy.
@@ -932,9 +1020,9 @@ describe('StorageService', () => {
       it('purges the bytes but keeps the object REJECTED', async () => {
         const init = await rejectedWithLeftoverBytes();
 
-        const result = await service.cleanupExpired(afterUploadWindow());
+        const result = await service.cleanupExpired(afterPurgeMargin());
 
-        expect(result).toEqual({ expired: 0, purged: 1, failures: [] });
+        expect(result).toEqual({ ...empty, purged: 1 });
         const stored = await repository.findById(init.objectId);
         expect(stored?.status).toBe('REJECTED');
         expect(stored?.scanStatus).toBe('INFECTED');
@@ -945,51 +1033,158 @@ describe('StorageService', () => {
         ).toBe(false);
       });
 
-      it('does not select a purged object again', async () => {
-        await rejectedWithLeftoverBytes();
-        await service.cleanupExpired(afterUploadWindow());
-        const deleteSpy = jest.spyOn(objectStorage, 'deleteObject');
+      it('waits for the margin after the upload window before purging', async () => {
+        const init = await rejectedWithLeftoverBytes();
 
-        const second = await service.cleanupExpired(afterUploadWindow());
+        await expect(service.cleanupExpired(minutes(19))).resolves.toEqual(
+          empty,
+        );
+        expect(objectStorage.hasObject(bucket, init.storageKey)).toBe(true);
 
-        expect(second).toEqual({ expired: 0, purged: 0, failures: [] });
-        expect(deleteSpy).not.toHaveBeenCalled();
         await expect(
-          repository.findExpiredUnattached(afterUploadWindow()),
-        ).resolves.toEqual([]);
+          service.cleanupExpired(afterPurgeMargin()),
+        ).resolves.toEqual({ ...empty, purged: 1 });
       });
 
-      it('retries a failed purge on the next run', async () => {
+      it('does not select a purged object again', async () => {
+        await rejectedWithLeftoverBytes();
+        await service.cleanupExpired(afterPurgeMargin());
+        const deleteSpy = jest.spyOn(objectStorage, 'deleteObject');
+
+        const second = await service.cleanupExpired(afterPurgeMargin());
+
+        expect(second).toEqual(empty);
+        expect(deleteSpy).not.toHaveBeenCalled();
+      });
+
+      it('backs a failed purge off with a growing delay, then retries it', async () => {
         const init = await rejectedWithLeftoverBytes();
         const realDelete = objectStorage.deleteObject.bind(objectStorage);
-        jest
+        const deleteSpy = jest
           .spyOn(objectStorage, 'deleteObject')
-          .mockRejectedValueOnce(new Error('storage unavailable'))
-          .mockImplementation(realDelete);
+          .mockRejectedValue(new Error('AccessDenied'));
+        const runAt = afterPurgeMargin();
 
-        const first = await service.cleanupExpired(afterUploadWindow());
+        const first = await service.cleanupExpired(runAt);
 
         expect(first).toEqual({
-          expired: 0,
-          purged: 0,
-          failures: [
-            { objectId: init.objectId, reason: 'storage unavailable' },
-          ],
+          ...empty,
+          purgeFailures: [{ objectId: init.objectId, reason: 'AccessDenied' }],
         });
         const pending = await repository.findById(init.objectId);
         expect(pending?.status).toBe('REJECTED');
-        expect(pending?.expiresAt).not.toBeNull();
+        expect(pending?.scanResult).toMatchObject({ purgeAttempts: 1 });
+        expect(pending?.expiresAt?.getTime()).toBe(
+          runAt.getTime() + 60 * 60 * 1000,
+        );
 
-        const second = await service.cleanupExpired(afterUploadWindow());
+        // Not reselected by the next run at the same time.
+        deleteSpy.mockClear();
+        await expect(service.cleanupExpired(runAt)).resolves.toEqual(empty);
+        expect(deleteSpy).not.toHaveBeenCalled();
 
-        expect(second).toEqual({ expired: 0, purged: 1, failures: [] });
+        // Due again after 1h + margin; a second failure doubles the delay.
+        const secondRun = new Date(runAt.getTime() + 66 * 60 * 1000);
+        await service.cleanupExpired(secondRun);
+        const backedOff = await repository.findById(init.objectId);
+        expect(backedOff?.scanResult).toMatchObject({ purgeAttempts: 2 });
+        expect(backedOff?.expiresAt?.getTime()).toBe(
+          secondRun.getTime() + 2 * 60 * 60 * 1000,
+        );
+
+        deleteSpy.mockImplementation(realDelete);
+        const thirdRun = new Date(secondRun.getTime() + 126 * 60 * 1000);
+        await expect(service.cleanupExpired(thirdRun)).resolves.toEqual({
+          ...empty,
+          purged: 1,
+        });
         expect(objectStorage.hasObject(bucket, init.storageKey)).toBe(false);
-        expect(
-          objectStorage.hasObject(bucket, verifiedKeyOf(init.objectId)),
-        ).toBe(false);
-        expect(
-          (await repository.findById(init.objectId))?.expiresAt,
-        ).toBeNull();
+        const purged = await repository.findById(init.objectId);
+        expect(purged?.status).toBe('REJECTED');
+        expect(purged?.expiresAt).toBeNull();
+      });
+
+      it('keeps expiring while REJECTED rows exceed the batch', async () => {
+        for (const name of ['a.malware', 'b.malware', 'c.malware']) {
+          await rejectedWithLeftoverBytes(name);
+        }
+        const lapsedUpload = await initiate({ questionId: 'q-live' });
+
+        // Expiry and purge budgets of 2 each: the 3 older REJECTED rows
+        // must not keep the lapsed INITIATED upload from expiring.
+        const result = await service.cleanupExpired(afterPurgeMargin(), 2, 2);
+
+        expect(result).toMatchObject({ expired: 1, purged: 2 });
+        expect((await repository.findById(lapsedUpload.objectId))?.status).toBe(
+          'EXPIRED',
+        );
+        await expect(
+          service.cleanupExpired(afterPurgeMargin(), 2, 2),
+        ).resolves.toMatchObject({ expired: 0, purged: 1 });
+      });
+
+      it('reports one failure when both the purge and its record fail', async () => {
+        const init = await rejectedWithLeftoverBytes();
+        jest
+          .spyOn(objectStorage, 'deleteObject')
+          .mockRejectedValue(new Error('AccessDenied'));
+        jest
+          .spyOn(repository, 'recordRejectedPurge')
+          .mockRejectedValue(new Error('database unavailable'));
+
+        await expect(
+          service.cleanupExpired(afterPurgeMargin()),
+        ).resolves.toEqual({
+          ...empty,
+          purgeFailures: [{ objectId: init.objectId, reason: 'AccessDenied' }],
+        });
+      });
+
+      it('reports a failed record once, after a successful purge', async () => {
+        const init = await rejectedWithLeftoverBytes();
+        jest
+          .spyOn(repository, 'recordRejectedPurge')
+          .mockRejectedValue(new Error('database unavailable'));
+
+        await expect(
+          service.cleanupExpired(afterPurgeMargin()),
+        ).resolves.toEqual({
+          ...empty,
+          purgeFailures: [
+            { objectId: init.objectId, reason: 'database unavailable' },
+          ],
+        });
+      });
+
+      it('keeps the expiry results when the purge batch cannot be selected', async () => {
+        const lapsedUpload = await initiate({ questionId: 'q-live' });
+        jest
+          .spyOn(repository, 'findRejectedPendingPurge')
+          .mockRejectedValue(new Error('database unavailable'));
+
+        await expect(
+          service.cleanupExpired(afterPurgeMargin()),
+        ).resolves.toEqual({
+          ...empty,
+          expired: 1,
+          purgeBatchFailure: 'database unavailable',
+        });
+        expect((await repository.findById(lapsedUpload.objectId))?.status).toBe(
+          'EXPIRED',
+        );
+      });
+
+      it('counts a purge only once when two runs race', async () => {
+        const init = await rejectedWithLeftoverBytes();
+        const stale = await repository.findById(init.objectId);
+        await service.cleanupExpired(afterPurgeMargin());
+        jest
+          .spyOn(repository, 'findRejectedPendingPurge')
+          .mockResolvedValueOnce(stale ? [stale] : []);
+
+        await expect(
+          service.cleanupExpired(afterPurgeMargin()),
+        ).resolves.toEqual(empty);
       });
     });
 
@@ -1007,7 +1202,13 @@ describe('StorageService', () => {
         new Date(Date.now() + 25 * 60 * 60 * 1000),
       );
 
-      expect(result).toEqual({ expired: 0, purged: 0, failures: [] });
+      expect(result).toEqual({
+        expired: 0,
+        purged: 0,
+        failures: [],
+        purgeFailures: [],
+        purgeBatchFailure: null,
+      });
       expect((await repository.findById(init.objectId))?.status).toBe(
         'ATTACHED',
       );

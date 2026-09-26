@@ -47,6 +47,8 @@ describe('StorageCleanupService (P11)', () => {
       expired: 2,
       purged: 0,
       failures: [{ objectId: 'object-1', reason: 'storage unavailable' }],
+      purgeFailures: [{ objectId: 'object-2', reason: 'AccessDenied' }],
+      purgeBatchFailure: 'database unavailable',
     });
 
     await cleanup.runCleanup();
@@ -54,12 +56,19 @@ describe('StorageCleanupService (P11)', () => {
     expect(errorSpy).toHaveBeenCalledWith(
       'Failed to expire stored object object-1: storage unavailable',
     );
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Failed to purge bytes of rejected stored object object-2: AccessDenied',
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Failed to select rejected stored objects for purge: database unavailable',
+    );
   });
 
   it('purges lapsed REJECTED objects without expiring them (F1)', async () => {
     const repository = new InMemoryStorageRepository();
     const objectStorage = new InMemoryObjectStorageService();
-    const lapsed = new Date(Date.now() - 60 * 1000);
+    // Past the upload window and the 5-minute purge margin.
+    const lapsed = new Date(Date.now() - 10 * 60 * 1000);
     const stored = (id: string, status: 'REJECTED' | 'INITIATED') =>
       new StoredObjectEntity(
         id,

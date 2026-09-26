@@ -179,6 +179,31 @@ export class StoredObjectEntity {
     this.updatedAt = new Date();
   }
 
+  /** Failed purge attempts of a REJECTED object's bytes so far. */
+  get purgeAttempts(): number {
+    const attempts = this.scanResult?.purgeAttempts;
+    return typeof attempts === 'number' ? attempts : 0;
+  }
+
+  /**
+   * Records a failed purge of a REJECTED object's bytes and defers the next
+   * attempt to `retryAt`. The attempt count lives in `scanResult` (no schema
+   * change); the status and rejection details stay as they were.
+   */
+  markBytesPurgeFailed(retryAt: Date): void {
+    if (this.status !== 'REJECTED') {
+      throw new Error(
+        `Cannot record a failed purge from status: ${this.status}`,
+      );
+    }
+    this.scanResult = {
+      ...this.scanResult,
+      purgeAttempts: this.purgeAttempts + 1,
+    };
+    this.expiresAt = retryAt;
+    this.updatedAt = new Date();
+  }
+
   /**
    * Checks if the object is safe and authorized for downloading.
    * Only CLEAN or ATTACHED objects may be downloaded (AD-22).

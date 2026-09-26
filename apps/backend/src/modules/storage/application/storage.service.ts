@@ -24,12 +24,24 @@ import {
   StorageAccess,
   StorageOwnerAuthorizationPort,
 } from './ports/storage-owner-authorization.port';
-import { StorageRepositoryPort } from './ports/storage-repository.port';
+import {
+  REJECTED_PURGE_BATCH_SIZE,
+  STORAGE_CLEANUP_BATCH_SIZE,
+  StorageRepositoryPort,
+} from './ports/storage-repository.port';
 
 const GLOBAL_MAX_FILE_SIZE = 50 * 1024 * 1024;
 const UPLOAD_URL_TTL_SECONDS = 15 * 60;
 const DOWNLOAD_URL_TTL_SECONDS = 5 * 60;
-const STORAGE_CLEANUP_BATCH_SIZE = 200;
+/**
+ * Grace after an upload window closes (`expiresAt`): a PUT or finalize that
+ * started just before the deadline has settled by then, so only afterwards is
+ * an INITIATED upload treated as dead for maxFiles, or a REJECTED upload's
+ * bytes purged.
+ */
+const UPLOAD_GRACE_MS = 5 * 60 * 1000;
+const PURGE_RETRY_BASE_MS = 60 * 60 * 1000;
+const PURGE_RETRY_MAX_MS = 24 * 60 * 60 * 1000;
 const MAX_DELETE_ATTEMPTS = 3;
 const SNIFF_WINDOW_BYTES = 512;
 /** Leading markup comments are skipped within this window before sniffing. */
@@ -81,8 +93,12 @@ export interface StorageCleanupResult {
   expired: number;
   /** REJECTED objects whose leftover bytes were removed (they stay REJECTED). */
   purged: number;
-  /** Objects that could not be claimed or purged; the batch continued. */
+  /** Objects that could not be expired; the batch continued. */
   failures: { objectId: string; reason: string }[];
+  /** REJECTED objects whose bytes could not be purged; retried with backoff. */
+  purgeFailures: { objectId: string; reason: string }[];
+  /** Why the REJECTED purge batch could not be selected at all, if it failed. */
+  purgeBatchFailure: string | null;
 }
 
 export interface StorageServiceLogger {
@@ -239,7 +255,8 @@ export class StorageService {
           : `Object cannot be finalized from status ${current.status}.`,
       );
     }
-    if (current.expiresAt && current.expiresAt.getTime() < Date.now()) {
+    // An upload window is closed once `expiresAt <= now`, as in the claim.
+    if (current.expiresAt && current.expiresAt.getTime() <= Date.now()) {
       const expectedStatus = current.status;
       current.markExpired();
       if (
@@ -311,12 +328,29 @@ export class StorageService {
 
     const object = current;
     object.markQuarantined();
+    // The claim re-checks the upload window atomically: the checks above can
+    // take a while, and an INITIATED row that has expired meanwhile may
+    // already have stopped counting toward maxFiles.
+    const claimedAt = new Date(Date.now());
     if (
-      !(await this.storageRepository.claimForFinalization(objectId, object))
+      !(await this.storageRepository.claimForFinalization(
+        objectId,
+        object,
+        claimedAt,
+      ))
     ) {
       const latest = await this.storageRepository.findById(objectId);
       if (latest && ['CLEAN', 'REJECTED'].includes(latest.status)) {
         return this.toDto(latest);
+      }
+      if (
+        latest?.status === 'INITIATED' &&
+        latest.expiresAt &&
+        latest.expiresAt.getTime() <= claimedAt.getTime()
+      ) {
+        throw new StorageInvalidFileException(
+          'The upload session has expired.',
+        );
       }
       throw new StorageInvalidFileException(
         'Upload is already being finalized or is no longer eligible.',
@@ -477,14 +511,13 @@ export class StorageService {
    * is already EXPIRED and is not selected again, so the caller must log the
    * failure (a bucket lifecycle rule is the backstop).
    *
-   * A lapsed REJECTED object stays REJECTED: its bytes (a failed immediate
-   * delete, a re-PUT before the upload URL expired, or a legacy verified
-   * copy) are purged first and only then is it marked purged, so a failed
-   * purge is retried on the next run.
+   * Lapsed REJECTED objects are purged in their own batch afterwards (see
+   * `purgeRejected`), so neither kind of work can starve the other.
    */
   async cleanupExpired(
     now = new Date(),
     limit = STORAGE_CLEANUP_BATCH_SIZE,
+    purgeLimit = REJECTED_PURGE_BATCH_SIZE,
   ): Promise<StorageCleanupResult> {
     const candidates = await this.storageRepository.findExpiredUnattached(
       now,
@@ -494,23 +527,11 @@ export class StorageService {
       expired: 0,
       purged: 0,
       failures: [],
+      purgeFailures: [],
+      purgeBatchFailure: null,
     };
     for (const object of candidates) {
       try {
-        if (object.status === 'REJECTED') {
-          await this.purgeBytes(object);
-          object.markBytesPurged();
-          if (
-            await this.storageRepository.transition(
-              object.id,
-              'REJECTED',
-              object,
-            )
-          ) {
-            result.purged += 1;
-          }
-          continue;
-        }
         const expectedStatus = object.status;
         object.markExpired();
         if (
@@ -532,7 +553,69 @@ export class StorageService {
         });
       }
     }
+    await this.purgeRejected(now, purgeLimit, result);
     return result;
+  }
+
+  /**
+   * A lapsed REJECTED object stays REJECTED, but its bytes (a failed
+   * immediate delete, a re-PUT before the upload URL expired, or a legacy
+   * verified copy) are purged once its upload window plus a margin has
+   * passed; it is then marked purged and never selected again. A failed purge
+   * pushes `expiresAt` out with a growing backoff, so a persistently failing
+   * row drops behind the others instead of holding the head of the batch.
+   */
+  private async purgeRejected(
+    now: Date,
+    limit: number,
+    result: StorageCleanupResult,
+  ): Promise<void> {
+    let candidates: StoredObjectEntity[];
+    try {
+      candidates = await this.storageRepository.findRejectedPendingPurge(
+        new Date(now.getTime() - UPLOAD_GRACE_MS),
+        limit,
+      );
+    } catch (error) {
+      // The expiry batch already ran; its results must still be reported.
+      result.purgeBatchFailure =
+        error instanceof Error ? error.message : 'Unknown error';
+      return;
+    }
+    for (const object of candidates) {
+      const selectedExpiresAt = object.expiresAt;
+      if (!selectedExpiresAt) continue;
+      // At most one failure entry per object, whichever step failed first.
+      let failure: string | null = null;
+      try {
+        await this.purgeBytes(object);
+        object.markBytesPurged();
+      } catch (error) {
+        failure = error instanceof Error ? error.message : 'Unknown error';
+        object.markBytesPurgeFailed(
+          new Date(
+            now.getTime() +
+              Math.min(
+                PURGE_RETRY_BASE_MS * 2 ** object.purgeAttempts,
+                PURGE_RETRY_MAX_MS,
+              ),
+          ),
+        );
+      }
+      try {
+        const recorded = await this.storageRepository.recordRejectedPurge(
+          object.id,
+          selectedExpiresAt,
+          object,
+        );
+        if (recorded && failure === null) result.purged += 1;
+      } catch (error) {
+        failure ??= error instanceof Error ? error.message : 'Unknown error';
+      }
+      if (failure !== null) {
+        result.purgeFailures.push({ objectId: object.id, reason: failure });
+      }
+    }
   }
 
   private async verifyAndScanClaimed(
@@ -752,8 +835,10 @@ export class StorageService {
   /**
    * Enforces the question's maxFiles over its live objects. A scanner OUTAGE
    * must not wedge the question, so OUTAGE objects do not count: the
-   * respondent may retry one or upload a replacement. `excludeId` leaves out
-   * the object being retried.
+   * respondent may retry one or upload a replacement. Nor does an INITIATED
+   * upload whose window closed more than the grace period ago: the claim
+   * refuses it, so it can never be finalized and only awaits the cleanup
+   * sweep. `excludeId` leaves out the object being retried.
    */
   private async assertQuestionHasRoom(
     ownerContext: string,
@@ -766,18 +851,32 @@ export class StorageService {
       ownerContext,
       ownerRecordId,
     );
+    const now = Date.now();
     const activeForQuestion = existing.filter(
       (object) =>
         object.id !== excludeId &&
         object.questionId === questionId &&
         !['REJECTED', 'EXPIRED', 'DELETED'].includes(object.status) &&
-        object.scanStatus !== 'OUTAGE',
+        object.scanStatus !== 'OUTAGE' &&
+        !this.isLapsedUpload(object, now),
     ).length;
     if (activeForQuestion >= policy.maxFiles) {
       throw new StorageInvalidFileException(
         `This question allows at most ${policy.maxFiles} uploaded file(s).`,
       );
     }
+  }
+
+  /**
+   * Same `expiresAt <= now` comparison as finalization and the claim, shifted
+   * by the grace period so a finalize racing the deadline has settled first.
+   */
+  private isLapsedUpload(object: StoredObjectEntity, now: number): boolean {
+    return (
+      object.status === 'INITIATED' &&
+      object.expiresAt !== null &&
+      object.expiresAt.getTime() + UPLOAD_GRACE_MS <= now
+    );
   }
 
   /** Client-writable key the presigned PUT targets. */
