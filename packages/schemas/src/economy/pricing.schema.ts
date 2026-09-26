@@ -243,6 +243,33 @@ export function normalizeExpectedEffortSeconds(
 }
 
 /**
+ * Decision D3 (BE-6): the `metadata.expectedEffortSeconds` a Form Definition
+ * drops to when the Publisher changes `estimatedDurationMinutes` without also
+ * setting the effort — the estimated duration (60 s without one), raised to
+ * the configured `metadata.minTimeBarrierSeconds` and, for Internal surveys,
+ * the required minimum completion time (`computeInternalTimeBarrier`). Unlike
+ * `normalizeExpectedEffortSeconds` it ignores the stored effort, so lowering
+ * the duration also lowers the effort.
+ */
+export function expectedEffortFloorSeconds(
+  definition: RewardBandDefinitionLike | null | undefined,
+  estimatedDurationMinutes: number | null | undefined,
+  type: FormTypeEnum,
+): number {
+  return Math.max(
+    typeof estimatedDurationMinutes === 'number' &&
+      Number.isFinite(estimatedDurationMinutes) &&
+      estimatedDurationMinutes > 0
+      ? estimatedDurationMinutes * 60
+      : DEFAULT_EXPECTED_EFFORT_SECONDS,
+    finiteSecondsOrZero(definition?.metadata?.minTimeBarrierSeconds),
+    type === 'INTERNAL'
+      ? computeInternalTimeBarrier(definition).requiredSeconds
+      : 0,
+  );
+}
+
+/**
  * The FR-14 band check a publication must pass (decision E6-D2). The band
  * minimum and maximum both apply; the absolute 10,000-point schema cap stays
  * the hard input limit for drafts. External surveys always pay at least 1

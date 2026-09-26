@@ -14,6 +14,7 @@ import {
   createFormDraftSchema,
   determinePublishTargetStatus,
   DraftFormDefinition,
+  expectedEffortFloorSeconds,
   ExternalSurveyResponseDto,
   FormDetailDto,
   FormStatusEnum,
@@ -116,20 +117,34 @@ export function toFormDetailDto(data: FormWithVersion): FormDetailDto {
  * to the estimated duration and the required minimum completion time
  * (`normalizeExpectedEffortSeconds`), so a long survey saved with the
  * builder's default effort still passes the publish-time Form Definition
- * rules. External definitions are returned unchanged.
+ * rules. External definitions are otherwise returned unchanged.
+ *
+ * Decision D3 (BE-6): with `effortFollowsDuration` (the draft's estimated
+ * duration changed and the caller did not also change the effort) the effort
+ * of either type is reset to `expectedEffortFloorSeconds` instead, so
+ * lowering the duration lowers the effort too.
  */
 function withNormalizedEffort(
   type: FormEntity['type'],
   definition: DraftFormDefinition,
   estimatedDurationMinutes: number | null | undefined,
+  effortFollowsDuration = false,
 ): DraftFormDefinition {
-  if (type !== 'INTERNAL') {
+  let expectedEffortSeconds: number;
+  if (effortFollowsDuration) {
+    expectedEffortSeconds = expectedEffortFloorSeconds(
+      definition,
+      estimatedDurationMinutes,
+      type,
+    );
+  } else if (type === 'INTERNAL') {
+    expectedEffortSeconds = normalizeExpectedEffortSeconds(
+      definition,
+      estimatedDurationMinutes,
+    );
+  } else {
     return definition;
   }
-  const expectedEffortSeconds = normalizeExpectedEffortSeconds(
-    definition,
-    estimatedDurationMinutes,
-  );
   if (expectedEffortSeconds === definition.metadata?.expectedEffortSeconds) {
     return definition;
   }
@@ -484,11 +499,22 @@ export class FormsService {
       ),
     });
 
+    // Decision D3 (BE-6): a changed estimated duration resets the effort to
+    // its floor unless the caller changed the effort too. The builder
+    // autosave resends the stored effort with the new duration, which counts
+    // as unchanged.
+    const nextSchema = dto.schema ?? existing.currentVersion.schemaJson;
+    const effortFollowsDuration =
+      updatedForm.estimatedDurationMinutes !==
+        existing.form.estimatedDurationMinutes &&
+      nextSchema.metadata?.expectedEffortSeconds ===
+        existing.currentVersion.schemaJson.metadata?.expectedEffortSeconds;
     const updatedVersion = existing.currentVersion.copyWith({
       schemaJson: withNormalizedEffort(
         updatedForm.type,
-        dto.schema ?? existing.currentVersion.schemaJson,
+        nextSchema,
         updatedForm.estimatedDurationMinutes,
+        effortFollowsDuration,
       ),
       targetingJson: dto.targetingJson,
       externalUrl: dto.externalUrl,

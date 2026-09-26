@@ -1,5 +1,6 @@
 import {
   checkPublishRewardBand,
+  expectedEffortFloorSeconds,
   normalizeExpectedEffortSeconds,
   resolveEffectiveDurationMinutes,
   resolveRewardBandDurationOptions,
@@ -370,6 +371,51 @@ describe('Pricing Table & Reward Validation (FR-14)', () => {
           options,
         ),
       ).toEqual({ status: 'OUT_OF_BAND', range: getRewardPricingRange(10) });
+    });
+  });
+
+  describe('expectedEffortFloorSeconds (decision D3)', () => {
+    const blocks = (count: number) =>
+      Array.from({ length: count }, () => ({ type: 'text' }));
+
+    it('drops a stored effort to the lowered estimated duration (Internal and External)', () => {
+      const definition = {
+        blocks: blocks(3),
+        metadata: { expectedEffortSeconds: 1200, minTimeBarrierSeconds: 15 },
+      };
+      expect(expectedEffortFloorSeconds(definition, 3, 'INTERNAL')).toBe(180);
+      expect(expectedEffortFloorSeconds(definition, 3, 'EXTERNAL')).toBe(180);
+    });
+
+    it('respects the configured minimum and the Internal time barrier', () => {
+      expect(
+        expectedEffortFloorSeconds(
+          { blocks: blocks(3), metadata: { minTimeBarrierSeconds: 300 } },
+          3,
+          'EXTERNAL',
+        ),
+      ).toBe(300);
+      // 200 questions x 2 s = 400 s barrier (Internal only).
+      expect(
+        expectedEffortFloorSeconds(
+          { blocks: blocks(200), metadata: { minTimeBarrierSeconds: 15 } },
+          3,
+          'INTERNAL',
+        ),
+      ).toBe(400);
+      expect(
+        expectedEffortFloorSeconds(
+          { blocks: blocks(200), metadata: { minTimeBarrierSeconds: 15 } },
+          3,
+          'EXTERNAL',
+        ),
+      ).toBe(180);
+    });
+
+    it('falls back to 60 s without an estimated duration', () => {
+      expect(expectedEffortFloorSeconds({ blocks: [] }, null, 'EXTERNAL')).toBe(
+        60,
+      );
     });
   });
 

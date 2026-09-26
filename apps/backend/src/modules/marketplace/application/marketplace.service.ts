@@ -85,8 +85,15 @@ export class MarketplaceService {
         continue;
       }
 
+      // BE-12: the Publisher's estimated duration wins over the stored
+      // `metadata.expectedEffortSeconds`; the same value drives the
+      // maxDuration filter, the duration sorts and the card.
       const schema = item.currentVersion.schemaJson;
-      const estimatedEffort = schema?.metadata?.expectedEffortSeconds ?? 60;
+      const minutes = item.form.estimatedDurationMinutes;
+      const durationSeconds =
+        typeof minutes === 'number' && minutes > 0 ? minutes * 60 : undefined;
+      const estimatedEffort =
+        durationSeconds ?? schema?.metadata?.expectedEffortSeconds ?? 60;
 
       // Filter by maxDuration
       if (maxDuration != null && estimatedEffort > maxDuration) {

@@ -61,6 +61,7 @@ export const marketplaceFeedQuerySchema = z.object({
   ),
   /**
    * Longest expected effort to show, in SECONDS (compared with the survey's
+   * `estimatedDurationMinutes * 60`, falling back to
    * `metadata.expectedEffortSeconds`), not minutes.
    */
   maxDuration: z.preprocess(

@@ -843,6 +843,53 @@ describe('MarketplaceService', () => {
       expect(feedExternal.surveys[0].type).toBe('EXTERNAL');
     });
 
+    it('prefers the estimated duration over a stale expected effort (BE-12)', async () => {
+      const fDuration = new FormEntity(
+        'form-duration-3min',
+        publisherId,
+        'INTERNAL',
+        'PUBLISHED',
+        'Three Minute Survey',
+        null,
+        10,
+        100,
+        now,
+        now,
+        undefined,
+        0,
+        3,
+      );
+      const vDuration = new FormVersionEntity(
+        'v-duration-3min',
+        'form-duration-3min',
+        1,
+        { metadata: { expectedEffortSeconds: 1200 } } as any,
+        null,
+        true,
+        null,
+        null,
+        now,
+        now,
+      );
+      await formRepo.create(fDuration, vDuration);
+
+      const feed = await service.getFeed(respondentHanoiId, {
+        maxDuration: 180,
+        hideCompleted: true,
+        sortBy: 'duration_asc',
+        type: 'ALL',
+      });
+
+      expect(feed.surveys.map((s) => s.id)).toEqual([
+        'form-ai-internal',
+        'form-duration-3min',
+      ]);
+      expect(
+        feed.surveys.find((s) => s.id === 'form-duration-3min')
+          ?.estimatedEffortSeconds,
+      ).toBe(180);
+    });
+
     it('should filter by minReward and maxDuration', async () => {
       const feedReward = await service.getFeed(respondentHanoiId, {
         minReward: 25,

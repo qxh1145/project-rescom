@@ -3451,6 +3451,130 @@ describe('FormsService', () => {
       ).toBe(240);
     });
 
+    describe('Decision D3 (BE-6): a changed duration resets the effort to its floor', () => {
+      async function internalDraft(blockCount: number, minutes: number) {
+        return escrowService.createDraft(publisherId, {
+          title: 'Duration Survey',
+          type: 'INTERNAL',
+          rewardPerResponse: 10,
+          expectedCompletions: 10,
+          estimatedDurationMinutes: minutes,
+          schema: schemaWith(blockCount, 60),
+        });
+      }
+
+      async function externalDraft(minutes: number, effortSeconds: number) {
+        const created = await escrowService.createExternalSurvey(publisherId, {
+          title: 'Duration External',
+          externalUrl: 'https://forms.gle/duration',
+          rewardPerResponse: 20,
+          estimatedDurationMinutes: minutes,
+          expectedEffortSeconds: effortSeconds,
+          autoPublish: false,
+        });
+        return (await repository.findById(created.id))!;
+      }
+
+      it('lowers an Internal effort from 20 to 3 minutes', async () => {
+        const draft = await internalDraft(3, 20);
+        expect(await storedEffort(draft.id)).toBe(1200);
+
+        const saved = await escrowService.updateDraft(draft.id, owner, {
+          clientUpdatedAt: draft.updatedAt,
+          estimatedDurationMinutes: 3,
+        });
+
+        expect(
+          saved.currentVersion.schemaJson.metadata.expectedEffortSeconds,
+        ).toBe(180);
+      });
+
+      it('lowers the effort when the builder autosave resends the stored effort with the new duration', async () => {
+        const draft = await internalDraft(3, 20);
+
+        const saved = await escrowService.updateDraft(draft.id, owner, {
+          clientUpdatedAt: draft.updatedAt,
+          estimatedDurationMinutes: 3,
+          schema: schemaWith(3, 1200),
+        });
+
+        expect(
+          saved.currentVersion.schemaJson.metadata.expectedEffortSeconds,
+        ).toBe(180);
+      });
+
+      it('lowers an External effort from 20 to 3 minutes', async () => {
+        const stored = await externalDraft(20, 1200);
+
+        const saved = await escrowService.updateDraft(stored.form.id, owner, {
+          clientUpdatedAt: stored.form.updatedAt.toISOString(),
+          estimatedDurationMinutes: 3,
+        });
+
+        expect(
+          saved.currentVersion.schemaJson.metadata.expectedEffortSeconds,
+        ).toBe(180);
+      });
+
+      it('keeps a larger effort the caller sets together with the duration change', async () => {
+        const draft = await internalDraft(3, 20);
+        const internal = await escrowService.updateDraft(draft.id, owner, {
+          clientUpdatedAt: draft.updatedAt,
+          estimatedDurationMinutes: 3,
+          schema: schemaWith(3, 900),
+        });
+        expect(
+          internal.currentVersion.schemaJson.metadata.expectedEffortSeconds,
+        ).toBe(900);
+
+        const stored = await externalDraft(20, 1200);
+        const schemaJson = stored.currentVersion.schemaJson;
+        const external = await escrowService.updateDraft(
+          stored.form.id,
+          owner,
+          {
+            clientUpdatedAt: stored.form.updatedAt.toISOString(),
+            estimatedDurationMinutes: 3,
+            schema: {
+              ...schemaJson,
+              metadata: { ...schemaJson.metadata, expectedEffortSeconds: 900 },
+            },
+          },
+        );
+        expect(
+          external.currentVersion.schemaJson.metadata.expectedEffortSeconds,
+        ).toBe(900);
+      });
+
+      it('never drops the effort below the time barrier', async () => {
+        // 200 questions x 2 s = 400 s barrier.
+        const draft = await internalDraft(200, 20);
+
+        const saved = await escrowService.updateDraft(draft.id, owner, {
+          clientUpdatedAt: draft.updatedAt,
+          estimatedDurationMinutes: 3,
+        });
+
+        expect(
+          saved.currentVersion.schemaJson.metadata.expectedEffortSeconds,
+        ).toBe(400);
+      });
+
+      it('leaves the effort alone when the duration does not change', async () => {
+        const draft = await internalDraft(3, 20);
+
+        const saved = await escrowService.updateDraft(draft.id, owner, {
+          clientUpdatedAt: draft.updatedAt,
+          estimatedDurationMinutes: 20,
+          title: 'Renamed',
+        });
+
+        expect(
+          saved.currentVersion.schemaJson.metadata.expectedEffortSeconds,
+        ).toBe(1200);
+      });
+    });
+
     it('normalizes a stored legacy row at publish', async () => {
       const draft = await escrowService.createDraft(publisherId, {
         title: 'Legacy Survey',
