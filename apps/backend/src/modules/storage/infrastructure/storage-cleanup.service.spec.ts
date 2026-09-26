@@ -45,6 +45,7 @@ describe('StorageCleanupService (P11)', () => {
   it('logs each object that could not be expired', async () => {
     storageService.cleanupExpired.mockResolvedValue({
       expired: 2,
+      purged: 0,
       failures: [{ objectId: 'object-1', reason: 'storage unavailable' }],
     });
 
@@ -55,8 +56,9 @@ describe('StorageCleanupService (P11)', () => {
     );
   });
 
-  it('leaves lapsed REJECTED objects REJECTED and only expires the rest (BE-11)', async () => {
+  it('purges lapsed REJECTED objects without expiring them (F1)', async () => {
     const repository = new InMemoryStorageRepository();
+    const objectStorage = new InMemoryObjectStorageService();
     const lapsed = new Date(Date.now() - 60 * 1000);
     const stored = (id: string, status: 'REJECTED' | 'INITIATED') =>
       new StoredObjectEntity(
@@ -81,18 +83,36 @@ describe('StorageCleanupService (P11)', () => {
       );
     await repository.save(stored('rejected-1', 'REJECTED'));
     await repository.save(stored('initiated-1', 'INITIATED'));
+    objectStorage.putObject(
+      'rescom-private-storage',
+      'participation/attempt-1/rejected-1-file.pdf',
+      'leftover',
+      'application/pdf',
+    );
+    const logSpy = jest.spyOn(Logger.prototype, 'log');
     const realCleanup = new StorageCleanupService(
       new StorageService(
         repository,
-        new InMemoryObjectStorageService(),
+        objectStorage,
         new StubMalwareScannerService(),
       ),
     );
 
     await realCleanup.runCleanup();
 
-    expect((await repository.findById('rejected-1'))?.status).toBe('REJECTED');
+    const rejected = await repository.findById('rejected-1');
+    expect(rejected?.status).toBe('REJECTED');
+    expect(rejected?.expiresAt).toBeNull();
+    expect(
+      objectStorage.hasObject(
+        'rescom-private-storage',
+        'participation/attempt-1/rejected-1-file.pdf',
+      ),
+    ).toBe(false);
     expect((await repository.findById('initiated-1'))?.status).toBe('EXPIRED');
+    expect(logSpy).toHaveBeenCalledWith(
+      'Purged leftover bytes of 1 rejected stored object(s).',
+    );
     expect(errorSpy).not.toHaveBeenCalled();
   });
 

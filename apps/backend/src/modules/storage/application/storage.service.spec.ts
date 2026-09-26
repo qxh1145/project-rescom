@@ -592,6 +592,95 @@ describe('StorageService', () => {
       );
     });
 
+    describe('maxFiles on retry (F3)', () => {
+      async function outageUpload(fileName = 'document.pdf') {
+        const init = await initiate({ fileName });
+        putPdf(init.storageKey, 1024);
+        malwareScanner.setSimulateOutage(true);
+        await expect(service.finalizeUpload(init.objectId)).rejects.toThrow(
+          StorageScannerOutageException,
+        );
+        malwareScanner.setSimulateOutage(false);
+        return init;
+      }
+
+      it('refuses a retry once a replacement filled the question', async () => {
+        const outage = await outageUpload();
+        const replacement = await initiate({ fileName: 'replacement.pdf' });
+        putPdf(replacement.storageKey, 1024);
+        await service.finalizeUpload(replacement.objectId);
+        const claimSpy = jest.spyOn(repository, 'claimForFinalization');
+
+        await expect(service.finalizeUpload(outage.objectId)).rejects.toThrow(
+          'This question allows at most 1 uploaded file(s).',
+        );
+
+        expect(claimSpy).not.toHaveBeenCalled();
+        const stored = await repository.findById(outage.objectId);
+        expect(stored?.status).toBe('QUARANTINED');
+        expect(stored?.scanStatus).toBe('OUTAGE');
+        await expect(
+          service.getDownloadUrl(outage.objectId),
+        ).rejects.toBeInstanceOf(StorageObjectNotCleanException);
+      });
+
+      it('allows the retry again once the replacement is deleted', async () => {
+        const outage = await outageUpload();
+        const replacement = await initiate({ fileName: 'replacement.pdf' });
+        await service.deleteObject(replacement.objectId);
+
+        await expect(
+          service.finalizeUpload(outage.objectId),
+        ).resolves.toMatchObject({ status: 'CLEAN' });
+      });
+
+      it('does not count other OUTAGE objects or other questions', async () => {
+        const outage = await outageUpload();
+        await outageUpload('second.pdf');
+        const other = await initiate({ questionId: 'upload-2' });
+        putPdf(other.storageKey, 1024);
+        await service.finalizeUpload(other.objectId);
+
+        await expect(
+          service.finalizeUpload(outage.objectId),
+        ).resolves.toMatchObject({ status: 'CLEAN' });
+      });
+
+      it("recounts against the question's own policy", async () => {
+        const authorization: jest.Mocked<StorageOwnerAuthorizationPort> = {
+          authorize: jest.fn().mockResolvedValue(undefined),
+          resolveUploadPolicy: jest.fn().mockResolvedValue({
+            maxFileSizeBytes: 10 * 1024 * 1024,
+            allowedMimeTypes: [],
+            maxFiles: 2,
+          }),
+        };
+        service = new StorageService(
+          repository,
+          objectStorage,
+          malwareScanner,
+          authorization,
+        );
+        const outage = await outageUpload();
+        const replacement = await initiate({ fileName: 'replacement.pdf' });
+        putPdf(replacement.storageKey, 1024);
+        await service.finalizeUpload(replacement.objectId);
+
+        await expect(
+          service.finalizeUpload(outage.objectId, null, undefined, 'cap'),
+        ).resolves.toMatchObject({ status: 'CLEAN' });
+        expect(authorization.resolveUploadPolicy).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            ownerContext: 'participation',
+            ownerRecordId: validRecordId,
+            questionId: 'upload-1',
+          }),
+          null,
+          'cap',
+        );
+      });
+    });
+
     it('does not count an outage object toward maxFiles', async () => {
       const init = await initiate();
       putPdf(init.storageKey, 1024);
@@ -829,17 +918,79 @@ describe('StorageService', () => {
       expect(second.expired).toBe(1);
     });
 
-    it('never overwrites a REJECTED object with EXPIRED (BE-11)', async () => {
-      const init = await initiate({ fileName: 'test_virus.malware' });
-      putPdf(init.storageKey, 1024);
-      await service.finalizeUpload(init.objectId);
+    describe('lapsed REJECTED objects (F1)', () => {
+      async function rejectedWithLeftoverBytes() {
+        const init = await initiate({ fileName: 'test_virus.malware' });
+        putPdf(init.storageKey, 1024);
+        await service.finalizeUpload(init.objectId);
+        // A re-PUT before the upload URL expired, and a legacy verified copy.
+        putPdf(init.storageKey, 1024);
+        putPdf(verifiedKeyOf(init.objectId), 1024);
+        return init;
+      }
 
-      const result = await service.cleanupExpired(afterUploadWindow());
+      it('purges the bytes but keeps the object REJECTED', async () => {
+        const init = await rejectedWithLeftoverBytes();
 
-      expect(result).toEqual({ expired: 0, failures: [] });
-      const stored = await repository.findById(init.objectId);
-      expect(stored?.status).toBe('REJECTED');
-      expect(stored?.scanStatus).toBe('INFECTED');
+        const result = await service.cleanupExpired(afterUploadWindow());
+
+        expect(result).toEqual({ expired: 0, purged: 1, failures: [] });
+        const stored = await repository.findById(init.objectId);
+        expect(stored?.status).toBe('REJECTED');
+        expect(stored?.scanStatus).toBe('INFECTED');
+        expect(stored?.expiresAt).toBeNull();
+        expect(objectStorage.hasObject(bucket, init.storageKey)).toBe(false);
+        expect(
+          objectStorage.hasObject(bucket, verifiedKeyOf(init.objectId)),
+        ).toBe(false);
+      });
+
+      it('does not select a purged object again', async () => {
+        await rejectedWithLeftoverBytes();
+        await service.cleanupExpired(afterUploadWindow());
+        const deleteSpy = jest.spyOn(objectStorage, 'deleteObject');
+
+        const second = await service.cleanupExpired(afterUploadWindow());
+
+        expect(second).toEqual({ expired: 0, purged: 0, failures: [] });
+        expect(deleteSpy).not.toHaveBeenCalled();
+        await expect(
+          repository.findExpiredUnattached(afterUploadWindow()),
+        ).resolves.toEqual([]);
+      });
+
+      it('retries a failed purge on the next run', async () => {
+        const init = await rejectedWithLeftoverBytes();
+        const realDelete = objectStorage.deleteObject.bind(objectStorage);
+        jest
+          .spyOn(objectStorage, 'deleteObject')
+          .mockRejectedValueOnce(new Error('storage unavailable'))
+          .mockImplementation(realDelete);
+
+        const first = await service.cleanupExpired(afterUploadWindow());
+
+        expect(first).toEqual({
+          expired: 0,
+          purged: 0,
+          failures: [
+            { objectId: init.objectId, reason: 'storage unavailable' },
+          ],
+        });
+        const pending = await repository.findById(init.objectId);
+        expect(pending?.status).toBe('REJECTED');
+        expect(pending?.expiresAt).not.toBeNull();
+
+        const second = await service.cleanupExpired(afterUploadWindow());
+
+        expect(second).toEqual({ expired: 0, purged: 1, failures: [] });
+        expect(objectStorage.hasObject(bucket, init.storageKey)).toBe(false);
+        expect(
+          objectStorage.hasObject(bucket, verifiedKeyOf(init.objectId)),
+        ).toBe(false);
+        expect(
+          (await repository.findById(init.objectId))?.expiresAt,
+        ).toBeNull();
+      });
     });
 
     it('claims before purging, so an object attached meanwhile keeps its bytes', async () => {
@@ -856,7 +1007,7 @@ describe('StorageService', () => {
         new Date(Date.now() + 25 * 60 * 60 * 1000),
       );
 
-      expect(result).toEqual({ expired: 0, failures: [] });
+      expect(result).toEqual({ expired: 0, purged: 0, failures: [] });
       expect((await repository.findById(init.objectId))?.status).toBe(
         'ATTACHED',
       );

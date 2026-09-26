@@ -19,7 +19,8 @@ export interface StorageRepositoryPort {
   /**
    * Compare-and-set claim of an object for finalization: persists the entity
    * only while it is still INITIATED, or QUARANTINED with a scanner OUTAGE (a
-   * retry). Returns `false` when another finalization or writer won the race.
+   * retry), and still at the storage key the caller read. Returns `false`
+   * when another finalization or writer won the race.
    */
   claimForFinalization(
     id: string,
@@ -33,7 +34,8 @@ export interface StorageRepositoryPort {
   ): Promise<StoredObjectEntity[]>;
   /**
    * Oldest-first batch of unattached objects whose retention has lapsed.
-   * Terminal objects (DELETED, EXPIRED, REJECTED) are never selected.
+   * DELETED and EXPIRED objects are never selected; a REJECTED object is
+   * selected until its bytes are purged (which clears its `expiresAt`).
    */
   findExpiredUnattached(
     now: Date,

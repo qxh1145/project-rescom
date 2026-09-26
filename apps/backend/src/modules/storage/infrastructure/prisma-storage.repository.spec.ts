@@ -35,6 +35,7 @@ describe('PrismaStorageRepository', () => {
       expect.objectContaining({
         where: {
           id: 'object-1',
+          storageKey: 'participation/attempt-1/object-1-file.pdf',
           OR: [
             { status: 'INITIATED' },
             { status: 'QUARANTINED', scanStatus: 'OUTAGE' },
@@ -49,7 +50,7 @@ describe('PrismaStorageRepository', () => {
     ).resolves.toBe(false);
   });
 
-  it('never selects REJECTED objects for expiry (BE-11)', async () => {
+  it('selects lapsed REJECTED objects until their bytes are purged (F1)', async () => {
     const now = new Date();
     await repository.findExpiredUnattached(now, 10);
 
@@ -57,7 +58,7 @@ describe('PrismaStorageRepository', () => {
       expect.objectContaining({
         where: {
           expiresAt: { lte: now },
-          status: { notIn: ['ATTACHED', 'DELETED', 'EXPIRED', 'REJECTED'] },
+          status: { notIn: ['ATTACHED', 'DELETED', 'EXPIRED'] },
         },
         take: 10,
       }),

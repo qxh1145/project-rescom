@@ -34,9 +34,15 @@ export class StorageCleanupService implements OnModuleInit, OnModuleDestroy {
 
   async runCleanup(): Promise<void> {
     try {
-      const { expired, failures } = await this.storageService.cleanupExpired();
+      const { expired, purged, failures } =
+        await this.storageService.cleanupExpired();
       if (expired > 0) {
         this.logger.log(`Expired ${expired} unattached stored object(s).`);
+      }
+      if (purged > 0) {
+        this.logger.log(
+          `Purged leftover bytes of ${purged} rejected stored object(s).`,
+        );
       }
       for (const failure of failures) {
         this.logger.error(

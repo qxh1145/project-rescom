@@ -32,6 +32,7 @@ export class InMemoryStorageRepository implements StorageRepositoryPort {
     const stored = this.objects.get(id);
     if (
       !stored ||
+      stored.storageKey !== entity.storageKey ||
       !(
         stored.status === 'INITIATED' ||
         (stored.status === 'QUARANTINED' && stored.scanStatus === 'OUTAGE')
@@ -78,9 +79,8 @@ export class InMemoryStorageRepository implements StorageRepositoryPort {
     return [...this.objects.values()]
       .filter(
         (object) =>
-          !['ATTACHED', 'DELETED', 'EXPIRED', 'REJECTED'].includes(
-            object.status,
-          ) && Boolean(object.expiresAt && object.expiresAt <= now),
+          !['ATTACHED', 'DELETED', 'EXPIRED'].includes(object.status) &&
+          Boolean(object.expiresAt && object.expiresAt <= now),
       )
       .sort(
         (a, b) => (a.expiresAt?.getTime() ?? 0) - (b.expiresAt?.getTime() ?? 0),

@@ -20,6 +20,7 @@ import {
   ObjectStoragePort,
 } from './ports/object-storage.port';
 import {
+  FileUploadPolicy,
   StorageAccess,
   StorageOwnerAuthorizationPort,
 } from './ports/storage-owner-authorization.port';
@@ -78,6 +79,8 @@ const ACTIVE_CONTENT_PREFIXES = [
 export interface StorageCleanupResult {
   /** Objects claimed as EXPIRED whose bytes were removed. */
   expired: number;
+  /** REJECTED objects whose leftover bytes were removed (they stay REJECTED). */
+  purged: number;
   /** Objects that could not be claimed or purged; the batch continued. */
   failures: { objectId: string; reason: string }[];
 }
@@ -117,17 +120,11 @@ export class StorageService {
       );
     }
 
-    const policy = this.ownerAuthorization
-      ? await this.ownerAuthorization.resolveUploadPolicy(
-          input,
-          callerUserId,
-          ownerCapability,
-        )
-      : {
-          maxFileSizeBytes: 10 * 1024 * 1024,
-          allowedMimeTypes: [] as string[],
-          maxFiles: 1,
-        };
+    const policy = await this.uploadPolicy(
+      input,
+      callerUserId,
+      ownerCapability,
+    );
     const effectiveMax = Math.min(
       policy.maxFileSizeBytes,
       GLOBAL_MAX_FILE_SIZE,
@@ -148,23 +145,12 @@ export class StorageService {
       );
     }
 
-    const existing = await this.storageRepository.findByOwner(
+    await this.assertQuestionHasRoom(
       input.ownerContext,
       input.ownerRecordId,
+      input.questionId ?? null,
+      policy,
     );
-    // A scanner OUTAGE must not wedge the question: the respondent may retry
-    // that object or upload a replacement.
-    const activeForQuestion = existing.filter(
-      (object) =>
-        object.questionId === (input.questionId ?? null) &&
-        !['REJECTED', 'EXPIRED', 'DELETED'].includes(object.status) &&
-        object.scanStatus !== 'OUTAGE',
-    ).length;
-    if (activeForQuestion >= policy.maxFiles) {
-      throw new StorageInvalidFileException(
-        `This question allows at most ${policy.maxFiles} uploaded file(s).`,
-      );
-    }
 
     const objectId = crypto.randomUUID();
     const storageKey = this.uploadKeyFor({
@@ -266,6 +252,31 @@ export class StorageService {
         await this.purgeBytesQuietly(current);
       }
       throw new StorageInvalidFileException('The upload session has expired.');
+    }
+    if (retryingOutage) {
+      // An OUTAGE object stopped counting toward maxFiles, so a replacement
+      // may have filled the question since; the retry must not exceed it.
+      // Refusing leaves the object QUARANTINED/OUTAGE and never downloadable:
+      // the respondent can delete it, and cleanup expires it after its window.
+      await this.assertQuestionHasRoom(
+        current.ownerContext,
+        current.ownerRecordId,
+        current.questionId,
+        await this.uploadPolicy(
+          {
+            fileName: current.fileName,
+            fileSize: current.fileSize,
+            mimeType: current.mimeType,
+            ownerContext:
+              current.ownerContext as InitiateUploadInput['ownerContext'],
+            ownerRecordId: current.ownerRecordId,
+            questionId: current.questionId ?? undefined,
+          },
+          callerUserId,
+          ownerCapability,
+        ),
+        current.id,
+      );
     }
 
     // Pre-claim checks leave the object unclaimed so the client can re-PUT.
@@ -465,6 +476,11 @@ export class StorageService {
    * A byte deletion that fails after the claim leaves orphaned bytes: the row
    * is already EXPIRED and is not selected again, so the caller must log the
    * failure (a bucket lifecycle rule is the backstop).
+   *
+   * A lapsed REJECTED object stays REJECTED: its bytes (a failed immediate
+   * delete, a re-PUT before the upload URL expired, or a legacy verified
+   * copy) are purged first and only then is it marked purged, so a failed
+   * purge is retried on the next run.
    */
   async cleanupExpired(
     now = new Date(),
@@ -474,9 +490,27 @@ export class StorageService {
       now,
       limit,
     );
-    const result: StorageCleanupResult = { expired: 0, failures: [] };
+    const result: StorageCleanupResult = {
+      expired: 0,
+      purged: 0,
+      failures: [],
+    };
     for (const object of candidates) {
       try {
+        if (object.status === 'REJECTED') {
+          await this.purgeBytes(object);
+          object.markBytesPurged();
+          if (
+            await this.storageRepository.transition(
+              object.id,
+              'REJECTED',
+              object,
+            )
+          ) {
+            result.purged += 1;
+          }
+          continue;
+        }
         const expectedStatus = object.status;
         object.markExpired();
         if (
@@ -695,6 +729,55 @@ export class StorageService {
       );
     }
     return object;
+  }
+
+  private async uploadPolicy(
+    input: InitiateUploadInput,
+    callerUserId: string | null,
+    ownerCapability: string | null | undefined,
+  ): Promise<FileUploadPolicy> {
+    return this.ownerAuthorization
+      ? this.ownerAuthorization.resolveUploadPolicy(
+          input,
+          callerUserId,
+          ownerCapability,
+        )
+      : {
+          maxFileSizeBytes: 10 * 1024 * 1024,
+          allowedMimeTypes: [],
+          maxFiles: 1,
+        };
+  }
+
+  /**
+   * Enforces the question's maxFiles over its live objects. A scanner OUTAGE
+   * must not wedge the question, so OUTAGE objects do not count: the
+   * respondent may retry one or upload a replacement. `excludeId` leaves out
+   * the object being retried.
+   */
+  private async assertQuestionHasRoom(
+    ownerContext: string,
+    ownerRecordId: string,
+    questionId: string | null,
+    policy: FileUploadPolicy,
+    excludeId?: string,
+  ): Promise<void> {
+    const existing = await this.storageRepository.findByOwner(
+      ownerContext,
+      ownerRecordId,
+    );
+    const activeForQuestion = existing.filter(
+      (object) =>
+        object.id !== excludeId &&
+        object.questionId === questionId &&
+        !['REJECTED', 'EXPIRED', 'DELETED'].includes(object.status) &&
+        object.scanStatus !== 'OUTAGE',
+    ).length;
+    if (activeForQuestion >= policy.maxFiles) {
+      throw new StorageInvalidFileException(
+        `This question allows at most ${policy.maxFiles} uploaded file(s).`,
+      );
+    }
   }
 
   /** Client-writable key the presigned PUT targets. */

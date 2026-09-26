@@ -155,8 +155,27 @@ export class StoredObjectEntity {
   }
 
   markExpired(): void {
-    if (this.status === 'ATTACHED' || this.status === 'DELETED') return;
+    if (
+      this.status === 'ATTACHED' ||
+      this.status === 'DELETED' ||
+      this.status === 'REJECTED'
+    ) {
+      return;
+    }
     this.status = 'EXPIRED';
+    this.updatedAt = new Date();
+  }
+
+  /**
+   * Records that a REJECTED object's leftover bytes were purged. Clearing the
+   * retention deadline keeps cleanup from selecting it again; the status and
+   * rejection details stay as they were.
+   */
+  markBytesPurged(): void {
+    if (this.status !== 'REJECTED') {
+      throw new Error(`Cannot mark bytes purged from status: ${this.status}`);
+    }
+    this.expiresAt = null;
     this.updatedAt = new Date();
   }
 

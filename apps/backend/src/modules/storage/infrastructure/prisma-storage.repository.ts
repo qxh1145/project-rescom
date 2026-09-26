@@ -57,6 +57,7 @@ export class PrismaStorageRepository implements StorageRepositoryPort {
     const result = await this.prisma.storedObject.updateMany({
       where: {
         id,
+        storageKey: entity.storageKey,
         OR: [
           { status: 'INITIATED' },
           { status: 'QUARANTINED', scanStatus: 'OUTAGE' },
@@ -104,7 +105,7 @@ export class PrismaStorageRepository implements StorageRepositoryPort {
     const rows = await this.prisma.storedObject.findMany({
       where: {
         expiresAt: { lte: now },
-        status: { notIn: ['ATTACHED', 'DELETED', 'EXPIRED', 'REJECTED'] },
+        status: { notIn: ['ATTACHED', 'DELETED', 'EXPIRED'] },
       },
       orderBy: { expiresAt: 'asc' },
       take: limit,
