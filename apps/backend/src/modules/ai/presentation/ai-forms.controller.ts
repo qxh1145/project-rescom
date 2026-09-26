@@ -27,7 +27,7 @@ import { createSuccessEnvelope } from '../../../common/http/response.envelope';
 // here would silently block all RESPONDENT-role users from AI form generation.
 // SessionAuthGuard (authentication + account-not-locked check) is the correct
 // and sufficient gate for this endpoint.
-@Controller('forms/ai')
+@Controller(['forms/ai', 'api/forms/ai'])
 @UseGuards(SessionAuthGuard)
 export class AiFormsController {
   constructor(private readonly aiPromptService: AiPromptService) {}

@@ -35,7 +35,7 @@ import { ZodValidationPipe } from '../../../common/http/zod-validation.pipe';
 import { createSuccessEnvelope } from '../../../common/http/response.envelope';
 import { Public } from '../../../common/security/public.decorator';
 
-@Controller()
+@Controller(['', 'api'])
 @UseGuards(SessionAuthGuard)
 export class ParticipationController {
   constructor(private readonly participationService: ParticipationService) {}

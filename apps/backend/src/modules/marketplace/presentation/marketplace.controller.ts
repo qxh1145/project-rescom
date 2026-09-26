@@ -17,7 +17,7 @@ export const marketplaceFeedQueryPipe = new ZodValidationPipe(
   'query',
 );
 
-@Controller('marketplace')
+@Controller(['marketplace', 'api/marketplace'])
 @UseGuards(SessionAuthGuard)
 export class MarketplaceController {
   constructor(private readonly marketplaceService: MarketplaceService) {}

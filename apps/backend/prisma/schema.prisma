@@ -464,6 +464,12 @@ model Response {
   @@map("responses")
 }
 
+/// The unique index `ledger_accounts_user_id_account_class_currency_key` is
+/// NULLS NOT DISTINCT in the database (migration
+/// `20260924120000_harden_double_entry_ledger`) so system accounts
+/// (user_id NULL) are unique too; `@@unique` cannot express that clause.
+/// After `prisma db push`, apply `prisma/sql/post-push-invariants.sql`
+/// (`npm run prisma:db-push` does both) to rebuild it with the clause.
 model LedgerAccount {
   id           String             @id @default(uuid()) @db.Uuid
   userId       String?            @map("user_id") @db.Uuid // Null for system accounts
@@ -520,8 +526,10 @@ model LedgerEntry {
 ///     WHERE status = 'IN_PROGRESS' AND respondent_id IS NOT NULL
 ///   - `survey_attempts_one_completion_per_account` (respondent_id, survey_id)
 ///     WHERE status = 'COMPLETED' AND respondent_id IS NOT NULL
-/// Environments built with `prisma db push` must also apply that SQL. The
-/// `forms` row lock taken at attempt start stays the primary guarantee.
+/// and re-asserted unconditionally by `20260927040000_reconcile_db_push_tables`.
+/// Environments built with `prisma db push` must also apply
+/// `prisma/sql/post-push-invariants.sql` (`npm run prisma:db-push` does both).
+/// The `forms` row lock taken at attempt start stays the primary guarantee.
 model SurveyAttempt {
   id                       String        @id @default(uuid()) @db.Uuid
   respondentId             String?       @map("respondent_id") @db.Uuid // Nullable for guest

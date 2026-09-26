@@ -47,7 +47,7 @@ import { CurrentUser, CurrentSession } from './decorators';
 import { AuthenticatedUser } from './types/authenticated-request.type';
 import { Session } from '../domain/session.entity';
 
-@Controller('auth/google')
+@Controller(['auth/google', 'api/auth/google'])
 export class GoogleOAuthController {
   constructor(
     private readonly googleOAuthService: GoogleOAuthService,

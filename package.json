@@ -5,8 +5,11 @@
   "main": "index.js",
   "scripts": {
     "build": "npm run build --workspace backend && npm --prefix apps/frontend/my-app run build -- --webpack",
+    "pretypecheck": "npm run build --workspace @rescom/schemas",
     "typecheck": "npm run typecheck --workspace @rescom/schemas && npm run typecheck --workspace backend && npm --prefix apps/frontend/my-app run typecheck",
+    "prelint": "npm run build --workspace @rescom/schemas",
     "lint": "npm run lint --workspace backend && npm --prefix apps/frontend/my-app run lint",
+    "pretest": "npm run build --workspace @rescom/schemas",
     "test": "npm test --workspace @rescom/schemas && npm test --workspace backend && npm --prefix apps/frontend/my-app test",
     "test:e2e": "npm run test:e2e --workspace backend",
     "verify": "npm run build && npm run typecheck && npm run lint && npm test"

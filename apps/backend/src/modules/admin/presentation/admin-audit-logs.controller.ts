@@ -33,7 +33,7 @@ function toAuditLogResponse(log: AuditLog): AuditLogItem {
   };
 }
 
-@Controller('admin/audit-logs')
+@Controller(['admin/audit-logs', 'api/admin/audit-logs'])
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles('ADMIN')
 export class AdminAuditLogsController {

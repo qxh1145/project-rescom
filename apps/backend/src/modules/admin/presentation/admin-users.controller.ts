@@ -42,7 +42,7 @@ function toAdminUserResponse(user: User): AdminUser {
   };
 }
 
-@Controller('admin/users')
+@Controller(['admin/users', 'api/admin/users'])
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles('ADMIN')
 export class AdminUsersController {

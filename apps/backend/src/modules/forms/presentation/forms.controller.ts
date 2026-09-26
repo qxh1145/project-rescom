@@ -42,7 +42,7 @@ import { ParseUUIDPipe } from '../../../common/http/parse-uuid.pipe';
 import { ZodValidationPipe } from '../../../common/http/zod-validation.pipe';
 import { createSuccessEnvelope } from '../../../common/http/response.envelope';
 
-@Controller('forms')
+@Controller(['forms', 'api/forms'])
 @UseGuards(SessionAuthGuard)
 export class FormsController {
   constructor(private readonly formsService: FormsService) {}

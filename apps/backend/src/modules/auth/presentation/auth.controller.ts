@@ -46,7 +46,7 @@ import { SessionAuthGuard } from './guards/session-auth.guard';
 import { CurrentUser } from './decorators';
 import { AuthenticatedUser } from './types/authenticated-request.type';
 
-@Controller('auth')
+@Controller(['auth', 'api/auth'])
 export class AuthController {
   constructor(
     private readonly authService: AuthService,

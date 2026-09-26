@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "pretypecheck": "npm --prefix ../../../packages/schemas run build",
     "typecheck": "tsc --noEmit",
+    "pretest": "npm --prefix ../../../packages/schemas run build",
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {

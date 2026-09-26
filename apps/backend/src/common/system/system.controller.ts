@@ -6,7 +6,7 @@ import { SessionAuthGuard } from '../../modules/auth/presentation/guards/session
 import { RolesGuard } from '../../modules/auth/presentation/guards/roles.guard';
 import { Roles } from '../../modules/auth/presentation/decorators';
 
-@Controller('system')
+@Controller(['system', 'api/system'])
 export class SystemController {
   constructor(private readonly systemMetricsService: SystemMetricsService) {}
 
