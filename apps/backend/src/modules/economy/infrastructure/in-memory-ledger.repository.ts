@@ -15,6 +15,11 @@ import {
   JournalAlreadyReversedException,
   UnbalancedJournalException,
 } from '../application/exceptions/economy.exceptions';
+import {
+  DISPUTE_HOLD_KEY_PREFIX,
+  attemptIdFromDisputeHold,
+  disputeResolutionKey,
+} from '../domain/dispute-hold';
 
 export class InMemoryLedgerRepository implements LedgerRepositoryPort {
   private readonly accounts = new Map<string, LedgerAccountEntity>();
@@ -162,24 +167,22 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
     const settledByDispute = new Set<string>();
     for (const hold of this.journals.values()) {
       if (
-        !hold.idempotencyKey.startsWith('external-dispute:') ||
+        !hold.idempotencyKey.startsWith(DISPUTE_HOLD_KEY_PREFIX) ||
         reversed.has(hold.id)
       ) {
         continue;
       }
-      const caseId = hold.idempotencyKey.slice('external-dispute:'.length);
-      const match = /external attempt: (\S+) \(Case (.*)\)$/.exec(
-        hold.description ?? '',
-      );
-      if (!match || match[2] !== caseId) {
+      const caseId = hold.idempotencyKey.slice(DISPUTE_HOLD_KEY_PREFIX.length);
+      const holdAttemptId = attemptIdFromDisputeHold(hold);
+      if (!holdAttemptId) {
         continue;
       }
-      const resolved = ['release', 'refund'].some((action) => {
-        const resolution = byKey.get(`dispute-resolution:${caseId}:${action}`);
+      const resolved = (['release', 'refund'] as const).some((action) => {
+        const resolution = byKey.get(disputeResolutionKey(caseId, action));
         return resolution !== undefined && !reversed.has(resolution.id);
       });
       if (resolved) {
-        settledByDispute.add(match[1]);
+        settledByDispute.add(holdAttemptId);
       }
     }
     return Array.from(this.journals.values())

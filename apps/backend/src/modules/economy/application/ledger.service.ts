@@ -27,6 +27,16 @@ import { LedgerAccountEntity } from '../domain/ledger-account.entity';
 import { LedgerJournalEntity } from '../domain/ledger-journal.entity';
 import { LedgerEntryEntity } from '../domain/ledger-entry.entity';
 import {
+  DISPUTE_HOLD_KEY_PREFIX,
+  DISPUTE_RESOLUTION_KEY_PREFIX,
+  attemptIdFromDisputeHold,
+  disputeHoldAttemptMarker,
+  disputeHoldDescription,
+  disputeHoldKey,
+  disputeResolutionKey,
+  isValidDisputeHoldReference,
+} from '../domain/dispute-hold';
+import {
   AccountNotFoundException,
   DisputeHoldActiveException,
   IdempotencyConflictException,
@@ -60,40 +70,7 @@ export function releasePendingKey(attemptId: string): string {
   return `${RELEASE_PENDING_KEY_PREFIX}${attemptId}`;
 }
 
-const DISPUTE_HOLD_KEY_PREFIX = 'external-dispute:';
-
-/** Idempotency key of the dispute hold of case `caseId`. */
-export function disputeHoldKey(caseId: string): string {
-  return `${DISPUTE_HOLD_KEY_PREFIX}${caseId}`;
-}
-
-const DISPUTE_RESOLUTION_KEY_PREFIX = 'dispute-resolution:';
-
-/** Idempotency key of the resolution of dispute case `caseId`. */
-export function disputeResolutionKey(
-  caseId: string,
-  action: 'release' | 'refund',
-): string {
-  return `${DISPUTE_RESOLUTION_KEY_PREFIX}${caseId}:${action}`;
-}
-
-/**
- * The dispute hold journal is the only ledger record linking a dispute case
- * to its External attempt, so its description carries the attempt id in a
- * fixed form that `findDisputeHoldsForAttempt` matches.
- */
-function disputeHoldAttemptMarker(attemptId: string): string {
-  return `external attempt: ${attemptId} (Case `;
-}
-
-/** Attempt id recorded in an `external-dispute:{caseId}` hold, or null. */
-function attemptIdFromDisputeHold(hold: LedgerJournalEntity): string | null {
-  const caseId = hold.idempotencyKey.slice(DISPUTE_HOLD_KEY_PREFIX.length);
-  const match = /external attempt: (\S+) \(Case (.*)\)$/.exec(
-    hold.description ?? '',
-  );
-  return match && match[2] === caseId ? match[1] : null;
-}
+export { disputeHoldKey, disputeResolutionKey, attemptIdFromDisputeHold };
 
 /** Attempt id of an `external-completion:{attemptId}` key, or null. */
 export function attemptIdFromExternalCompletionKey(
@@ -787,10 +764,8 @@ export class LedgerService {
         marker,
       );
     // The repository match is a substring; keep only the exact form.
-    return journals.filter((journal) =>
-      (journal.description ?? '').includes(
-        `${marker}${journal.idempotencyKey.slice(DISPUTE_HOLD_KEY_PREFIX.length)})`,
-      ),
+    return journals.filter(
+      (journal) => attemptIdFromDisputeHold(journal) === attemptId,
     );
   }
 
@@ -1682,6 +1657,13 @@ export class LedgerService {
         'Dispute hold amount must be a positive integer.',
       );
     }
+    // The hold description must parse back to the same references in the
+    // in-memory and SQL maturity scans (BE-5).
+    if (!isValidDisputeHoldReference(params.attemptId, params.caseId)) {
+      throw new InvalidLedgerOperationException(
+        'Dispute hold attempt id must not contain whitespace, and case id must not contain control characters or line breaks.',
+      );
+    }
 
     const idempotencyKey = disputeHoldKey(params.caseId);
 
@@ -1725,7 +1707,7 @@ export class LedgerService {
     return this.postJournal(
       {
         idempotencyKey,
-        description: `Dispute hold placed for ${disputeHoldAttemptMarker(params.attemptId)}${params.caseId})`,
+        description: disputeHoldDescription(params.attemptId, params.caseId),
         entries: [
           { accountId: respondentPending.id, amount: -params.amount },
           { accountId: respondentHold.id, amount: params.amount },

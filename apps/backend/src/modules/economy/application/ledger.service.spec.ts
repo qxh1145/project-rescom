@@ -2009,6 +2009,45 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
       }
 
       describe('placeDisputeHold', () => {
+        it.each([
+          ['an attempt id with a space', 'attempt 1', caseId],
+          ['an attempt id with a tab', 'attempt\t1', caseId],
+          ['an attempt id with a newline', 'attempt\n1', caseId],
+          ['an attempt id with a no-break space', 'attempt\u00a01', caseId],
+          ['an empty attempt id', '', caseId],
+          ['a case id with a newline', attemptId, 'case\n1'],
+          ['a case id with a carriage return', attemptId, 'case\r1'],
+          ['a case id with a line separator', attemptId, 'case\u20281'],
+          ['a case id with a control character', attemptId, 'case\u00001'],
+          ['an empty case id', attemptId, ''],
+        ])('refuses %s', async (_label, attempt, id) => {
+          await expect(hold(id, attempt)).rejects.toThrow(
+            InvalidLedgerOperationException,
+          );
+          const wallet = await service.getWallet(respondentId);
+          expect(wallet.balance.pending).toBe(40);
+          expect(wallet.balance.integrityHold).toBe(0);
+        });
+
+        it.each(['case)1', 'case.*', 'case (Case x)', 'case with spaces'])(
+          'parses the hold of case id %j back to its attempt',
+          async (id) => {
+            await hold(id);
+            await resolve('REFUND_TO_PUBLISHER', id);
+
+            await expect(release()).rejects.toThrow(
+              PendingCreditNotFoundException,
+            );
+            const matured = await service.findMaturedPendingCredits({
+              cutoff: new Date(creditTime.getTime() + HOUR_MS),
+              limit: 10,
+            });
+            expect(matured.map((journal) => journal.idempotencyKey)).toEqual([
+              `external-completion:${otherAttemptId}`,
+            ]);
+          },
+        );
+
         it('refuses an attempt without a completion credit', async () => {
           const error = await hold(
             caseId,
