@@ -20,10 +20,12 @@ describe('Story 2.6 / 8.1: Form Publish Lifecycle & Immutability Specification',
    * is pinned, so any change to the table fails here and needs a new
    * sign-off. The two out-of-table transitions (new version PUBLISHED -> DRAFT,
    * owner reopen CLOSED -> PUBLISHED) are commands, not table edges.
+   * Decision D2 (Bug 3.1) added DRAFT -> CLOSED for re-versioned drafts (the
+   * service requires a published version).
    */
   describe('Decision E8-D1: signed-off transition table (exhaustive contract)', () => {
     const APPROVED_TABLE: Record<FormStatusEnum, FormStatusEnum[]> = {
-      DRAFT: ['MODERATION_QUEUE'],
+      DRAFT: ['MODERATION_QUEUE', 'CLOSED'],
       ESCROW_LOCKED: ['MODERATION_QUEUE', 'CLOSED'],
       MODERATION_QUEUE: ['PUBLISHED', 'CLOSED'],
       PUBLISHED: ['CLOSED'],
@@ -70,16 +72,22 @@ describe('Story 2.6 / 8.1: Form Publish Lifecycle & Immutability Specification',
   });
 
   describe('Form Lifecycle State Machine (Story 2.6 AC2, Story 8.1 AC1)', () => {
-    it('only allows DRAFT to be submitted into the moderation queue', () => {
+    it('only allows DRAFT into the moderation queue or (re-versioned drafts) closed', () => {
       expect(isValidStatusTransition('DRAFT', 'MODERATION_QUEUE')).toBe(true);
 
       // Story 8.1: publishing can no longer bypass moderation
       expect(isValidStatusTransition('DRAFT', 'PUBLISHED')).toBe(false);
       expect(isValidStatusTransition('DRAFT', 'ESCROW_LOCKED')).toBe(false);
-      expect(FORM_STATUS_TRANSITIONS['DRAFT']).toEqual(['MODERATION_QUEUE']);
+      expect(FORM_STATUS_TRANSITIONS['DRAFT']).toEqual([
+        'MODERATION_QUEUE',
+        'CLOSED',
+      ]);
+
+      // Decision D2: a re-versioned draft can be closed (its Escrow refunded);
+      // the service rejects the close of a never-published draft.
+      expect(isValidStatusTransition('DRAFT', 'CLOSED')).toBe(true);
 
       // Illegal transitions from DRAFT
-      expect(isValidStatusTransition('DRAFT', 'CLOSED')).toBe(false);
       expect(isValidStatusTransition('DRAFT', 'DRAFT')).toBe(false);
     });
 

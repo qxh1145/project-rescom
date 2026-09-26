@@ -7,6 +7,7 @@ import {
   formIntegrityMetadataSchema,
   parseStoredTargeting,
   RESERVATION_EXPIRY_MINUTES,
+  resolveRewardBandDurationOptions,
   SURVEY_DURATION_EXCEEDS_RESERVATION_CODE,
 } from '@rescom/schemas';
 import { FormEntity } from '../domain/form.entity';
@@ -147,19 +148,30 @@ export function assertSurveyFitsReservationWindow(
  * editable (decision E6-D2, Story 6.3 AC1.2):
  * - a free (0-point) Internal survey is exempt (6.3 AC3.1);
  * - every other survey needs an estimated duration (422
- *   `ESTIMATED_DURATION_REQUIRED`) and a reward inside that duration's band,
- *   minimum AND maximum (400 `PRICING_REWARD_OUT_OF_BAND`,
+ *   `ESTIMATED_DURATION_REQUIRED`) and a reward inside the band of its
+ *   effective duration — the longest of `estimatedDurationMinutes`, the
+ *   version's `metadata.expectedEffortSeconds` and its required minimum
+ *   completion time — minimum AND maximum (400 `PRICING_REWARD_OUT_OF_BAND`,
  *   `{ min, max, suggested }`).
  * The moderation approval and the legacy Admin queue move do not re-check
  * the band: the survey was priced when it was published.
+ *
+ * `frozenReward` (review F3): a survey that already had a published version
+ * keeps its reward (decision D2), so its re-versioned draft is not held to
+ * the band minimum; the maximum still applies.
  */
 export function assertRewardWithinPricingBand(
   form: Pick<
     FormEntity,
     'type' | 'rewardPerResponse' | 'estimatedDurationMinutes'
   >,
+  version: Pick<FormVersionEntity, 'schemaJson'>,
+  options: { frozenReward?: boolean } = {},
 ): void {
-  const check = checkPublishRewardBand(form);
+  const check = checkPublishRewardBand(form, {
+    ...resolveRewardBandDurationOptions(form.type, version.schemaJson),
+    frozenReward: options.frozenReward,
+  });
   if (check.status === 'DURATION_REQUIRED') {
     throw new FormValidationException(
       'Set the estimated completion time (estimatedDurationMinutes) before publishing a rewarded survey: it selects the FR-14 reward pricing band.',

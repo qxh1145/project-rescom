@@ -34,7 +34,8 @@ describe('Story 4.4: Public Link & Guest Submissions E2E Tests', () => {
       'postgresql://postgres:postgres@localhost:5433/rescom_test';
 
     formRepo = new InMemoryFormRepository();
-    responseRepo = new InMemorySurveyResponseRepository();
+    // Review F12: the guest quota check reads the forms the services write.
+    responseRepo = new InMemorySurveyResponseRepository({ forms: formRepo });
     rateLimiter = new GuestSubmissionRateLimiter({
       limit: 3,
       windowMs: 60000,
@@ -344,6 +345,75 @@ describe('Story 4.4: Public Link & Guest Submissions E2E Tests', () => {
         });
 
       expect(fourthRes.status).toBe(429);
+    });
+
+    it('Bug 3.3: a spoofed X-Forwarded-For does not bypass the per-IP limit', async () => {
+      const spoofed = ['198.51.100.1', '198.51.100.2', '198.51.100.3'];
+      for (const forwardedFor of spoofed) {
+        const res = await request(app.getHttpServer())
+          .post(`/public/forms/${publicFormId}/submissions`)
+          .set('Origin', ALLOWED_ORIGIN)
+          .set('X-Forwarded-For', forwardedFor)
+          .send({
+            answers: { name_block: `Guest ${forwardedFor}` },
+            captchaToken: 'test-turnstile-token',
+          });
+        expect(res.status).toBe(201);
+      }
+
+      const res = await request(app.getHttpServer())
+        .post(`/public/forms/${publicFormId}/submissions`)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('X-Forwarded-For', '198.51.100.99')
+        .send({
+          answers: { name_block: 'Fresh spoofed IP' },
+          captchaToken: 'test-turnstile-token',
+        });
+
+      expect(res.status).toBe(429);
+      expect(res.body.error.code).toBe('GUEST_RATE_LIMIT_EXCEEDED');
+    });
+
+    it('Bug 3.3: rejects a guest with 409 SURVEY_QUOTA_FULL once the quota is reached', async () => {
+      const stored = (await formRepo.findById(publicFormId))!;
+      await formRepo.update(
+        stored.form.copyWith({ expectedCompletions: 1 }),
+        stored.currentVersion,
+      );
+
+      const first = await request(app.getHttpServer())
+        .post(`/public/forms/${publicFormId}/submissions`)
+        .set('Origin', ALLOWED_ORIGIN)
+        .send({
+          answers: { name_block: 'Last slot' },
+          captchaToken: 'test-turnstile-token',
+        });
+      expect(first.status).toBe(201);
+
+      const second = await request(app.getHttpServer())
+        .post(`/public/forms/${publicFormId}/submissions`)
+        .set('Origin', ALLOWED_ORIGIN)
+        .send({
+          answers: { name_block: 'Over quota' },
+          captchaToken: 'test-turnstile-token',
+        });
+      expect(second.status).toBe(409);
+      expect(second.body.error.code).toBe('SURVEY_QUOTA_FULL');
+    });
+
+    it('Bug 3.3: rejects answers to unknown blocks with 400 and per-block details', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/public/forms/${publicFormId}/submissions`)
+        .set('Origin', ALLOWED_ORIGIN)
+        .send({
+          answers: { name_block: 'John', injected_block: 'x' },
+          captchaToken: 'test-turnstile-token',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual({
+        injected_block: expect.stringContaining('Unrecognized block ID'),
+      });
     });
   });
 });

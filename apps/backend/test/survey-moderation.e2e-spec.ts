@@ -242,7 +242,7 @@ describe('Story 8.1: Survey Moderation Queue (e2e)', () => {
       .overrideProvider(DEMOGRAPHIC_PROFILE_REPOSITORY_PORT)
       .useValue(demographicRepo)
       .overrideProvider(SURVEY_RESPONSE_REPOSITORY_PORT)
-      .useValue(new InMemorySurveyResponseRepository())
+      .useValue(new InMemorySurveyResponseRepository({ forms: formRepo }))
       .overrideProvider(PARTICIPATION_REPOSITORY_PORT)
       .useValue(new InMemoryParticipationRepository())
       .overrideProvider(EnvService)
@@ -678,6 +678,45 @@ describe('Story 8.1: Survey Moderation Queue (e2e)', () => {
         formVersionId: '00000000-0000-4000-8000-000000000001',
       }).expect(409);
       expect(res.body.error.code).toBe('MODERATION_VERSION_MISMATCH');
+    });
+
+    it('refuses a completion-code rotation while queued (409 FORM_IN_MODERATION), so the pending decision still applies (Bug 3.4)', async () => {
+      const created = await mutate(publisher, 'post', '/forms/external')
+        .send({
+          title: 'Google Form chờ duyệt',
+          externalUrl: 'https://forms.gle/queued-rotation',
+          rewardPerResponse: 10,
+          estimatedDurationMinutes: 8,
+          expectedCompletions: 10,
+          autoPublish: true,
+        })
+        .expect(201);
+      const formId = created.body.data.id as string;
+      const formVersionId = created.body.data.currentVersion.id as string;
+
+      const rotation = await mutate(
+        publisher,
+        'post',
+        `/forms/${formId}/rotate-code`,
+      )
+        .send({})
+        .expect(409);
+      expect(rotation.body.error.code).toBe('FORM_IN_MODERATION');
+
+      const approved = await approve(admin, formId, { formVersionId }).expect(
+        200,
+      );
+      expect(approved.body.data.form.status).toBe('PUBLISHED');
+
+      // Once live, the code can be rotated again.
+      const liveRotation = await mutate(
+        publisher,
+        'post',
+        `/forms/${formId}/rotate-code`,
+      )
+        .send({})
+        .expect(200);
+      expect(liveRotation.body.data.status).toBe('PUBLISHED');
     });
 
     it('forbids moderating your own survey', async () => {

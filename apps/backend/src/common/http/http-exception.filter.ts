@@ -61,6 +61,8 @@ import {
   ModerationEscrowNotFundedException,
   FormNotReopenableException,
   PricingRewardOutOfBandException,
+  FormPublishedFieldsImmutableException,
+  FormInModerationException,
 } from '../../modules/forms/application/exceptions/form.exceptions';
 import {
   ParticipantNotEligibleException,
@@ -105,6 +107,7 @@ import {
   IdempotencyConflictException,
   InvalidLedgerOperationException,
   DisputeHoldActiveException,
+  DownstreamJournalExistsException,
   ConcurrentLedgerCommandException,
   PendingCreditNotFoundException,
   PendingRewardNotMaturedException,
@@ -193,11 +196,18 @@ export class HttpExceptionFilter implements ExceptionFilter {
       exception instanceof FormAlreadyClosedException ||
       exception instanceof FormNotPublishedException ||
       exception instanceof FormHasPublishedVersionsException ||
-      exception instanceof FormModerationRequiredException
+      exception instanceof FormModerationRequiredException ||
+      exception instanceof FormInModerationException
     ) {
       status = HttpStatus.CONFLICT;
       code = exception.code;
       message = exception.message;
+    } else if (exception instanceof FormPublishedFieldsImmutableException) {
+      // Decision D2: pricing is frozen after the first publication.
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = { fields: exception.fields };
     } else if (exception instanceof FormNotReopenableException) {
       // Story 8.1 / decision E8-D1: why the survey cannot be reopened (an
       // Admin takedown or moderation rejection is final; an unapproved
@@ -259,6 +269,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       status = HttpStatus.BAD_REQUEST;
       code = exception.code;
       message = exception.message;
+      details = exception.details;
     } else if (exception instanceof DemographicProfileRequiredException) {
       // Story 7.1: earning features require the Mandatory Demographic Survey.
       status = HttpStatus.FORBIDDEN;
@@ -447,7 +458,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       exception instanceof InsufficientBalanceException ||
       exception instanceof JournalAlreadyReversedException ||
       exception instanceof IdempotencyConflictException ||
-      exception instanceof DisputeHoldActiveException
+      exception instanceof DisputeHoldActiveException ||
+      exception instanceof DownstreamJournalExistsException
     ) {
       status = HttpStatus.CONFLICT;
       code = exception.code;

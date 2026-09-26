@@ -18,6 +18,8 @@ import {
   FormAlreadyClosedException,
   FormHasPublishedVersionsException,
   FormNotPublishedException,
+  FormInModerationException,
+  FormPublishedFieldsImmutableException,
   TargetingValidationException,
   FormModerationRequiredException,
   FormNotReopenableException,
@@ -1754,14 +1756,22 @@ describe('FormsService', () => {
 
     it('returns 409 when the status changed (not closed) between read and rotation (review P5)', async () => {
       const created = await service.createExternalSurvey(publisherId, {
-        title: 'Queued External',
+        title: 'Live External',
         estimatedDurationMinutes: 8,
-        externalUrl: 'https://forms.gle/queued',
+        externalUrl: 'https://forms.gle/live',
         autoPublish: true,
       });
-      const queuedSnapshot = await repository.findById(created.id);
       await approveQueued(created.id);
-      jest.spyOn(repository, 'findById').mockResolvedValueOnce(queuedSnapshot);
+      const publishedSnapshot = await repository.findById(created.id);
+      // A new version moves the survey back to DRAFT between rotation's read
+      // and write.
+      await service.createNewVersion(created.id, {
+        userId: publisherId,
+        role: 'PUBLISHER',
+      });
+      jest
+        .spyOn(repository, 'findById')
+        .mockResolvedValueOnce(publishedSnapshot);
 
       await expect(
         service.rotateCompletionCode(created.id, {
@@ -1770,8 +1780,62 @@ describe('FormsService', () => {
         }),
       ).rejects.toThrow(FormConflictException);
       expect((await repository.findById(created.id))!.form.status).toBe(
-        'PUBLISHED',
+        'DRAFT',
       );
+    });
+
+    it('refuses to rotate while the survey waits in the moderation queue (Bug 3.4)', async () => {
+      const created = await service.createExternalSurvey(publisherId, {
+        title: 'Queued External',
+        estimatedDurationMinutes: 8,
+        externalUrl: 'https://forms.gle/queued',
+        autoPublish: true,
+      });
+      expect(created.status).toBe('MODERATION_QUEUE');
+
+      await expect(
+        service.rotateCompletionCode(created.id, {
+          userId: publisherId,
+          role: 'PUBLISHER',
+        }),
+      ).rejects.toThrow(FormInModerationException);
+
+      // The queued version, which the Admin decision is pinned to, is intact.
+      const stored = await repository.findById(created.id);
+      expect(stored!.form.status).toBe('MODERATION_QUEUE');
+      expect(stored!.versions).toHaveLength(1);
+      expect(stored!.currentVersion.id).toBe(created.currentVersion.id);
+    });
+
+    it('still rotates a DRAFT and a PUBLISHED survey (Bug 3.4)', async () => {
+      const draft = await service.createExternalSurvey(publisherId, {
+        title: 'Draft External',
+        externalUrl: 'https://forms.gle/draft',
+        autoPublish: false,
+      });
+      await expect(
+        service.rotateCompletionCode(draft.id, {
+          userId: publisherId,
+          role: 'PUBLISHER',
+        }),
+      ).resolves.toMatchObject({ status: 'DRAFT', currentVersionNumber: 2 });
+
+      const live = await service.createExternalSurvey(publisherId, {
+        title: 'Live External',
+        estimatedDurationMinutes: 8,
+        externalUrl: 'https://forms.gle/live',
+        autoPublish: true,
+      });
+      await approveQueued(live.id);
+      await expect(
+        service.rotateCompletionCode(live.id, {
+          userId: publisherId,
+          role: 'PUBLISHER',
+        }),
+      ).resolves.toMatchObject({
+        status: 'PUBLISHED',
+        currentVersionNumber: 2,
+      });
     });
   });
 
@@ -2689,6 +2753,84 @@ describe('FormsService', () => {
         ).toBe(200);
       });
 
+      async function internalDraftWithEffort(fields: {
+        rewardPerResponse: number;
+        estimatedDurationMinutes: number;
+        expectedEffortSeconds: number;
+      }) {
+        return escrowFormsService.createDraft(publisherId, {
+          title: 'Effort Survey',
+          type: 'INTERNAL',
+          expectedCompletions: 10,
+          rewardPerResponse: fields.rewardPerResponse,
+          estimatedDurationMinutes: fields.estimatedDurationMinutes,
+          schema: {
+            schemaVersion: 1,
+            title: 'Effort Survey',
+            blocks: [validBlock],
+            metadata: {
+              expectedEffortSeconds: fields.expectedEffortSeconds,
+              minTimeBarrierSeconds: 15,
+            },
+          },
+        });
+      }
+
+      it('prices by the declared effort: a 25-minute effort survey cannot publish at the 1-minute band price', async () => {
+        const draft = await internalDraftWithEffort({
+          rewardPerResponse: 5, // the "< 5 min" band price
+          estimatedDurationMinutes: 1,
+          expectedEffortSeconds: 1500,
+        });
+
+        const error = await escrowFormsService
+          .publishForm(draft.id, owner)
+          .catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(PricingRewardOutOfBandException);
+        expect((error as PricingRewardOutOfBandException).band).toMatchObject({
+          min: 20,
+          max: 40,
+          durationBand: '> 15 min',
+        });
+        expect((await repository.findById(draft.id))!.form.status).toBe(
+          'DRAFT',
+        );
+        expect(
+          await escrowFormsService.getPricingQuote(draft.id, owner),
+        ).toMatchObject({
+          estimatedDurationMinutes: 1,
+          pricingBand: { min: 20, max: 40, durationBand: '> 15 min' },
+          bandCheck: 'OUT_OF_BAND',
+        });
+      });
+
+      it('publishes when the reward matches the band of the effective (effort) duration', async () => {
+        const draft = await internalDraftWithEffort({
+          rewardPerResponse: 20,
+          estimatedDurationMinutes: 1,
+          expectedEffortSeconds: 1500,
+        });
+
+        const queued = await escrowFormsService.publishForm(draft.id, owner);
+
+        expect(queued.status).toBe('MODERATION_QUEUE');
+      });
+
+      it('rejects an External auto-publish whose effort exceeds the claimed duration band', async () => {
+        await expect(
+          escrowFormsService.createExternalSurvey(publisherId, {
+            title: 'Underpriced External',
+            externalUrl: 'https://forms.gle/underpriced',
+            rewardPerResponse: 5,
+            estimatedDurationMinutes: 1,
+            expectedEffortSeconds: 1500,
+            expectedCompletions: 5,
+            autoPublish: true,
+          }),
+        ).rejects.toBeInstanceOf(PricingRewardOutOfBandException);
+      });
+
       it('enforces the band on an External auto-publish, creating nothing when it fails', async () => {
         await expect(
           escrowFormsService.createExternalSurvey(publisherId, {
@@ -2994,6 +3136,474 @@ describe('FormsService', () => {
       await expect(
         service.createNewVersion(formId, owner),
       ).resolves.toMatchObject({ interruptedAttempts: 0 });
+    });
+  });
+  describe('Bug 3.1 / decision D2: pricing is frozen after the first publication', () => {
+    const owner = { userId: publisherId, role: 'PUBLISHER' };
+    const validBlock: FormBlock = {
+      id: 'block-d2-1',
+      type: 'text',
+      title: 'What is your favorite topic?',
+      order: 0,
+      required: true,
+    };
+    let ledgerService: LedgerService;
+    let coordinator: FormsEscrowCoordinator;
+    let escrowService: FormsService;
+
+    beforeEach(async () => {
+      ledgerService = new LedgerService(new InMemoryLedgerRepository());
+      coordinator = new FormsEscrowCoordinator(repository, ledgerService);
+      escrowService = new FormsService(
+        repository,
+        completionCodeService,
+        coordinator,
+        new PassThroughUnitOfWork(),
+      );
+      const system = await ledgerService.getOrCreateAccount(
+        null,
+        'SYSTEM_ISSUANCE',
+      );
+      const available = await ledgerService.getOrCreateAccount(
+        publisherId,
+        'USER_AVAILABLE',
+      );
+      await ledgerService.transfer({
+        fromAccountId: system.id,
+        toAccountId: available.id,
+        amount: 1000,
+        idempotencyKey: 'seed-d2-1000',
+      });
+    });
+
+    /** Internal survey, 50 × 8 = 400 Escrow, published then re-versioned. */
+    async function reversionedDraft() {
+      const draft = await escrowService.createDraft(publisherId, {
+        title: 'Frozen Pricing',
+        type: 'INTERNAL',
+        rewardPerResponse: 10,
+        estimatedDurationMinutes: 8,
+        expectedCompletions: 50,
+        schema: {
+          schemaVersion: 1,
+          title: 'Frozen Pricing',
+          blocks: [validBlock],
+        },
+      });
+      await escrowService.publishForm(draft.id, owner);
+      await approveQueued(draft.id);
+      const v2 = await escrowService.createNewVersion(draft.id, owner);
+      return { formId: draft.id, clientUpdatedAt: v2.updatedAt };
+    }
+
+    it('rejects a reward change on a re-versioned draft with 409 FORM_PUBLISHED_FIELDS_IMMUTABLE', async () => {
+      const { formId, clientUpdatedAt } = await reversionedDraft();
+
+      const error = await escrowService
+        .updateDraft(formId, owner, { clientUpdatedAt, rewardPerResponse: 12 })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(FormPublishedFieldsImmutableException);
+      expect((error as FormPublishedFieldsImmutableException).code).toBe(
+        'FORM_PUBLISHED_FIELDS_IMMUTABLE',
+      );
+      expect((error as FormPublishedFieldsImmutableException).fields).toEqual([
+        'rewardPerResponse',
+      ]);
+      expect((await repository.findById(formId))!.form.rewardPerResponse).toBe(
+        10,
+      );
+    });
+
+    it('rejects a type change on a re-versioned draft', async () => {
+      const { formId, clientUpdatedAt } = await reversionedDraft();
+
+      const error = await escrowService
+        .updateDraft(formId, owner, { clientUpdatedAt, type: 'EXTERNAL' })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(FormPublishedFieldsImmutableException);
+      expect((error as FormPublishedFieldsImmutableException).fields).toEqual([
+        'type',
+      ]);
+      expect((await repository.findById(formId))!.form.type).toBe('INTERNAL');
+    });
+
+    it('accepts the unchanged stored type and reward (the builder always sends them)', async () => {
+      const { formId, clientUpdatedAt } = await reversionedDraft();
+
+      const saved = await escrowService.updateDraft(formId, owner, {
+        clientUpdatedAt,
+        title: 'Frozen Pricing v2',
+        type: 'INTERNAL',
+        rewardPerResponse: 10,
+        expectedCompletions: 50,
+      });
+
+      expect(saved.title).toBe('Frozen Pricing v2');
+      expect(saved.rewardPerResponse).toBe(10);
+    });
+
+    it('rejects a quota below the committed completions and accepts an equal or higher one', async () => {
+      const { formId, clientUpdatedAt } = await reversionedDraft();
+      repository.setCompletedResponsesCount(formId, 30);
+
+      const error = await escrowService
+        .updateDraft(formId, owner, {
+          clientUpdatedAt,
+          expectedCompletions: 29,
+        })
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(FormValidationException);
+      expect((error as FormValidationException).code).toBe(
+        'EXPECTED_COMPLETIONS_BELOW_COMMITTED',
+      );
+
+      const equal = await escrowService.updateDraft(formId, owner, {
+        clientUpdatedAt,
+        expectedCompletions: 30,
+      });
+      expect(equal.expectedCompletions).toBe(30);
+
+      const higher = await escrowService.updateDraft(formId, owner, {
+        clientUpdatedAt: equal.updatedAt,
+        expectedCompletions: 80,
+      });
+      expect(higher.expectedCompletions).toBe(80);
+    });
+
+    it('keeps type and reward editable on a never-published draft', async () => {
+      const draft = await escrowService.createDraft(publisherId, {
+        title: 'Still Editable',
+        type: 'INTERNAL',
+        rewardPerResponse: 10,
+      });
+
+      const saved = await escrowService.updateDraft(draft.id, owner, {
+        clientUpdatedAt: draft.updatedAt,
+        type: 'EXTERNAL',
+        rewardPerResponse: 20,
+        expectedCompletions: 1,
+      });
+
+      expect(saved.type).toBe('EXTERNAL');
+      expect(saved.rewardPerResponse).toBe(20);
+    });
+
+    it('closes a re-versioned draft and refunds the Escrow it still holds', async () => {
+      const { formId } = await reversionedDraft();
+      expect(
+        (await ledgerService.getWallet(publisherId)).balance,
+      ).toMatchObject({ available: 600, escrow: 400 });
+      const closeSpy = jest.spyOn(coordinator, 'coordinateClose');
+
+      const closed = await escrowService.closeForm(formId, owner);
+
+      expect(closed.status).toBe('CLOSED');
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+      expect(closeSpy.mock.calls[0][0].status).toBe('CLOSED');
+      expect(
+        (await ledgerService.getWallet(publisherId)).balance,
+      ).toMatchObject({ available: 1000, escrow: 0 });
+    });
+
+    it('rejects closing a never-published draft (it is deleted instead)', async () => {
+      const draft = await escrowService.createDraft(publisherId, {
+        title: 'Never Published',
+      });
+      const closeSpy = jest.spyOn(coordinator, 'coordinateClose');
+
+      await expect(escrowService.closeForm(draft.id, owner)).rejects.toThrow(
+        InvalidFormStatusTransitionException,
+      );
+      await expect(
+        escrowService.transitionStatus(
+          draft.id,
+          { userId: adminId, role: 'ADMIN' },
+          { targetStatus: 'CLOSED' },
+        ),
+      ).rejects.toThrow(InvalidFormStatusTransitionException);
+      expect(closeSpy).not.toHaveBeenCalled();
+      expect((await repository.findById(draft.id))!.form.status).toBe('DRAFT');
+    });
+
+    it('routes an Admin DRAFT -> CLOSED transition of a re-versioned draft through the refunding close', async () => {
+      const { formId } = await reversionedDraft();
+
+      const closed = await escrowService.transitionStatus(
+        formId,
+        { userId: adminId, role: 'ADMIN' },
+        { targetStatus: 'CLOSED' },
+      );
+
+      expect(closed.status).toBe('CLOSED');
+      expect(closed.closeKind).toBe('ADMIN');
+      expect(
+        (await ledgerService.getWallet(publisherId)).balance,
+      ).toMatchObject({ available: 1000, escrow: 0 });
+    });
+
+    it('never publishes a re-versioned draft straight into CLOSED', async () => {
+      const { formId } = await reversionedDraft();
+
+      await expect(
+        escrowService.publishForm(formId, owner, { targetStatus: 'CLOSED' }),
+      ).rejects.toThrow(InvalidFormStatusTransitionException);
+      expect((await repository.findById(formId))!.form.status).toBe('DRAFT');
+    });
+  });
+
+  describe('Review F2/F3: effort normalization and the frozen-reward band minimum', () => {
+    const owner = { userId: publisherId, role: 'PUBLISHER' };
+    let ledgerService: LedgerService;
+    let escrowService: FormsService;
+
+    function textBlocks(count: number): FormBlock[] {
+      return Array.from({ length: count }, (_, index) => ({
+        id: `block-f2-${index}`,
+        type: 'text' as const,
+        title: `Question ${index + 1}`,
+        order: index,
+        required: true,
+      }));
+    }
+
+    function schemaWith(blockCount: number, expectedEffortSeconds: number) {
+      return {
+        schemaVersion: 1,
+        title: 'Effort Survey',
+        blocks: textBlocks(blockCount),
+        metadata: { expectedEffortSeconds, minTimeBarrierSeconds: 15 },
+      };
+    }
+
+    async function storedEffort(formId: string) {
+      return (await repository.findById(formId))!.currentVersion.schemaJson
+        .metadata.expectedEffortSeconds;
+    }
+
+    beforeEach(async () => {
+      ledgerService = new LedgerService(new InMemoryLedgerRepository());
+      escrowService = new FormsService(
+        repository,
+        completionCodeService,
+        new FormsEscrowCoordinator(repository, ledgerService),
+        new PassThroughUnitOfWork(),
+      );
+      const system = await ledgerService.getOrCreateAccount(
+        null,
+        'SYSTEM_ISSUANCE',
+      );
+      const available = await ledgerService.getOrCreateAccount(
+        publisherId,
+        'USER_AVAILABLE',
+      );
+      await ledgerService.transfer({
+        fromAccountId: system.id,
+        toAccountId: available.id,
+        amount: 1000,
+        idempotencyKey: 'seed-f2-f3-1000',
+      });
+    });
+
+    it('publishes a 31-block Internal draft saved with the default 60 s effort, raising the stored effort', async () => {
+      const draft = await escrowService.createDraft(publisherId, {
+        title: 'Long Survey',
+        type: 'INTERNAL',
+        rewardPerResponse: 5,
+        estimatedDurationMinutes: 1,
+        expectedCompletions: 10,
+        schema: schemaWith(31, 60),
+      });
+      // 31 answerable questions x 2 s = 62 s barrier.
+      expect(await storedEffort(draft.id)).toBe(62);
+
+      const queued = await escrowService.publishForm(draft.id, owner);
+
+      expect(queued.status).toBe('MODERATION_QUEUE');
+      expect(
+        queued.currentVersion.schemaJson.metadata.expectedEffortSeconds,
+      ).toBe(62);
+    });
+
+    it('raises the effort on autosave to the barrier and the estimated duration', async () => {
+      const draft = await escrowService.createDraft(publisherId, {
+        title: 'Autosaved Survey',
+        type: 'INTERNAL',
+        rewardPerResponse: 10,
+        expectedCompletions: 10,
+      });
+
+      const saved = await escrowService.updateDraft(draft.id, owner, {
+        clientUpdatedAt: draft.updatedAt,
+        schema: schemaWith(31, 60),
+      });
+      expect(
+        saved.currentVersion.schemaJson.metadata.expectedEffortSeconds,
+      ).toBe(62);
+
+      const withDuration = await escrowService.updateDraft(draft.id, owner, {
+        clientUpdatedAt: saved.updatedAt,
+        estimatedDurationMinutes: 4,
+      });
+      expect(
+        withDuration.currentVersion.schemaJson.metadata.expectedEffortSeconds,
+      ).toBe(240);
+    });
+
+    it('normalizes a stored legacy row at publish', async () => {
+      const draft = await escrowService.createDraft(publisherId, {
+        title: 'Legacy Survey',
+        type: 'INTERNAL',
+        rewardPerResponse: 5,
+        estimatedDurationMinutes: 1,
+        expectedCompletions: 10,
+      });
+      // A row written before normalization existed: 31 blocks, 60 s effort.
+      const stored = (await repository.findById(draft.id))!;
+      await repository.update(
+        stored.form,
+        stored.currentVersion.copyWith({
+          schemaJson: {
+            ...stored.currentVersion.schemaJson,
+            blocks: textBlocks(31),
+            metadata: { expectedEffortSeconds: 60, minTimeBarrierSeconds: 15 },
+          },
+        }),
+        { status: 'DRAFT', updatedAt: stored.form.updatedAt },
+      );
+      expect(await storedEffort(draft.id)).toBe(60);
+
+      const queued = await escrowService.publishForm(draft.id, owner);
+
+      expect(queued.status).toBe('MODERATION_QUEUE');
+      expect(await storedEffort(draft.id)).toBe(62);
+    });
+
+    it('still prices by the effective duration after normalization', async () => {
+      // 200 questions x 2 s = 400 s barrier: effective 7 minutes (10-20 points).
+      const draft = await escrowService.createDraft(publisherId, {
+        title: 'Very Long Survey',
+        type: 'INTERNAL',
+        rewardPerResponse: 5,
+        estimatedDurationMinutes: 1,
+        expectedCompletions: 10,
+        schema: schemaWith(200, 60),
+      });
+      expect(await storedEffort(draft.id)).toBe(400);
+
+      const error = await escrowService
+        .publishForm(draft.id, owner)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(PricingRewardOutOfBandException);
+      expect((error as PricingRewardOutOfBandException).band).toMatchObject({
+        min: 10,
+        max: 20,
+        durationBand: '5–10 min',
+      });
+    });
+
+    it('keeps the 30-minute reservation cap on the normalized effort', async () => {
+      const draft = await escrowService.createDraft(publisherId, {
+        title: 'Too Long Survey',
+        type: 'INTERNAL',
+        rewardPerResponse: 0,
+        expectedCompletions: 10,
+        schema: schemaWith(3, 60),
+      });
+
+      await expect(
+        escrowService.publishForm(draft.id, owner, {
+          estimatedDurationMinutes: 31,
+        }),
+      ).rejects.toMatchObject({ code: 'SURVEY_DURATION_EXCEEDS_RESERVATION' });
+      expect((await repository.findById(draft.id))!.form.status).toBe('DRAFT');
+    });
+
+    /** Published with `first`, approved, re-versioned; returns the draft. */
+    async function reversioned(first: {
+      rewardPerResponse: number;
+      estimatedDurationMinutes: number;
+    }) {
+      const draft = await escrowService.createDraft(publisherId, {
+        title: 'Frozen Reward',
+        type: 'INTERNAL',
+        expectedCompletions: 10,
+        ...first,
+        schema: schemaWith(1, 60),
+      });
+      await escrowService.publishForm(draft.id, owner);
+      await approveQueued(draft.id);
+      const v2 = await escrowService.createNewVersion(draft.id, owner);
+      return { formId: draft.id, clientUpdatedAt: v2.updatedAt };
+    }
+
+    it('republishes a re-versioned survey whose frozen reward is now below the band minimum', async () => {
+      const { formId, clientUpdatedAt } = await reversioned({
+        rewardPerResponse: 5,
+        estimatedDurationMinutes: 4,
+      });
+      await escrowService.updateDraft(formId, owner, {
+        clientUpdatedAt,
+        schema: schemaWith(1, 600), // effective 10 minutes: 10-20 points
+      });
+
+      expect(await escrowService.getPricingQuote(formId, owner)).toMatchObject({
+        pricingBand: { min: 10, max: 20 },
+        bandCheck: 'WITHIN_BAND',
+      });
+      const queued = await escrowService.publishForm(formId, owner);
+
+      expect(queued.status).toBe('MODERATION_QUEUE');
+      expect(queued.rewardPerResponse).toBe(5);
+    });
+
+    it('still rejects the same survey below the band minimum on its first publish', async () => {
+      const draft = await escrowService.createDraft(publisherId, {
+        title: 'First Publish',
+        type: 'INTERNAL',
+        rewardPerResponse: 5,
+        estimatedDurationMinutes: 4,
+        expectedCompletions: 10,
+        schema: schemaWith(1, 600),
+      });
+
+      expect(
+        await escrowService.getPricingQuote(draft.id, owner),
+      ).toMatchObject({ bandCheck: 'OUT_OF_BAND' });
+      await expect(
+        escrowService.publishForm(draft.id, owner),
+      ).rejects.toBeInstanceOf(PricingRewardOutOfBandException);
+      expect((await repository.findById(draft.id))!.form.status).toBe('DRAFT');
+    });
+
+    it('still rejects a frozen reward above the band maximum', async () => {
+      const { formId, clientUpdatedAt } = await reversioned({
+        rewardPerResponse: 25,
+        estimatedDurationMinutes: 12, // 10-15 min: 15-25 points
+      });
+      // The builder sends the whole definition (with its default effort)
+      // on every autosave, so the effort is re-derived from the new duration.
+      await escrowService.updateDraft(formId, owner, {
+        clientUpdatedAt,
+        estimatedDurationMinutes: 4, // < 5 min: 5-10 points
+        schema: schemaWith(1, 60),
+      });
+
+      expect(await escrowService.getPricingQuote(formId, owner)).toMatchObject({
+        bandCheck: 'OUT_OF_BAND',
+      });
+      const error = await escrowService
+        .publishForm(formId, owner)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(PricingRewardOutOfBandException);
+      expect((error as PricingRewardOutOfBandException).band).toMatchObject({
+        min: 5,
+        max: 10,
+      });
+      expect((await repository.findById(formId))!.form.status).toBe('DRAFT');
     });
   });
 });

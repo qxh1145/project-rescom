@@ -3,6 +3,7 @@ import { ThrottlerException } from '@nestjs/throttler';
 import { HttpExceptionFilter } from './http-exception.filter';
 import {
   ConcurrentLedgerCommandException,
+  DownstreamJournalExistsException,
   PendingCreditNotFoundException,
   PendingRewardForbiddenException,
   PendingRewardNotMaturedException,
@@ -23,8 +24,10 @@ import {
   ModerationVersionMismatchException,
 } from '../../modules/moderation/application/exceptions/moderation.exceptions';
 import {
+  FormInModerationException,
   FormModerationRequiredException,
   FormNotReopenableException,
+  FormPublishedFieldsImmutableException,
   ModerationEscrowNotFundedException,
   PricingRewardOutOfBandException,
 } from '../../modules/forms/application/exceptions/form.exceptions';
@@ -164,6 +167,14 @@ describe('HttpExceptionFilter (Unit Tests)', () => {
       'LEDGER_COMMAND_IN_PROGRESS',
     ],
     [
+      new DownstreamJournalExistsException(
+        'external-completion:33333333-3333-4333-8333-333333333333',
+        'release-pending:33333333-3333-4333-8333-333333333333',
+      ),
+      HttpStatus.CONFLICT,
+      'LEDGER_DOWNSTREAM_JOURNAL_EXISTS',
+    ],
+    [
       new PendingCreditNotFoundException(
         '33333333-3333-4333-8333-333333333333',
       ),
@@ -262,6 +273,11 @@ describe('HttpExceptionFilter (Unit Tests)', () => {
       HttpStatus.CONFLICT,
       'FORM_NOT_REOPENABLE',
     ],
+    [
+      new FormInModerationException('f'),
+      HttpStatus.CONFLICT,
+      'FORM_IN_MODERATION',
+    ],
   ])(
     'maps Story 8.1 moderation exception %# to its HTTP status and code',
     (exception, expectedStatus, expectedCode) => {
@@ -294,6 +310,25 @@ describe('HttpExceptionFilter (Unit Tests)', () => {
     expect(body.error.details).toEqual({
       reason: 'CLOSED_BY_ADMIN_OR_MODERATION',
       closeKind: 'ADMIN',
+    });
+  });
+
+  it('maps FORM_PUBLISHED_FIELDS_IMMUTABLE to 409 with the frozen fields (decision D2)', () => {
+    const mockJson = jest.fn();
+    const mockStatus = jest.fn().mockReturnValue({ json: mockJson });
+    filter.catch(
+      new FormPublishedFieldsImmutableException('f', [
+        'type',
+        'rewardPerResponse',
+      ]),
+      createMockHost({ status: mockStatus, headersSent: false }),
+    );
+
+    expect(mockStatus).toHaveBeenCalledWith(HttpStatus.CONFLICT);
+    const body = mockJson.mock.calls[0][0];
+    expect(body.error.code).toBe('FORM_PUBLISHED_FIELDS_IMMUTABLE');
+    expect(body.error.details).toEqual({
+      fields: ['type', 'rewardPerResponse'],
     });
   });
 

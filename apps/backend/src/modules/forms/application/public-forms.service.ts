@@ -3,17 +3,20 @@ import { SurveyResponseRepositoryPort } from '../../marketplace/application/port
 import { CaptchaValidatorService } from '../infrastructure/captcha-validator.service';
 import { GuestSubmissionRateLimiter } from '../infrastructure/guest-submission-rate-limiter';
 import {
+  CAPTCHA_PROVIDER_NOT_CONFIGURED,
   FormNotFoundException,
   PublicFormAccessDisabledException,
   CaptchaVerificationFailedException,
   GuestRateLimitExceededException,
   InvalidGuestSubmissionException,
 } from './exceptions/form.exceptions';
+import { SurveyQuotaFullException } from '../../participation/application/exceptions/participation.exceptions';
 import {
   PublicFormDetailsDto,
   GuestSubmissionInput,
   GuestSubmissionResponseDto,
-  validateAllAnswers,
+  validateAnswersAgainstFormDefinition,
+  RESERVATION_EXPIRY_MS,
   FormBlock,
   FormSettings,
   FormIntegrityMetadata,
@@ -75,20 +78,41 @@ export class PublicFormsService {
     };
   }
 
+  /**
+   * Bug 3.3: the per-IP slot is taken atomically before any other work.
+   * Release policy: a client error (rate limit aside: bad CAPTCHA, closed or
+   * private form, invalid answers, full quota) keeps the slot, so the
+   * endpoint cannot be probed for free; an unexpected failure (e.g. the
+   * database) or a server without a CAPTCHA provider
+   * (`CAPTCHA_PROVIDER_NOT_CONFIGURED`, review F6) gives the slot back, since
+   * the guest did nothing wrong.
+   */
   async submitGuestResponse(
     formId: string,
     input: GuestSubmissionInput,
     ipAddress: string,
   ): Promise<GuestSubmissionResponseDto> {
-    // 1. Check IP rate limit (default max 3 per 24 hours)
-    const rateCheck = await this.rateLimiter.checkRateLimit(ipAddress);
-    if (!rateCheck.isAllowed) {
+    if (!this.rateLimiter.tryAcquire(ipAddress)) {
       throw new GuestRateLimitExceededException(
         'GUEST_RATE_LIMIT_EXCEEDED: Maximum 3 guest submissions per 24 hours allowed from this IP',
       );
     }
 
-    // 2. Validate CAPTCHA token
+    try {
+      return await this.submitWithAcquiredSlot(formId, input, ipAddress);
+    } catch (error) {
+      if (!isGuestClientError(error)) {
+        this.rateLimiter.release(ipAddress);
+      }
+      throw error;
+    }
+  }
+
+  private async submitWithAcquiredSlot(
+    formId: string,
+    input: GuestSubmissionInput,
+    ipAddress: string,
+  ): Promise<GuestSubmissionResponseDto> {
     const captchaCheck = await this.captchaValidator.validateToken(
       input.captchaToken,
       ipAddress,
@@ -99,7 +123,6 @@ export class PublicFormsService {
       );
     }
 
-    // 3. Verify form eligibility
     const formWithVer = await this.formRepository.findById(formId);
     if (
       !formWithVer ||
@@ -117,28 +140,40 @@ export class PublicFormsService {
       );
     }
 
-    // 4. Validate all answers against block questions
+    // Strict server-side validation, same as authenticated submissions
+    // (unknown block ids, duplicates, type strictness).
     const blocks: FormBlock[] = schemaJson?.blocks || [];
-    const validation = validateAllAnswers(blocks, input.answers);
+    const validation = validateAnswersAgainstFormDefinition(
+      blocks,
+      input.answers,
+    );
     if (!validation.isValid) {
       const firstError =
         Object.values(validation.errors)[0] ||
         'Validation failed for one or more answers';
-      throw new InvalidGuestSubmissionException(firstError);
+      throw new InvalidGuestSubmissionException(firstError, validation.errors);
     }
 
-    // 5. Persist guest submission (zero escrow points deducted, zero reward awarded)
-    const submission = await this.responseRepository.createGuestSubmission({
-      formId: formWithVer.form.id,
-      formVersionId: formWithVer.currentVersion.id,
-      answers: input.answers,
-      ipAddress,
-      telemetry: input.telemetry,
-    });
+    // Persisted under the form row lock with the paid-respondent quota
+    // (zero escrow deducted, zero reward awarded).
+    const result = await this.responseRepository.createGuestResponseWithinQuota(
+      {
+        formId: formWithVer.form.id,
+        formVersionId: formWithVer.currentVersion.id,
+        answers: validation.normalizedAnswers,
+        ipAddress,
+        telemetry: input.telemetry,
+        cutoffDate: new Date(Date.now() - RESERVATION_EXPIRY_MS),
+      },
+    );
+    if (result.outcome === 'NOT_OPEN') {
+      throw new FormNotFoundException(formId);
+    }
+    if (result.outcome === 'QUOTA_FULL') {
+      throw new SurveyQuotaFullException();
+    }
 
-    // 6. Record rate limit hit for this IP
-    await this.rateLimiter.recordSubmission(ipAddress);
-
+    const submission = result.response;
     return {
       submissionId: submission.id,
       formId: submission.formId,
@@ -150,4 +185,16 @@ export class PublicFormsService {
       submittedAt: submission.submittedAt.toISOString(),
     };
   }
+}
+
+/** Errors caused by the guest's request: they keep the rate-limit slot. */
+function isGuestClientError(error: unknown): boolean {
+  return (
+    (error instanceof CaptchaVerificationFailedException &&
+      error.message !== CAPTCHA_PROVIDER_NOT_CONFIGURED) ||
+    error instanceof FormNotFoundException ||
+    error instanceof PublicFormAccessDisabledException ||
+    error instanceof InvalidGuestSubmissionException ||
+    error instanceof SurveyQuotaFullException
+  );
 }

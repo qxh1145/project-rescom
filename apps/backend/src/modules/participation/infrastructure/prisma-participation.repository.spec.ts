@@ -2,8 +2,12 @@ import {
   PrismaParticipationRepository,
   toInternalRewardRequest,
 } from './prisma-participation.repository';
-import { PrismaUnitOfWork } from '../../../common/database/prisma-unit-of-work';
+import {
+  PrismaUnitOfWork,
+  runInTransaction,
+} from '../../../common/database/prisma-unit-of-work';
 import { UncleanAttachmentException } from '../application/exceptions/participation.exceptions';
+import { IntegrityEventEntity } from '../domain/integrity-event.entity';
 
 /**
  * Epic 6 review P5/P6: completion transactions read the form status under a
@@ -963,5 +967,124 @@ describe('PrismaParticipationRepository (Epic 5 review)', () => {
       );
       expect(sqlOf(withoutLock.log)[0]).toMatch(/FROM forms .*FOR SHARE/);
     });
+  });
+});
+
+/**
+ * Bug 3.6: reads and writes made inside a Unit of Work join its transaction
+ * (they see its writes and never wait for a second pooled connection), except
+ * the fraud evidence, which must survive the rejected request's rollback.
+ */
+describe('PrismaParticipationRepository ambient transaction client (Bug 3.6)', () => {
+  function clientMocks() {
+    return {
+      scoringPolicy: { findFirst: jest.fn().mockResolvedValue(null) },
+      integrityEvent: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      surveyAttempt: { findMany: jest.fn().mockResolvedValue([]) },
+      outboxEvent: { findUnique: jest.fn().mockResolvedValue(null) },
+      fraudLog: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+  }
+
+  function setup() {
+    const tx = clientMocks();
+    const prisma: any = {
+      ...clientMocks(),
+      $transaction: jest.fn(async (work: (client: unknown) => unknown) =>
+        work(tx),
+      ),
+    };
+    return {
+      tx,
+      prisma,
+      repository: new PrismaParticipationRepository(prisma),
+      inTransaction: <T>(work: () => Promise<T>) =>
+        runInTransaction(prisma, () => work()),
+    };
+  }
+
+  const userId = '44444444-4444-4444-8444-444444444444';
+  const cases: Array<
+    [
+      string,
+      (repository: PrismaParticipationRepository) => Promise<unknown>,
+      (client: ReturnType<typeof clientMocks>) => jest.Mock,
+    ]
+  > = [
+    [
+      'findActivePolicyDeployment',
+      (repository) => repository.findActivePolicyDeployment(),
+      (client) => client.scoringPolicy.findFirst,
+    ],
+    [
+      'saveIntegrityEvents',
+      (repository) =>
+        repository.saveIntegrityEvents([
+          new IntegrityEventEntity(
+            'evt-1',
+            'FOCUS_LOST',
+            '11111111-1111-4111-8111-111111111111',
+            '33333333-3333-4333-8333-333333333333',
+            userId,
+            new Date(),
+          ),
+        ]),
+      (client) => client.integrityEvent.createMany,
+    ],
+    [
+      'findOpenAttemptStartTimes',
+      (repository) => repository.findOpenAttemptStartTimes(userId, new Date()),
+      (client) => client.surveyAttempt.findMany,
+    ],
+    [
+      'findCompletionTimesSince',
+      (repository) => repository.findCompletionTimesSince(userId, new Date()),
+      (client) => client.surveyAttempt.findMany,
+    ],
+    [
+      'findInternalRewardRequest',
+      (repository) =>
+        repository.findInternalRewardRequest(
+          '55555555-5555-4555-8555-555555555555',
+        ),
+      (client) => client.outboxEvent.findUnique,
+    ],
+  ];
+
+  it.each(cases)(
+    '%s uses the ambient transaction client inside a Unit of Work',
+    async (_name, call, method) => {
+      const { tx, prisma, repository, inTransaction } = setup();
+
+      await inTransaction(() => call(repository));
+
+      expect(method(tx)).toHaveBeenCalledTimes(1);
+      expect(method(prisma)).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(cases)(
+    '%s uses the root client outside a Unit of Work',
+    async (_name, call, method) => {
+      const { tx, prisma, repository } = setup();
+
+      await call(repository);
+
+      expect(method(prisma)).toHaveBeenCalledTimes(1);
+      expect(method(tx)).not.toHaveBeenCalled();
+    },
+  );
+
+  it('recordFraudLog stays on the root client even inside a Unit of Work (evidence survives a rollback)', async () => {
+    const { tx, prisma, repository, inTransaction } = setup();
+
+    await inTransaction(() =>
+      repository.recordFraudLog(userId, 'RATE_LIMIT', {
+        attemptId: 'a-1',
+      }),
+    );
+
+    expect(prisma.fraudLog.createMany).toHaveBeenCalledTimes(1);
+    expect(tx.fraudLog.createMany).not.toHaveBeenCalled();
   });
 });

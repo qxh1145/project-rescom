@@ -70,6 +70,15 @@ export class InMemoryFormRepository implements FormRepositoryPort {
     };
   }
 
+  /**
+   * Test helper (review F12): the stored form row, read synchronously so
+   * another in-memory store (the guest quota check) sees what the services
+   * wrote with no `await` between its check and its insert.
+   */
+  peekForm(id: string): FormEntity | undefined {
+    return this.forms.get(id);
+  }
+
   async findById(id: string): Promise<FormWithVersion | null> {
     const form = this.forms.get(id);
     if (!form) return null;

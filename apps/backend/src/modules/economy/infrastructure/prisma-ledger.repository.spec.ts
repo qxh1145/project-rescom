@@ -190,6 +190,70 @@ describe('PrismaLedgerRepository (Epic 6 review P7/P14)', () => {
     });
   });
 
+  describe('assertBeforeInsert guard (review 3.2)', () => {
+    it('runs under the account locks, reading through the transaction', async () => {
+      const { tx, prisma, repository } = setup();
+      tx.$queryRaw.mockImplementation(async () => [
+        { ...accountRow, balance: 100 },
+      ]);
+      const { journal, entries } = journalWithEntries('reversal');
+      const guard = jest.fn(async () => {
+        await repository.findJournalByIdempotencyKey('release-pending:a');
+        expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+        expect(tx.ledgerJournal.create).not.toHaveBeenCalled();
+      });
+
+      await repository
+        .postJournalTransaction(journal, entries, {
+          assertBeforeInsert: guard,
+        })
+        .catch(() => undefined);
+
+      expect(guard).toHaveBeenCalledTimes(1);
+      expect(tx.ledgerJournal.findUnique).toHaveBeenCalledTimes(1);
+      expect(prisma.ledgerJournal.findUnique).not.toHaveBeenCalled();
+      expect(tx.ledgerJournal.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes nothing when the guard throws', async () => {
+      const { tx, repository } = setup();
+      tx.$queryRaw.mockImplementation(async () => [
+        { ...accountRow, balance: 100 },
+      ]);
+      const { journal, entries } = journalWithEntries('reversal');
+      const refusal = new Error('blocked');
+
+      await expect(
+        repository.postJournalTransaction(journal, entries, {
+          assertBeforeInsert: async () => {
+            throw refusal;
+          },
+        }),
+      ).rejects.toBe(refusal);
+      expect(tx.ledgerJournal.create).not.toHaveBeenCalled();
+      expect(tx.ledgerEntry.createMany).not.toHaveBeenCalled();
+      expect(tx.ledgerAccount.update).not.toHaveBeenCalled();
+    });
+  });
+
+  it('filters journals by key prefix and description fragment', async () => {
+    const { prisma, repository } = setup();
+
+    await repository.findJournalsByIdempotencyKeyPrefixAndDescription(
+      'external-dispute:',
+      'external attempt: a (Case ',
+    );
+
+    expect(prisma.ledgerJournal.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          idempotencyKey: { startsWith: 'external-dispute:' },
+          description: { contains: 'external attempt: a (Case ' },
+        },
+      }),
+    );
+  });
+
   it('reports an overdraft without account ids or balances (P11)', async () => {
     const { tx, repository } = setup();
     tx.$queryRaw.mockImplementation(async () => [

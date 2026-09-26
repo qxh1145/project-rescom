@@ -534,6 +534,89 @@ describe('Story 6.3: FormsEscrowCoordinator (FR-14, FR-15, FR-19, FR-32, FR-33)'
     });
   });
 
+  describe('Bug 3.1 / decision D2: re-versioned drafts', () => {
+    const v2Id = '77777777-7777-4777-8777-777777777777';
+
+    it('closing a draft with a published version refunds the remaining Escrow of the published version', async () => {
+      const form = makeForm({});
+      const v1 = makeVersion(versionId, 1, true);
+      await formRepo.create(form, v1);
+      await coordinator.coordinatePublish(form, v1, publisherId); // 500
+      await payExternal(10, 10); // 100 consumed
+      // "Create New Version": PUBLISHED -> DRAFT, the Escrow stays reserved
+      // under the published version's `publish:` journal.
+      const draft = await formRepo.createVersion(formId, v2Id, new Date());
+      expect(draft!.form.status).toBe('DRAFT');
+
+      const result = await coordinator.coordinateClose(
+        draft!.form.transitionTo('CLOSED'),
+        publisherId,
+      );
+
+      expect(result.refundAmount).toBe(400); // (50 - 10) x 10
+      expect(result.unusedCompletions).toBe(40);
+      expect(await escrowBalance()).toBe(0);
+      expect(await availableBalance()).toBe(900);
+    });
+
+    it('warns when a form holds Escrow but draws nothing per completion, and still refunds it', async () => {
+      const warn = jest.fn();
+      const loggingCoordinator = new FormsEscrowCoordinator(
+        formRepo,
+        ledgerService,
+        { warn },
+      );
+      const form = makeForm({});
+      const v1 = makeVersion(versionId, 1, true);
+      await formRepo.create(form, v1);
+      await loggingCoordinator.coordinatePublish(form, v1, publisherId); // 500
+
+      const repriced = form.copyWith({ rewardPerResponse: 0 });
+      const result = await loggingCoordinator.coordinateClose(
+        repriced.transitionTo('CLOSED'),
+        publisherId,
+      );
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain(formId);
+      expect(result.refundAmount).toBe(500);
+      expect(await escrowBalance()).toBe(0);
+    });
+
+    it('does not warn on a normal close', async () => {
+      const warn = jest.fn();
+      const loggingCoordinator = new FormsEscrowCoordinator(
+        formRepo,
+        ledgerService,
+        { warn },
+      );
+      const form = makeForm({});
+      const v1 = makeVersion(versionId, 1, true);
+      await formRepo.create(form, v1);
+      await loggingCoordinator.coordinatePublish(form, v1, publisherId);
+
+      await loggingCoordinator.coordinateClose(
+        form.transitionTo('CLOSED'),
+        publisherId,
+      );
+
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('reports the committed completions (settled, owed and guest) as the quota floor', async () => {
+      const form = makeForm({});
+      await formRepo.create(form, makeVersion(versionId, 1, true));
+      completions.guests = 2;
+      completions.internal = [{ id: randomUUID(), rewardable: true }];
+      completions.external = [randomUUID(), randomUUID()];
+      syncCompletions();
+
+      await expect(coordinator.getCommittedCompletionCount(form)).resolves.toBe(
+        5,
+      );
+    });
+  });
+
   describe('coordinateReopen (FR-33)', () => {
     it('locks additional escrow points when survey is reopened with extra quota', async () => {
       const form = makeForm({

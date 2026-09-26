@@ -663,4 +663,115 @@ describe('Story 5.5: External Form Completion Code Verification E2E Tests', () =
       expect(verified.body.data.status).toBe('COMPLETED');
     });
   });
+  describe('8. Bug 3.4: a completion-code rotation during an in-progress attempt', () => {
+    const rotatedFormId = '44444444-4444-4444-8444-4444444444b4';
+    const rotatedV1Id = '55555555-5555-4555-8555-5555555555b4';
+    const v1Code = '111111';
+    const rotatingRespondentId = '66666666-6666-4666-8666-6666666666b4';
+    let respondentCookie: string;
+    let respondentCsrf: string;
+    let publisherCookie: string;
+    let publisherCsrf: string;
+
+    beforeAll(async () => {
+      await formRepo.create(
+        new FormEntity(
+          rotatedFormId,
+          publisherId,
+          'EXTERNAL',
+          'PUBLISHED',
+          'Rotating Google Forms Survey',
+          null,
+          10,
+          100,
+          new Date(),
+          new Date(),
+        ),
+        new FormVersionEntity(
+          rotatedV1Id,
+          rotatedFormId,
+          1,
+          {
+            title: 'Rotating Google Forms Survey',
+            blocks: [],
+            metadata: { expectedEffortSeconds: 60, minTimeBarrierSeconds: 2 },
+          } as any,
+          null,
+          true,
+          'https://docs.google.com/forms/d/e/1FAIpQLSb4/viewform',
+          completionCodeService.computeVerifier(rotatedV1Id, v1Code),
+          new Date(),
+          new Date(),
+        ),
+      );
+      await userRepo.create({
+        id: rotatingRespondentId,
+        email: 'rotation.respondent@rescom.test',
+        passwordHash: 'hash',
+        role: 'RESPONDENT',
+        status: 'ACTIVE',
+      });
+      await seedCompleteDemographicProfile(demoRepo, rotatingRespondentId);
+      const respondentSession =
+        await sessionService.createSession(rotatingRespondentId);
+      respondentCookie = `${AUTH_COOKIE_NAME}=${respondentSession.accessToken}`;
+      respondentCsrf = respondentSession.csrfToken;
+      const publisherSession = await sessionService.createSession(publisherId);
+      publisherCookie = `${AUTH_COOKIE_NAME}=${publisherSession.accessToken}`;
+      publisherCsrf = publisherSession.csrfToken;
+    });
+
+    function verify(attemptId: string, completionCode: string) {
+      return request(app.getHttpServer())
+        .post(`/forms/${rotatedFormId}/attempts/${attemptId}/verify-code`)
+        .set('Cookie', respondentCookie)
+        .set('x-csrf-token', respondentCsrf)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Content-Type', 'application/json')
+        .send({ completionCode });
+    }
+
+    it('rejects the superseded code and accepts the rotated one; the attempt stays pinned to v1', async () => {
+      const started = await request(app.getHttpServer())
+        .post(`/forms/${rotatedFormId}/attempts`)
+        .set('Cookie', respondentCookie)
+        .set('x-csrf-token', respondentCsrf)
+        .set('Origin', ALLOWED_ORIGIN)
+        .send({});
+      expect(started.status).toBe(201);
+      const attemptId = started.body.data.attemptId as string;
+      backdateAttempt(partRepo, attemptId, 10);
+
+      const rotated = await request(app.getHttpServer())
+        .post(`/forms/${rotatedFormId}/rotate-code`)
+        .set('Cookie', publisherCookie)
+        .set('x-csrf-token', publisherCsrf)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Content-Type', 'application/json')
+        .send({ reason: 'Code leaked' });
+      expect(rotated.status).toBe(200);
+      expect(rotated.body.data.currentVersionNumber).toBe(2);
+      const newCode = rotated.body.data.plaintextCompletionCode as string;
+      const rotatedVersionId = rotated.body.data.currentVersion.id as string;
+      expect(newCode).toMatch(/^\d{6}$/);
+      expect(newCode).not.toBe(v1Code);
+
+      const stale = await verify(attemptId, v1Code);
+      expect(stale.status).toBe(400);
+      expect(stale.body.error.code).toBe('INVALID_COMPLETION_CODE');
+      expect(stale.body.error.details.remainingAttempts).toBe(2);
+      // The strike is recorded against the version whose code was checked.
+      expect(
+        partRepo.fraudLogs
+          .filter((entry) => entry.userId === rotatingRespondentId)
+          .map((entry) => entry.details?.formVersionId),
+      ).toEqual([rotatedVersionId]);
+
+      const fresh = await verify(attemptId, newCode);
+      expect(fresh.status).toBe(200);
+      expect(fresh.body.data.status).toBe('COMPLETED');
+      expect(fresh.body.data.formVersionId).toBe(rotatedV1Id);
+      expect(partRepo.attempts.get(attemptId)?.formVersionId).toBe(rotatedV1Id);
+    });
+  });
 });

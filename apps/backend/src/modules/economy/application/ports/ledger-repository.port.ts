@@ -36,6 +36,15 @@ export interface LedgerRepositoryPort {
     prefix: string,
   ): Promise<LedgerJournalEntity[]>;
 
+  /**
+   * Journals whose idempotency key starts with `prefix` and whose description
+   * contains `descriptionFragment`, oldest first.
+   */
+  findJournalsByIdempotencyKeyPrefixAndDescription(
+    prefix: string,
+    descriptionFragment: string,
+  ): Promise<LedgerJournalEntity[]>;
+
   /** Direct reversal journals of any of `targetJournalIds`. */
   findReversalJournalsFor(
     targetJournalIds: string[],
@@ -56,10 +65,16 @@ export interface LedgerRepositoryPort {
    * acquiring row locks on affected accounts in strictly ascending account-ID order,
    * verifying overdraft sufficiency, inserting journal and entries, and updating
    * denormalized balance projections.
+   *
+   * `options.assertBeforeInsert` runs inside that transaction once the
+   * account rows are locked, before the balance checks and before anything is
+   * written; its repository reads join the transaction, and a throw aborts
+   * the posting.
    */
   postJournalTransaction(
     journal: LedgerJournalEntity,
     entries: LedgerEntryEntity[],
+    options?: PostJournalTransactionOptions,
   ): Promise<LedgerJournalEntity>;
 
   /**
@@ -101,4 +116,9 @@ export interface UserLedgerTransactionRecord {
   entry: LedgerEntryEntity;
   journal: LedgerJournalEntity;
   account: LedgerAccountEntity;
+}
+
+export interface PostJournalTransactionOptions {
+  /** Guard run under the account locks, before the journal is inserted. */
+  assertBeforeInsert?: () => Promise<void>;
 }

@@ -55,6 +55,11 @@ interface FormEscrowState {
   draw: number;
 }
 
+/** Minimal logger port (the Nest `Logger` in production). */
+export interface FormsEscrowLogger {
+  warn(message: string): void;
+}
+
 /**
  * Research-side coordinator of the survey Escrow lifecycle (FR-15, FR-32,
  * FR-33, AD-16). Every command runs inside the caller's Unit of Work, so the
@@ -72,6 +77,7 @@ export class FormsEscrowCoordinator {
   constructor(
     private readonly formRepository: FormRepositoryPort,
     private readonly ledgerService: LedgerService,
+    private readonly logger?: FormsEscrowLogger,
   ) {}
 
   /**
@@ -165,6 +171,19 @@ export class FormsEscrowCoordinator {
   }
 
   /**
+   * Decision D2 (Bug 3.1): the quota slots already committed — completed
+   * participations, quota definition (guests included). Settled and still
+   * owed (unsettled) completions are both part of it, so the quota of a
+   * re-versioned draft may never drop below it.
+   */
+  async getCommittedCompletionCount(form: FormEntity): Promise<number> {
+    const completions = await this.formRepository.listRewardableCompletions(
+      form.id,
+    );
+    return completions.completedCount;
+  }
+
+  /**
    * Coordinated Escrow refund on Form closure (FR-32, AD-16). The caller runs
    * it inside the same Unit of Work as the Form's close transition and passes
    * the form **as closed** (its new `closeCount`).
@@ -183,6 +202,14 @@ export class FormsEscrowCoordinator {
     publisherId: string,
   ): Promise<CloseEscrowResult> {
     const state = await this.loadEscrowState(closedForm, publisherId);
+    if (state.remaining > 0 && state.draw === 0) {
+      // The pricing is frozen after the first publication (decision D2), so
+      // a free survey holding Escrow points indicates a pricing change that
+      // bypassed it; the whole remainder is still refunded.
+      this.logger?.warn(
+        `Form ${closedForm.id} holds ${state.remaining} Escrow points but draws 0 per completion; refunding the remainder.`,
+      );
+    }
     // Open quota slots, capped by what the Escrow still funds (slots an
     // earlier close already refunded are not counted again).
     const openSlots = Math.max(

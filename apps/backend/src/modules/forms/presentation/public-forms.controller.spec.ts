@@ -21,7 +21,7 @@ describe('PublicFormsController', () => {
   beforeEach(async () => {
     formRepo = new InMemoryFormRepository();
     responseRepo = new InMemorySurveyResponseRepository();
-    captchaValidator = new CaptchaValidatorService({ isTest: true });
+    captchaValidator = new CaptchaValidatorService({ isProduction: false });
     rateLimiter = new GuestSubmissionRateLimiter();
 
     service = new PublicFormsService(
@@ -72,6 +72,12 @@ describe('PublicFormsController', () => {
       now,
     );
     await formRepo.create(form, version);
+    responseRepo.registerForm({
+      id: formId,
+      status: 'PUBLISHED',
+      type: 'INTERNAL',
+      expectedCompletions: 100,
+    });
   });
 
   it('should return public form wrapped in success envelope', async () => {
@@ -103,5 +109,40 @@ describe('PublicFormsController', () => {
     expect(envelope.data!.isGuest).toBe(true);
     expect(envelope.data!.rewardEarned).toBe(0);
     expect(envelope.data!.respondentReliability).toBe('NOT_AVAILABLE');
+  });
+
+  it('ignores X-Forwarded-For and keys the guest by req.ip (Bug 3.3)', async () => {
+    const submit = jest.spyOn(service, 'submitGuestResponse');
+    const mockReq: any = {
+      headers: { 'x-forwarded-for': '198.51.100.77, 10.0.0.1' },
+      ip: '203.0.113.5',
+    };
+
+    await controller.submitGuestResponse(
+      formId,
+      { answers: { q1: 'Hue' }, captchaToken: 'test-turnstile-token' },
+      mockReq,
+    );
+
+    expect(submit).toHaveBeenCalledWith(
+      formId,
+      expect.anything(),
+      '203.0.113.5',
+    );
+  });
+
+  it("falls back to 'unknown' when req.ip is missing", async () => {
+    const submit = jest.spyOn(service, 'submitGuestResponse');
+    const mockReq: any = {
+      headers: { 'x-forwarded-for': '198.51.100.77' },
+    };
+
+    await controller.submitGuestResponse(
+      formId,
+      { answers: { q1: 'Hue' }, captchaToken: 'test-turnstile-token' },
+      mockReq,
+    );
+
+    expect(submit).toHaveBeenCalledWith(formId, expect.anything(), 'unknown');
   });
 });

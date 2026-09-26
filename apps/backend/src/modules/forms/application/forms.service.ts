@@ -24,6 +24,9 @@ import {
   FormVersionDto,
   FormVersionSummaryDto,
   getRewardPricingRange,
+  normalizeExpectedEffortSeconds,
+  resolveEffectiveDurationMinutes,
+  resolveRewardBandDurationOptions,
   ListFormsQuery,
   PricingQuoteDto,
   publishFormSchema,
@@ -60,6 +63,8 @@ import {
   FormNotInDraftStatusException,
   FormNotPublishedException,
   FormConflictException,
+  FormInModerationException,
+  FormPublishedFieldsImmutableException,
   FormValidationException,
   InvalidFormDraftException,
   InvalidFormStatusTransitionException,
@@ -106,6 +111,37 @@ export function toFormDetailDto(data: FormWithVersion): FormDetailDto {
   };
 }
 
+/**
+ * Review F2: an Internal definition is stored with its declared effort raised
+ * to the estimated duration and the required minimum completion time
+ * (`normalizeExpectedEffortSeconds`), so a long survey saved with the
+ * builder's default effort still passes the publish-time Form Definition
+ * rules. External definitions are returned unchanged.
+ */
+function withNormalizedEffort(
+  type: FormEntity['type'],
+  definition: DraftFormDefinition,
+  estimatedDurationMinutes: number | null | undefined,
+): DraftFormDefinition {
+  if (type !== 'INTERNAL') {
+    return definition;
+  }
+  const expectedEffortSeconds = normalizeExpectedEffortSeconds(
+    definition,
+    estimatedDurationMinutes,
+  );
+  if (expectedEffortSeconds === definition.metadata?.expectedEffortSeconds) {
+    return definition;
+  }
+  return {
+    ...definition,
+    metadata: {
+      ...definition.metadata,
+      expectedEffortSeconds,
+    } as DraftFormDefinition['metadata'],
+  };
+}
+
 export class FormsService {
   constructor(
     private readonly formRepository: FormRepositoryPort,
@@ -137,7 +173,7 @@ export class FormsService {
     const versionId = randomUUID();
     const now = new Date();
 
-    const initialSchema: DraftFormDefinition = dto.schema ?? {
+    const draftSchema: DraftFormDefinition = dto.schema ?? {
       schemaVersion: 1,
       title: dto.title ?? 'Untitled Survey',
       description: dto.description ?? undefined,
@@ -154,6 +190,11 @@ export class FormsService {
         minTimeBarrierSeconds: 15,
       },
     };
+    const initialSchema = withNormalizedEffort(
+      dto.type ?? 'INTERNAL',
+      draftSchema,
+      dto.estimatedDurationMinutes,
+    );
 
     const form = new FormEntity(
       formId,
@@ -255,7 +296,7 @@ export class FormsService {
     // reservation window (decision E5-D2).
     if (dto.autoPublish) {
       assertSurveyFitsReservationWindow(form, { schemaJson: initialSchema });
-      assertRewardWithinPricingBand(form);
+      assertRewardWithinPricingBand(form, { schemaJson: initialSchema });
     }
 
     const version = new FormVersionEntity(
@@ -423,6 +464,13 @@ export class FormsService {
     }
     // ───────────────────────────────────────────────────────────────────────
 
+    // Decision D2 (Bug 3.1): after the first publication the pricing is
+    // frozen — the Escrow held for the live quota and the rewards already
+    // promised were priced with the published type and reward.
+    if (existing.versions?.some((version) => version.isPublished)) {
+      await this.assertPublishedPricingUnchanged(existing.form, dto);
+    }
+
     const updatedForm = existing.form.copyWith({
       title: dto.title,
       description: dto.description,
@@ -437,7 +485,11 @@ export class FormsService {
     });
 
     const updatedVersion = existing.currentVersion.copyWith({
-      schemaJson: dto.schema,
+      schemaJson: withNormalizedEffort(
+        updatedForm.type,
+        dto.schema ?? existing.currentVersion.schemaJson,
+        updatedForm.estimatedDurationMinutes,
+      ),
       targetingJson: dto.targetingJson,
       externalUrl: dto.externalUrl,
     });
@@ -462,6 +514,54 @@ export class FormsService {
       );
     }
     return toFormDetailDto(saved);
+  }
+
+  /**
+   * Decision D2 (Bug 3.1): a re-versioned draft keeps the survey type and the
+   * reward per response of its published version (409
+   * FORM_PUBLISHED_FIELDS_IMMUTABLE), and its quota may not drop below the
+   * completions already committed (422 EXPECTED_COMPLETIONS_BELOW_COMMITTED).
+   * The update schema makes every field optional, so only a value different
+   * from the stored one is a change.
+   */
+  private async assertPublishedPricingUnchanged(
+    form: FormEntity,
+    dto: {
+      type?: FormEntity['type'];
+      rewardPerResponse?: number;
+      expectedCompletions?: number;
+    },
+  ): Promise<void> {
+    const changedFields: string[] = [];
+    if (dto.type !== undefined && dto.type !== form.type) {
+      changedFields.push('type');
+    }
+    if (
+      dto.rewardPerResponse !== undefined &&
+      dto.rewardPerResponse !== form.rewardPerResponse
+    ) {
+      changedFields.push('rewardPerResponse');
+    }
+    if (changedFields.length > 0) {
+      throw new FormPublishedFieldsImmutableException(form.id, changedFields);
+    }
+
+    if (
+      dto.expectedCompletions !== undefined &&
+      dto.expectedCompletions < form.expectedCompletions
+    ) {
+      const committed = this.escrowCoordinator
+        ? await this.escrowCoordinator.getCommittedCompletionCount(form)
+        : (await this.formRepository.listRewardableCompletions(form.id))
+            .completedCount;
+      if (dto.expectedCompletions < committed) {
+        throw new FormValidationException(
+          `Expected completions cannot be lower than the ${committed} completions already committed to this survey.`,
+          [],
+          'EXPECTED_COMPLETIONS_BELOW_COMMITTED',
+        );
+      }
+    }
   }
 
   async deleteDraft(
@@ -539,12 +639,31 @@ export class FormsService {
     // reservation window too (decision E5-D2).
     const effectiveExternalUrl =
       dto.externalUrl ?? existing.currentVersion.externalUrl;
+    // Review F2: the effort is normalized before the Form Definition rules
+    // run, and the normalized definition is what gets queued. The 30-minute
+    // reservation check runs on the declared values first, so a violation
+    // names what the Publisher declared rather than the derived effort; the
+    // normalized effort never exceeds the largest of the declared effort, the
+    // estimated duration and the time barrier, and `assertFormPublishable`
+    // checks it again.
+    assertSurveyFitsReservationWindow(formToPublish, existing.currentVersion);
+    const versionToPublish = existing.currentVersion.copyWith({
+      schemaJson: withNormalizedEffort(
+        formToPublish.type,
+        existing.currentVersion.schemaJson,
+        formToPublish.estimatedDurationMinutes,
+      ),
+    });
     assertFormPublishable(
       formToPublish,
-      existing.currentVersion,
+      versionToPublish,
       effectiveExternalUrl,
     );
-    assertRewardWithinPricingBand(formToPublish);
+    // Review F3: after a first publication the reward is frozen (decision
+    // D2), so the band minimum no longer applies; the maximum still does.
+    assertRewardWithinPricingBand(formToPublish, versionToPublish, {
+      frozenReward: existing.versions?.some((version) => version.isPublished),
+    });
 
     // Story 8.1: every publication enters the Admin moderation queue. An
     // explicit target is accepted only when the lifecycle table allows it
@@ -555,7 +674,12 @@ export class FormsService {
         type: existing.form.type,
         rewardPerResponse: existing.form.rewardPerResponse,
       });
-    if (!existing.form.canTransitionTo(targetStatus)) {
+    // DRAFT -> CLOSED is a table edge for re-versioned drafts (decision D2),
+    // but it is the close command, never a publication.
+    if (
+      targetStatus !== 'MODERATION_QUEUE' ||
+      !existing.form.canTransitionTo(targetStatus)
+    ) {
       throw new InvalidFormStatusTransitionException(
         id,
         existing.form.status,
@@ -567,7 +691,7 @@ export class FormsService {
 
     // The queued version stays unpublished (not startable, not in the
     // Marketplace) until an Admin approves it; approval sets publishedAt.
-    const updatedVersion = existing.currentVersion.copyWith({
+    const updatedVersion = versionToPublish.copyWith({
       isPublished: false,
       publishedAt: null,
       externalUrl: effectiveExternalUrl,
@@ -642,7 +766,13 @@ export class FormsService {
       throw new FormModerationRequiredException(id);
     }
 
-    if (!existing.form.canTransitionTo('CLOSED')) {
+    // Decision D2 (Bug 3.1): only a re-versioned draft (one with a published
+    // version, whose Escrow is still held) can be closed; a never-published
+    // draft is deleted instead.
+    const isNeverPublishedDraft =
+      existing.form.isDraft() &&
+      !existing.versions?.some((version) => version.isPublished);
+    if (isNeverPublishedDraft || !existing.form.canTransitionTo('CLOSED')) {
       throw new InvalidFormStatusTransitionException(
         id,
         existing.form.status,
@@ -717,6 +847,12 @@ export class FormsService {
     // moderation workflow (decision record, refund, audit, notification).
     if (existing.form.status === 'MODERATION_QUEUE') {
       throw new FormModerationRequiredException(id);
+    }
+
+    // A re-versioned draft is closed through the refunding close path
+    // (decision D2); every other DRAFT move is a publication.
+    if (existing.form.status === 'DRAFT' && dto.targetStatus === 'CLOSED') {
+      return this.closeForm(id, requester);
     }
 
     if (existing.form.status === 'DRAFT') {
@@ -909,6 +1045,12 @@ export class FormsService {
       throw new FormAlreadyClosedException(id);
     }
 
+    // Bug 3.4: the moderation decision is pinned to the queued version, so a
+    // rotation (which creates a new version) must wait for the decision.
+    if (existing.form.status === 'MODERATION_QUEUE') {
+      throw new FormInModerationException(id);
+    }
+
     const newVersionId = randomUUID();
     const plaintextCode = this.getCompletionCodePort().generateSixDigitCode();
     const verifier = this.getCompletionCodePort().computeVerifier(
@@ -1090,6 +1232,14 @@ export class FormsService {
     }
 
     const form = existing.form;
+    const bandDurationOptions = resolveRewardBandDurationOptions(
+      form.type,
+      existing.currentVersion.schemaJson,
+    );
+    const effectiveDurationMinutes = resolveEffectiveDurationMinutes({
+      estimatedDurationMinutes: form.estimatedDurationMinutes,
+      ...bandDurationOptions,
+    });
     return {
       ...calculateEscrowCost({
         type: form.type,
@@ -1098,10 +1248,15 @@ export class FormsService {
       }),
       estimatedDurationMinutes: form.estimatedDurationMinutes,
       pricingBand:
-        form.estimatedDurationMinutes != null
-          ? getRewardPricingRange(form.estimatedDurationMinutes)
+        effectiveDurationMinutes != null
+          ? getRewardPricingRange(effectiveDurationMinutes)
           : null,
-      bandCheck: checkPublishRewardBand(form).status,
+      // Same answer as `publishForm`, including the frozen-reward exemption
+      // from the band minimum (review F3).
+      bandCheck: checkPublishRewardBand(form, {
+        ...bandDurationOptions,
+        frozenReward: existing.versions?.some((version) => version.isPublished),
+      }).status,
     };
   }
 }

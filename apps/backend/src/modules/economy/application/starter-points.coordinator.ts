@@ -102,8 +102,14 @@ export type StarterPointsUnlockTrigger =
 /** Shared contract of `POST /economy/starter-points/unlock` (`@rescom/schemas`). */
 export type CheckAndUnlockStarterPointsResult = StarterPointsUnlockResultDto;
 
-/** Upper bound of completions inspected per evaluation (only one is needed). */
+/**
+ * Completions fetched per source on the first lookup (only one is needed).
+ * When every fetched External completion is disqualified by its settlement
+ * state, the lookup doubles (review 3.5) up to
+ * `ACTIVATION_COMPLETIONS_MAX_LOOKUP_LIMIT`.
+ */
 export const ACTIVATION_COMPLETIONS_LOOKUP_LIMIT = 20;
+export const ACTIVATION_COMPLETIONS_MAX_LOOKUP_LIMIT = 320;
 
 /**
  * How long after its source journal a lost notification may still be
@@ -572,26 +578,62 @@ export class StarterPointsCoordinator {
   }
 
   /**
-   * Eligible completions made up to `now`, minus External completions whose
-   * Pending credit was reversed (the Phase-1 outcome of an upheld dispute).
+   * Eligible completions made up to `now`, keeping an External completion
+   * only while its ledger credit exists and is Pending or Released (review
+   * 3.5): a missing credit (zero reward, escrow shortfall, failed settlement),
+   * an open dispute hold, a Publisher refund or a reversal disqualifies it.
    * Past the 30-day `deadline` a completion only matters for "Verified
    * Member" (E7-DN3), where one confirmed completion is enough: at most one
    * is kept and still-under-review late ones are skipped, which bounds the
-   * per-completion reversal lookups for expired accounts.
+   * per-completion ledger lookups for expired accounts.
+   *
+   * The settlement filter runs before the lookup bound decides anything: when
+   * a full page of External completions yields no countable in-window one,
+   * the lookup doubles, so disqualified attempts never hide a valid later
+   * one. Settlement states are cached across pages.
    */
   private async findCountableCompletions(
     userId: string,
     deadline: Date,
     now: Date,
   ): Promise<ActivationSurveyCompletionRecord[]> {
-    const completions = await this.dataProvider.findActivationSurveyCompletions(
-      userId,
-      {
-        completedBefore: now,
-        limit: ACTIVATION_COMPLETIONS_LOOKUP_LIMIT,
-      },
-    );
+    const settled = new Map<string, boolean>();
+    let limit = ACTIVATION_COMPLETIONS_LOOKUP_LIMIT;
+    for (;;) {
+      const completions =
+        await this.dataProvider.findActivationSurveyCompletions(userId, {
+          completedBefore: now,
+          limit,
+        });
+      const countable = await this.filterCountableCompletions(
+        completions,
+        deadline,
+        now,
+        settled,
+      );
+      const externalPageFull =
+        completions.filter((completion) => completion.source === 'EXTERNAL')
+          .length >= limit;
+      const hasInWindow = countable.some(
+        (completion) => completion.completedAt.getTime() <= deadline.getTime(),
+      );
+      if (
+        hasInWindow ||
+        !externalPageFull ||
+        limit >= ACTIVATION_COMPLETIONS_MAX_LOOKUP_LIMIT
+      ) {
+        return countable;
+      }
+      limit = Math.min(limit * 2, ACTIVATION_COMPLETIONS_MAX_LOOKUP_LIMIT);
+    }
+  }
 
+  private async filterCountableCompletions(
+    completions: ActivationSurveyCompletionRecord[],
+    deadline: Date,
+    now: Date,
+    settled: Map<string, boolean>,
+  ): Promise<ActivationSurveyCompletionRecord[]> {
     const reviewMs = EXTERNAL_COMPLETION_REVIEW_HOURS * 60 * 60 * 1000;
     const countable: ActivationSurveyCompletionRecord[] = [];
     let lateConfirmedKept = false;
@@ -608,8 +650,7 @@ export class StarterPointsCoordinator {
       }
       if (
         completion.source === 'EXTERNAL' &&
-        completion.attemptId &&
-        (await this.isPendingCreditReversed(completion.attemptId))
+        !(await this.isExternalCreditCountable(completion.attemptId, settled))
       ) {
         continue;
       }
@@ -619,11 +660,22 @@ export class StarterPointsCoordinator {
     return countable;
   }
 
-  private async isPendingCreditReversed(attemptId: string): Promise<boolean> {
-    const credit = await this.ledgerService.findJournalByIdempotencyKey(
-      `external-completion:${attemptId}`,
-    );
-    return credit ? this.ledgerService.isJournalReversed(credit.id) : false;
+  private async isExternalCreditCountable(
+    attemptId: string | null,
+    settled: Map<string, boolean>,
+  ): Promise<boolean> {
+    if (!attemptId) {
+      return false;
+    }
+    const cached = settled.get(attemptId);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const state =
+      await this.ledgerService.getExternalSettlementState(attemptId);
+    const countable = state === 'PENDING' || state === 'RELEASED';
+    settled.set(attemptId, countable);
+    return countable;
   }
 
   private describeIneligibility(

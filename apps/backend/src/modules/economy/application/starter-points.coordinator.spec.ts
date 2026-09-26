@@ -38,6 +38,41 @@ describe('StarterPointsCoordinator', () => {
     dataProvider.userRegistrationDates.set(userId, new Date());
   });
 
+  const externalPublisherId = 'fe000000-0000-4000-8000-000000000001';
+
+  /**
+   * Review 3.5: an External completion counts only with a Pending or Released
+   * ledger credit, so tests that record one also post its credit.
+   */
+  async function creditExternal(
+    respondentId: string,
+    attemptId: string,
+    amount = 10,
+  ): Promise<string> {
+    const escrow = await ledgerService.getOrCreateAccount(
+      externalPublisherId,
+      'ESCROW',
+    );
+    const issuance = await ledgerService.getOrCreateAccount(
+      null,
+      'SYSTEM_ISSUANCE',
+    );
+    await ledgerService.postJournal({
+      idempotencyKey: `seed-escrow:${attemptId}`,
+      entries: [
+        { accountId: issuance.id, amount: -amount },
+        { accountId: escrow.id, amount },
+      ],
+    });
+    const credit = await ledgerService.creditPendingReward({
+      attemptId,
+      publisherId: externalPublisherId,
+      respondentId,
+      amount,
+    });
+    return credit.journalId!;
+  }
+
   function activationNotifications(forUser = userId) {
     return notificationRepo
       .all()
@@ -326,6 +361,7 @@ describe('StarterPointsCoordinator', () => {
           // Deadline was 10 days ago; these are 2..7 days old (all late).
           completedAt: new Date(Date.now() - (2 + i) * DAY),
         });
+        await creditExternal(userId, `a0000000-0000-4000-8000-00000000000${i}`);
       }
       // One still under review: skipped without a lookup.
       dataProvider.recordCompletion(userId, {
@@ -334,16 +370,13 @@ describe('StarterPointsCoordinator', () => {
         attemptId: 'a0000000-0000-4000-8000-000000000099',
         completedAt: new Date(Date.now() - HOUR),
       });
-      const lookup = jest.spyOn(ledgerService, 'findJournalByIdempotencyKey');
+      const lookup = jest.spyOn(ledgerService, 'getExternalSettlementState');
 
       const status = await coordinator.getStatus(userId);
 
       expect(status.activationState).toBe('EXPIRED');
       expect(status.isVerifiedMember).toBe(true);
-      const reversalLookups = lookup.mock.calls.filter(([key]) =>
-        String(key).startsWith('external-completion:'),
-      );
-      expect(reversalLookups).toHaveLength(1);
+      expect(lookup).toHaveBeenCalledTimes(1);
     });
 
     it('keeps an External completion pending for the 48-hour review window', async () => {
@@ -356,6 +389,7 @@ describe('StarterPointsCoordinator', () => {
         attemptId: '33333333-3333-4333-8333-333333333333',
         completedAt,
       });
+      await creditExternal(userId, '33333333-3333-4333-8333-333333333333');
 
       const status = await coordinator.getStatus(userId);
 
@@ -412,6 +446,140 @@ describe('StarterPointsCoordinator', () => {
     });
   });
 
+  describe('External settlement state (review 3.5)', () => {
+    const attemptId = 'c0000000-0000-4000-8000-000000000001';
+    const caseId = 'c0000000-0000-4000-8000-0000000000ca';
+
+    beforeEach(async () => {
+      await coordinator.grantStarterPoints(userId);
+      dataProvider.demographicCompletions.set(userId, true);
+      dataProvider.recordCompletion(userId, {
+        source: 'EXTERNAL',
+        formId: 'ext-settled',
+        attemptId,
+        completedAt: new Date(Date.now() - 3 * DAY),
+      });
+    });
+
+    async function activationState(): Promise<string> {
+      return (await coordinator.getStatus(userId)).activationState;
+    }
+
+    it('does not count a completion without a ledger credit', async () => {
+      expect(await activationState()).toBe('SURVEY_REQUIRED');
+      expect(
+        (await coordinator.checkAndUnlockStarterPoints(userId)).unlocked,
+      ).toBe(false);
+    });
+
+    it('counts a Pending credit', async () => {
+      await creditExternal(userId, attemptId);
+
+      expect(await activationState()).toBe('READY_TO_UNLOCK');
+    });
+
+    it('counts a Released credit', async () => {
+      await creditExternal(userId, attemptId);
+      const matured = new LedgerService(ledgerRepo, {
+        clock: () => new Date(Date.now() + 49 * HOUR),
+      });
+      await matured.releasePendingReward({ attemptId });
+
+      expect(await ledgerService.getExternalSettlementState(attemptId)).toBe(
+        'RELEASED',
+      );
+      expect(await activationState()).toBe('READY_TO_UNLOCK');
+    });
+
+    it('does not count a credit under an open dispute hold', async () => {
+      await creditExternal(userId, attemptId);
+      await ledgerService.placeDisputeHold({
+        caseId,
+        attemptId,
+        respondentId: userId,
+        amount: 10,
+      });
+
+      expect(await activationState()).toBe('SURVEY_REQUIRED');
+      expect(
+        (await coordinator.checkAndUnlockStarterPoints(userId)).unlocked,
+      ).toBe(false);
+      expect((await ledgerService.getWallet(userId)).balance.frozen).toBe(100);
+    });
+
+    it('does not count a credit refunded to the Publisher', async () => {
+      await creditExternal(userId, attemptId);
+      await ledgerService.placeDisputeHold({
+        caseId,
+        attemptId,
+        respondentId: userId,
+        amount: 10,
+      });
+      await ledgerService.resolveDisputeHold({
+        caseId,
+        respondentId: userId,
+        publisherId: externalPublisherId,
+        amount: 10,
+        outcome: 'REFUND_TO_PUBLISHER',
+      });
+
+      expect(await activationState()).toBe('SURVEY_REQUIRED');
+    });
+
+    it('does not let 20 disqualified External attempts hide a valid 21st', async () => {
+      dataProvider.clear();
+      dataProvider.userRegistrationDates.set(userId, new Date());
+      dataProvider.demographicCompletions.set(userId, true);
+      for (let i = 0; i < 20; i++) {
+        const disqualified = `d0000000-0000-4000-8000-0000000000${String(i).padStart(2, '0')}`;
+        dataProvider.recordCompletion(userId, {
+          source: 'EXTERNAL',
+          formId: `ext-${i}`,
+          attemptId: disqualified,
+          completedAt: new Date(Date.now() - (5 * DAY - i * HOUR)),
+        });
+        // Alternate reversed credits and missing credits.
+        if (i % 2 === 0) {
+          await ledgerService.reverseJournal({
+            targetJournalId: await creditExternal(userId, disqualified),
+          });
+        }
+      }
+      const valid = 'd0000000-0000-4000-8000-000000000099';
+      dataProvider.recordCompletion(userId, {
+        source: 'EXTERNAL',
+        formId: 'ext-valid',
+        attemptId: valid,
+        completedAt: new Date(Date.now() - 3 * DAY),
+      });
+      await creditExternal(userId, valid);
+      const lookup = jest.spyOn(
+        dataProvider,
+        'findActivationSurveyCompletions',
+      );
+
+      const status = await coordinator.getStatus(userId);
+
+      expect(status.activationState).toBe('READY_TO_UNLOCK');
+      expect(status.activationSurvey).toMatchObject({ formId: 'ext-valid' });
+      expect(lookup.mock.calls.map(([, options]) => options.limit)).toEqual([
+        20, 40,
+      ]);
+    });
+
+    it('stops at the first page when it already holds a countable completion', async () => {
+      await creditExternal(userId, attemptId);
+      const lookup = jest.spyOn(
+        dataProvider,
+        'findActivationSurveyCompletions',
+      );
+
+      await coordinator.getStatus(userId);
+
+      expect(lookup).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('checkAndUnlockStarterPoints', () => {
     beforeEach(async () => {
       await coordinator.grantStarterPoints(userId);
@@ -455,6 +623,7 @@ describe('StarterPointsCoordinator', () => {
         attemptId: '66666666-6666-4666-8666-666666666666',
         completedAt: new Date(Date.now() - HOUR),
       });
+      await creditExternal(userId, '66666666-6666-4666-8666-666666666666');
 
       const result = await coordinator.checkAndUnlockStarterPoints(userId);
 
@@ -471,6 +640,7 @@ describe('StarterPointsCoordinator', () => {
         attemptId: '77777777-7777-4777-8777-777777777777',
         completedAt: new Date(Date.now() - 49 * HOUR),
       });
+      await creditExternal(userId, '77777777-7777-4777-8777-777777777777');
 
       const result = await coordinator.checkAndUnlockStarterPoints(userId);
 
@@ -977,6 +1147,7 @@ describe('StarterPointsCoordinator', () => {
         attemptId: '88888888-8888-4888-8888-888888888888',
         completedAt: new Date(Date.now() - 2 * HOUR),
       });
+      await creditExternal(pendingUser, '88888888-8888-4888-8888-888888888888');
       await coordinator.grantStarterPoints(pendingUser);
 
       const result = await coordinator.expireUnmaturedStarterPoints();
@@ -1143,6 +1314,7 @@ describe('StarterPointsCoordinator', () => {
           attemptId: '99999999-0000-4000-8000-000000000001',
           completedAt: new Date(Date.now() - 2 * HOUR),
         });
+        await creditExternal(deferred, '99999999-0000-4000-8000-000000000001');
         const expiring = 'b0000000-0000-4000-8000-000000000003';
         await seedExpiring(
           expiring,

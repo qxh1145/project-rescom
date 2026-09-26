@@ -1032,6 +1032,18 @@ export class ParticipationService {
     if (!pinnedVersion) {
       throw new SurveyNotAvailableException('Pinned survey version not found.');
     }
+    // Bug 3.4: a completion-code rotation after this attempt started creates
+    // a newer published version with a new code. The code is verified against
+    // that newest code only (a superseded code is rejected) and the failure
+    // budget is keyed by it; the attempt stays pinned to its version for the
+    // schema and analytics.
+    const verifyVersion =
+      currentVersion.id !== pinnedVersion.id &&
+      currentVersion.formId === form.id &&
+      currentVersion.isPublished &&
+      currentVersion.versionNumber > pinnedVersion.versionNumber
+        ? currentVersion
+        : pinnedVersion;
 
     const now = new Date();
 
@@ -1111,10 +1123,10 @@ export class ParticipationService {
     const completionCodeService = this.completionCodeService;
     if (
       !completionCodeService ||
-      !completionCodeService.canVerify(pinnedVersion.completionCode)
+      !completionCodeService.canVerify(verifyVersion.completionCode)
     ) {
       this.logger?.warn(
-        `Completion code verification is unavailable for form version ${pinnedVersion.id} (missing or unusable verifier); no strike was recorded.`,
+        `Completion code verification is unavailable for form version ${verifyVersion.id} (missing or unusable verifier); no strike was recorded.`,
       );
       throw new SurveyNotAvailableException(
         'Completion code verification is unavailable for this survey version.',
@@ -1156,7 +1168,7 @@ export class ParticipationService {
         const accountFailures =
           await this.participationRepository.countCompletionCodeFailures(
             callerUserId,
-            pinnedVersion.id,
+            verifyVersion.id,
           );
         if (
           accountFailures >= COMPLETION_CODE_POLICY.maxFailuresPerAccountVersion
@@ -1169,16 +1181,16 @@ export class ParticipationService {
 
         // Keyed verifier, constant-time (FR-22). The plaintext code is never logged.
         const isCodeValid = completionCodeService.verifyCode(
-          pinnedVersion.id,
+          verifyVersion.id,
           input.completionCode,
-          pinnedVersion.completionCode,
+          verifyVersion.completionCode,
         );
         if (!isCodeValid) {
           const { failureCount, isLocked, accountFailureCount } =
             await this.participationRepository.recordFailedAttemptVerification(
               attempt.id,
               callerUserId,
-              pinnedVersion.id,
+              verifyVersion.id,
             );
           return {
             kind: 'INVALID',
@@ -1256,7 +1268,7 @@ export class ParticipationService {
         throw new AttemptLockedException();
       case 'LIMIT_REACHED':
         throw this.completionCodeLimitError(
-          pinnedVersion.id,
+          verifyVersion.id,
           outcome.failedVerifications,
         );
       case 'EXPIRED':

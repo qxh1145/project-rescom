@@ -1,6 +1,7 @@
 import { LedgerAccountClass } from '@rescom/schemas';
 import {
   LedgerRepositoryPort,
+  PostJournalTransactionOptions,
   UserLedgerTransactionRecord,
 } from '../application/ports/ledger-repository.port';
 import { LedgerAccountEntity } from '../domain/ledger-account.entity';
@@ -122,6 +123,15 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
       .map((j) => this.enrichJournalWithEntries(j));
   }
 
+  async findJournalsByIdempotencyKeyPrefixAndDescription(
+    prefix: string,
+    descriptionFragment: string,
+  ): Promise<LedgerJournalEntity[]> {
+    return (await this.findJournalsByIdempotencyKeyPrefix(prefix)).filter((j) =>
+      (j.description ?? '').includes(descriptionFragment),
+    );
+  }
+
   async findReversalJournalsFor(
     targetJournalIds: string[],
   ): Promise<LedgerJournalEntity[]> {
@@ -166,6 +176,7 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
   async postJournalTransaction(
     journal: LedgerJournalEntity,
     entries: LedgerEntryEntity[],
+    options: PostJournalTransactionOptions = {},
   ): Promise<LedgerJournalEntity> {
     for (const existing of this.journals.values()) {
       if (existing.idempotencyKey === journal.idempotencyKey) {
@@ -192,6 +203,12 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
           );
         }
       }
+    }
+
+    // Same point as the Prisma adapter: before the balance checks and before
+    // anything is written.
+    if (options.assertBeforeInsert) {
+      await options.assertBeforeInsert();
     }
 
     // 3. Ascending sort of distinct account IDs to guarantee deterministic deadlock-free locking

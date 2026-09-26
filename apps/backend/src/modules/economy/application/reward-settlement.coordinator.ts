@@ -1,7 +1,7 @@
 import { RewardPolicyMode, RewardSettlementResultDto } from '@rescom/schemas';
 import {
   attemptIdFromExternalCompletionKey,
-  externalCompletionKey,
+  ExternalCreditState,
   LedgerService,
   PENDING_REWARD_MATURITY_MS,
   ReleasePendingRewardParams,
@@ -30,14 +30,7 @@ export function internalRewardNotificationKey(responseId: string): string {
 export const MATURED_RELEASE_DEFAULT_LIMIT = 100;
 export const MATURED_RELEASE_MAX_LIMIT = 500;
 
-/**
- * Where the External completion credit of an attempt stands (Epic 9 review
- * P1): `NONE` = no credit journal (zero-reward survey or not completed),
- * `PENDING` = credited and still in the 48 h Pending window, `RELEASED` =
- * moved to Available, `REVERSED` = the credit was reversed (Phase 1
- * upheld-dispute outcome; wins over a release).
- */
-export type ExternalCreditState = 'NONE' | 'PENDING' | 'RELEASED' | 'REVERSED';
+export type { ExternalCreditState } from './ledger.service';
 
 export interface SettleInternalRewardParams {
   responseId: string;
@@ -223,22 +216,8 @@ export class RewardSettlementCoordinator {
    * (Epic 9 review P1/P3). A reversal wins over a release, so a credit that
    * was released and then reversed is `REVERSED`.
    */
-  async getExternalCreditState(
-    attemptId: string,
-  ): Promise<ExternalCreditState> {
-    const credit = await this.ledgerService.findJournalByIdempotencyKey(
-      externalCompletionKey(attemptId),
-    );
-    if (!credit) {
-      return 'NONE';
-    }
-    if (await this.ledgerService.isJournalReversed(credit.id)) {
-      return 'REVERSED';
-    }
-    const release = await this.ledgerService.findJournalByIdempotencyKey(
-      releasePendingKey(attemptId),
-    );
-    return release ? 'RELEASED' : 'PENDING';
+  getExternalCreditState(attemptId: string): Promise<ExternalCreditState> {
+    return this.ledgerService.getExternalCreditState(attemptId);
   }
 
   /**

@@ -394,6 +394,61 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
       expect(res.status).toBe(409);
       expect(res.body.error.code).toBe('JOURNAL_ALREADY_REVERSED');
     });
+
+    it('refuses to reverse a released External credit with HTTP 409 LEDGER_DOWNSTREAM_JOURNAL_EXISTS (review 3.2)', async () => {
+      const publisherId = randomUUID();
+      const attemptId = randomUUID();
+      const pooledAttemptId = randomUUID();
+      const systemAccount = await ledgerService.getOrCreateAccount(
+        null,
+        'SYSTEM_ISSUANCE',
+      );
+      const escrow = await ledgerService.getOrCreateAccount(
+        publisherId,
+        'ESCROW',
+      );
+      await ledgerService.postJournal({
+        idempotencyKey: `e2e-downstream-escrow:${publisherId}`,
+        entries: [
+          { accountId: systemAccount.id, amount: -40 },
+          { accountId: escrow.id, amount: 40 },
+        ],
+      });
+      for (const id of [attemptId, pooledAttemptId]) {
+        await ledgerService.creditPendingReward({
+          attemptId: id,
+          publisherId,
+          respondentId: respondentUserId,
+          amount: 20,
+        });
+      }
+      // Past the 48-hour review window on an injected clock.
+      const matured = new LedgerService(ledgerRepo, {
+        clock: () => new Date(Date.now() + 49 * 60 * 60 * 1000),
+      });
+      await matured.releasePendingReward({ attemptId });
+      const credit = await ledgerService.findJournalByIdempotencyKey(
+        `external-completion:${attemptId}`,
+      );
+      const pending = await ledgerService.getOrCreateAccount(
+        respondentUserId,
+        'PENDING',
+      );
+
+      const res = await request(app.getHttpServer())
+        .post(`/economy/journals/${credit!.id}/reverse`)
+        .set('Cookie', [authCookie])
+        .set('x-csrf-token', csrfToken)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Content-Type', 'application/json')
+        .send({ reason: 'Upheld dispute after release' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('LEDGER_DOWNSTREAM_JOURNAL_EXISTS');
+      expect(await ledgerRepo.findReversalJournal(credit!.id)).toBeNull();
+      // The pooled credit of the other attempt is untouched.
+      expect((await ledgerService.getAccount(pending.id)).balance).toBe(20);
+    });
   });
 
   describe('Auditing & Balance Derivability (AC5)', () => {

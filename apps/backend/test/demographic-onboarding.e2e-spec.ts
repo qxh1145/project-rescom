@@ -162,7 +162,12 @@ describe('Story 7.1: Mandatory Demographic Survey E2E', () => {
       .overrideProvider(PARTICIPATION_REPOSITORY_PORT)
       .useValue(partRepo)
       .overrideProvider(SURVEY_RESPONSE_REPOSITORY_PORT)
-      .useValue(new InMemorySurveyResponseRepository())
+      .useValue(
+        new InMemorySurveyResponseRepository({
+          forms: formRepo,
+          attempts: partRepo,
+        }),
+      )
       .overrideProvider(LEDGER_REPOSITORY_PORT)
       .useValue(new InMemoryLedgerRepository())
       .overrideProvider(STARTER_POINTS_DATA_PROVIDER)

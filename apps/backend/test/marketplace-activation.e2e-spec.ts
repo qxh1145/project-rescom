@@ -407,7 +407,12 @@ describe('Story 7.2: Marketplace Survey Activation Step E2E', () => {
       .overrideProvider(PARTICIPATION_REPOSITORY_PORT)
       .useValue(partRepo)
       .overrideProvider(SURVEY_RESPONSE_REPOSITORY_PORT)
-      .useValue(new InMemorySurveyResponseRepository())
+      .useValue(
+        new InMemorySurveyResponseRepository({
+          forms: formRepo,
+          attempts: partRepo,
+        }),
+      )
       .overrideProvider(LEDGER_REPOSITORY_PORT)
       .useValue(new InMemoryLedgerRepository())
       .overrideProvider(STARTER_POINTS_DATA_PROVIDER)
@@ -684,6 +689,33 @@ describe('Story 7.2: Marketplace Survey Activation Step E2E', () => {
       available: 100,
     });
     expect(activationNotifications(respondent.id)).toHaveLength(1);
+  });
+
+  it('does not activate on a disputed External completion, even after 48 hours (review 3.5)', async () => {
+    const respondent = await onboardedRespondent();
+    const attemptId = await verifyExternalSurvey(respondent);
+    // A dispute moves the attempt's Pending credit to an Integrity Hold.
+    await ledgerService.placeDisputeHold({
+      caseId: '5e5e5e5e-5e5e-45e5-85e5-5e5e5e5e5e5e',
+      attemptId,
+      respondentId: respondent.id,
+      amount: 20,
+    });
+    ageAttempt(attemptId, 49);
+
+    const current = await status(respondent);
+    expect(current.activationState).toBe('SURVEY_REQUIRED');
+    expect(current.activationSurvey).toBeNull();
+    const unlock = await mutate(
+      respondent,
+      'post',
+      '/economy/starter-points/unlock',
+    ).expect(200);
+    expect(unlock.body.data).toMatchObject({
+      unlocked: false,
+      activationState: 'SURVEY_REQUIRED',
+    });
+    expect(await wallet(respondent)).toMatchObject({ frozen: 100 });
   });
 
   it('posts a single unlock journal under concurrent unlock requests', async () => {

@@ -319,3 +319,60 @@ describe('Story 8.2 participation repository evidence & counters', () => {
     });
   });
 });
+
+/**
+ * Bug 3.6 boundary pin: both implementations include a completion submitted
+ * exactly at `since` (inclusive `gte`); the evaluators apply the strict
+ * window themselves, so the repositories must stay identical here.
+ */
+describe('findCompletionTimesSince boundary parity (Bug 3.6)', () => {
+  const since = new Date('2026-09-26T10:00:00.000Z');
+  const justBefore = new Date(since.getTime() - 1);
+
+  it('Prisma includes an attempt submitted exactly at `since` (gte)', async () => {
+    const prisma = {
+      surveyAttempt: {
+        findMany: jest.fn().mockResolvedValue([{ submittedAt: since }]),
+      },
+    };
+    const repository = new PrismaParticipationRepository(prisma as any);
+
+    await expect(
+      repository.findCompletionTimesSince('user-1', since),
+    ).resolves.toEqual([since]);
+    expect(prisma.surveyAttempt.findMany.mock.calls[0][0].where).toEqual({
+      respondentId: 'user-1',
+      status: 'COMPLETED',
+      submittedAt: { gte: since },
+    });
+  });
+
+  it('InMemory includes an attempt submitted exactly at `since` and excludes one just before', async () => {
+    const repository = new InMemoryParticipationRepository();
+    for (const [id, submittedAt] of [
+      ['at-since', since],
+      ['just-before', justBefore],
+    ] as const) {
+      repository.attempts.set(
+        id,
+        new SurveyAttemptEntity(
+          id,
+          'form-1',
+          'version-1',
+          'user-1',
+          'COMPLETED',
+          false,
+          new Date('2026-09-26T09:00:00.000Z'),
+          submittedAt,
+          null,
+          new Date(),
+          new Date(),
+        ),
+      );
+    }
+
+    await expect(
+      repository.findCompletionTimesSince('user-1', new Date(since)),
+    ).resolves.toEqual([since]);
+  });
+});

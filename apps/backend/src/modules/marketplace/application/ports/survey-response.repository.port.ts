@@ -32,6 +32,21 @@ export interface GuestSubmissionEntity {
   submittedAt: Date;
 }
 
+/**
+ * Bug 3.3: a guest submission reserves its quota slot atomically. The
+ * reservation cutoff is the same one participation's `reserveAttempt` uses
+ * (`now - RESERVATION_EXPIRY_MS`), so guests and paid respondents see the same
+ * quota: completions + unexpired IN_PROGRESS attempts.
+ */
+export interface CreateGuestResponseWithinQuotaParams extends CreateGuestSubmissionParams {
+  cutoffDate: Date;
+}
+
+export type CreateGuestResponseWithinQuotaResult =
+  | { outcome: 'CREATED'; response: GuestSubmissionEntity }
+  | { outcome: 'NOT_OPEN' }
+  | { outcome: 'QUOTA_FULL' };
+
 export interface SurveyResponseRepositoryPort {
   /**
    * Finds all form IDs the given respondent has completed: a SUBMITTED or
@@ -54,10 +69,14 @@ export interface SurveyResponseRepositoryPort {
   recordResponse(params: RecordResponseParams): Promise<void>;
 
   /**
-   * Creates an unauthenticated guest response and associated integrity assessment record.
-   * Does NOT deduct escrow points or award any points.
+   * Bug 3.3: creates an unauthenticated guest response (no escrow deducted,
+   * no reward) only while the form is a PUBLISHED INTERNAL survey with quota
+   * left, under the same form row lock (`FOR NO KEY UPDATE`) and quota
+   * definition as participation's `reserveAttempt`: completed participations
+   * (guests included) + unexpired IN_PROGRESS attempts must stay below
+   * `expectedCompletions`. Replaces the unguarded `createGuestSubmission`.
    */
-  createGuestSubmission(
-    params: CreateGuestSubmissionParams,
-  ): Promise<GuestSubmissionEntity>;
+  createGuestResponseWithinQuota(
+    params: CreateGuestResponseWithinQuotaParams,
+  ): Promise<CreateGuestResponseWithinQuotaResult>;
 }

@@ -16,7 +16,7 @@ import { ParseUUIDPipe } from '../../../common/http/parse-uuid.pipe';
 import { ZodValidationPipe } from '../../../common/http/zod-validation.pipe';
 import { createSuccessEnvelope } from '../../../common/http/response.envelope';
 
-@Controller('public/forms')
+@Controller(['public/forms', 'api/public/forms'])
 export class PublicFormsController {
   constructor(private readonly publicFormsService: PublicFormsService) {}
 
@@ -34,16 +34,10 @@ export class PublicFormsController {
     @Body() body: GuestSubmissionInput,
     @Req() req: Request,
   ) {
-    const forwarded = req.headers['x-forwarded-for'];
-    const ip =
-      (typeof forwarded === 'string'
-        ? forwarded.split(',')[0].trim()
-        : Array.isArray(forwarded)
-          ? forwarded[0]
-          : null) ||
-      req.ip ||
-      req.socket?.remoteAddress ||
-      '127.0.0.1';
+    // Bug 3.3: never read X-Forwarded-For here. Express derives `req.ip` from
+    // it only for the trusted proxy hops (`TRUST_PROXY_HOPS`, main.ts), so a
+    // client cannot spoof its rate-limit key.
+    const ip = req.ip || 'unknown';
 
     const result = await this.publicFormsService.submitGuestResponse(
       id,

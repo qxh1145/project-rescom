@@ -474,10 +474,11 @@ describe('Story 6.4: RewardSettlementCoordinator', () => {
     it('reports REVERSED when the credit was reversed after its release', async () => {
       const creditJournalId = await credit(attemptId);
       matured();
-      await coordinator.releasePendingReward({ attemptId });
-      // A second Pending credit keeps the Pending account funded, so the
-      // reversal of the released credit does not overdraw it.
+      const release = await coordinator.releasePendingReward({ attemptId });
       await credit(otherAttemptId);
+      // Review 3.2: the release must be reversed before its credit, so the
+      // credit reversal never drains the other attempt's pooled Pending points.
+      await ledgerService.reverseJournal({ targetJournalId: release.id });
       await ledgerService.reverseJournal({ targetJournalId: creditJournalId });
 
       expect(await coordinator.getExternalCreditState(attemptId)).toBe(

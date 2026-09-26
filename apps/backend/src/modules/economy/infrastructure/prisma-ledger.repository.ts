@@ -4,6 +4,7 @@ import { canAccountClassOverdraft, LedgerAccountClass } from '@rescom/schemas';
 import { PrismaService } from '../../../common/database/prisma.service';
 import {
   LedgerRepositoryPort,
+  PostJournalTransactionOptions,
   UserLedgerTransactionRecord,
 } from '../application/ports/ledger-repository.port';
 import { LedgerAccountEntity } from '../domain/ledger-account.entity';
@@ -164,6 +165,21 @@ export class PrismaLedgerRepository implements LedgerRepositoryPort {
     return rows.map((row) => this.toJournalEntity(row));
   }
 
+  async findJournalsByIdempotencyKeyPrefixAndDescription(
+    prefix: string,
+    descriptionFragment: string,
+  ): Promise<LedgerJournalEntity[]> {
+    const rows = await this.client.ledgerJournal.findMany({
+      where: {
+        idempotencyKey: { startsWith: prefix },
+        description: { contains: descriptionFragment },
+      },
+      include: { entries: true },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map((row) => this.toJournalEntity(row));
+  }
+
   async findReversalJournalsFor(
     targetJournalIds: string[],
   ): Promise<LedgerJournalEntity[]> {
@@ -221,6 +237,7 @@ export class PrismaLedgerRepository implements LedgerRepositoryPort {
   async postJournalTransaction(
     journal: LedgerJournalEntity,
     entries: LedgerEntryEntity[],
+    options: PostJournalTransactionOptions = {},
   ): Promise<LedgerJournalEntity> {
     const sum = entries.reduce((total, entry) => total + entry.amount, 0);
     if (entries.length < 2 || sum !== 0) {
@@ -266,6 +283,13 @@ export class PrismaLedgerRepository implements LedgerRepositoryPort {
           }
 
           lockedAccounts.push(rows[0]);
+        }
+
+        // Caller guard under the locks, before the balance checks: a
+        // concurrent command touching these accounts has committed, so its
+        // journals are visible to the guard's reads here.
+        if (options.assertBeforeInsert) {
+          await options.assertBeforeInsert();
         }
 
         if (

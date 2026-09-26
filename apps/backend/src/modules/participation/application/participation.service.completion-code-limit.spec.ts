@@ -366,4 +366,73 @@ describe('ParticipationService completion-code limit (decision E5-D1)', () => {
     expect(count).not.toHaveBeenCalled();
     expect(reserve.mock.calls[0][0].completionCodeFailureLimit).toBeUndefined();
   });
+  describe('Bug 3.4: a completion-code rotation during an attempt', () => {
+    const rotatedVersionId = '88888888-8888-4888-8888-888888888888';
+
+    async function rotate() {
+      const rotated = await formRepo.createVersion(
+        formId,
+        rotatedVersionId,
+        new Date(),
+        {
+          completionCode: 'v1:rotated-digest',
+          isPublished: true,
+          publishedAt: new Date(),
+          expectedStatus: 'PUBLISHED',
+        },
+      );
+      expect(rotated!.currentVersion.versionNumber).toBe(2);
+    }
+
+    beforeEach(() => {
+      // Each version has its own code: v1 "111111", the rotated v2 "222222".
+      completionCode.verifyCode.mockImplementation(
+        (id: string, code: string) =>
+          id === rotatedVersionId ? code === '222222' : code === '111111',
+      );
+    });
+
+    it('rejects the superseded code and keys the failure budget by the rotated version', async () => {
+      const attemptId = await start();
+      await rotate();
+      const count = jest.spyOn(partRepo, 'countCompletionCodeFailures');
+      const record = jest.spyOn(partRepo, 'recordFailedAttemptVerification');
+
+      await expect(verify(attemptId, '111111')).rejects.toBeInstanceOf(
+        InvalidCompletionCodeException,
+      );
+
+      expect(completionCode.verifyCode).toHaveBeenLastCalledWith(
+        rotatedVersionId,
+        '111111',
+        'v1:rotated-digest',
+      );
+      expect(count).toHaveBeenCalledWith(userId, rotatedVersionId);
+      expect(record).toHaveBeenCalledWith(attemptId, userId, rotatedVersionId);
+    });
+
+    it('accepts the new code and keeps the attempt pinned to its version', async () => {
+      const attemptId = await start();
+      await rotate();
+
+      const result = await verify(attemptId, '222222');
+
+      expect(result.status).toBe('COMPLETED');
+      expect(result.formVersionId).toBe(versionId);
+      expect(partRepo.attempts.get(attemptId)!.formVersionId).toBe(versionId);
+    });
+
+    it('verifies against the pinned version when nothing was rotated', async () => {
+      const attemptId = await start();
+
+      const result = await verify(attemptId, '111111');
+
+      expect(result.status).toBe('COMPLETED');
+      expect(completionCode.verifyCode).toHaveBeenLastCalledWith(
+        versionId,
+        '111111',
+        'v1:digest',
+      );
+    });
+  });
 });

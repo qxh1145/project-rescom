@@ -644,7 +644,7 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
     version: number;
     status: 'SHADOW' | 'ADVISORY' | 'ENFORCED';
   } | null> {
-    const active = await this.prisma.scoringPolicy.findFirst({
+    const active = await currentClient(this.prisma).scoringPolicy.findFirst({
       where: { status: { in: ['ENFORCED', 'ADVISORY', 'SHADOW'] } },
       orderBy: { version: 'desc' },
     });
@@ -897,7 +897,7 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
   async saveIntegrityEvents(events: IntegrityEventEntity[]): Promise<number> {
     if (events.length === 0) return 0;
 
-    const result = await this.prisma.integrityEvent.createMany({
+    const result = await currentClient(this.prisma).integrityEvent.createMany({
       data: events.map((event) => ({
         clientEventId: event.clientEventId,
         eventType: event.eventType as any,
@@ -1064,7 +1064,7 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
     respondentId: string,
     cutoffDate: Date,
   ): Promise<Date[]> {
-    const rows = await this.prisma.surveyAttempt.findMany({
+    const rows = await currentClient(this.prisma).surveyAttempt.findMany({
       where: {
         respondentId,
         status: 'IN_PROGRESS',
@@ -1085,6 +1085,10 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
   ): Promise<boolean> {
     // Append-only (FR-47): INSERT ... ON CONFLICT (dedupe_key) DO NOTHING, so a
     // repeated rejection never updates or duplicates the existing evidence.
+    // Bug 3.6: deliberately the root client, never the ambient Unit of Work
+    // transaction: the evidence is written for a request that is being
+    // rejected, and must survive that request's rollback (see
+    // `ParticipationRateLimiter.rejectCompletions`).
     const result = await this.prisma.fraudLog.createMany({
       data: [
         {
@@ -1103,7 +1107,7 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
     respondentId: string,
     since: Date,
   ): Promise<Date[]> {
-    const rows = await this.prisma.surveyAttempt.findMany({
+    const rows = await currentClient(this.prisma).surveyAttempt.findMany({
       where: {
         respondentId,
         status: 'COMPLETED',
@@ -1217,7 +1221,7 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
   async findInternalRewardRequest(
     responseId: string,
   ): Promise<InternalRewardRequest | null> {
-    const event = await this.prisma.outboxEvent.findUnique({
+    const event = await currentClient(this.prisma).outboxEvent.findUnique({
       where: { idempotencyKey: `internal-reward:${responseId}` },
       select: { payload: true },
     });

@@ -101,6 +101,30 @@ export class DisputeHoldActiveException extends Error {
 }
 
 /**
+ * A journal cannot be reversed while a later journal that depends on it
+ * (e.g. the Pending release or a dispute hold of an External completion
+ * credit) stands unreversed: the negation would drain points that other
+ * credits pooled in the same account still back. Reverse the downstream
+ * journal first. Symmetrically, a reversal cannot be undone (re-instating its
+ * original journal) while the journal the original was built on is reversed.
+ */
+export class DownstreamJournalExistsException extends Error {
+  readonly code = 'LEDGER_DOWNSTREAM_JOURNAL_EXISTS';
+
+  constructor(
+    public readonly targetIdempotencyKey: string,
+    public readonly blockingIdempotencyKey: string,
+    message?: string,
+  ) {
+    super(
+      message ??
+        `Journal "${targetIdempotencyKey}" cannot be reversed while the dependent journal "${blockingIdempotencyKey}" is not reversed. Reverse the dependent journal first.`,
+    );
+    this.name = 'DownstreamJournalExistsException';
+  }
+}
+
+/**
  * Epic 6 review P14: a concurrent command posted the same idempotency key
  * while this one ran inside a shared Unit of Work. PostgreSQL aborted the
  * whole transaction, so the caller cannot converge on the winner; it must

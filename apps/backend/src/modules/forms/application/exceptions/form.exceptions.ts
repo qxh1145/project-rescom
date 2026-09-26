@@ -129,6 +129,43 @@ export class FormHasPublishedVersionsException extends Error {
 }
 
 /**
+ * Decision D2 (Bug 3.1): once any version of a survey was published, its
+ * pricing is frozen — a re-versioned draft may not change the survey type or
+ * the reward per response, because the Escrow held for the live quota and the
+ * rewards already promised were priced with them. Maps to HTTP 409 Conflict
+ * with `details: { fields }`.
+ */
+export class FormPublishedFieldsImmutableException extends Error {
+  readonly code = 'FORM_PUBLISHED_FIELDS_IMMUTABLE';
+
+  constructor(
+    id: string,
+    readonly fields: string[],
+  ) {
+    super(
+      `Form "${id}" has a published version: ${fields.join(', ')} cannot be changed after the first publication.`,
+    );
+    this.name = 'FormPublishedFieldsImmutableException';
+  }
+}
+
+/**
+ * Bug 3.4: the completion code of a survey waiting in `MODERATION_QUEUE`
+ * cannot be rotated — rotation creates a new version and the Admin's pending
+ * decision is pinned to the queued one. Maps to HTTP 409 Conflict.
+ */
+export class FormInModerationException extends Error {
+  readonly code = 'FORM_IN_MODERATION';
+
+  constructor(id: string) {
+    super(
+      `Form "${id}" is awaiting moderation; its completion code can be rotated after the moderation decision.`,
+    );
+    this.name = 'FormInModerationException';
+  }
+}
+
+/**
  * Thrown when targeting criteria in a PATCH /forms/:id/draft request fails
  * `surveyTargetingSchema` validation (e.g. ageRange.min > ageRange.max,
  * invalid gender enum value, location array too large).
@@ -158,6 +195,13 @@ export class PublicFormAccessDisabledException extends Error {
   }
 }
 
+/**
+ * CAPTCHA failure reason of a server without a CAPTCHA provider: a server
+ * misconfiguration, not a client error (review F6).
+ */
+export const CAPTCHA_PROVIDER_NOT_CONFIGURED =
+  'CAPTCHA_PROVIDER_NOT_CONFIGURED';
+
 export class CaptchaVerificationFailedException extends Error {
   readonly code = 'CAPTCHA_VERIFICATION_FAILED';
 
@@ -181,7 +225,11 @@ export class GuestRateLimitExceededException extends Error {
 export class InvalidGuestSubmissionException extends Error {
   readonly code = 'BAD_REQUEST';
 
-  constructor(message: string) {
+  constructor(
+    message: string,
+    /** Bug 3.3: per-block validation errors (block id -> message). */
+    public readonly details?: Record<string, string>,
+  ) {
     super(message);
     this.name = 'InvalidGuestSubmissionException';
   }

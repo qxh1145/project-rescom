@@ -235,7 +235,7 @@ describe('PrismaFormRepository', () => {
     ).resolves.toBeNull();
     expect(transaction.form.updateMany).toHaveBeenCalledWith({
       where: { id: 'form-1', status: 'PUBLISHED' },
-      data: { status: 'DRAFT' },
+      data: { status: 'DRAFT', updatedAt: now },
     });
     expect(transaction.formVersion.create).not.toHaveBeenCalled();
   });
@@ -288,6 +288,12 @@ describe('PrismaFormRepository', () => {
     });
     expect(result?.currentVersion.versionNumber).toBe(2);
     expect(result?.form.status).toBe('DRAFT');
+    // Bug 3.1 parity: the new optimistic-lock token is the version's
+    // creation time, exactly like InMemoryFormRepository.createVersion.
+    expect(transaction.form.updateMany).toHaveBeenCalledWith({
+      where: { id: 'form-1', status: 'PUBLISHED' },
+      data: { status: 'DRAFT', updatedAt: now },
+    });
   });
 
   it('persists the completion-code verifier in update() (review P2)', async () => {

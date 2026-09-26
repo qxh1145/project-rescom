@@ -19,16 +19,21 @@ import {
   reverseJournalInputSchema,
   topUpApprovalKey,
 } from '@rescom/schemas';
-import { LedgerRepositoryPort } from './ports/ledger-repository.port';
+import {
+  LedgerRepositoryPort,
+  PostJournalTransactionOptions,
+} from './ports/ledger-repository.port';
 import { LedgerAccountEntity } from '../domain/ledger-account.entity';
 import { LedgerJournalEntity } from '../domain/ledger-journal.entity';
 import { LedgerEntryEntity } from '../domain/ledger-entry.entity';
 import {
   AccountNotFoundException,
+  DisputeHoldActiveException,
   IdempotencyConflictException,
   InsufficientBalanceException,
   InsufficientEscrowBalanceException,
   InvalidLedgerOperationException,
+  DownstreamJournalExistsException,
   JournalAlreadyReversedException,
   JournalNotFoundException,
   PendingCreditNotFoundException,
@@ -48,9 +53,46 @@ export function externalCompletionKey(attemptId: string): string {
   return `${EXTERNAL_COMPLETION_KEY_PREFIX}${attemptId}`;
 }
 
+const RELEASE_PENDING_KEY_PREFIX = 'release-pending:';
+
 /** Idempotency key of the Pending release of `attemptId`. */
 export function releasePendingKey(attemptId: string): string {
-  return `release-pending:${attemptId}`;
+  return `${RELEASE_PENDING_KEY_PREFIX}${attemptId}`;
+}
+
+const DISPUTE_HOLD_KEY_PREFIX = 'external-dispute:';
+
+/** Idempotency key of the dispute hold of case `caseId`. */
+export function disputeHoldKey(caseId: string): string {
+  return `${DISPUTE_HOLD_KEY_PREFIX}${caseId}`;
+}
+
+const DISPUTE_RESOLUTION_KEY_PREFIX = 'dispute-resolution:';
+
+/** Idempotency key of the resolution of dispute case `caseId`. */
+export function disputeResolutionKey(
+  caseId: string,
+  action: 'release' | 'refund',
+): string {
+  return `${DISPUTE_RESOLUTION_KEY_PREFIX}${caseId}:${action}`;
+}
+
+/**
+ * The dispute hold journal is the only ledger record linking a dispute case
+ * to its External attempt, so its description carries the attempt id in a
+ * fixed form that `findDisputeHoldsForAttempt` matches.
+ */
+function disputeHoldAttemptMarker(attemptId: string): string {
+  return `external attempt: ${attemptId} (Case `;
+}
+
+/** Attempt id recorded in an `external-dispute:{caseId}` hold, or null. */
+function attemptIdFromDisputeHold(hold: LedgerJournalEntity): string | null {
+  const caseId = hold.idempotencyKey.slice(DISPUTE_HOLD_KEY_PREFIX.length);
+  const match = /external attempt: (\S+) \(Case (.*)\)$/.exec(
+    hold.description ?? '',
+  );
+  return match && match[2] === caseId ? match[1] : null;
 }
 
 /** Attempt id of an `external-completion:{attemptId}` key, or null. */
@@ -61,6 +103,23 @@ export function attemptIdFromExternalCompletionKey(
     ? idempotencyKey.slice(EXTERNAL_COMPLETION_KEY_PREFIX.length)
     : null;
 }
+
+/**
+ * Where the External completion credit of an attempt stands (Epic 9 review
+ * P1): `NONE` = no credit journal (zero-reward survey or not completed),
+ * `PENDING` = credited and still in the 48 h Pending window, `RELEASED` =
+ * moved to Available, `REVERSED` = the credit was reversed (Phase 1
+ * upheld-dispute outcome; wins over a release).
+ */
+export type ExternalCreditState = 'NONE' | 'PENDING' | 'RELEASED' | 'REVERSED';
+
+/**
+ * `ExternalCreditState` refined by the attempt's dispute journals: `HELD` =
+ * an open dispute hold, `REFUNDED_TO_PUBLISHER` = a dispute resolved for the
+ * Publisher; a dispute resolved for the Respondent reads `RELEASED`.
+ */
+export type ExternalSettlementState =
+  ExternalCreditState | 'HELD' | 'REFUNDED_TO_PUBLISHER';
 
 export interface LedgerServiceLogger {
   warn(message: string): void;
@@ -401,8 +460,13 @@ export class LedgerService {
    * Posts a double-entry journal with at least 2 balanced entries.
    * Handles idempotency: returns existing journal on identical retry,
    * rejects on conflicting parameters for the same idempotency key.
+   * `options.assertBeforeInsert` is passed to the repository, which runs it
+   * under the account locks before anything is written.
    */
-  async postJournal(input: PostJournalInput): Promise<LedgerJournalEntity> {
+  async postJournal(
+    input: PostJournalInput,
+    options: PostJournalTransactionOptions = {},
+  ): Promise<LedgerJournalEntity> {
     const parseResult = postJournalInputSchema.safeParse(input);
     if (!parseResult.success) {
       const message = parseResult.error.errors.map((e) => e.message).join('; ');
@@ -459,7 +523,11 @@ export class LedgerService {
     journal.setEntries(entries);
 
     try {
-      return await this.ledgerRepo.postJournalTransaction(journal, entries);
+      return await this.ledgerRepo.postJournalTransaction(
+        journal,
+        entries,
+        options,
+      );
     } catch (error) {
       if (!(error instanceof IdempotencyConflictException)) {
         throw error;
@@ -559,6 +627,12 @@ export class LedgerService {
       return await this.ledgerRepo.postJournalTransaction(
         reversalJournal,
         negationEntries,
+        {
+          // Checked under the account locks: a release or dispute hold of the
+          // same attempt locks the same Pending / Integrity Hold account.
+          assertBeforeInsert: () =>
+            this.assertReversalKeepsChainConsistent(targetJournal),
+        },
       );
     } catch (error) {
       if (
@@ -582,6 +656,158 @@ export class LedgerService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Keeps the settlement chain credit -> release / dispute hold -> dispute
+   * resolution consistent under reversals (review 3.2), so a reversal never
+   * drains Pending points that other credits pooled in the same account
+   * still back.
+   *
+   * Generic rule: reversing `target` flips the "live" state of the base
+   * journal at the root of its reversal chain. At an even depth (the base
+   * itself, or a reversal of a reversal) the base becomes reversed; at an odd
+   * depth (a reversal) the base is re-instated. Either way the base may not
+   * change while a journal built on it stands unreversed; a re-instated base
+   * also needs the journal it was built on to be live.
+   */
+  private async assertReversalKeepsChainConsistent(
+    target: LedgerJournalEntity,
+  ): Promise<void> {
+    let base = target;
+    let depth = 0;
+    while (base.reversesJournalId && depth < 32) {
+      const original = await this.ledgerRepo.findJournalById(
+        base.reversesJournalId,
+      );
+      if (!original) {
+        break;
+      }
+      base = original;
+      depth++;
+    }
+
+    if (depth % 2 === 1) {
+      await this.assertUpstreamJournalLive(base, target.idempotencyKey);
+    }
+    await this.assertNoUnreversedDownstreamJournal(base, target.idempotencyKey);
+  }
+
+  /**
+   * A re-instated release needs its unreversed credit, a re-instated dispute
+   * hold the unreversed credit of its attempt, and a re-instated dispute
+   * resolution its unreversed hold.
+   */
+  private async assertUpstreamJournalLive(
+    base: LedgerJournalEntity,
+    targetKey: string,
+  ): Promise<void> {
+    const key = base.idempotencyKey;
+    let upstreamKey: string | null = null;
+    if (key.startsWith(RELEASE_PENDING_KEY_PREFIX)) {
+      upstreamKey = externalCompletionKey(
+        key.slice(RELEASE_PENDING_KEY_PREFIX.length),
+      );
+    } else if (key.startsWith(DISPUTE_HOLD_KEY_PREFIX)) {
+      const attemptId = attemptIdFromDisputeHold(base);
+      upstreamKey = attemptId ? externalCompletionKey(attemptId) : null;
+    } else if (key.startsWith(DISPUTE_RESOLUTION_KEY_PREFIX)) {
+      const caseId = key
+        .slice(DISPUTE_RESOLUTION_KEY_PREFIX.length)
+        .replace(/:(release|refund)$/, '');
+      upstreamKey = disputeHoldKey(caseId);
+    }
+    if (!upstreamKey) {
+      return;
+    }
+
+    const upstream =
+      await this.ledgerRepo.findJournalByIdempotencyKey(upstreamKey);
+    if (!upstream || (await this.isJournalReversed(upstream.id))) {
+      throw new DownstreamJournalExistsException(
+        targetKey,
+        upstreamKey,
+        `Journal "${targetKey}" cannot be reversed: it would re-instate "${key}" while the journal it depends on, "${upstreamKey}", is reversed. Re-instate "${upstreamKey}" first.`,
+      );
+    }
+  }
+
+  /**
+   * Refuses to change `base` while a later journal built on it stands
+   * unreversed: reversing an External completion credit after its Pending
+   * release or dispute hold would drain Pending points that other credits
+   * pooled in the same account still back. The downstream journal must be
+   * reversed first.
+   */
+  private async assertNoUnreversedDownstreamJournal(
+    base: LedgerJournalEntity,
+    targetKey: string,
+  ): Promise<void> {
+    const key = base.idempotencyKey;
+    let downstream: LedgerJournalEntity[] = [];
+
+    const creditAttemptId = attemptIdFromExternalCompletionKey(key);
+    if (creditAttemptId) {
+      const release = await this.ledgerRepo.findJournalByIdempotencyKey(
+        releasePendingKey(creditAttemptId),
+      );
+      const holds = await this.findDisputeHoldsForAttempt(creditAttemptId);
+      downstream = [
+        ...(release ? [release] : []),
+        ...holds,
+        ...(await this.findDisputeResolutions(holds)),
+      ];
+    } else if (key.startsWith(RELEASE_PENDING_KEY_PREFIX)) {
+      const attemptId = key.slice(RELEASE_PENDING_KEY_PREFIX.length);
+      downstream = await this.findDisputeResolutions(
+        await this.findDisputeHoldsForAttempt(attemptId),
+      );
+    } else if (key.startsWith(DISPUTE_HOLD_KEY_PREFIX)) {
+      downstream = await this.findDisputeResolutions([base]);
+    }
+
+    for (const journal of downstream) {
+      if (!(await this.isJournalReversed(journal.id))) {
+        throw new DownstreamJournalExistsException(
+          targetKey,
+          journal.idempotencyKey,
+        );
+      }
+    }
+  }
+
+  /** `external-dispute:{caseId}` hold journals of an External attempt. */
+  private async findDisputeHoldsForAttempt(
+    attemptId: string,
+  ): Promise<LedgerJournalEntity[]> {
+    const marker = disputeHoldAttemptMarker(attemptId);
+    const journals =
+      await this.ledgerRepo.findJournalsByIdempotencyKeyPrefixAndDescription(
+        DISPUTE_HOLD_KEY_PREFIX,
+        marker,
+      );
+    // The repository match is a substring; keep only the exact form.
+    return journals.filter((journal) =>
+      (journal.description ?? '').includes(
+        `${marker}${journal.idempotencyKey.slice(DISPUTE_HOLD_KEY_PREFIX.length)})`,
+      ),
+    );
+  }
+
+  /** `dispute-resolution:{caseId}:*` journals of the given dispute holds. */
+  private async findDisputeResolutions(
+    holds: LedgerJournalEntity[],
+  ): Promise<LedgerJournalEntity[]> {
+    const keys = holds.flatMap((hold) => {
+      const caseId = hold.idempotencyKey.slice(DISPUTE_HOLD_KEY_PREFIX.length);
+      return [
+        disputeResolutionKey(caseId, 'release'),
+        disputeResolutionKey(caseId, 'refund'),
+      ];
+    });
+    return keys.length > 0
+      ? this.ledgerRepo.findJournalsByIdempotencyKeys(keys)
+      : [];
   }
 
   /**
@@ -1283,6 +1509,12 @@ export class LedgerService {
    * and its age. The credit must exist, must not be reversed, and must be at
    * least 48 hours old (server clock). Open dispute holds are checked by
    * `RewardSettlementCoordinator` before this call.
+   *
+   * The reversal and dispute checks are repeated under the Pending account
+   * lock (review F1): a reversal or dispute hold of the same credit locks the
+   * same account, so one committed between the pre-checks and the post is
+   * visible there, and the release never moves pooled points that back
+   * another credit.
    */
   async releasePendingReward(
     params: ReleasePendingRewardParams,
@@ -1364,14 +1596,61 @@ export class LedgerService {
       );
     }
 
-    return this.postJournal({
-      idempotencyKey,
-      description: `Matured pending survey reward release: ${params.attemptId}`,
-      entries: [
-        { accountId: pendingAccount.id, amount: -amount },
-        { accountId: respondentAvailable.id, amount },
-      ],
-    });
+    return this.postJournal(
+      {
+        idempotencyKey,
+        description: `Matured pending survey reward release: ${params.attemptId}`,
+        entries: [
+          { accountId: pendingAccount.id, amount: -amount },
+          { accountId: respondentAvailable.id, amount },
+        ],
+      },
+      {
+        assertBeforeInsert: async () => {
+          await this.assertCreditNotReversed(
+            credit,
+            params.attemptId,
+            'The pending reward of this attempt was reversed and can no longer be released.',
+          );
+          if (await this.hasOpenLedgerDisputeHold(params.attemptId)) {
+            throw new DisputeHoldActiveException(params.attemptId);
+          }
+        },
+      },
+    );
+  }
+
+  /** Throws `PendingCreditNotFoundException` when `credit` is reversed. */
+  private async assertCreditNotReversed(
+    credit: LedgerJournalEntity,
+    attemptId: string,
+    message: string,
+  ): Promise<void> {
+    if (await this.isJournalReversed(credit.id)) {
+      throw new PendingCreditNotFoundException(attemptId, message);
+    }
+  }
+
+  /**
+   * True when an unreversed dispute hold of the attempt has no unreversed
+   * resolution, i.e. its points still sit in Integrity Hold.
+   */
+  private async hasOpenLedgerDisputeHold(attemptId: string): Promise<boolean> {
+    for (const hold of await this.findDisputeHoldsForAttempt(attemptId)) {
+      if (await this.isJournalReversed(hold.id)) {
+        continue;
+      }
+      let resolved = false;
+      for (const resolution of await this.findDisputeResolutions([hold])) {
+        if (!(await this.isJournalReversed(resolution.id))) {
+          resolved = true;
+        }
+      }
+      if (!resolved) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -1397,7 +1676,7 @@ export class LedgerService {
       );
     }
 
-    const idempotencyKey = `external-dispute:${params.caseId}`;
+    const idempotencyKey = disputeHoldKey(params.caseId);
 
     // Fast-path idempotency check
     const existing =
@@ -1421,14 +1700,32 @@ export class LedgerService {
       );
     }
 
-    return this.postJournal({
-      idempotencyKey,
-      description: `Dispute hold placed for external attempt: ${params.attemptId} (Case ${params.caseId})`,
-      entries: [
-        { accountId: respondentPending.id, amount: -params.amount },
-        { accountId: respondentHold.id, amount: params.amount },
-      ],
-    });
+    return this.postJournal(
+      {
+        idempotencyKey,
+        description: `Dispute hold placed for ${disputeHoldAttemptMarker(params.attemptId)}${params.caseId})`,
+        entries: [
+          { accountId: respondentPending.id, amount: -params.amount },
+          { accountId: respondentHold.id, amount: params.amount },
+        ],
+      },
+      {
+        // Under the Pending lock (review F1): a hold on a reversed credit
+        // would take pooled points that back another credit.
+        assertBeforeInsert: async () => {
+          const credit = await this.ledgerRepo.findJournalByIdempotencyKey(
+            externalCompletionKey(params.attemptId),
+          );
+          if (credit) {
+            await this.assertCreditNotReversed(
+              credit,
+              params.attemptId,
+              'The pending reward of this attempt was reversed; no dispute hold can be placed on it.',
+            );
+          }
+        },
+      },
+    );
   }
 
   /**
@@ -1445,9 +1742,10 @@ export class LedgerService {
     }
 
     const isRelease = params.outcome === 'RELEASE_TO_RESPONDENT';
-    const idempotencyKey = isRelease
-      ? `dispute-resolution:${params.caseId}:release`
-      : `dispute-resolution:${params.caseId}:refund`;
+    const idempotencyKey = disputeResolutionKey(
+      params.caseId,
+      isRelease ? 'release' : 'refund',
+    );
 
     // Fast-path idempotency check
     const existing =
@@ -1539,6 +1837,71 @@ export class LedgerService {
       current = reversal.id;
     }
     return reversed;
+  }
+
+  /**
+   * The current state of the External completion credit of `attemptId`
+   * (Epic 9 review P1/P3). A reversal wins over a release, so a credit that
+   * was released and then reversed is `REVERSED`.
+   */
+  async getExternalCreditState(
+    attemptId: string,
+  ): Promise<ExternalCreditState> {
+    const credit = await this.ledgerRepo.findJournalByIdempotencyKey(
+      externalCompletionKey(attemptId),
+    );
+    if (!credit) {
+      return 'NONE';
+    }
+    if (await this.isJournalReversed(credit.id)) {
+      return 'REVERSED';
+    }
+    const release = await this.ledgerRepo.findJournalByIdempotencyKey(
+      releasePendingKey(attemptId),
+    );
+    return release ? 'RELEASED' : 'PENDING';
+  }
+
+  /**
+   * `getExternalCreditState` refined by the attempt's unreversed dispute
+   * journals (review 3.5): a Publisher refund wins, then an open hold, then a
+   * resolution in the Respondent's favour (`RELEASED`).
+   */
+  async getExternalSettlementState(
+    attemptId: string,
+  ): Promise<ExternalSettlementState> {
+    const creditState = await this.getExternalCreditState(attemptId);
+    if (creditState === 'NONE' || creditState === 'REVERSED') {
+      return creditState;
+    }
+
+    let held = false;
+    let releasedByResolution = false;
+    for (const hold of await this.findDisputeHoldsForAttempt(attemptId)) {
+      if (await this.isJournalReversed(hold.id)) {
+        continue;
+      }
+      let resolved: 'release' | 'refund' | null = null;
+      for (const resolution of await this.findDisputeResolutions([hold])) {
+        if (!(await this.isJournalReversed(resolution.id))) {
+          resolved = resolution.idempotencyKey.endsWith(':refund')
+            ? 'refund'
+            : 'release';
+        }
+      }
+      if (resolved === 'refund') {
+        return 'REFUNDED_TO_PUBLISHER';
+      }
+      if (resolved === 'release') {
+        releasedByResolution = true;
+      } else {
+        held = true;
+      }
+    }
+    if (held) {
+      return 'HELD';
+    }
+    return releasedByResolution ? 'RELEASED' : creditState;
   }
 
   /**

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
 import { PrismaModule } from '../../common/database/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 import { UsersModule } from '../users/users.module';
@@ -16,6 +16,7 @@ import { PublicFormsService } from './application/public-forms.service';
 import { CaptchaValidatorService } from './infrastructure/captcha-validator.service';
 import { GuestSubmissionRateLimiter } from './infrastructure/guest-submission-rate-limiter';
 import { LedgerService } from '../economy/application/ledger.service';
+import { EnvService } from '../../common/config/env.service';
 import {
   FORM_REPOSITORY_PORT,
   FormRepositoryPort,
@@ -48,14 +49,25 @@ import { PrismaSurveyResponseRepository } from '../marketplace/infrastructure/pr
       provide: SURVEY_RESPONSE_REPOSITORY_PORT,
       useClass: PrismaSurveyResponseRepository,
     },
-    CaptchaValidatorService,
+    {
+      // Bug 3.3: fails closed in production (no CAPTCHA provider integrated).
+      provide: CaptchaValidatorService,
+      useFactory: (env: EnvService) =>
+        new CaptchaValidatorService({ isProduction: env.isProduction }),
+      inject: [EnvService],
+    },
     GuestSubmissionRateLimiter,
     {
       provide: FormsEscrowCoordinator,
       useFactory: (
         formRepo: FormRepositoryPort,
         ledgerService: LedgerService,
-      ) => new FormsEscrowCoordinator(formRepo, ledgerService),
+      ) =>
+        new FormsEscrowCoordinator(
+          formRepo,
+          ledgerService,
+          new Logger(FormsEscrowCoordinator.name),
+        ),
       inject: [FORM_REPOSITORY_PORT, LedgerService],
     },
     {

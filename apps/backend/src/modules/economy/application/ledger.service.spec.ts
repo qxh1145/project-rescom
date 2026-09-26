@@ -3,7 +3,10 @@ import { LedgerService } from './ledger.service';
 import { LedgerAccountEntity } from '../domain/ledger-account.entity';
 import { LedgerJournalEntity } from '../domain/ledger-journal.entity';
 import { LedgerEntryEntity } from '../domain/ledger-entry.entity';
+import { PostJournalTransactionOptions } from './ports/ledger-repository.port';
 import {
+  DisputeHoldActiveException,
+  DownstreamJournalExistsException,
   IdempotencyConflictException,
   InsufficientBalanceException,
   InsufficientEscrowBalanceException,
@@ -29,6 +32,7 @@ class PrismaOrderingLedgerRepository extends InMemoryLedgerRepository {
   async postJournalTransaction(
     journal: LedgerJournalEntity,
     entries: LedgerEntryEntity[],
+    options?: PostJournalTransactionOptions,
   ): Promise<LedgerJournalEntity> {
     const accounts = (
       this as unknown as { accounts: Map<string, LedgerAccountEntity> }
@@ -42,7 +46,29 @@ class PrismaOrderingLedgerRepository extends InMemoryLedgerRepository {
         );
       }
     }
-    return super.postJournalTransaction(journal, entries);
+    return super.postJournalTransaction(journal, entries, options);
+  }
+}
+
+/**
+ * Runs `beforeNextPost` once before the next posting reaches the repository,
+ * so a command committed between a service pre-check and the insert can be
+ * simulated (review F1).
+ */
+class RacingLedgerRepository extends InMemoryLedgerRepository {
+  beforeNextPost: (() => Promise<void>) | null = null;
+
+  async postJournalTransaction(
+    journal: LedgerJournalEntity,
+    entries: LedgerEntryEntity[],
+    options?: PostJournalTransactionOptions,
+  ): Promise<LedgerJournalEntity> {
+    const interleaved = this.beforeNextPost;
+    this.beforeNextPost = null;
+    if (interleaved) {
+      await interleaved();
+    }
+    return super.postJournalTransaction(journal, entries, options);
   }
 }
 
@@ -1759,6 +1785,530 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
 
         const publisherWallet = await service.getWallet(publisherId);
         expect(publisherWallet.balance.available).toBe(20);
+      });
+    });
+
+    describe('under-lock re-checks of release and dispute hold (review F1)', () => {
+      const creditTime = new Date('2026-09-20T08:00:00.000Z');
+      const otherAttemptId = '77777777-7777-4777-8777-777777777777';
+      let now: Date;
+      let racingRepo: RacingLedgerRepository;
+
+      beforeEach(async () => {
+        now = creditTime;
+        racingRepo = new RacingLedgerRepository();
+        service = new LedgerService(racingRepo, { clock: () => now });
+        const systemAccount = await service.getOrCreateAccount(
+          null,
+          'SYSTEM_ISSUANCE',
+        );
+        const publisherEscrow = await service.getOrCreateAccount(
+          publisherId,
+          'ESCROW',
+        );
+        await service.postJournal({
+          idempotencyKey: 'seed-publisher-escrow',
+          entries: [
+            { accountId: systemAccount.id, amount: -200 },
+            { accountId: publisherEscrow.id, amount: 200 },
+          ],
+        });
+        // Two credits pool in the same Pending account.
+        await service.creditPendingReward({
+          attemptId,
+          publisherId,
+          respondentId,
+          amount: 20,
+        });
+        await service.creditPendingReward({
+          attemptId: otherAttemptId,
+          publisherId,
+          respondentId,
+          amount: 20,
+        });
+      });
+
+      async function creditJournal() {
+        return (await service.findJournalByIdempotencyKey(
+          `external-completion:${attemptId}`,
+        ))!;
+      }
+
+      it('refuses a release when the credit is reversed after the pre-check, keeping pooled Pending intact', async () => {
+        const credit = await creditJournal();
+        racingRepo.beforeNextPost = async () => {
+          await service.reverseJournal({ targetJournalId: credit.id });
+        };
+        now = new Date(creditTime.getTime() + 49 * HOUR_MS);
+
+        const error = await service
+          .releasePendingReward({ attemptId })
+          .catch((e) => e);
+
+        expect(error).toBeInstanceOf(PendingCreditNotFoundException);
+        expect(await service.isJournalReversed(credit.id)).toBe(true);
+        expect(
+          await service.findJournalByIdempotencyKey(
+            `release-pending:${attemptId}`,
+          ),
+        ).toBeNull();
+        const wallet = await service.getWallet(respondentId);
+        // Only the other credit's 20 points remain, and they stay Pending.
+        expect(wallet.balance.pending).toBe(20);
+        expect(wallet.balance.available).toBe(0);
+      });
+
+      it('refuses a release when a dispute hold is placed after the pre-check', async () => {
+        racingRepo.beforeNextPost = async () => {
+          await service.placeDisputeHold({
+            caseId,
+            attemptId,
+            respondentId,
+            amount: 20,
+          });
+        };
+        now = new Date(creditTime.getTime() + 49 * HOUR_MS);
+
+        const error = await service
+          .releasePendingReward({ attemptId })
+          .catch((e) => e);
+
+        expect(error).toBeInstanceOf(DisputeHoldActiveException);
+        expect(
+          await service.findJournalByIdempotencyKey(
+            `release-pending:${attemptId}`,
+          ),
+        ).toBeNull();
+        const wallet = await service.getWallet(respondentId);
+        expect(wallet.balance.pending).toBe(20);
+        expect(wallet.balance.integrityHold).toBe(20);
+        expect(wallet.balance.available).toBe(0);
+      });
+
+      it('does not let an open hold of another attempt block the release', async () => {
+        await service.placeDisputeHold({
+          caseId,
+          attemptId,
+          respondentId,
+          amount: 20,
+        });
+        now = new Date(creditTime.getTime() + 49 * HOUR_MS);
+
+        const journal = await service.releasePendingReward({
+          attemptId: otherAttemptId,
+        });
+
+        expect(journal.idempotencyKey).toBe(
+          `release-pending:${otherAttemptId}`,
+        );
+        const wallet = await service.getWallet(respondentId);
+        expect(wallet.balance.pending).toBe(0);
+        expect(wallet.balance.integrityHold).toBe(20);
+        expect(wallet.balance.available).toBe(20);
+      });
+
+      it('refuses a dispute hold on a credit reversed after the pre-check', async () => {
+        const credit = await creditJournal();
+        racingRepo.beforeNextPost = async () => {
+          await service.reverseJournal({ targetJournalId: credit.id });
+        };
+
+        const error = await service
+          .placeDisputeHold({ caseId, attemptId, respondentId, amount: 20 })
+          .catch((e) => e);
+
+        expect(error).toBeInstanceOf(PendingCreditNotFoundException);
+        expect(
+          await service.findJournalByIdempotencyKey(
+            `external-dispute:${caseId}`,
+          ),
+        ).toBeNull();
+        const wallet = await service.getWallet(respondentId);
+        expect(wallet.balance.pending).toBe(20);
+        expect(wallet.balance.integrityHold).toBe(0);
+      });
+
+      it('refuses a dispute hold on an already reversed credit', async () => {
+        const credit = await creditJournal();
+        await service.reverseJournal({ targetJournalId: credit.id });
+
+        await expect(
+          service.placeDisputeHold({
+            caseId,
+            attemptId,
+            respondentId,
+            amount: 20,
+          }),
+        ).rejects.toThrow(PendingCreditNotFoundException);
+        const wallet = await service.getWallet(respondentId);
+        expect(wallet.balance.pending).toBe(20);
+        expect(wallet.balance.integrityHold).toBe(0);
+      });
+    });
+
+    describe('reverseJournal downstream guard (review 3.2)', () => {
+      const creditTime = new Date('2026-09-20T08:00:00.000Z');
+      const otherAttemptId = '77777777-7777-4777-8777-777777777777';
+      let now: Date;
+
+      beforeEach(async () => {
+        now = creditTime;
+        service = new LedgerService(repo, { clock: () => now });
+        await service.creditPendingReward({
+          attemptId,
+          publisherId,
+          respondentId,
+          amount: 20,
+        });
+        // A second credit pools in the same Pending account: without the
+        // guard, reversing the released credit would silently drain it.
+        await service.creditPendingReward({
+          attemptId: otherAttemptId,
+          publisherId,
+          respondentId,
+          amount: 20,
+        });
+      });
+
+      async function creditJournal(id = attemptId) {
+        return (await service.findJournalByIdempotencyKey(
+          `external-completion:${id}`,
+        ))!;
+      }
+
+      async function release() {
+        now = new Date(creditTime.getTime() + 49 * HOUR_MS);
+        return service.releasePendingReward({ attemptId });
+      }
+
+      async function placeHold() {
+        return service.placeDisputeHold({
+          caseId,
+          attemptId,
+          respondentId,
+          amount: 20,
+        });
+      }
+
+      it('refuses to reverse a released credit and posts nothing (409)', async () => {
+        const releaseJournal = await release();
+        const credit = await creditJournal();
+        const entriesBefore = await repo.sumAllEntries();
+        const pendingBefore = (await service.getWallet(respondentId)).balance
+          .pending;
+
+        const error = await service
+          .reverseJournal({ targetJournalId: credit.id })
+          .catch((e) => e);
+
+        expect(error).toBeInstanceOf(DownstreamJournalExistsException);
+        expect(error.code).toBe('LEDGER_DOWNSTREAM_JOURNAL_EXISTS');
+        expect(error.targetIdempotencyKey).toBe(
+          `external-completion:${attemptId}`,
+        );
+        expect(error.blockingIdempotencyKey).toBe(
+          releaseJournal.idempotencyKey,
+        );
+        expect(await repo.findReversalJournal(credit.id)).toBeNull();
+        expect(await repo.sumAllEntries()).toBe(entriesBefore);
+        expect((await service.getWallet(respondentId)).balance.pending).toBe(
+          pendingBefore,
+        );
+        // The other attempt's pooled credit can still be released.
+        await expect(
+          service.releasePendingReward({ attemptId: otherAttemptId }),
+        ).resolves.toBeDefined();
+      });
+
+      it('reverses the release first, then the credit', async () => {
+        const releaseJournal = await release();
+        const credit = await creditJournal();
+
+        await service.reverseJournal({ targetJournalId: releaseJournal.id });
+        const reversal = await service.reverseJournal({
+          targetJournalId: credit.id,
+        });
+
+        expect(reversal.reversesJournalId).toBe(credit.id);
+        const wallet = await service.getWallet(respondentId);
+        expect(wallet.balance.available).toBe(0);
+        expect(wallet.balance.pending).toBe(20);
+        await expect(
+          service.releasePendingReward({ attemptId: otherAttemptId }),
+        ).resolves.toBeDefined();
+      });
+
+      it('refuses to reverse a credit under an open dispute hold (409)', async () => {
+        const hold = await placeHold();
+        const credit = await creditJournal();
+
+        const error = await service
+          .reverseJournal({ targetJournalId: credit.id })
+          .catch((e) => e);
+
+        expect(error).toBeInstanceOf(DownstreamJournalExistsException);
+        expect(error.blockingIdempotencyKey).toBe(hold.idempotencyKey);
+        expect(await repo.findReversalJournal(credit.id)).toBeNull();
+      });
+
+      it('refuses to reverse a dispute hold or the release once the dispute is resolved', async () => {
+        const releaseJournal = await release();
+        const hold = await placeHold();
+        const resolution = await service.resolveDisputeHold({
+          caseId,
+          respondentId,
+          publisherId,
+          amount: 20,
+          outcome: 'REFUND_TO_PUBLISHER',
+        });
+
+        for (const target of [hold, releaseJournal]) {
+          const error = await service
+            .reverseJournal({ targetJournalId: target.id })
+            .catch((e) => e);
+          expect(error).toBeInstanceOf(DownstreamJournalExistsException);
+          expect(error.blockingIdempotencyKey).toBe(resolution.idempotencyKey);
+        }
+
+        // Unwinding in order: resolution, hold, then the release is free.
+        await service.reverseJournal({ targetJournalId: resolution.id });
+        await service.reverseJournal({ targetJournalId: hold.id });
+        await expect(
+          service.reverseJournal({ targetJournalId: releaseJournal.id }),
+        ).resolves.toBeDefined();
+      });
+
+      it('leaves unrelated journals reversible', async () => {
+        await release();
+        const other = await creditJournal(otherAttemptId);
+        const system = await service.getOrCreateAccount(
+          null,
+          'SYSTEM_ISSUANCE',
+        );
+        const available = await service.getOrCreateAccount(
+          respondentId,
+          'USER_AVAILABLE',
+        );
+        const manual = await service.postJournal({
+          idempotencyKey: 'manual-adjustment',
+          entries: [
+            { accountId: system.id, amount: -5 },
+            { accountId: available.id, amount: 5 },
+          ],
+        });
+
+        await expect(
+          service.reverseJournal({ targetJournalId: other.id }),
+        ).resolves.toBeDefined();
+        await expect(
+          service.reverseJournal({ targetJournalId: manual.id }),
+        ).resolves.toBeDefined();
+      });
+
+      describe('reversal of a reversal (re-instatement)', () => {
+        async function unwindReleaseThenCredit() {
+          const releaseJournal = await release();
+          const releaseReversal = await service.reverseJournal({
+            targetJournalId: releaseJournal.id,
+          });
+          const creditReversal = await service.reverseJournal({
+            targetJournalId: (await creditJournal()).id,
+          });
+          return { releaseReversal, creditReversal };
+        }
+
+        it('refuses to re-instate a release while its credit is reversed, keeping Pending intact', async () => {
+          const { releaseReversal } = await unwindReleaseThenCredit();
+          const pendingBefore = (await service.getWallet(respondentId)).balance
+            .pending;
+          expect(pendingBefore).toBe(20);
+
+          const error = await service
+            .reverseJournal({
+              targetJournalId: releaseReversal.id,
+              idempotencyKey: 'reinstate-release',
+            })
+            .catch((e) => e);
+
+          expect(error).toBeInstanceOf(DownstreamJournalExistsException);
+          expect(error.code).toBe('LEDGER_DOWNSTREAM_JOURNAL_EXISTS');
+          expect(error.blockingIdempotencyKey).toBe(
+            `external-completion:${attemptId}`,
+          );
+          expect(await repo.findReversalJournal(releaseReversal.id)).toBeNull();
+          const wallet = await service.getWallet(respondentId);
+          expect(wallet.balance.pending).toBe(pendingBefore);
+          expect(wallet.balance.available).toBe(0);
+          // The other attempt's pooled credit is still releasable.
+          await expect(
+            service.releasePendingReward({ attemptId: otherAttemptId }),
+          ).resolves.toBeDefined();
+        });
+
+        it('re-instates the credit first, then the release', async () => {
+          const { releaseReversal, creditReversal } =
+            await unwindReleaseThenCredit();
+
+          await service.reverseJournal({
+            targetJournalId: creditReversal.id,
+            idempotencyKey: 'reinstate-credit',
+          });
+          await service.reverseJournal({
+            targetJournalId: releaseReversal.id,
+            idempotencyKey: 'reinstate-release',
+          });
+
+          const wallet = await service.getWallet(respondentId);
+          expect(wallet.balance.pending).toBe(20);
+          expect(wallet.balance.available).toBe(20);
+          expect(await service.getExternalCreditState(attemptId)).toBe(
+            'RELEASED',
+          );
+        });
+
+        it('refuses to re-instate a dispute resolution while its hold is reversed', async () => {
+          const hold = await placeHold();
+          const resolution = await service.resolveDisputeHold({
+            caseId,
+            respondentId,
+            publisherId,
+            amount: 20,
+            outcome: 'REFUND_TO_PUBLISHER',
+          });
+          const resolutionReversal = await service.reverseJournal({
+            targetJournalId: resolution.id,
+          });
+          await service.reverseJournal({ targetJournalId: hold.id });
+
+          const error = await service
+            .reverseJournal({
+              targetJournalId: resolutionReversal.id,
+              idempotencyKey: 'reinstate-resolution',
+            })
+            .catch((e) => e);
+
+          expect(error).toBeInstanceOf(DownstreamJournalExistsException);
+          expect(error.blockingIdempotencyKey).toBe(hold.idempotencyKey);
+        });
+
+        it('still re-reverses through a double reversal when the chain allows it', async () => {
+          const credit = await creditJournal(otherAttemptId);
+          const reversal = await service.reverseJournal({
+            targetJournalId: credit.id,
+          });
+          const reinstated = await service.reverseJournal({
+            targetJournalId: reversal.id,
+            idempotencyKey: 'reinstate-other-credit',
+          });
+
+          await expect(
+            service.reverseJournal({
+              targetJournalId: reinstated.id,
+              idempotencyKey: 're-reverse-other-credit',
+            }),
+          ).resolves.toBeDefined();
+          expect(await service.getExternalCreditState(otherAttemptId)).toBe(
+            'REVERSED',
+          );
+        });
+
+        it('still reverses the reversal of a manual journal', async () => {
+          const system = await service.getOrCreateAccount(
+            null,
+            'SYSTEM_ISSUANCE',
+          );
+          const available = await service.getOrCreateAccount(
+            respondentId,
+            'USER_AVAILABLE',
+          );
+          const manual = await service.postJournal({
+            idempotencyKey: 'manual-to-reinstate',
+            entries: [
+              { accountId: system.id, amount: -7 },
+              { accountId: available.id, amount: 7 },
+            ],
+          });
+          const reversal = await service.reverseJournal({
+            targetJournalId: manual.id,
+          });
+
+          const reinstated = await service.reverseJournal({
+            targetJournalId: reversal.id,
+            idempotencyKey: 'reinstate-manual',
+          });
+
+          expect(reinstated.reversesJournalId).toBe(reversal.id);
+          expect(await service.isJournalReversed(manual.id)).toBe(false);
+          expect(
+            (await service.getWallet(respondentId)).balance.available,
+          ).toBe(7);
+        });
+      });
+
+      describe('getExternalSettlementState (review 3.5)', () => {
+        it('reads NONE, PENDING and RELEASED from the credit and release', async () => {
+          expect(
+            await service.getExternalSettlementState(
+              '88888888-8888-4888-8888-888888888888',
+            ),
+          ).toBe('NONE');
+          expect(await service.getExternalSettlementState(attemptId)).toBe(
+            'PENDING',
+          );
+          await release();
+          expect(await service.getExternalSettlementState(attemptId)).toBe(
+            'RELEASED',
+          );
+        });
+
+        it('reads HELD under an open dispute hold, for that attempt only', async () => {
+          await placeHold();
+          expect(await service.getExternalSettlementState(attemptId)).toBe(
+            'HELD',
+          );
+          expect(await service.getExternalSettlementState(otherAttemptId)).toBe(
+            'PENDING',
+          );
+        });
+
+        it('reads the dispute resolution outcome', async () => {
+          await placeHold();
+          const refund = await service.resolveDisputeHold({
+            caseId,
+            respondentId,
+            publisherId,
+            amount: 20,
+            outcome: 'REFUND_TO_PUBLISHER',
+          });
+          expect(await service.getExternalSettlementState(attemptId)).toBe(
+            'REFUNDED_TO_PUBLISHER',
+          );
+
+          await service.reverseJournal({ targetJournalId: refund.id });
+          expect(await service.getExternalSettlementState(attemptId)).toBe(
+            'HELD',
+          );
+
+          await service.resolveDisputeHold({
+            caseId,
+            respondentId,
+            publisherId,
+            amount: 20,
+            outcome: 'RELEASE_TO_RESPONDENT',
+          });
+          expect(await service.getExternalSettlementState(attemptId)).toBe(
+            'RELEASED',
+          );
+        });
+
+        it('reads REVERSED after a reversed credit', async () => {
+          await service.reverseJournal({
+            targetJournalId: (await creditJournal()).id,
+          });
+          expect(await service.getExternalSettlementState(attemptId)).toBe(
+            'REVERSED',
+          );
+        });
       });
     });
 

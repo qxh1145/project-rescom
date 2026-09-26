@@ -288,9 +288,11 @@ export class PrismaFormRepository implements FormRepositoryPort {
   ): Promise<FormWithVersion | null> {
     const result = await runInTransaction(this.prisma, async (tx) => {
       if (!options?.expectedStatus) {
+        // `updatedAt` is written explicitly (same token as the in-memory
+        // adapter and the rotation branch), not left to `@updatedAt`.
         const transition = await tx.form.updateMany({
           where: { id: formId, status: 'PUBLISHED' },
-          data: { status: 'DRAFT' },
+          data: { status: 'DRAFT', updatedAt: createdAt },
         });
         if (transition.count !== 1) return null;
       } else {

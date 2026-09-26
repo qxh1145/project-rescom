@@ -26,6 +26,9 @@ import { SURVEY_MODERATION_REPOSITORY_PORT } from '../src/modules/moderation/app
 import { InMemorySurveyModerationRepository } from '../src/modules/moderation/infrastructure/in-memory-survey-moderation.repository';
 import { NOTIFICATION_REPOSITORY_PORT } from '../src/modules/notifications/application/ports/notification-repository.port';
 import { InMemoryNotificationRepository } from '../src/modules/notifications/infrastructure/in-memory-notification.repository';
+import { LEDGER_REPOSITORY_PORT } from '../src/modules/economy/application/ports/ledger-repository.port';
+import { InMemoryLedgerRepository } from '../src/modules/economy/infrastructure/in-memory-ledger.repository';
+import { LedgerService } from '../src/modules/economy/application/ledger.service';
 
 describe('Story 2.7: Form Versioning E2E Tests', () => {
   let app: INestApplication;
@@ -33,6 +36,8 @@ describe('Story 2.7: Form Versioning E2E Tests', () => {
   let sessionRepo: InMemorySessionRepository;
   let auditRepo: InMemoryIdentityAuditRepository;
   let formRepo: InMemoryFormRepository;
+  let ledgerRepo: InMemoryLedgerRepository;
+  let ledgerService: LedgerService;
   let sessionService: SessionService;
   let envService: EnvService;
 
@@ -48,6 +53,7 @@ describe('Story 2.7: Form Versioning E2E Tests', () => {
     auditRepo = new InMemoryIdentityAuditRepository();
     sessionRepo = new InMemorySessionRepository(auditRepo);
     formRepo = new InMemoryFormRepository();
+    ledgerRepo = new InMemoryLedgerRepository();
 
     envService = new EnvService({
       NODE_ENV: 'test',
@@ -90,6 +96,8 @@ describe('Story 2.7: Form Versioning E2E Tests', () => {
       .useValue(auditRepo)
       .overrideProvider(FORM_REPOSITORY_PORT)
       .useValue(formRepo)
+      .overrideProvider(LEDGER_REPOSITORY_PORT)
+      .useValue(ledgerRepo)
       .overrideProvider(EnvService)
       .useValue(envService)
       // Story 8.1: publish runs under the shared Unit of Work; approval goes
@@ -107,6 +115,7 @@ describe('Story 2.7: Form Versioning E2E Tests', () => {
       .compile();
 
     sessionService = moduleFixture.get(SessionService);
+    ledgerService = moduleFixture.get(LedgerService);
 
     app = moduleFixture.createNestApplication();
     app.use(cookieParser());
@@ -135,6 +144,7 @@ describe('Story 2.7: Form Versioning E2E Tests', () => {
     sessionRepo.clear();
     auditRepo.clear();
     formRepo.clear();
+    ledgerRepo.clear();
   });
 
   async function createTestUserWithSession(
@@ -528,6 +538,127 @@ describe('Story 2.7: Form Versioning E2E Tests', () => {
 
       expect(res.status).toBe(403);
       expect(res.body.error.code).toBe('FORM_FORBIDDEN');
+    });
+  });
+  describe('Bug 3.1 / decision D2: pricing is frozen after the first publication', () => {
+    async function seedPoints(userId: string, amount: number) {
+      const system = await ledgerService.getOrCreateAccount(
+        null,
+        'SYSTEM_ISSUANCE',
+      );
+      const available = await ledgerService.getOrCreateAccount(
+        userId,
+        'USER_AVAILABLE',
+      );
+      await ledgerService.transfer({
+        fromAccountId: system.id,
+        toAccountId: available.id,
+        amount,
+        idempotencyKey: `seed-versioning-d2-${userId}`,
+      });
+    }
+
+    function authed(
+      req: request.Test,
+      tokens: { accessToken: string; csrfToken: string },
+    ) {
+      return req
+        .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
+        .set('X-CSRF-Token', tokens.csrfToken)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Content-Type', 'application/json');
+    }
+
+    it('refuses a reward change on the new version (409) and the close of the re-versioned draft refunds the Escrow', async () => {
+      const { user, tokens } = await createTestUserWithSession(
+        'publisher-d2@example.com',
+      );
+      await seedPoints(user.id, 1000);
+
+      const draftRes = await authed(
+        request(app.getHttpServer()).post('/forms'),
+        tokens,
+      ).send({
+        title: 'Rewarded Survey',
+        type: 'INTERNAL',
+        rewardPerResponse: 10,
+        estimatedDurationMinutes: 8,
+        expectedCompletions: 50,
+        schema: {
+          schemaVersion: 1,
+          title: 'Rewarded Survey',
+          blocks: [validQuestionBlock],
+        },
+      });
+      expect(draftRes.status).toBe(201);
+      const formId = draftRes.body.data.id;
+
+      const publishRes = await authed(
+        request(app.getHttpServer()).post(`/forms/${formId}/publish`),
+        tokens,
+      ).send();
+      expect(publishRes.status).toBe(200);
+      await approveViaModeration(
+        formId,
+        publishRes.body.data.currentVersion.id,
+      );
+      // 50 x round(0.8 x 10) = 400 held in Escrow.
+      expect((await ledgerService.getWallet(user.id)).balance).toMatchObject({
+        available: 600,
+        escrow: 400,
+      });
+
+      const versionRes = await authed(
+        request(app.getHttpServer()).post(`/forms/${formId}/versions`),
+        tokens,
+      ).send();
+      expect(versionRes.status).toBe(201);
+      expect(versionRes.body.data.status).toBe('DRAFT');
+
+      const patchRes = await authed(
+        request(app.getHttpServer()).patch(`/forms/${formId}/draft`),
+        tokens,
+      ).send({
+        clientUpdatedAt: versionRes.body.data.updatedAt,
+        rewardPerResponse: 20,
+      });
+      expect(patchRes.status).toBe(409);
+      expect(patchRes.body.error.code).toBe('FORM_PUBLISHED_FIELDS_IMMUTABLE');
+      expect(patchRes.body.error.details).toEqual({
+        fields: ['rewardPerResponse'],
+      });
+
+      const closeRes = await authed(
+        request(app.getHttpServer()).post(`/forms/${formId}/close`),
+        tokens,
+      ).send();
+      expect(closeRes.status).toBe(200);
+      expect(closeRes.body.data.status).toBe('CLOSED');
+      expect((await ledgerService.getWallet(user.id)).balance).toMatchObject({
+        available: 1000,
+        escrow: 0,
+      });
+    });
+
+    it('refuses to close a never-published draft (it is deleted instead)', async () => {
+      const { tokens } = await createTestUserWithSession(
+        'publisher-d2-draft@example.com',
+      );
+      const draftRes = await authed(
+        request(app.getHttpServer()).post('/forms'),
+        tokens,
+      ).send({ title: 'Never Published' });
+      expect(draftRes.status).toBe(201);
+
+      const closeRes = await authed(
+        request(app.getHttpServer()).post(
+          `/forms/${draftRes.body.data.id}/close`,
+        ),
+        tokens,
+      ).send();
+
+      expect(closeRes.status).toBe(400);
+      expect(closeRes.body.error.code).toBe('INVALID_STATUS_TRANSITION');
     });
   });
 });

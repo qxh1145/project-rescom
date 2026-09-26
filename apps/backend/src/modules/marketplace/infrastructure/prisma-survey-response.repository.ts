@@ -1,14 +1,16 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../common/database/prisma.service';
 import {
   countCompletionsByFormIds,
   findCompletedFormIdsForRespondent,
 } from '../../../common/database/completion-counts';
+import { runInTransaction } from '../../../common/database/prisma-unit-of-work';
 import {
   SurveyResponseRepositoryPort,
   RecordResponseParams,
-  CreateGuestSubmissionParams,
-  GuestSubmissionEntity,
+  CreateGuestResponseWithinQuotaParams,
+  CreateGuestResponseWithinQuotaResult,
 } from '../application/ports/survey-response.repository.port';
 
 @Injectable()
@@ -41,32 +43,69 @@ export class PrismaSurveyResponseRepository implements SurveyResponseRepositoryP
     });
   }
 
-  async createGuestSubmission(
-    params: CreateGuestSubmissionParams,
-  ): Promise<GuestSubmissionEntity> {
-    const created = await this.prisma.response.create({
-      data: {
-        formId: params.formId,
-        formVersionId: params.formVersionId,
-        respondentId: null,
-        status: 'SUBMITTED',
-        isGuest: true,
-        answersJson: params.answers as any,
-        ipAddress: params.ipAddress,
-        submittedAt: new Date(),
-      },
-    });
+  /**
+   * Bug 3.3: the form row lock (`FOR NO KEY UPDATE`, as in participation's
+   * `reserveAttempt`) serializes this with every paid start, completion and
+   * close of the form, so the quota count and the insert are atomic.
+   */
+  async createGuestResponseWithinQuota(
+    params: CreateGuestResponseWithinQuotaParams,
+  ): Promise<CreateGuestResponseWithinQuotaResult> {
+    return runInTransaction(this.prisma, async (tx) => {
+      const forms = (await tx.$queryRaw`
+        SELECT status, type, expected_completions FROM forms WHERE id = ${params.formId}::uuid FOR NO KEY UPDATE
+      `) as Array<{
+        status: string;
+        type: string;
+        expected_completions: number;
+      }>;
+      const form = forms[0];
+      if (!form || form.status !== 'PUBLISHED' || form.type !== 'INTERNAL') {
+        return { outcome: 'NOT_OPEN' as const };
+      }
 
-    return {
-      id: created.id,
-      formId: created.formId,
-      formVersionId: created.formVersionId,
-      status: 'SUBMITTED',
-      isGuest: true,
-      rewardEarned: 0,
-      integrityStatus: 'ASSESSED',
-      respondentReliability: 'NOT_AVAILABLE',
-      submittedAt: created.submittedAt || new Date(),
-    };
+      const [completed, activeReservationCount] = await Promise.all([
+        countCompletionsByFormIds(tx, [params.formId]),
+        tx.surveyAttempt.count({
+          where: {
+            surveyId: params.formId,
+            status: 'IN_PROGRESS',
+            startedAt: { gte: params.cutoffDate },
+          },
+        }),
+      ]);
+      const used = (completed.get(params.formId) ?? 0) + activeReservationCount;
+      if (used >= Number(form.expected_completions)) {
+        return { outcome: 'QUOTA_FULL' as const };
+      }
+
+      const created = await tx.response.create({
+        data: {
+          formId: params.formId,
+          formVersionId: params.formVersionId,
+          respondentId: null,
+          status: 'SUBMITTED',
+          isGuest: true,
+          answersJson: params.answers as Prisma.InputJsonValue,
+          ipAddress: params.ipAddress,
+          submittedAt: new Date(),
+        },
+      });
+
+      return {
+        outcome: 'CREATED' as const,
+        response: {
+          id: created.id,
+          formId: created.formId,
+          formVersionId: created.formVersionId,
+          status: 'SUBMITTED' as const,
+          isGuest: true as const,
+          rewardEarned: 0 as const,
+          integrityStatus: 'ASSESSED' as const,
+          respondentReliability: 'NOT_AVAILABLE' as const,
+          submittedAt: created.submittedAt || new Date(),
+        },
+      };
+    });
   }
 }
