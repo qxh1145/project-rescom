@@ -204,6 +204,16 @@ export class SessionService {
         throw new SessionExpiredException();
       }
 
+      // Prove possession of the refresh secret before treating a consumed
+      // credential as reuse; otherwise a guessed credentialId could revoke it.
+      const isValid = this.secretProtection.verifyRefreshSecret(
+        rawSecret,
+        found.credential.secretDigest,
+      );
+      if (!isValid) {
+        throw new InvalidRefreshTokenException();
+      }
+
       if (found.credential.isUsed) {
         await this.sessionRepository.revokeSession(found.session.id, {
           action: 'REFRESH_REUSE_REVOKED',
@@ -211,15 +221,7 @@ export class SessionService {
           outcome: 'FAILURE',
           errorCode: 'AUTH_INVALID_REFRESH_TOKEN',
         });
-        throw new InvalidRefreshTokenException();
-      }
-
-      const isValid = this.secretProtection.verifyRefreshSecret(
-        rawSecret,
-        found.credential.secretDigest,
-      );
-      if (!isValid) {
-        throw new InvalidRefreshTokenException();
+        throw new SessionRevokedException();
       }
 
       if (!user) {
@@ -270,16 +272,8 @@ export class SessionService {
       throw new SessionExpiredException();
     }
 
-    if (credential.isUsed) {
-      await this.sessionRepository.revokeSession(session.id, {
-        action: 'REFRESH_REUSE_REVOKED',
-        userId: session.userId,
-        outcome: 'FAILURE',
-        errorCode: 'AUTH_INVALID_REFRESH_TOKEN',
-      });
-      throw new InvalidRefreshTokenException();
-    }
-
+    // Verify the refresh secret and CSRF token before reuse detection so a
+    // forged secret or stale CSRF token cannot revoke the session.
     const isSecretValid = this.secretProtection.verifyRefreshSecret(
       rawSecret,
       credential.secretDigest,
@@ -293,6 +287,16 @@ export class SessionService {
       !this.secretProtection.verifyCsrfToken(csrfToken, session.csrfDigest)
     ) {
       throw new InvalidCsrfTokenException();
+    }
+
+    if (credential.isUsed) {
+      await this.sessionRepository.revokeSession(session.id, {
+        action: 'REFRESH_REUSE_REVOKED',
+        userId: session.userId,
+        outcome: 'FAILURE',
+        errorCode: 'AUTH_INVALID_REFRESH_TOKEN',
+      });
+      throw new SessionRevokedException();
     }
 
     if (!user) {

@@ -33,6 +33,7 @@ import {
   getRefreshCookieOptions,
   getOAuthIntentClearCookieOptions,
   clearAuthCookies,
+  clearLegacyAuthCookies,
 } from './cookie-options.helper';
 import {
   InvalidCsrfTokenException,
@@ -79,6 +80,7 @@ export class AuthController {
         result.refreshToken,
         getRefreshCookieOptions(this.envService),
       );
+      clearLegacyAuthCookies(res, this.envService);
     }
 
     return createSuccessEnvelope({ user: result.user });
@@ -107,6 +109,7 @@ export class AuthController {
         result.refreshToken,
         getRefreshCookieOptions(this.envService),
       );
+      clearLegacyAuthCookies(res, this.envService);
     }
 
     return createSuccessEnvelope({ user: result.user });
@@ -207,6 +210,7 @@ export class AuthController {
       rotated.refreshToken,
       getRefreshCookieOptions(this.envService),
     );
+    clearLegacyAuthCookies(res, this.envService);
 
     return createSuccessEnvelope({ csrfToken: rotated.csrfToken });
   }

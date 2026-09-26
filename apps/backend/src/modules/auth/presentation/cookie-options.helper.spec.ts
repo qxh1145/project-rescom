@@ -6,6 +6,11 @@ import {
   getRefreshClearCookieOptions,
   getOAuthIntentCookieOptions,
   getOAuthIntentClearCookieOptions,
+  clearAuthCookies,
+  clearLegacyAuthCookies,
+  AUTH_COOKIE_NAME,
+  REFRESH_COOKIE_NAME,
+  OAUTH_INTENT_COOKIE_NAME,
 } from './cookie-options.helper';
 
 describe('Cookie Options Helper (AC6)', () => {
@@ -84,7 +89,7 @@ describe('Cookie Options Helper (AC6)', () => {
     expect(clearOptions.maxAge).toBeUndefined();
   });
 
-  it('should generate refresh cookie options scoped to /auth', () => {
+  it('should generate refresh cookie options scoped to / so both /auth and /api/auth receive it', () => {
     const envService = new EnvService({
       NODE_ENV: 'test',
       DATABASE_URL: 'postgresql://localhost:5433/db',
@@ -93,16 +98,16 @@ describe('Cookie Options Helper (AC6)', () => {
     });
 
     const options = getRefreshCookieOptions(envService);
-    expect(options.path).toBe('/auth');
+    expect(options.path).toBe('/');
     expect(options.httpOnly).toBe(true);
     expect(options.maxAge).toBe(2592000 * 1000);
 
     const clear = getRefreshClearCookieOptions(envService);
-    expect(clear.path).toBe('/auth');
+    expect(clear.path).toBe('/');
     expect(clear.maxAge).toBeUndefined();
   });
 
-  it('should generate oauth intent cookie options scoped to /auth/google/callback', () => {
+  it('should generate oauth intent cookie options scoped to / so initiation and callback both receive it', () => {
     const envService = new EnvService({
       NODE_ENV: 'test',
       DATABASE_URL: 'postgresql://localhost:5433/db',
@@ -111,12 +116,58 @@ describe('Cookie Options Helper (AC6)', () => {
     });
 
     const options = getOAuthIntentCookieOptions(envService);
-    expect(options.path).toBe('/auth/google/callback');
+    expect(options.path).toBe('/');
     expect(options.httpOnly).toBe(true);
     expect(options.maxAge).toBe(600 * 1000);
 
     const clear = getOAuthIntentClearCookieOptions(envService);
-    expect(clear.path).toBe('/auth/google/callback');
+    expect(clear.path).toBe('/');
     expect(clear.maxAge).toBeUndefined();
+  });
+
+  describe('cookie clearing', () => {
+    const envService = new EnvService({
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://localhost:5433/db',
+      JWT_SECRET: '01234567890123456789012345678901',
+    });
+
+    it('should expire cookies left at the legacy /auth and /auth/google/callback paths', () => {
+      const res: any = { clearCookie: jest.fn() };
+
+      clearLegacyAuthCookies(res, envService);
+
+      expect(res.clearCookie).toHaveBeenCalledTimes(2);
+      expect(res.clearCookie).toHaveBeenCalledWith(
+        REFRESH_COOKIE_NAME,
+        expect.objectContaining({ path: '/auth', httpOnly: true }),
+      );
+      expect(res.clearCookie).toHaveBeenCalledWith(
+        OAUTH_INTENT_COOKIE_NAME,
+        expect.objectContaining({
+          path: '/auth/google/callback',
+          httpOnly: true,
+        }),
+      );
+    });
+
+    it('should clear auth cookies at the root path and at the legacy refresh path', () => {
+      const res: any = { clearCookie: jest.fn() };
+
+      clearAuthCookies(res, envService);
+
+      expect(res.clearCookie).toHaveBeenCalledWith(
+        AUTH_COOKIE_NAME,
+        expect.objectContaining({ path: '/' }),
+      );
+      expect(res.clearCookie).toHaveBeenCalledWith(
+        REFRESH_COOKIE_NAME,
+        expect.objectContaining({ path: '/' }),
+      );
+      expect(res.clearCookie).toHaveBeenCalledWith(
+        REFRESH_COOKIE_NAME,
+        expect.objectContaining({ path: '/auth' }),
+      );
+    });
   });
 });
