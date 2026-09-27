@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
+import { useProductTour } from "@/components/product-tour/TourProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Icon } from "@/components/ui/Icon";
 import { Spinner } from "@/components/ui/Spinner";
@@ -47,6 +48,7 @@ function NavLink({ href, icon, children, active = false }: { href: string; icon:
  */
 function AccountSidebar() {
   const { signOut, pending, error } = useLogout();
+  const tour = useProductTour();
   return (
     <aside>
       <h1 className="text-[24px] font-extrabold text-ink">Tài khoản</h1>
@@ -67,6 +69,19 @@ function AccountSidebar() {
           <NavLink href={SUPPORT_MAILTO} icon="help-circle">
             Trợ giúp
           </NavLink>
+          {/* Tours are desktop-only, and the floating launcher hides once every tour is done. */}
+          {tour.enabled ? (
+            <li>
+              <button
+                type="button"
+                onClick={() => tour.start("FIRST_SURVEY")}
+                className={`${NAV_ITEM} font-semibold text-ink`}
+              >
+                <Icon name="play-circle" size={20} />
+                Xem lại hướng dẫn
+              </button>
+            </li>
+          ) : null}
         </ul>
         <button
           type="button"
