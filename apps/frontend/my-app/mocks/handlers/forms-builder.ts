@@ -1,4 +1,4 @@
-import { http, type RequestHandler } from "msw";
+import { delay, http, type RequestHandler } from "msw";
 import {
   calculateEscrowCost,
   checkPublishRewardBand,
@@ -32,6 +32,9 @@ import { getMockSessionUser, type MockSessionUser } from "../db/session";
 import { fail, missingCsrf, ok, unauthorized } from "../envelope";
 import { applyScenario } from "../scenarios";
 import { toDetail } from "./forms-manage";
+
+/** Mock latency of an AI reply (ms). */
+const AI_REPLY_DELAY_MS = 7000;
 
 /**
  * Phase 5D — Form Builder (Figma 13). VERIFIED routes mirror
@@ -297,6 +300,8 @@ export const formsBuilderHandlers: RequestHandler[] = [
     if (!result || result instanceof Response) return result;
     const parsed = aiMessageInputSchema.safeParse(await readJson(request));
     if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid AI message.", { details: parsed.error.format() });
+    // A model takes a while: long enough to watch the thought line (canvas 13b₁) play.
+    await delay(AI_REPLY_DELAY_MS);
     const ai = cannedAssistantTurn(result.draft.ai, parsed.data.message, parsed.data.options);
     saveFormDraft({ ...result.draft, ai });
     return ok({ formId: result.draft.id, ...ai });
