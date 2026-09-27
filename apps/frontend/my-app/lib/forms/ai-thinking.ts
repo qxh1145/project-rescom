@@ -55,8 +55,8 @@ export function planThinking(message: string, options: AiMessageOptions, followU
   }
   const durationLabel = AI_DURATION_LABELS[options.duration];
   const lengthDetail = SHORT_DURATIONS.has(options.duration)
-    ? `Bạn chọn “${durationLabel}”, nên giữ bản nháp gọn và ưu tiên câu chọn nhanh.`
-    : `Bạn chọn “${durationLabel}”, nên có thể hỏi sâu hơn và xen vài câu tự luận.`;
+    ? `Nhắm “${durationLabel}”, nên giữ bản nháp gọn và ưu tiên câu chọn nhanh.`
+    : `Nhắm “${durationLabel}”, nên có thể hỏi sâu hơn và xen vài câu tự luận.`;
   const steps: ThoughtStep[] = [
     { id: "read", title: "Đọc yêu cầu của bạn", activeTitle: "Đang đọc yêu cầu của bạn", detail: quote },
     { id: "length", title: "Ước lượng độ dài", activeTitle: "Đang ước lượng độ dài", detail: lengthDetail },

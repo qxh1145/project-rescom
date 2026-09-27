@@ -306,12 +306,9 @@ export function BuilderScreen() {
         readOnly={editor.readOnly}
       />
 
-      {/* Rendered once (not per breakpoint): keeps a single announced alert per message. */}
-      <div className="mx-auto flex w-full max-w-[680px] flex-col gap-3 px-4 pt-3.5 lg:px-0 lg:pt-4">{banners}</div>
-
-      {/* Desktop: toolbox · canvas · properties (lg+). */}
-      <div className="hidden lg:flex">
-        <aside className="sticky top-17 h-[calc(100dvh-68px)] w-68 shrink-0 overflow-y-auto border-r border-line bg-surface">
+      {/* Desktop: toolbox · canvas · properties (lg+); mobile: the middle column only. */}
+      <div className="lg:flex">
+        <aside className="sticky top-17 hidden h-[calc(100dvh-68px)] w-68 shrink-0 overflow-y-auto border-r border-line bg-surface lg:block">
           <Toolbox
             disabled={editor.readOnly}
             draggingType={palette.draggingType}
@@ -320,61 +317,66 @@ export function BuilderScreen() {
             itemProps={palette.itemProps}
           />
         </aside>
-        <main className="min-w-0 flex-1 bg-surface-subtle">
-          <Canvas
-            editor={editor}
-            formId={formId}
-            listRef={canvasListRef}
-            paletteDragging={palette.draggingType !== null}
-            paletteTarget={palette.target}
-          />
-        </main>
+        <div className="min-w-0 flex-1 lg:bg-surface-subtle">
+          {/* Rendered once (not per breakpoint): keeps a single announced alert per message.
+              Inside the canvas column so the side panels start right under the header. */}
+          <div className="mx-auto flex w-full max-w-[680px] flex-col gap-3 px-4 pt-3.5 empty:hidden lg:px-0 lg:pt-6">{banners}</div>
+          <main className="hidden lg:block">
+            <Canvas
+              editor={editor}
+              formId={formId}
+              listRef={canvasListRef}
+              paletteDragging={palette.draggingType !== null}
+              paletteTarget={palette.target}
+            />
+          </main>
+
+          {/* Mobile (13e / 13f). */}
+          <main className="flex flex-col gap-3 px-4 pt-3.5 pb-40 lg:hidden">
+            {doc.blocks.length > 0 ? (
+              <p className="flex items-start gap-2 rounded-[12px] bg-surface-subtle px-3 py-2.5 text-caption leading-[18.9px] text-ink-strong">
+                <Icon name="grip-dots" size={16} className="mt-0.5 text-ink-muted" />
+                Nhấn giữ nút kéo để đổi thứ tự. Chạm vào câu để sửa.
+              </p>
+            ) : (
+              <div className="rounded-[16px] border-2 border-dashed border-line-strong bg-surface px-5 py-8 text-center">
+                <p className="text-lead font-extrabold text-ink">Form chưa có câu hỏi</p>
+                <p className="mt-1.5 text-body-sm text-ink-muted">Thêm câu đầu tiên hoặc để AI soạn bản nháp.</p>
+              </div>
+            )}
+            <MobileBlockList editor={editor} onOpen={(id) => {
+              editor.select(id);
+              setMobileEditId(id);
+            }} />
+            {!editor.readOnly ? (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSheetOpen(true)}
+                  className="flex h-12 flex-1 items-center justify-center gap-2 rounded-field border border-dashed border-line-strong bg-surface text-body-sm font-bold text-ink"
+                >
+                  <Icon name="plus" size={18} />
+                  Thêm câu hỏi
+                </button>
+                <Link
+                  href={`/forms/${formId}/builder/ai`}
+                  className="flex h-12 items-center justify-center gap-2 rounded-field border border-dashed border-line-strong bg-surface px-4 text-body-sm font-bold text-ink"
+                >
+                  <Icon name="sparkles" size={18} />
+                  AI
+                </Link>
+              </div>
+            ) : null}
+          </main>
+        </div>
         <aside
           aria-label="Thuộc tính câu hỏi"
           data-tour="builder-properties"
-          className="sticky top-17 h-[calc(100dvh-68px)] w-85 shrink-0 overflow-y-auto border-l border-line bg-surface"
+          className="sticky top-17 hidden h-[calc(100dvh-68px)] w-85 shrink-0 overflow-y-auto border-l border-line bg-surface lg:block"
         >
           <PropertiesPanel key={editor.selectedId ?? "none"} editor={editor} />
         </aside>
       </div>
-
-      {/* Mobile (13e / 13f). */}
-      <main className="flex flex-col gap-3 px-4 pt-3.5 pb-40 lg:hidden">
-        {doc.blocks.length > 0 ? (
-          <p className="flex items-start gap-2 rounded-[12px] bg-surface-subtle px-3 py-2.5 text-caption leading-[18.9px] text-ink-strong">
-            <Icon name="grip-dots" size={16} className="mt-0.5 text-ink-muted" />
-            Nhấn giữ nút kéo để đổi thứ tự. Chạm vào câu để sửa.
-          </p>
-        ) : (
-          <div className="rounded-[16px] border-2 border-dashed border-line-strong bg-surface px-5 py-8 text-center">
-            <p className="text-lead font-extrabold text-ink">Form chưa có câu hỏi</p>
-            <p className="mt-1.5 text-body-sm text-ink-muted">Thêm câu đầu tiên hoặc để AI soạn bản nháp.</p>
-          </div>
-        )}
-        <MobileBlockList editor={editor} onOpen={(id) => {
-          editor.select(id);
-          setMobileEditId(id);
-        }} />
-        {!editor.readOnly ? (
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setSheetOpen(true)}
-              className="flex h-12 flex-1 items-center justify-center gap-2 rounded-field border border-dashed border-line-strong bg-surface text-body-sm font-bold text-ink"
-            >
-              <Icon name="plus" size={18} />
-              Thêm câu hỏi
-            </button>
-            <Link
-              href={`/forms/${formId}/builder/ai`}
-              className="flex h-12 items-center justify-center gap-2 rounded-field border border-dashed border-line-strong bg-surface px-4 text-body-sm font-bold text-ink"
-            >
-              <Icon name="sparkles" size={18} />
-              AI
-            </Link>
-          </div>
-        ) : null}
-      </main>
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface px-4 pt-3 pb-[max(16px,env(safe-area-inset-bottom))] lg:hidden">
         <p className="text-center text-[12px] text-ink-muted">
           {summary.questionCount} câu · khoảng {summary.minutes} phút · Giá gợi ý {hint.label} · {hint.paidLabel}

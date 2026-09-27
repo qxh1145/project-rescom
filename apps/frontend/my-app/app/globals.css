@@ -284,6 +284,15 @@ html.reorder-dragging * {
 .thought-item {
   animation: thought-rise 320ms ease-out both;
 }
+/* A fresh AI draft: its questions rise in one after another (delay set inline). */
+.ai-block-in {
+  animation: thought-rise 360ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-block-in {
+    animation: none;
+  }
+}
 .thought-item::before {
   content: "";
   position: absolute;

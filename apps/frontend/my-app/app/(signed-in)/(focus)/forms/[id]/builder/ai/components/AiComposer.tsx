@@ -3,7 +3,7 @@
 import { useId, type FormEvent, type KeyboardEvent } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Spinner } from "@/components/ui/Spinner";
-import { AI_DURATION_BUCKETS, AI_DURATION_LABELS, type AiMessageOptions } from "@/lib/forms/builder-ai";
+import type { AiMessageOptions } from "@/lib/forms/builder-ai";
 
 interface AiComposerProps {
   value: string;
@@ -21,9 +21,10 @@ interface AiComposerProps {
 }
 
 /**
- * Prompt box of 13b / 13b' (62:3254, 62:2412): textarea, duration chip,
- * attention-check chip (toggle) and the round send button. Enter sends,
- * Shift+Enter adds a line.
+ * Prompt box of 13b / 13b' (62:3254, 62:2412): textarea, attention-check
+ * chip (toggle) and the round send button. Enter sends, Shift+Enter adds a
+ * line. The duration bucket is not asked here: `options.duration` keeps its
+ * default. The box, not the textarea, shows focus.
  */
 export function AiComposer({ value, onChange, options, onOptionsChange, onSubmit, busy, placeholder, variant, rows = 3, onStop }: AiComposerProps) {
   const id = useId();
@@ -37,7 +38,7 @@ export function AiComposer({ value, onChange, options, onOptionsChange, onSubmit
   return (
     <form
       onSubmit={submit}
-      className={`flex flex-col gap-3 border border-line bg-surface px-4.5 pt-3 pb-3 shadow-[0_6px_12px_rgba(30,36,70,0.07)] ${
+      className={`flex flex-col gap-3 border border-line bg-surface px-4.5 pt-3 pb-3 shadow-[0_6px_12px_rgba(30,36,70,0.07)] transition-colors focus-within:border-line-strong ${
         variant === "entry" ? "rounded-card" : "rounded-[20px]"
       }`}
     >
@@ -52,25 +53,9 @@ export function AiComposer({ value, onChange, options, onOptionsChange, onSubmit
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={onKeyDown}
-        className="w-full resize-none bg-transparent text-lead leading-[24.8px] text-ink placeholder:text-ink-muted focus:outline-none"
+        className="w-full resize-none bg-transparent text-lead leading-[24.8px] text-ink [--focus-ring-color:transparent] placeholder:text-ink-muted focus:outline-none"
       />
       <div className="flex items-center gap-2">
-        <label className="relative inline-flex h-9 items-center rounded-full border border-line bg-surface pr-7 pl-3 text-caption font-semibold text-ink-strong">
-          <Icon name="clock" size={16} className="mr-1.5" />
-          <span className="sr-only">Thời lượng mong muốn</span>
-          <select
-            value={options.duration}
-            onChange={(event) => onOptionsChange({ ...options, duration: event.target.value as AiMessageOptions["duration"] })}
-            className="appearance-none bg-transparent text-caption font-semibold focus:outline-none"
-          >
-            {AI_DURATION_BUCKETS.map((bucket) => (
-              <option key={bucket} value={bucket}>
-                {AI_DURATION_LABELS[bucket]}
-              </option>
-            ))}
-          </select>
-          <Icon name="chevron-down" size={14} className="pointer-events-none absolute right-2.5" />
-        </label>
         <button
           type="button"
           aria-pressed={options.suggestAttentionChecks}

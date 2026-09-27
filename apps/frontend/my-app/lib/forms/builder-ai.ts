@@ -95,6 +95,38 @@ export const aiSuggestedBlockSchema = z.object({
 export type AiSuggestedBlock = z.infer<typeof aiSuggestedBlockSchema>;
 
 /** Splits `**bold**` markup into runs for rendering. */
+/**
+ * The draft an AI chat path names (`/forms/:id/builder/ai`); null for a new
+ * chat (`/forms/new/builder/ai`) or any other path.
+ */
+export function formIdFromAiPath(pathname: string): string | null {
+  const match = /^\/forms\/([^/]+)\/builder\/ai\/?$/.exec(pathname);
+  if (!match || match[1] === "new") return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+/** Words of the first prompt that name an AI chat (and the draft it creates). */
+export const CHAT_TITLE_MAX_WORDS = 10;
+/** Form titles are capped at 200 characters (`form-draft.schema`). */
+const CHAT_TITLE_MAX_CHARS = 200;
+
+/**
+ * Chat title from a prompt: its first `CHAT_TITLE_MAX_WORDS` words, without
+ * trailing punctuation. Empty when the prompt has no words.
+ */
+export function chatTitleFromPrompt(prompt: string): string {
+  const words = prompt.trim().split(/\s+/).filter(Boolean).slice(0, CHAT_TITLE_MAX_WORDS);
+  return words
+    .join(" ")
+    .slice(0, CHAT_TITLE_MAX_CHARS)
+    .replace(/[\s,.;:!?…–—-]+$/u, "")
+    .trim();
+}
+
 export function boldRuns(text: string): { text: string; bold: boolean }[] {
   return text
     .split(/(\*\*[^*]+\*\*)/g)

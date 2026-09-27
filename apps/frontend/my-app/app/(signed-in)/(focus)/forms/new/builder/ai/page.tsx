@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 
 /** Figma 13b / 13g entry before a draft exists: the first prompt creates it. */
 export default function NewFormAiPage() {
-  return <AiChatScreen formId={null} />;
+  return <AiChatScreen />;
 }
