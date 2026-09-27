@@ -40,70 +40,6 @@ interface SeedJournal {
 const LINH = "Nguyễn Thuỳ Linh";
 const LINH_ID = toMockUuid("seed-ledger:linh");
 
-const SEED: readonly SeedJournal[] = [
-  {
-    id: "3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a01",
-    idempotencyKey: "close-refund:3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a11",
-    description: "Escrow refund on survey rejection (120 unused slots)",
-    minutesBefore: 0, // 20:40
-    entries: [
-      ["ESCROW", -120, LINH],
-      ["USER_AVAILABLE", 120, LINH],
-    ],
-    related: "Khảo sát bị từ chối",
-    attemptId: null,
-  },
-  {
-    id: "3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a02",
-    idempotencyKey: "publish:3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a12",
-    description: "Escrow lock for survey publish: Hành vi tiêu dùng của sinh viên…",
-    minutesBefore: 70, // 19:30
-    entries: [
-      ["USER_AVAILABLE", -100, LINH],
-      ["ESCROW", 100, LINH],
-    ],
-    related: "Hành vi tiêu dùng của sinh viên…",
-    attemptId: null,
-  },
-  {
-    id: "3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a03",
-    idempotencyKey: "external-completion:c21d4e8a-5b6c-4d7e-8f90-a1b2c3d4e5f6",
-    description: "Pending survey reward for external completion: c21d4e8a-5b6c-4d7e-8f90-a1b2c3d4e5f6",
-    minutesBefore: 178, // 17:42
-    entries: [
-      ["ESCROW", -10, null],
-      ["PENDING", 10, null],
-    ],
-    related: "Thói quen đọc sách…",
-    attemptId: "c21d4e8a-5b6c-4d7e-8f90-a1b2c3d4e5f6",
-  },
-  {
-    id: "3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a04",
-    idempotencyKey: "dispute-resolution:3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a14:refund",
-    description: "Dispute resolution refund: 3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a14",
-    minutesBefore: 309, // 15:31
-    entries: [
-      ["PENDING", -10, null],
-      ["ESCROW", 10, null],
-    ],
-    related: "Khiếu nại được chấp nhận",
-    attemptId: "7f3a9c2e-1d4b-4a6c-8e5f-0a1b2c3d4e5f",
-  },
-  {
-    id: "3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a05",
-    idempotencyKey: `starter-unlock:${LINH_ID}`,
-    description: `Starter points onboarding unlock: ${LINH_ID}`,
-    minutesBefore: 368, // 14:32
-    entries: [
-      ["FROZEN", -100, LINH],
-      ["USER_AVAILABLE", 100, LINH],
-    ],
-    related: "Kích hoạt tài khoản",
-    attemptId: null,
-  },
-  ...demoVolumeSeed(),
-];
-
 /** Names + surveys for `demoVolumeSeed`, distinct from the five Figma rows above. */
 const VOLUME_NAMES = [
   "Trần Bảo Ngọc",
@@ -193,6 +129,72 @@ function demoVolumeSeed(): SeedJournal[] {
     };
   });
 }
+
+const SEED: readonly SeedJournal[] = [
+  {
+    id: "3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a01",
+    idempotencyKey: "close-refund:3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a11",
+    description: "Escrow refund on survey rejection (120 unused slots)",
+    minutesBefore: 0, // 20:40
+    entries: [
+      ["ESCROW", -120, LINH],
+      ["USER_AVAILABLE", 120, LINH],
+    ],
+    related: "Khảo sát bị từ chối",
+    attemptId: null,
+  },
+  {
+    id: "3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a02",
+    idempotencyKey: "publish:3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a12",
+    description: "Escrow lock for survey publish: Hành vi tiêu dùng của sinh viên…",
+    minutesBefore: 70, // 19:30
+    entries: [
+      ["USER_AVAILABLE", -100, LINH],
+      ["ESCROW", 100, LINH],
+    ],
+    related: "Hành vi tiêu dùng của sinh viên…",
+    attemptId: null,
+  },
+  {
+    id: "3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a03",
+    idempotencyKey: "external-completion:c21d4e8a-5b6c-4d7e-8f90-a1b2c3d4e5f6",
+    description: "Pending survey reward for external completion: c21d4e8a-5b6c-4d7e-8f90-a1b2c3d4e5f6",
+    minutesBefore: 178, // 17:42
+    entries: [
+      ["ESCROW", -10, null],
+      ["PENDING", 10, null],
+    ],
+    related: "Thói quen đọc sách…",
+    attemptId: "c21d4e8a-5b6c-4d7e-8f90-a1b2c3d4e5f6",
+  },
+  {
+    id: "3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a04",
+    idempotencyKey: "dispute-resolution:3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a14:refund",
+    description: "Dispute resolution refund: 3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a14",
+    minutesBefore: 309, // 15:31
+    entries: [
+      ["PENDING", -10, null],
+      ["ESCROW", 10, null],
+    ],
+    related: "Khiếu nại được chấp nhận",
+    attemptId: "7f3a9c2e-1d4b-4a6c-8e5f-0a1b2c3d4e5f",
+  },
+  {
+    id: "3f6d2a10-8b1c-4e5f-9a7b-1c2d3e4f5a05",
+    idempotencyKey: `starter-unlock:${LINH_ID}`,
+    description: `Starter points onboarding unlock: ${LINH_ID}`,
+    minutesBefore: 368, // 14:32
+    entries: [
+      ["FROZEN", -100, LINH],
+      ["USER_AVAILABLE", 100, LINH],
+    ],
+    related: "Kích hoạt tài khoản",
+    attemptId: null,
+  },
+  ...demoVolumeSeed(),
+];
+
+
 
 const MINUTE_MS = 60_000;
 
