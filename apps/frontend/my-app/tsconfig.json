@@ -21,7 +21,8 @@
     ],
     "paths": {
       "@/*": ["./*"],
-      "@rescom/schemas": ["../../packages/schemas/src"]
+      "@rescom/schemas": ["../../../packages/schemas/src"],
+      "zod": ["./node_modules/zod"]
     }
   },
   "include": [
