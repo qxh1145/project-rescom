@@ -69,13 +69,16 @@ export function searchBlockTypes(query: string): BlockTypeInfo[] {
   return BLOCK_TYPES.filter((info) => foldVietnamese(`${info.label} ${info.keywords}`).includes(needle));
 }
 
+/** Title of a freshly added question; publishing refuses it (P2). */
+export const DEFAULT_BLOCK_TITLE = "Câu hỏi chưa có tiêu đề";
+
 /**
  * A new block with Vietnamese defaults (the shared `createDefaultBlock` uses
  * English placeholder copy). Choice option values are stable slugs so an
  * attention check's `expectedValue` survives label edits.
  */
 export function createBuilderBlock(type: FormBlockType, order: number, id: string = generateBlockId()): FormBlock {
-  const base = { id, title: "Câu hỏi chưa có tiêu đề", required: false };
+  const base = { id, title: DEFAULT_BLOCK_TITLE, required: false };
   switch (type) {
     case "text":
       return createDefaultBlock(type, order, { ...base, placeholder: "Câu trả lời ngắn" } as Partial<FormBlock>);

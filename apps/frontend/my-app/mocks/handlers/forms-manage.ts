@@ -1,7 +1,6 @@
 import {
   escrowDrawPerCompletion,
   EXTERNAL_COMPLETION_REVIEW_HOURS,
-  isOwnerReopenableClose,
   listFormsQuerySchema,
   MAX_EXPECTED_COMPLETIONS,
   RESERVATION_EXPIRY_MS,
@@ -10,8 +9,10 @@ import {
 import { http, type RequestHandler } from "msw";
 import { z } from "zod";
 import { apiUrl } from "@/lib/api/config";
+import { reopenRefusalOf } from "@/lib/forms/manage-status";
 import { activeReservationCount } from "../data/attempts";
 import { refundSurveyEscrow, reserveSurveyEscrow } from "../data/economy";
+import { versionsOf } from "../data/form-versions";
 import { findPublisherForm, publisherForms, updatePublisherForm, type MockPublisherForm } from "../data/forms";
 import { trackingOf, updateTracking, type OpensRange } from "../data/forms-manage";
 import { findSurvey, updateSurvey } from "../data/surveys";
@@ -19,6 +20,7 @@ import { getMockSessionUser, type MockSessionUser } from "../db/session";
 import { mockId, nowIso } from "../db/store";
 import { fail, missingCsrf, ok, unauthorized } from "../envelope";
 import { applyScenario } from "../scenarios";
+import { createdFormExtras } from "./forms-create";
 
 /**
  * Phase 5B — publisher survey management (Figma page 10). Mirrors
@@ -90,20 +92,57 @@ function toSummary(form: MockPublisherForm, publisherId: string) {
 }
 
 /**
+ * Whether the current version went live (backend `FormVersion.isPublished`):
+ * the version history when it has the form, else approval (`publishedAt`) —
+ * a rejected or withdrawn submission never did, so a CLOSED form is not
+ * published by itself.
+ */
+function currentVersionPublished(form: MockPublisherForm): boolean {
+  const version = versionsOf(form.id).find((item) => item.versionNumber === form.versionNumber);
+  if (version) return version.isPublished;
+  return (form.status === "PUBLISHED" || form.status === "CLOSED") && form.publishedAt !== null && form.closeKind !== "MODERATION";
+}
+
+/** Backend `existing.versions.some(isPublished)`: any version of the form went live. */
+function hasPublishedVersion(form: MockPublisherForm): boolean {
+  const versions = versionsOf(form.id);
+  if (versions.length > 0) return versions.some((version) => version.isPublished);
+  return form.publishedAt !== null && form.closeKind !== "MODERATION";
+}
+
+/** What the Google Forms wizard stored for a survey it created (MOCK-ONLY store, backend columns). */
+function createdFieldsOf(form: MockPublisherForm) {
+  const extras = createdFormExtras.get()[form.id];
+  if (!extras) return { description: null, targetingJson: null, estimatedDurationMinutes: undefined };
+  // The backend stores the strict targeting only (the UI-only `schools` never reaches it).
+  const targeting = extras.targeting ? { ...extras.targeting } : null;
+  if (targeting) delete targeting.schools;
+  return {
+    description: extras.description,
+    targetingJson: targeting,
+    estimatedDurationMinutes: extras.estimatedDurationMinutes ?? undefined,
+  };
+}
+
+/**
  * VERIFIED `FormDetailDto` + ASSUMED management fields. Exported so another
  * `GET /forms/:id` handler (e.g. the Form Builder's, registered earlier) can
  * spread it and keep the survey header fields.
  */
 export function toDetail(form: MockPublisherForm, publisherId: string) {
+  const created = createdFieldsOf(form);
+  const summary = toSummary(form, publisherId);
   return {
-    ...toSummary(form, publisherId),
+    ...summary,
+    description: created.description ?? summary.description,
+    estimatedDurationMinutes: created.estimatedDurationMinutes ?? summary.estimatedDurationMinutes,
     currentVersion: {
       id: `${form.id.slice(0, -4)}${String(form.versionNumber).padStart(4, "0")}`,
       formId: form.id,
       versionNumber: form.versionNumber,
       schemaJson: { schemaVersion: 1, title: form.title, blocks: [] },
-      targetingJson: null,
-      isPublished: form.status === "PUBLISHED" || form.status === "CLOSED",
+      targetingJson: created.targetingJson,
+      isPublished: currentVersionPublished(form),
       externalUrl: form.externalUrl,
       publishedAt: form.publishedAt,
       createdAt: form.createdAt,
@@ -207,8 +246,12 @@ export const formsManageHandlers: RequestHandler[] = [
     if ("response" in guarded) return guarded.response;
     const { user, form } = guarded;
     if (form.status === "CLOSED") return fail(409, "FORM_ALREADY_CLOSED", `Form "${form.id}" is already closed.`);
-    if (form.status === "DRAFT") {
-      return fail(409, "INVALID_STATUS_TRANSITION", "A never-published draft is deleted, not closed.");
+    // Backend `closeForm` (decision D2, Phase 5 M7): a draft closes only when one of
+    // its versions was published (a re-versioned draft still holding Escrow); a
+    // never-published draft is deleted instead — 400 INVALID_STATUS_TRANSITION.
+    // A queued survey (MODERATION_QUEUE / legacy ESCROW_LOCKED) is withdrawn by its owner.
+    if (form.status === "DRAFT" && !hasPublishedVersion(form)) {
+      return fail(400, "INVALID_STATUS_TRANSITION", "A never-published draft is deleted, not closed.");
     }
     // Shared wallet helper (Ký quỹ → Khả dụng, capped at the wallet's Escrow).
     refundSurveyEscrow(user, { amount: form.escrowLocked, surveyId: form.id, title: form.title });
@@ -231,12 +274,22 @@ export const formsManageHandlers: RequestHandler[] = [
     const { user, form } = guarded;
     const body = reopenSurveySchema.safeParse(await request.json().catch(() => null));
     if (!body.success) return fail(400, "VALIDATION_ERROR", "Invalid reopen request.", { details: body.error.format() });
-    if (form.status !== "CLOSED") {
+    // Same order as the backend `reopenForm`: CLOSED, closed by its owner (E8-D1), approved current version (Story 8.1).
+    const refusal = reopenRefusalOf({
+      status: form.status,
+      closeKind: form.closeKind ?? null,
+      currentVersion: { isPublished: currentVersionPublished(form) },
+    });
+    if (refusal === "NOT_CLOSED") {
       return fail(409, "FORM_EDIT_CONFLICT", "Only CLOSED surveys can be reopened with additional quota.");
     }
-    if (!isOwnerReopenableClose(form.closeKind ?? null)) {
-      return fail(409, "FORM_NOT_REOPENABLE", "This survey was closed by an Admin or moderation.", {
-        details: { reason: "CLOSED_BY_ADMIN_OR_MODERATION", closeKind: form.closeKind ?? null },
+    if (refusal) {
+      const message =
+        refusal === "VERSION_NOT_APPROVED"
+          ? "The current version was never approved for the Marketplace."
+          : "This survey was closed by an Admin or moderation.";
+      return fail(409, "FORM_NOT_REOPENABLE", message, {
+        details: { reason: refusal, closeKind: form.closeKind ?? null },
       });
     }
     const added = body.data.additionalCompletions;

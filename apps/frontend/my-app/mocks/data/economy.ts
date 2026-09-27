@@ -5,6 +5,7 @@ import { getActiveScenario } from "../scenarios";
 import {
   creditReward,
   ledgerItemsFromRows,
+  payRewardFromEscrow,
   releaseDueRewards,
   settleHeldReward,
   type EconomyState,
@@ -192,6 +193,17 @@ export function creditSurveyReward(
 }
 
 /**
+ * Draws a reward from the publisher's Ký quỹ ("Trả thưởng khảo sát", rule
+ * `payRewardFromEscrow`). Throws `INSUFFICIENT_BALANCE` when the escrow is short.
+ */
+export function payRewardFromSurveyEscrow(
+  publisher: MockSessionUser,
+  input: { amount: number; surveyId: string; attemptId: string; title: string },
+): MockTransaction {
+  return withEconomy(publisher, (state) => payRewardFromEscrow(state, ruleContext(), input));
+}
+
+/**
  * Ends the 48h review of pending rewards whose `releasesAt` passed — or all of
  * them under the MOCK-ONLY scenario `?msw=release-pending` — then unlocks the
  * starter points. Called whenever the wallet, the starter status or an
@@ -340,4 +352,13 @@ export function settleHeldSurveyReward(
   input: { attemptId: string; outcome: "RELEASE" | "REVERSE" },
 ): { amount: number; activated: boolean } | null {
   return withEconomy(user, (state) => settleHeldReward(state, ruleContext(), input));
+}
+
+/**
+ * Total Ký quỹ across every mock wallet — the ledger truth (sum of the ESCROW
+ * accounts). Shared by the admin overview card and the transactions summary so
+ * both show the same number.
+ */
+export function mockEscrowTotal(): number {
+  return Object.values(wallets.get()).reduce((sum, wallet) => sum + wallet.escrow, 0);
 }

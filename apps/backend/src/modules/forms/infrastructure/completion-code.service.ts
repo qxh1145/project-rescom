@@ -45,6 +45,19 @@ export class CompletionCodeService implements CompletionCodePort {
   }
 
   /**
+   * Phase 5 C6: a deterministic 6-digit code (100000–999999) for `seed`,
+   * keyed with the server secret (domain-separated from the verifiers), so
+   * nobody without the secret can predict it and nothing is persisted.
+   */
+  deriveSixDigitCode(seed: string): string {
+    const digest = crypto
+      .createHmac('sha256', this.secretKey)
+      .update(`derived-completion-code:${seed}`)
+      .digest();
+    return (100000 + (digest.readUInt32BE(0) % 900000)).toString();
+  }
+
+  /**
    * Computes a keyed HMAC verifier bound to the exact FormVersion ID.
    * Format: `${keyVersion}:${hexDigest}`.
    *

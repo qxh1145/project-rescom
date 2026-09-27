@@ -13,7 +13,7 @@ import {
   responseSummary,
   type ResponsePosition,
 } from "@/lib/forms/results-view";
-import { ComplaintLink, ResponseAnswers, ResponseMeta } from "./ResponseAnswers";
+import { ResponseAnswers, ResponseMeta } from "./ResponseAnswers";
 import { QualityTag } from "./QualityTag";
 
 /** Mobile card list of 10d (63:4567…): code + quality, time line, 3-answer summary. */
@@ -116,14 +116,12 @@ export function ResponseDetailMobile({
   position,
   listHref,
   hrefFor,
-  formId,
 }: {
   data: FormResponses;
   response: FormResponse;
   position: ResponsePosition;
   listHref: string;
   hrefFor: (response: FormResponse) => string;
-  formId: string;
 }) {
   return (
     <div className="lg:hidden">
@@ -144,7 +142,6 @@ export function ResponseDetailMobile({
         <section aria-label="Nội dung câu trả lời" className="rounded-[18px] border border-line bg-surface p-4">
           <ResponseAnswers data={data} response={response} variant="page" />
         </section>
-        <ComplaintLink formId={formId} response={response} />
       </div>
       <nav
         aria-label="Chuyển câu trả lời"

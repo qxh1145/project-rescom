@@ -398,6 +398,12 @@ model Form {
   /// Publisher's estimated completion time in whole minutes (decision E6-D2):
   /// picks the FR-14 reward pricing band enforced at publish. Optional on drafts.
   estimatedDurationMinutes Int?       @map("estimated_duration_minutes")
+  /// Phase 5 C6: `Idempotency-Key` of the `POST /forms/external` request that
+  /// created the survey (unique per Publisher) and the SHA-256 fingerprint of
+  /// its body, so a retried request replays the survey instead of creating
+  /// (and funding) a second one. NULL when created without a key.
+  creationIdempotencyKey   String?    @map("creation_idempotency_key")
+  creationRequestHash      String?    @map("creation_request_hash")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -410,6 +416,7 @@ model Form {
   moderationDecisions SurveyModerationDecision[]
   surveyFeedback      SurveyFeedback[]
 
+  @@unique([publisherId, creationIdempotencyKey])
   @@map("forms")
 }
 

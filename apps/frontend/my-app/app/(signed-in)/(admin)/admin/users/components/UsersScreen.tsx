@@ -37,7 +37,7 @@ export function UsersScreen() {
           type="search"
           value={state.search}
           onChange={(event) => state.setSearch(event.target.value)}
-          placeholder="Tìm theo tên, email, mã #"
+          placeholder="Tìm theo email"
           className={fieldClassName(false, "h-11 pl-11 focus:pl-[43px]")}
         />
       </span>

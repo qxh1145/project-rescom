@@ -11,6 +11,8 @@ import { IDENTITY_AUDIT_PORT } from '../src/modules/auth/application/ports/ident
 import { InMemoryIdentityAuditRepository } from '../src/modules/auth/infrastructure/in-memory-identity-audit.repository';
 import { FORM_REPOSITORY_PORT } from '../src/modules/forms/application/ports/form-repository.port';
 import { InMemoryFormRepository } from '../src/modules/forms/infrastructure/in-memory-form.repository';
+import { LEDGER_REPOSITORY_PORT } from '../src/modules/economy/application/ports/ledger-repository.port';
+import { InMemoryLedgerRepository } from '../src/modules/economy/infrastructure/in-memory-ledger.repository';
 import { SessionService } from '../src/modules/auth/application/session.service';
 import { EnvService } from '../src/common/config/env.service';
 import { PrismaService } from '../src/common/database/prisma.service';
@@ -75,6 +77,9 @@ describe('Form Draft Creation & Lifecycle E2E Tests (Story 2.2)', () => {
       .useValue(auditRepo)
       .overrideProvider(FORM_REPOSITORY_PORT)
       .useValue(formRepo)
+      // Phase 5 M1/M2: GET /forms and GET /forms/:id read each survey's Escrow.
+      .overrideProvider(LEDGER_REPOSITORY_PORT)
+      .useValue(new InMemoryLedgerRepository())
       .overrideProvider(EnvService)
       .useValue(envService)
       .compile();

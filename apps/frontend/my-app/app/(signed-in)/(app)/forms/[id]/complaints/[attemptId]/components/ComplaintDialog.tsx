@@ -1,9 +1,8 @@
 "use client";
 
 import { escrowDrawPerCompletion } from "@rescom/schemas";
-import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
@@ -28,79 +27,31 @@ import {
 import { hoursUntil } from "@/lib/forms/manage-view";
 import { SheetDialog } from "../../../components/SheetDialog";
 
-/** Figma 10c "Ảnh bằng chứng · tối đa 3". */
-const MAX_EVIDENCE = 3;
-
-interface Evidence {
-  id: number;
-  file: File;
-  url: string;
-}
-
-/**
- * Screenshots picked for the complaint, previewed locally. ASSUMED: they are
- * not uploaded yet — the Publisher dispute route (and its storage purpose)
- * does not exist in the backend, so only the reason and description are sent.
- */
-function useEvidence() {
-  const [items, setItems] = useState<Evidence[]>([]);
-  const nextId = useRef(0);
-  const urls = useRef<string[]>([]);
-
-  useEffect(() => {
-    const created = urls;
-    return () => created.current.forEach((url) => URL.revokeObjectURL(url));
-  }, []);
-
-  function add(files: FileList | null) {
-    const room = MAX_EVIDENCE - items.length;
-    const picked = Array.from(files ?? [])
-      .filter((file) => file.type.startsWith("image/"))
-      .slice(0, Math.max(0, room));
-    const added = picked.map((file) => {
-      const url = URL.createObjectURL(file);
-      urls.current.push(url);
-      nextId.current += 1;
-      return { id: nextId.current, file, url };
-    });
-    setItems([...items, ...added]);
-  }
-
-  function remove(id: number) {
-    const target = items.find((item) => item.id === id);
-    if (!target) return;
-    URL.revokeObjectURL(target.url);
-    urls.current = urls.current.filter((url) => url !== target.url);
-    setItems(items.filter((item) => item.id !== id));
-  }
-
-  return { items, add, remove };
-}
-
 function ComplaintForm({
   form,
   attempt,
   onCancel,
   onSent,
+  onBusyChange,
 }: {
   form: PublisherForm;
   attempt: PendingAttempt;
   onCancel: () => void;
   onSent: () => void;
+  onBusyChange: (busy: boolean) => void;
 }) {
   const [reason, setReason] = useState<DisputeReason | null>(null);
   const [description, setDescription] = useState("");
   const [errors, setErrors] = useState<DisputeDraftErrors>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const evidence = useEvidence();
-  const fileInput = useRef<HTMLInputElement>(null);
 
   async function submit() {
     const found = validateDisputeDraft({ reason, description });
     setErrors(found);
     if (found.reason || found.description || !reason) return;
     setBusy(true);
+    onBusyChange(true);
     setError(null);
     try {
       await submitAttemptDispute(form.id, attempt.attemptId, { reason, description: description.trim() });
@@ -108,6 +59,7 @@ function ComplaintForm({
     } catch (cause) {
       setError(formActionErrorMessage(cause, "Chưa gửi được khiếu nại. Vui lòng thử lại."));
       setBusy(false);
+      onBusyChange(false);
     }
   }
 
@@ -163,56 +115,15 @@ function ComplaintForm({
         }}
       />
 
-      <p className="mt-4 text-label font-semibold text-ink">
-        Ảnh bằng chứng <span className="font-medium text-ink-muted">· tối đa {MAX_EVIDENCE}</span>
-      </p>
-      <ul className="mt-2.5 flex flex-wrap gap-2.5">
-        {evidence.items.map((item, index) => (
-          <li key={item.id} className="relative size-22.5 overflow-hidden rounded-field border border-line-strong">
-            <Image src={item.url} alt={`Ảnh bằng chứng ${index + 1}`} fill unoptimized sizes="90px" className="object-cover" />
-            <button
-              type="button"
-              onClick={() => evidence.remove(item.id)}
-              aria-label={`Bỏ ảnh ${index + 1}`}
-              className="absolute top-1 right-1 inline-flex size-7 items-center justify-center rounded-full bg-surface/90 text-ink"
-            >
-              <Icon name="x" size={14} />
-            </button>
-          </li>
-        ))}
-        {evidence.items.length < MAX_EVIDENCE ? (
-          <li>
-            <button
-              type="button"
-              onClick={() => fileInput.current?.click()}
-              aria-label="Thêm ảnh bằng chứng"
-              className="inline-flex size-22 items-center justify-center rounded-field border border-line-strong bg-surface text-ink hover:bg-surface-subtle"
-            >
-              <Icon name="plus" size={24} />
-            </button>
-            <input
-              ref={fileInput}
-              type="file"
-              accept="image/*"
-              multiple
-              hidden
-              onChange={(event) => {
-                evidence.add(event.target.files);
-                event.target.value = "";
-              }}
-            />
-          </li>
-        ) : null}
-      </ul>
-      <p className="mt-2 text-[12px] text-ink-muted">
-        Chụp đúng dòng câu trả lời trong Google Sheets, che thông tin cá nhân nếu có.
-      </p>
-
+      {/* Phase 5 M5 (decision Q3, option a): the Figma 10c "Ảnh bằng chứng"
+          uploader is left out until the dispute route accepts evidence (no
+          backend contract or storage purpose exists), so nothing is picked
+          that would never be sent. */}
       <div className="mt-4 flex gap-2.5 rounded-field bg-surface-subtle px-3 py-3">
         <Icon name="info" size={18} className="mt-px text-ink-muted" />
         <p className="text-caption leading-[19.5px] text-ink">
           Điểm của lượt này được giữ lại cho đến khi Admin quyết định. Nếu khiếu nại được chấp nhận,{" "}
-          {escrowDrawPerCompletion(form)} điểm trở về ký quỹ của bạn.
+          {escrowDrawPerCompletion(form)} điểm được hoàn vào số dư khả dụng của bạn.
         </p>
       </div>
 
@@ -243,12 +154,14 @@ export function ComplaintDialog({ progress }: { progress: FormProgress | undefin
   const params = useParams<{ attemptId: string }>();
   const { form, invalidate } = useFormHeader();
   const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [now] = useState(() => Date.now());
   if (!form || !progress) return null;
 
   const attemptId = decodeURIComponent(params.attemptId);
   const attempt = progress.pendingAttempts.find((item) => item.attemptId === attemptId);
   const close = () => {
+    if (busy) return;
     if (sent) invalidate();
     router.replace(`/forms/${encodeURIComponent(form.id)}`, { scroll: false });
   };
@@ -257,7 +170,13 @@ export function ComplaintDialog({ progress }: { progress: FormProgress | undefin
     : form.title;
 
   return (
-    <SheetDialog titleId="complaint-title" title="Khiếu nại lượt làm" subtitle={subtitle} onClose={close}>
+    <SheetDialog
+      titleId="complaint-title"
+      title="Khiếu nại lượt làm"
+      subtitle={subtitle}
+      onClose={close}
+      dismissible={!busy}
+    >
       {sent ? (
         <>
           <Alert tone="info" className="mt-4">
@@ -268,7 +187,7 @@ export function ComplaintDialog({ progress }: { progress: FormProgress | undefin
           </Button>
         </>
       ) : attempt && !attempt.dispute && hoursUntil(attempt.reviewEndsAt, now) > 0 ? (
-        <ComplaintForm form={form} attempt={attempt} onCancel={close} onSent={() => setSent(true)} />
+        <ComplaintForm form={form} attempt={attempt} onCancel={close} onSent={() => setSent(true)} onBusyChange={setBusy} />
       ) : (
         <>
           <Alert tone="info" className="mt-4">

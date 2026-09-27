@@ -1,5 +1,6 @@
 import type { LedgerAccountClass } from "@rescom/schemas";
 import {
+  compareJournalsNewestFirst,
   journalKindOf,
   matchesTransactionFilter,
   periodStartIso,
@@ -10,7 +11,7 @@ import { vietnamDateKey } from "@/lib/format/date-time";
 import { loadStore } from "@/lib/mock/store.ts";
 import { pendingTopUpSummary } from "./admin-top-ups";
 import { toMockUuid } from "./auth";
-import { transactions, wallets } from "./economy";
+import { mockEscrowTotal, transactions, wallets } from "./economy";
 import { ledgerItemsFromRows } from "./economy-rules";
 import { allTopUps } from "./top-up";
 import { createCollection } from "../db/store";
@@ -100,7 +101,98 @@ const SEED: readonly SeedJournal[] = [
     related: "Kích hoạt tài khoản",
     attemptId: null,
   },
+  ...demoVolumeSeed(),
 ];
+
+/** Names + surveys for `demoVolumeSeed`, distinct from the five Figma rows above. */
+const VOLUME_NAMES = [
+  "Trần Bảo Ngọc",
+  "Đặng Gia Hân",
+  "Vũ Minh Tuấn",
+  "Bùi Thảo Vy",
+  "Ngô Đức Anh",
+  "Phan Thu Hà",
+  "Lý Quốc Bảo",
+  "Đỗ Yến Nhi",
+];
+const VOLUME_SURVEYS = [
+  "Thói quen dùng AI trong học tập của sinh viên IT",
+  "Hành vi mua sắm online của sinh viên Đà Nẵng",
+  "Nhu cầu nhà trọ gần trường",
+  "Mức độ hài lòng với thư viện trường",
+  "Ý định sử dụng xe điện cá nhân",
+  "Khảo sát chất lượng dịch vụ ăn uống và đời sống ký túc xá",
+];
+
+/**
+ * "Hôm nay" needs more than one `ADMIN_JOURNAL_PAGE_SIZE` (50) page for
+ * "Tải thêm" to show up in the demo. Adds 50 further balanced journals (every
+ * entry list still sums to 0, like the five Figma rows above), spread across
+ * the last few hours of "today" and cycling through the four everyday
+ * journal kinds with realistic Vietnamese names and survey titles.
+ */
+function demoVolumeSeed(): SeedJournal[] {
+  const kinds: ReadonlyArray<{
+    prefix: string;
+    describe: (name: string, survey: string, amount: number) => string;
+    related: string;
+    entries: (amount: number, name: string) => SeedEntry[];
+  }> = [
+    {
+      prefix: "topup-approval",
+      describe: (name, _survey, amount) => `Manual top-up approval: ${name} (${amount} points)`,
+      related: "Nạp điểm qua chuyển khoản",
+      entries: (amount, name) => [
+        ["SYSTEM_CLEARING", -amount, null],
+        ["USER_AVAILABLE", amount, name],
+      ],
+    },
+    {
+      prefix: "publish",
+      describe: (name, survey) => `Escrow lock for survey publish: ${survey}`,
+      related: "",
+      entries: (amount, name) => [
+        ["USER_AVAILABLE", -amount, name],
+        ["ESCROW", amount, name],
+      ],
+    },
+    {
+      prefix: "close-refund",
+      describe: (name, survey) => `Escrow refund on survey close: ${survey}`,
+      related: "Khảo sát đóng",
+      entries: (amount, name) => [
+        ["ESCROW", -amount, name],
+        ["USER_AVAILABLE", amount, name],
+      ],
+    },
+    {
+      prefix: "external-completion",
+      describe: (_name, survey) => `Pending survey reward: ${survey}`,
+      related: "",
+      entries: (amount) => [
+        ["ESCROW", -amount, null],
+        ["PENDING", amount, null],
+      ],
+    },
+  ];
+
+  return Array.from({ length: 50 }, (_, i) => {
+    const kind = kinds[i % kinds.length];
+    const name = VOLUME_NAMES[i % VOLUME_NAMES.length];
+    const survey = VOLUME_SURVEYS[i % VOLUME_SURVEYS.length];
+    const amount = 8 + ((i * 7) % 45); // 8..52, varied but deterministic
+    const id = toMockUuid(`demo-volume-seed:${i}`);
+    return {
+      id,
+      idempotencyKey: `${kind.prefix}:${id}`,
+      description: kind.describe(name, survey, amount),
+      minutesBefore: 4 + i * 5, // spread across the last ~4 hours of "today"
+      entries: kind.entries(amount, name),
+      related: kind.related || survey,
+      attemptId: null,
+    };
+  });
+}
 
 const MINUTE_MS = 60_000;
 
@@ -190,12 +282,12 @@ function walletJournals(): AdminJournal[] {
   });
 }
 
-/** `GET /admin/ledger/journals` (ASSUMED): newest first, filtered by type and lower time bound. */
-export function listAdminJournals(type: TransactionFilter, from: string | null): AdminJournal[] {
+/** `GET /admin/ledger/journals` (ASSUMED): newest first (ties by id), filtered by type and time bounds. */
+export function listAdminJournals(type: TransactionFilter, from: string | null, to: string | null = null): AdminJournal[] {
   return [...walletJournals(), ...seedJournals()]
     .filter((journal) => matchesTransactionFilter(journalKindOf(journal), type))
-    .filter((journal) => from === null || journal.createdAt >= from)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+    .filter((journal) => (from === null || journal.createdAt >= from) && (to === null || journal.createdAt <= to))
+    .sort(compareJournalsNewestFirst);
 }
 
 /** `GET /admin/ledger/summary` (ASSUMED): the four Figma cards. */
@@ -206,7 +298,7 @@ export function adminLedgerSummary(now = new Date()): AdminLedgerSummary {
   );
   return {
     pendingTopUps: pendingTopUpSummary(),
-    escrowTotal: balances.reduce((sum, wallet) => sum + wallet.escrow, 0),
+    escrowTotal: mockEscrowTotal(),
     pendingTotal: balances.reduce((sum, wallet) => sum + wallet.pending, 0),
     refundedToday: {
       points: refunds.reduce(

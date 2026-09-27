@@ -195,7 +195,14 @@ export function findMockAdminUser(id: string): MockAdminUser | undefined {
   return listMockAdminUsers().find((user) => user.id === id);
 }
 
-/** Search as the ASSUMED backend would: name, email or short code (`#7F3A`, `7f3a`). */
+/** `GET /admin/users?search=` as the VERIFIED backend does: a case-insensitive substring of the email only. */
+export function matchesUserEmail(user: Pick<MockAdminUser, "email">, search: string): boolean {
+  const needle = search.trim().toLowerCase();
+  if (!needle) return true;
+  return user.email.toLowerCase().includes(needle);
+}
+
+/** FraudLog's ASSUMED user search: name, email or short code (`#7F3A`, `7f3a`). */
 export function matchesUserSearch(user: Pick<MockAdminUser, "id" | "email" | "name">, search: string): boolean {
   const needle = search.trim().toLowerCase();
   if (!needle) return true;

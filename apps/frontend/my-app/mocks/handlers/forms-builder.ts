@@ -2,6 +2,7 @@ import { http, type RequestHandler } from "msw";
 import {
   calculateEscrowCost,
   checkPublishRewardBand,
+  checkSurveyFitsReservationWindow,
   createFormDraftSchema,
   formDefinitionSchema,
   getRewardPricingRange,
@@ -9,6 +10,7 @@ import {
   publishFormSchema,
   resolveEffectiveDurationMinutes,
   resolveRewardBandDurationOptions,
+  SURVEY_DURATION_EXCEEDS_RESERVATION_CODE,
   updateFormDraftSchema,
 } from "@rescom/schemas";
 import { apiUrl } from "@/lib/api/config";
@@ -24,9 +26,11 @@ import {
   syncPublisherForm,
   type MockFormDraft,
 } from "../data/form-drafts";
+import { findPublisherForm } from "../data/forms";
 import { getMockSessionUser, type MockSessionUser } from "../db/session";
 import { fail, missingCsrf, ok, unauthorized } from "../envelope";
 import { applyScenario } from "../scenarios";
+import { toDetail } from "./forms-manage";
 
 /**
  * Phase 5D — Form Builder (Figma 13). VERIFIED routes mirror
@@ -44,26 +48,37 @@ async function readJson(request: Request): Promise<unknown> {
   }
 }
 
+/**
+ * The builder's `FormDetailDto`, on top of the survey header fields of the
+ * shared "Khảo sát của tôi" row (moderation outcome, `closeKind`, the ASSUMED
+ * `rejection`, completions…) so `/forms/:id` shows an approved or rejected
+ * builder survey correctly.
+ */
 function detailOf(draft: MockFormDraft, user: MockSessionUser) {
+  const row = findPublisherForm(draft.id);
+  // The row follows every builder save and also owner close / reopen after approval.
+  const status = row?.status ?? draft.status;
   return {
+    ...(row ? toDetail(row, user.id) : {}),
     id: draft.id,
     publisherId: user.id,
     type: "INTERNAL" as const,
-    status: draft.status,
+    status,
     title: draft.title,
     description: draft.description,
     rewardPerResponse: draft.rewardPerResponse,
-    expectedCompletions: draft.expectedCompletions,
+    expectedCompletions: row?.expectedCompletions ?? draft.expectedCompletions,
     estimatedDurationMinutes: draft.estimatedDurationMinutes,
-    closeKind: null,
+    closeKind: row?.closeKind ?? null,
     currentVersion: {
       id: `${draft.id.slice(0, 24)}${String(draft.versionNumber).padStart(12, "0")}`,
       formId: draft.id,
       versionNumber: draft.versionNumber,
       schemaJson: draft.schema,
       targetingJson: draft.targetingJson ?? null,
-      isPublished: false,
-      publishedAt: null,
+      // Approval publishes the version; a rejected one never went live.
+      isPublished: status === "PUBLISHED" || (status === "CLOSED" && Boolean(row?.publishedAt) && row?.closeKind !== "MODERATION"),
+      publishedAt: row?.publishedAt ?? null,
       createdAt: draft.createdAt,
     },
     createdAt: draft.createdAt,
@@ -222,10 +237,19 @@ export const formsBuilderHandlers: RequestHandler[] = [
     if (!definition.success) {
       return fail(400, "INVALID_FORM_DRAFT", "The form is not valid for publishing.", { details: definition.error.format() });
     }
+    // `assertSurveyFitsReservationWindow` (decision E5-D2) → 422.
+    const reservation = checkSurveyFitsReservationWindow({ type: "INTERNAL", definition: schema, estimatedDurationMinutes });
+    if (!reservation.fits) {
+      return fail(422, SURVEY_DURATION_EXCEEDS_RESERVATION_CODE, "This survey cannot be published.", {
+        details: reservation.violations,
+      });
+    }
     const candidate = { ...draft, schema, estimatedDurationMinutes };
     const band = pricingOf(candidate).bandCheck;
     if (band === "DURATION_REQUIRED") {
-      return fail(400, "VALIDATION_ERROR", "estimatedDurationMinutes is required for a rewarded survey.");
+      return fail(422, "ESTIMATED_DURATION_REQUIRED", "estimatedDurationMinutes is required for a rewarded survey.", {
+        details: [],
+      });
     }
     if (band === "OUT_OF_BAND") {
       return fail(422, "PRICING_REWARD_OUT_OF_BAND", "Reward is outside the pricing band of this duration.");

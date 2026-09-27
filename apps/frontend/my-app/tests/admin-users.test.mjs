@@ -122,7 +122,7 @@ test("users service (VERIFIED routes, ASSUMED extensions optional)", async (t) =
     assert.equal(calls[0].url, "/api/admin/users?page=1&limit=20&search=khang");
   });
 
-  await t.test("locks with CSRF and the ASSUMED reason; unlock sends status only", async () => {
+  await t.test("locks with CSRF and the required audit reason; unlock sends status only", async () => {
     installFetch(() => jsonResponse(200, { data: { user: { ...verifiedUser, status: "LOCKED" } }, error: null, meta: {} }));
     const user = await service.updateAdminUserStatus(KHANG, "LOCKED", "  Vi phạm lặp lại  ");
     assert.equal(user.status, "LOCKED");

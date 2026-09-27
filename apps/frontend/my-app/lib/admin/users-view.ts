@@ -95,10 +95,14 @@ export function formatCount(value: number | undefined): string {
 export const LOCK_REASON_MIN = 10;
 export const LOCK_REASON_MAX = 500;
 
-/** Lock reason: required (it is logged and e-mailed), 10–500 characters. ASSUMED limits. */
+/**
+ * Lock reason: required, 10–500 characters after trimming — mirrors `updateUserStatusSchema`
+ * in `packages/schemas/src/users/admin-users.schema.ts`. The backend only records it in the
+ * audit-log metadata (no e-mail is sent to the user).
+ */
 export function lockReasonError(reason: string): string | null {
   const length = reason.trim().length;
-  if (length === 0) return "Nhập lý do khoá — lý do được ghi vào nhật ký và gửi cho người dùng.";
+  if (length === 0) return "Nhập lý do khoá — lý do được ghi vào nhật ký kiểm toán.";
   if (length < LOCK_REASON_MIN) return `Lý do cần ít nhất ${LOCK_REASON_MIN} ký tự.`;
   if (length > LOCK_REASON_MAX) return `Lý do tối đa ${LOCK_REASON_MAX} ký tự.`;
   return null;

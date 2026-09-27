@@ -37,6 +37,14 @@ export interface LedgerRepositoryPort {
   ): Promise<LedgerJournalEntity[]>;
 
   /**
+   * Journals whose idempotency key starts with any of `prefixes` (one
+   * lookup for a whole page of forms, Phase 5 M-1), oldest first.
+   */
+  findJournalsByIdempotencyKeyPrefixes(
+    prefixes: string[],
+  ): Promise<LedgerJournalEntity[]>;
+
+  /**
    * Journals whose idempotency key starts with `prefix` and whose description
    * contains `descriptionFragment`, oldest first.
    */

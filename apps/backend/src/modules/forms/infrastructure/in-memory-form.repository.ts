@@ -1,14 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import {
   CreateVersionOptions,
+  FormCreationKey,
+  FormEscrowInputs,
   FormRepositoryPort,
   FormSummaryItem,
   FormUpdateExpectation,
+  FormWithCreationKey,
   FormWithVersion,
   ListFormsParams,
   ModerationQueuePage,
   ModerationQueueParams,
 } from '../application/ports/form-repository.port';
+import { FormCreationKeyTakenException } from '../application/exceptions/form.exceptions';
 import { FormEntity } from '../domain/form.entity';
 import { FormVersionEntity } from '../domain/form-version.entity';
 import type { FormCompletionRefs } from '../application/ports/form-repository.port';
@@ -27,6 +31,11 @@ export class InMemoryFormRepository implements FormRepositoryPort {
   private readonly forms = new Map<string, FormEntity>();
   private readonly versions = new Map<string, FormVersionEntity>();
   private readonly completionRefs = new Map<string, FormCompletionRefs>();
+  /** Phase 5 C6: `${publisherId}:${key}` → form id + request fingerprint. */
+  private readonly creationKeys = new Map<
+    string,
+    { formId: string; requestHash: string }
+  >();
   private completionSource?: CompletionRefsSource;
   private inProgressAttemptsSource?: InProgressAttemptsSource;
 
@@ -34,6 +43,7 @@ export class InMemoryFormRepository implements FormRepositoryPort {
     this.forms.clear();
     this.versions.clear();
     this.completionRefs.clear();
+    this.creationKeys.clear();
     this.completionSource = undefined;
     this.inProgressAttemptsSource = undefined;
   }
@@ -59,7 +69,19 @@ export class InMemoryFormRepository implements FormRepositoryPort {
   async create(
     form: FormEntity,
     initialVersion: FormVersionEntity,
+    creationKey?: FormCreationKey,
   ): Promise<FormWithVersion> {
+    if (creationKey) {
+      const slot = `${form.publisherId}:${creationKey.key}`;
+      const taken = this.creationKeys.get(slot);
+      if (taken && this.forms.has(taken.formId)) {
+        throw new FormCreationKeyTakenException(creationKey.key);
+      }
+      this.creationKeys.set(slot, {
+        formId: form.id,
+        requestHash: creationKey.requestHash,
+      });
+    }
     this.forms.set(form.id, form);
     this.versions.set(initialVersion.id, initialVersion);
 
@@ -68,6 +90,18 @@ export class InMemoryFormRepository implements FormRepositoryPort {
       currentVersion: initialVersion,
       versions: [initialVersion],
     };
+  }
+
+  async findByCreationKey(
+    publisherId: string,
+    key: string,
+  ): Promise<FormWithCreationKey | null> {
+    const entry = this.creationKeys.get(`${publisherId}:${key}`);
+    if (!entry) return null;
+    const record = await this.findById(entry.formId);
+    return record
+      ? { ...record, creationRequestHash: entry.requestHash }
+      : null;
   }
 
   /**
@@ -129,8 +163,15 @@ export class InMemoryFormRepository implements FormRepositoryPort {
       return {
         form,
         latestVersionNumber,
+        completedCompletions: 0,
       };
     });
+
+    for (const item of items) {
+      item.completedCompletions = (
+        await this.listRewardableCompletions(item.form.id)
+      ).completedCount;
+    }
 
     return {
       forms: items,
@@ -320,6 +361,21 @@ export class InMemoryFormRepository implements FormRepositoryPort {
       internalResponses: [...refs.internalResponses],
       externalAttemptIds: [...refs.externalAttemptIds],
     };
+  }
+
+  async listEscrowInputsByFormIds(
+    formIds: string[],
+  ): Promise<Map<string, FormEscrowInputs>> {
+    const result = new Map<string, FormEscrowInputs>();
+    for (const formId of formIds) {
+      result.set(formId, {
+        versionIds: (await this.findAllVersions(formId)).map(
+          (version) => version.id,
+        ),
+        completions: await this.listRewardableCompletions(formId),
+      });
+    }
+    return result;
   }
 
   async findModerationQueue(

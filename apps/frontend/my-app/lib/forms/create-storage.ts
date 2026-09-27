@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { COLLECTION_DAY_CHOICES, emptyWizardDraft, type GoogleFormWizardDraft } from "./create-wizard.ts";
+import {
+  COLLECTION_DAY_CHOICES,
+  SCHOOL_TARGETING_SUPPORTED,
+  emptyWizardDraft,
+  type GoogleFormWizardDraft,
+} from "./create-wizard.ts";
 
 /**
  * Browser state of the Google Forms wizard:
@@ -8,13 +13,18 @@ import { COLLECTION_DAY_CHOICES, emptyWizardDraft, type GoogleFormWizardDraft } 
  * - the one-time completion code returned by `POST /forms/external`
  *   (sessionStorage, per tab) so 9d can show it after the redirect. The
  *   backend never returns the plaintext code again (only a rotation, which is
- *   refused while the survey waits for moderation: 409 `FORM_IN_MODERATION`).
+ *   refused while the survey waits for moderation: 409 `FORM_IN_MODERATION`);
+ * - the `Idempotency-Key` of the draft's `POST /forms/external` (localStorage,
+ *   next to the draft, decision C6 (a)): generated once, reused by every retry
+ *   whose outcome is unknown, cleared after success.
  */
 
 type KeyValueStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 const DRAFT_PREFIX = "rescom:create-gform-draft:";
 const SUBMITTED_PREFIX = "rescom:created-form-code:";
+const IDEMPOTENCY_PREFIX = "rescom:create-gform-idempotency:";
+const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9-]{16,128}$/;
 
 const draftSchema = z.object({
   externalUrl: z.string(),
@@ -60,10 +70,15 @@ function remove(storage: KeyValueStorage | null | undefined, key: string): void 
   }
 }
 
-/** The saved draft, or an empty one (missing, unreadable or an older shape). */
+/**
+ * The saved draft, or an empty one (missing, unreadable or an older shape).
+ * A school picked before the "Trường" field was hidden is dropped while
+ * `SCHOOL_TARGETING_SUPPORTED` is false (it would not be sent anyway).
+ */
 export function loadWizardDraft(storage: KeyValueStorage | null | undefined, userId: string): GoogleFormWizardDraft {
   const parsed = draftSchema.safeParse(readJson(storage, DRAFT_PREFIX + userId));
-  return parsed.success ? parsed.data : emptyWizardDraft();
+  if (!parsed.success) return emptyWizardDraft();
+  return SCHOOL_TARGETING_SUPPORTED ? parsed.data : { ...parsed.data, school: "" };
 }
 
 export function saveWizardDraft(
@@ -76,6 +91,32 @@ export function saveWizardDraft(
 
 export function clearWizardDraft(storage: KeyValueStorage | null | undefined, userId: string): void {
   remove(storage, DRAFT_PREFIX + userId);
+  clearWizardIdempotencyKey(storage, userId);
+}
+
+function randomKey(): string {
+  return globalThis.crypto.randomUUID();
+}
+
+/**
+ * The draft's `Idempotency-Key`: the stored one, or a new UUID that is stored
+ * before the request is sent (so a reload after a lost response reuses it).
+ */
+export function wizardIdempotencyKey(
+  storage: KeyValueStorage | null | undefined,
+  userId: string,
+  generate: () => string = randomKey,
+): string {
+  const stored = readJson(storage, IDEMPOTENCY_PREFIX + userId);
+  if (typeof stored === "string" && IDEMPOTENCY_KEY_PATTERN.test(stored)) return stored;
+  const key = generate();
+  writeJson(storage, IDEMPOTENCY_PREFIX + userId, key);
+  return key;
+}
+
+/** After success, or once the server answered definitively (the next submit is a new request). */
+export function clearWizardIdempotencyKey(storage: KeyValueStorage | null | undefined, userId: string): void {
+  remove(storage, IDEMPOTENCY_PREFIX + userId);
 }
 
 const submittedSchema = z.object({

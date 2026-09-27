@@ -1,6 +1,7 @@
 import type { SurveyFeedbackIssueTag } from "@rescom/schemas";
 import { isApiError } from "../api/api-error.ts";
 import type { DisputeReason } from "./manage-service.ts";
+import type { ReopenRefusal } from "./manage-status.ts";
 
 /**
  * Vietnamese copy of the page 10 screens (codes: backend
@@ -29,7 +30,7 @@ export function progressErrorMessage(error: unknown): string {
 
 const ACTION_MESSAGES: Record<string, string> = {
   FORM_ALREADY_CLOSED: "Khảo sát đã kết thúc trước đó.",
-  FORM_NOT_REOPENABLE: "Khảo sát bị Admin gỡ hoặc từ chối nên không mở lại được.",
+  FORM_NOT_REOPENABLE: "Khảo sát này không mở lại được.",
   FORM_EDIT_CONFLICT: "Khảo sát vừa thay đổi ở nơi khác. Tải lại trang rồi thử lại.",
   FORM_FORBIDDEN: "Chỉ người tạo khảo sát mới làm được thao tác này.",
   FORM_NOT_FOUND: "Không tìm thấy khảo sát này.",
@@ -39,18 +40,56 @@ const ACTION_MESSAGES: Record<string, string> = {
   FORM_VALIDATION_ERROR: "Số người trả lời thêm vượt giới hạn cho phép.",
   VALIDATION_ERROR: "Thông tin chưa hợp lệ. Kiểm tra lại rồi thử lại.",
   FORM_NOT_PUBLISHED: "Khảo sát không còn chạy.",
+  // Phase 5 M7: a never-published draft is deleted, not withdrawn.
+  INVALID_STATUS_TRANSITION: "Bản nháp này chưa từng được đăng nên không có ký quỹ để hoàn. Bạn có thể xoá bản nháp.",
   // ASSUMED dispute codes (no backend route yet).
   DISPUTE_WINDOW_CLOSED: "Đã hết 48 giờ khiếu nại cho lượt làm này.",
   DISPUTE_ALREADY_OPEN: "Lượt làm này đã được khiếu nại, Admin đang xem xét.",
   ATTEMPT_NOT_DISPUTABLE: "Lượt làm này không còn khiếu nại được.",
 };
 
+/** Why a survey cannot be reopened (backend `FORM_NOT_REOPENABLE` `details.reason`, decision E8-D1 / Story 8.1). */
+export function reopenRefusalMessage(reason: ReopenRefusal | null | undefined): string {
+  switch (reason) {
+    case "CLOSED_BY_ADMIN_OR_MODERATION":
+      return "Khảo sát bị Admin gỡ hoặc từ chối nên không mở lại được.";
+    case "VERSION_NOT_APPROVED":
+      return "Phiên bản hiện tại chưa được Admin duyệt nên chưa mở lại được. Gửi duyệt phiên bản này trước.";
+    case "NOT_CLOSED":
+      return "Chỉ khảo sát đã kết thúc mới mở lại thêm mẫu được.";
+    default:
+      return ACTION_MESSAGES.FORM_NOT_REOPENABLE;
+  }
+}
+
+function detailsReason(details: unknown): string | null {
+  if (!details || typeof details !== "object" || !("reason" in details)) return null;
+  const reason = (details as { reason?: unknown }).reason;
+  return typeof reason === "string" ? reason : null;
+}
+
 /** Close / reopen / pause / dispute failures. */
 export function formActionErrorMessage(error: unknown, fallback: string): string {
   if (!isApiError(error)) return fallback;
   if (error.kind === "network") return NETWORK;
   if (error.status === 429) return "Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút.";
+  if (error.code === "FORM_NOT_REOPENABLE") {
+    const reason = detailsReason(error.details);
+    return reason === "CLOSED_BY_ADMIN_OR_MODERATION" || reason === "VERSION_NOT_APPROVED"
+      ? reopenRefusalMessage(reason)
+      : ACTION_MESSAGES.FORM_NOT_REOPENABLE;
+  }
   return (error.code && ACTION_MESSAGES[error.code]) || fallback;
+}
+
+/** "Sửa & gửi lại" of an in-Rescom survey: creating or filling the copy failed. */
+export function resubmitCopyErrorMessage(error: unknown): string {
+  if (!isApiError(error)) return "Chưa tạo được bản sao. Vui lòng thử lại.";
+  if (error.kind === "network") return NETWORK;
+  if (error.status === 429) return "Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút.";
+  if (error.code === "FORM_FORBIDDEN" || error.status === 403) return ACTION_MESSAGES.FORM_FORBIDDEN;
+  if (error.code === "FORM_NOT_FOUND" || error.status === 404) return ACTION_MESSAGES.FORM_NOT_FOUND;
+  return "Chưa tạo được bản sao. Vui lòng thử lại.";
 }
 
 /** Figma 10c "Vấn đề" chips. */

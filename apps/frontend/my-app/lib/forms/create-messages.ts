@@ -59,8 +59,31 @@ export function createSurveyErrorMessage(error: unknown): string {
     case "TARGETING_VALIDATION_ERROR":
       return "Thông tin khảo sát chưa hợp lệ. Kiểm tra lại các bước rồi thử lại.";
     default:
+      if (isIdempotencyConflict(error)) return IDEMPOTENCY_CONFLICT_MESSAGE;
       return SUBMIT_FALLBACK;
   }
+}
+
+const IDEMPOTENCY_CONFLICT_MESSAGE =
+  "Lần gửi trước của bản nháp này đã được ghi nhận với thông tin khác. Kiểm tra “Khảo sát của tôi” trước khi gửi lại để tránh tạo trùng khảo sát.";
+
+/** Backend 409 for an `Idempotency-Key` reused with a different body (exact code not final: any `IDEMPOTENCY*` code). */
+function isIdempotencyConflict(error: unknown): boolean {
+  return isApiError(error) && error.status === 409 && typeof error.code === "string" && error.code.includes("IDEMPOTENCY");
+}
+
+/**
+ * Decision C6 (a): keep the draft's `Idempotency-Key` only when the outcome of
+ * `POST /forms/external` is unknown (no response, 5xx, 429), so the retry is
+ * replayed by the server instead of creating a second survey and escrow. Any
+ * other answer is final: the next submit (maybe with edited fields) is a new
+ * request with a new key.
+ */
+export function keepsIdempotencyKey(error: unknown): boolean {
+  if (!isApiError(error)) return true;
+  // No response, or a 2xx body that did not parse: the survey may exist.
+  if (error.kind === "network" || error.kind === "malformed") return true;
+  return error.status === 429 || (typeof error.status === "number" && error.status >= 500);
 }
 
 /** Backend `InsufficientEscrowBalanceException` (409, `{ availableBalance, requiredAmount }`). */
@@ -82,4 +105,21 @@ function bandDetails(details: unknown): { min: number; max: number; suggested: n
 /** Figma 9d: the line the publisher pastes into the form's confirmation message. */
 export function completionCodeLine(code: string): string {
   return `Mã hoàn thành Rescom: ${code}`;
+}
+
+/** "Sửa & gửi lại" (`?from=<id>`): the wizard was filled from the rejected survey. */
+export const PREFILL_MESSAGES = {
+  filled: (title: string) =>
+    `Đã điền sẵn thông tin từ “${title}”. Sửa theo góp ý của Admin rồi gửi duyệt — Rescom tạo một khảo sát mới, khảo sát cũ giữ nguyên.`,
+  replacedDraft: "Bản nháp Google Forms bạn đang soạn dở đã được thay bằng thông tin này.",
+  notGoogleForms: "Khảo sát này tạo bằng Form Builder nên không điền sẵn vào mẫu Google Forms được.",
+} as const;
+
+/** `GET /forms/:id` failed while prefilling from `?from=<id>`. */
+export function prefillErrorMessage(error: unknown): string {
+  if (!isApiError(error)) return "Không tải được khảo sát cũ để điền sẵn. Vui lòng tải lại trang.";
+  if (error.kind === "network") return NETWORK;
+  if (error.code === "FORM_NOT_FOUND" || error.status === 404) return "Không tìm thấy khảo sát cũ để điền sẵn.";
+  if (error.code === "FORM_FORBIDDEN" || error.status === 403) return "Khảo sát cũ thuộc tài khoản khác nên không điền sẵn được.";
+  return "Không tải được khảo sát cũ để điền sẵn. Vui lòng tải lại trang.";
 }

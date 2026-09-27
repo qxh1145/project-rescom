@@ -11,6 +11,9 @@ export const PARTICIPATION_STORAGE_PREFIXES = [
   // Publisher side: Google Forms wizard draft and the one-time completion code hand-off.
   "rescom:create-gform-draft:",
   "rescom:created-form-code:",
+  // Publisher side: the draft's retry Idempotency-Key (`create-storage.ts`) — a stranger on this
+  // browser must not resume or replay another publisher's in-flight survey creation.
+  "rescom:create-gform-idempotency:",
   // Publisher side: unsaved Form Builder copies can contain survey content.
   "rescom:builder-draft:",
 ] as const;

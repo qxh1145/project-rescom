@@ -77,7 +77,7 @@ export function RejectSurveyDialog({ open, survey, onClose, onReject }: RejectSu
   const noteError = draftError && draftError !== "reasonRequired" ? REJECTION_DRAFT_MESSAGES[draftError] : undefined;
 
   return (
-    <Dialog open={open} onClose={close} labelledBy="reject-survey-title" width={616}>
+    <Dialog open={open} onClose={close} labelledBy="reject-survey-title" width={616} dismissible={!busy}>
       <form onSubmit={(event) => void submit(event)} noValidate className="flex flex-col p-5 lg:p-7">
         <div className="flex items-start gap-3">
           <div className="mr-auto min-w-0">

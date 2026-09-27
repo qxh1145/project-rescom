@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import type { Gender } from "@rescom/schemas";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { MAX_PUBLISHABLE_DURATION_MINUTES, type Gender, type RewardBandDefinitionLike } from "@rescom/schemas";
 import { Mascot } from "@/components/brand/Mascot";
 import { Alert } from "@/components/ui/Alert";
 import { Button, buttonClassName } from "@/components/ui/Button";
@@ -11,15 +11,20 @@ import { Icon } from "@/components/ui/Icon";
 import { IconLink } from "@/components/ui/IconButton";
 import { Spinner } from "@/components/ui/Spinner";
 import { TextField } from "@/components/ui/TextField";
-import { summarizeDoc } from "@/lib/forms/builder-blocks";
+import { hasIssues, summarizeDoc, validateForPublish } from "@/lib/forms/builder-blocks";
 import { loadFormErrorMessage, PENDING_ATTENTION_BLOCKER, publishErrorMessage } from "@/lib/forms/builder-messages";
 import { loadLocalDraft } from "@/lib/forms/builder-offline";
 import {
   buildTargeting,
   estimateEscrow,
+  FROZEN_REWARD_HINT,
   GENDER_LABELS,
   internalPriceHint,
+  isValidDurationInput,
+  PUBLISH_READINESS_NOTICE,
+  publishReadiness,
   validatePublishSettings,
+  type PublishReadiness,
   type PublishSettingsErrors,
 } from "@/lib/forms/builder-publish";
 import {
@@ -45,6 +50,14 @@ function pendingSuggestionCount(formId: string): number {
   }
 }
 
+function hasUnsavedLocalEdits(formId: string): boolean {
+  try {
+    return loadLocalDraft(window.localStorage, formId)?.dirty === true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Builder steps 2 "Đối tượng" and 3 "Số mẫu & điểm" → publish.
  * ASSUMED layout: Figma page 13 only draws step 1; these steps follow the
@@ -54,6 +67,9 @@ function pendingSuggestionCount(formId: string): number {
  */
 export function PublishScreen() {
   const { id: formId } = useParams<{ id: string }>();
+  const router = useRouter();
+  // Set by the builder's "Tiếp tục" after it validated and saved: never bounce back again.
+  const checked = useSearchParams().get("checked") === "1";
   const { refresh, balance } = useSession();
   const [form, setForm] = useState<BuilderForm | null>(null);
   const [loadError, setLoadError] = useState<unknown>(null);
@@ -70,6 +86,7 @@ export function PublishScreen() {
   const [quote, setQuote] = useState<PricingQuote | null>(null);
   const [published, setPublished] = useState<BuilderForm | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [notReady, setNotReady] = useState<Exclude<PublishReadiness, "ready"> | null>(null);
   const sessionLost = useSessionLossRedirect(loadError, publishError);
 
   useEffect(() => {
@@ -79,6 +96,16 @@ export function PublishScreen() {
         const minutes = summarizeDoc(docFromForm(loaded).doc).minutes;
         setForm(loaded);
         setPendingCount(pendingSuggestionCount(formId));
+        // C4: unsaved edits on this device or a definition that fails the publish rules go
+        // back through the builder's "Tiếp tục" (validate + save) first.
+        const readiness =
+          loaded.status === "DRAFT"
+            ? publishReadiness({ doc: docFromForm(loaded).doc, localDirty: hasUnsavedLocalEdits(formId) })
+            : "ready";
+        if (readiness !== "ready") {
+          setNotReady(readiness);
+          if (!checked) router.replace(`/forms/${formId}/builder?continue=1`);
+        }
         setValues({
           expectedCompletions: String(loaded.expectedCompletions),
           rewardPerResponse: String(loaded.rewardPerResponse),
@@ -96,7 +123,7 @@ export function PublishScreen() {
         if (!controller.signal.aborted) setLoadError(error);
       });
     return () => controller.abort();
-  }, [formId]);
+  }, [formId, checked, router]);
 
   if (sessionLost || (!form && !loadError)) {
     return (
@@ -120,8 +147,22 @@ export function PublishScreen() {
   const doc = docFromForm(form).doc;
   const summary = summarizeDoc(doc);
   const parsedSettings = validatePublishSettings(values);
-  const hint = internalPriceHint(Number(values.estimatedDurationMinutes) || summary.minutes);
+  const storedDefinition = form.currentVersion.schemaJson;
+  // FR-14 price hint: an empty field still prices off the doc's own estimate (`summary.minutes`,
+  // today's behaviour), but a non-empty out-of-range or non-numeric value ("0", "99999", "abc")
+  // hides the hint instead of recomputing a price band for a duration that could never publish.
+  const durationRaw = values.estimatedDurationMinutes;
+  const durationInputValid = isValidDurationInput(durationRaw);
+  const showDurationHint = durationRaw.trim() === "" || durationInputValid;
+  const hint = internalPriceHint(
+    durationInputValid ? Number(durationRaw) : summary.minutes,
+    typeof storedDefinition === "object" && storedDefinition !== null ? (storedDefinition as RewardBandDefinitionLike) : null,
+  );
   const escrow = parsedSettings.ok ? estimateEscrow(parsedSettings.value) : null;
+  // A new version of a survey that already ran (Phiên bản → "Gửi duyệt vN"): the backend
+  // (`coordinatePublish`) locks only the shortfall — open slots × draw minus the Escrow the
+  // survey still holds — which no route exposes before publishing, so the full cost is an upper bound.
+  const reversioned = form.currentVersion.versionNumber > 1;
 
   if (published) {
     return (
@@ -129,7 +170,13 @@ export function PublishScreen() {
         <Mascot name="cheer" height={140} />
         <h1 className="text-title font-extrabold text-ink">Đã gửi duyệt</h1>
         <p className="text-body text-ink-muted">
-          “{published.title}” đang chờ Admin duyệt. {escrow ? `${escrow} điểm đã chuyển vào Ký quỹ; ` : ""}nếu bị từ chối, điểm được hoàn lại.
+          “{published.title}” đang chờ Admin duyệt.{" "}
+          {escrow
+            ? reversioned
+              ? `Phần ký quỹ còn thiếu (tối đa ${escrow} điểm) đã chuyển vào Ký quỹ; `
+              : `${escrow} điểm đã chuyển vào Ký quỹ; `
+            : ""}
+          nếu bị từ chối, điểm được hoàn lại.
         </p>
         <div className="flex flex-wrap justify-center gap-3">
           <Link href={`/forms/${formId}`} className={buttonClassName({ size: "lg", radius: "field" })}>
@@ -162,6 +209,12 @@ export function PublishScreen() {
       return;
     }
     setErrors({});
+    // C1 / P2: the publish rules on the saved definition with the chosen duration
+    // (the settings schema already caps the duration at the reservation window).
+    if (hasIssues(validateForPublish(doc, { estimatedDurationMinutes: settings.value.estimatedDurationMinutes }))) {
+      setNotReady("invalid");
+      return;
+    }
     if (!targeting.ok) {
       setStep(1);
       setTargetError(targeting.error);
@@ -174,7 +227,8 @@ export function PublishScreen() {
         {
           targetingJson: targeting.value,
           expectedCompletions: settings.value.expectedCompletions,
-          rewardPerResponse: settings.value.rewardPerResponse,
+          // C3: a re-versioned draft keeps the published reward (409 FORM_PUBLISHED_FIELDS_IMMUTABLE).
+          ...(reversioned ? {} : { rewardPerResponse: settings.value.rewardPerResponse }),
           estimatedDurationMinutes: settings.value.estimatedDurationMinutes,
         },
         form.updatedAt,
@@ -222,6 +276,13 @@ export function PublishScreen() {
       <main className="mx-auto flex w-full max-w-[640px] flex-col gap-4 px-4 py-6">
         {form.status !== "DRAFT" ? (
           <Alert tone="info">Khảo sát này đã được gửi duyệt.</Alert>
+        ) : notReady ? (
+          <Alert tone="danger">
+            {PUBLISH_READINESS_NOTICE[notReady]}{" "}
+            <Link href={`/forms/${formId}/builder?continue=1`} className="font-bold underline">
+              Quay lại Form Builder
+            </Link>
+          </Alert>
         ) : pendingCount > 0 ? (
           <Alert tone="danger">
             {PENDING_ATTENTION_BLOCKER}{" "}
@@ -307,9 +368,18 @@ export function PublishScreen() {
             <h1 id="step-price" className="text-title-sm font-extrabold text-ink">
               Số mẫu & điểm thưởng
             </h1>
-            <p className="mt-1.5 text-body-sm text-ink-muted">
-              Giá gợi ý <b className="text-tone-green-fg">{hint.label}</b> cho khoảng {values.estimatedDurationMinutes || summary.minutes} phút (đã rẻ hơn 20% so với Google Forms).
-            </p>
+            {showDurationHint ? (
+              <>
+                <p className="mt-1.5 text-body-sm text-ink-muted">
+                  Giá gợi ý <b className="text-tone-green-fg">{hint.label}</b> cho khoảng {durationRaw || summary.minutes} phút — người làm nhận đủ số điểm này.
+                </p>
+                <p className="mt-0.5 text-body-sm text-ink-muted">
+                  Nhờ ưu đãi form tạo trong Rescom, <b className="text-ink">{hint.paidLabel}</b> (rẻ hơn 20% so với Google Forms).
+                </p>
+              </>
+            ) : (
+              <p className="mt-1.5 text-body-sm text-ink-muted">Nhập thời lượng từ 1–{MAX_PUBLISHABLE_DURATION_MINUTES} phút để xem giá gợi ý.</p>
+            )}
             <div className="mt-4 flex flex-col gap-4">
               <TextField id="pub-completions" label="Số mẫu cần thu" inputMode="numeric" value={values.expectedCompletions} onChange={setValue("expectedCompletions")} error={errors.expectedCompletions} />
               <TextField
@@ -319,12 +389,15 @@ export function PublishScreen() {
                 value={values.rewardPerResponse}
                 onChange={setValue("rewardPerResponse")}
                 error={errors.rewardPerResponse}
-                hint="Người làm nhận đủ số điểm này; bạn trả 80% nhờ ưu đãi form tạo trong Rescom."
+                disabled={reversioned}
+                hint={reversioned ? FROZEN_REWARD_HINT : "Người làm nhận đủ số điểm này; bạn trả 80% nhờ ưu đãi form tạo trong Rescom."}
               />
               <TextField
                 id="pub-duration"
                 label="Thời lượng dự kiến (phút)"
                 inputMode="numeric"
+                min={1}
+                max={MAX_PUBLISHABLE_DURATION_MINUTES}
                 value={values.estimatedDurationMinutes}
                 onChange={setValue("estimatedDurationMinutes")}
                 error={errors.estimatedDurationMinutes}
@@ -332,9 +405,15 @@ export function PublishScreen() {
             </div>
             <dl className="mt-5 flex flex-col gap-2 rounded-[14px] bg-surface-muted p-4 text-body-sm">
               <div className="flex justify-between">
-                <dt className="text-ink-muted">Ký quỹ dự kiến</dt>
+                <dt className="text-ink-muted">{reversioned ? "Ký quỹ tối đa" : "Ký quỹ dự kiến"}</dt>
                 <dd className="font-bold text-ink">{escrow !== null ? `${escrow} điểm` : "—"}</dd>
               </div>
+              {reversioned ? (
+                <p className="text-[12px] text-ink-muted">
+                  Phiên bản mới chỉ khoá phần còn thiếu: số lượt còn trống × điểm mỗi lượt, trừ số điểm khảo sát đang giữ
+                  trong ký quỹ.
+                </p>
+              ) : null}
               {quote ? (
                 <div className="flex justify-between">
                   <dt className="text-ink-muted">Báo giá từ máy chủ</dt>
@@ -348,7 +427,7 @@ export function PublishScreen() {
             </dl>
             {balance && escrow !== null && escrow > balance.available ? (
               <p className="mt-3 text-caption text-danger">
-                Số điểm khả dụng chưa đủ để ký quỹ.{" "}
+                {reversioned ? "Số điểm khả dụng có thể chưa đủ để ký quỹ." : "Số điểm khả dụng chưa đủ để ký quỹ."}{" "}
                 <Link href="/wallet/top-up" className="font-bold underline">
                   Nạp thêm điểm
                 </Link>
@@ -369,7 +448,7 @@ export function PublishScreen() {
                 className="flex-1"
                 loading={busy}
                 loadingLabel="Đang gửi duyệt…"
-                disabled={form.status !== "DRAFT" || pendingCount > 0}
+                disabled={form.status !== "DRAFT" || pendingCount > 0 || notReady !== null}
                 onClick={() => void submit()}
               >
                 Gửi duyệt

@@ -15,7 +15,8 @@ import {
 
 interface CloseFormDialogProps {
   open: boolean;
-  form: PublisherForm;
+  /** The list item is enough: the dialog only needs these facts. */
+  form: Pick<PublisherForm, "id" | "title" | "type" | "status" | "escrowLocked">;
   onClose: () => void;
   onClosed: (form: PublisherForm) => void;
 }
@@ -23,15 +24,21 @@ interface CloseFormDialogProps {
 /**
  * "Đóng & hoàn điểm" confirmation — ASSUMED design (not drawn), same panel as
  * 10b. Warns about respondents still taking the survey (VERIFIED
- * `GET /forms/:id/in-progress-attempts`, decision E5-D4).
+ * `GET /forms/:id/in-progress-attempts`, decision E5-D4). A survey that is not
+ * live (waiting for review, or a re-versioned draft) gets the "Rút lại & hoàn
+ * điểm" wording (Phase 5 M7) — same `POST /forms/:id/close`. Without a known
+ * `escrowLocked` (Phase 5 M1) no amount is promised.
  */
 export function CloseFormDialog({ open, form, onClose, onClosed }: CloseFormDialogProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inProgress = useApiQuery(open ? `in-progress:${form.id}` : null, (signal) =>
+  const withdraw = form.status !== "PUBLISHED";
+  const inProgress = useApiQuery(open && !withdraw ? `in-progress:${form.id}` : null, (signal) =>
     getInProgressAttempts(form.id, signal),
   );
   const takers = inProgress.data?.inProgressAttempts ?? 0;
+  const amount = form.escrowLocked === null ? "" : ` ${form.escrowLocked} điểm`;
+  const pending = form.status === "MODERATION_QUEUE" || form.status === "ESCROW_LOCKED";
 
   async function confirm() {
     setBusy(true);
@@ -39,7 +46,12 @@ export function CloseFormDialog({ open, form, onClose, onClosed }: CloseFormDial
     try {
       onClosed(await closePublisherForm(form.id));
     } catch (cause) {
-      setError(formActionErrorMessage(cause, "Chưa đóng được khảo sát. Vui lòng thử lại."));
+      setError(
+        formActionErrorMessage(
+          cause,
+          withdraw ? "Chưa rút lại được khảo sát. Vui lòng thử lại." : "Chưa đóng được khảo sát. Vui lòng thử lại.",
+        ),
+      );
     } finally {
       setBusy(false);
     }
@@ -49,26 +61,41 @@ export function CloseFormDialog({ open, form, onClose, onClosed }: CloseFormDial
     <Dialog
       open={open}
       onClose={() => {
+        if (busy) return;
         setError(null);
         onClose();
       }}
       labelledBy="close-form-title"
       width={520}
+      dismissible={!busy}
     >
       <div className="p-5 lg:p-7">
         <div className="flex items-start gap-3">
           <div className="mr-auto">
             <h2 id="close-form-title" className="text-[20px] font-extrabold text-ink lg:text-title-sm">
-              Đóng khảo sát và hoàn điểm?
+              {withdraw ? "Rút lại khảo sát và hoàn điểm?" : "Đóng khảo sát và hoàn điểm?"}
             </h2>
             <p className="mt-1 text-caption text-ink-muted lg:text-body-sm">{form.title}</p>
           </div>
-          <IconButton icon="x" label="Đóng" onClick={onClose} />
+          <IconButton icon="x" label="Đóng" onClick={onClose} disabled={busy} />
         </div>
         <ul className="mt-4 flex flex-col gap-2 text-body-sm text-ink-strong">
-          <li>Khảo sát ẩn khỏi Khám phá, không nhận thêm người trả lời.</li>
           <li>
-            <strong className="text-ink">{form.escrowLocked} điểm</strong> ký quỹ chưa dùng được hoàn về số dư khả dụng.
+            {withdraw
+              ? pending
+                ? "Khảo sát được rút khỏi hàng chờ duyệt và kết thúc, không lên Khám phá."
+                : "Bản nháp phiên bản mới và khảo sát kết thúc, không nhận thêm người trả lời."
+              : "Khảo sát ẩn khỏi Khám phá, không nhận thêm người trả lời."}
+          </li>
+          <li>
+            {form.escrowLocked === null ? (
+              "Ký quỹ chưa dùng được hoàn về số dư khả dụng."
+            ) : (
+              <>
+                <strong className="text-ink">{form.escrowLocked} điểm</strong> ký quỹ chưa dùng được hoàn về số dư khả
+                dụng.
+              </>
+            )}
           </li>
           {takers > 0 ? (
             <li className="text-danger-strong">{takers} người đang làm dở sẽ không nộp được bài.</li>
@@ -89,9 +116,9 @@ export function CloseFormDialog({ open, form, onClose, onClosed }: CloseFormDial
             className="flex-1 lg:flex-none"
             onClick={() => void confirm()}
             loading={busy}
-            loadingLabel="Đang đóng…"
+            loadingLabel={withdraw ? "Đang rút lại…" : "Đang đóng…"}
           >
-            Đóng &amp; hoàn {form.escrowLocked} điểm
+            {withdraw ? "Rút lại" : "Đóng"} &amp; hoàn{amount || " điểm"}
           </Button>
         </div>
       </div>

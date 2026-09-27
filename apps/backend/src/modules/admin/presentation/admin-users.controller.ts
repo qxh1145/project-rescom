@@ -99,6 +99,7 @@ export class AdminUsersController {
     const auditMetadata = {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
+      ...(dto.reason ? { reason: dto.reason } : {}),
     };
 
     const user = await this.userAdminService.updateUserStatus(

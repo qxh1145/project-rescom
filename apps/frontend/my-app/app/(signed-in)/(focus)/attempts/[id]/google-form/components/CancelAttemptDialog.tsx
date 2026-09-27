@@ -41,7 +41,7 @@ export function CancelAttemptDialog({ attemptId, open, onClose, onCancelled }: C
   };
 
   return (
-    <Dialog open={open} onClose={close} labelledBy={TITLE_ID} width={480}>
+    <Dialog open={open} onClose={close} labelledBy={TITLE_ID} width={480} dismissible={!busy}>
       <div className="flex flex-col gap-4 px-6 pb-6 pt-7">
         <div>
           <h2 id={TITLE_ID} className="text-[20px] font-extrabold text-ink">

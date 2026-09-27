@@ -18,7 +18,16 @@ interface ConfirmDecisionDialogProps {
 /** ASSUMED (not drawn): a decision moves points and emails both parties, so it is confirmed first. */
 export function ConfirmDecisionDialog({ action, note, busy, error, onCancel, onConfirm }: ConfirmDecisionDialogProps) {
   return (
-    <Dialog open={action !== null} onClose={onCancel} labelledBy="confirm-decision-title" width={520}>
+    <Dialog
+      open={action !== null}
+      onClose={() => {
+        if (busy) return;
+        onCancel();
+      }}
+      labelledBy="confirm-decision-title"
+      width={520}
+      dismissible={!busy}
+    >
       {action ? (
         <div className="p-7">
           <h2 id="confirm-decision-title" className="text-title-sm font-extrabold text-ink">

@@ -128,6 +128,17 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
       .map((j) => this.enrichJournalWithEntries(j));
   }
 
+  async findJournalsByIdempotencyKeyPrefixes(
+    prefixes: string[],
+  ): Promise<LedgerJournalEntity[]> {
+    return Array.from(this.journals.values())
+      .filter((j) =>
+        prefixes.some((prefix) => j.idempotencyKey.startsWith(prefix)),
+      )
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((j) => this.enrichJournalWithEntries(j));
+  }
+
   async findJournalsByIdempotencyKeyPrefixAndDescription(
     prefix: string,
     descriptionFragment: string,

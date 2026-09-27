@@ -23,7 +23,7 @@ function seed(): NotificationDto[] {
   return [
     item(
       "ESCROW_RELEASED",
-      "Khiếu nại được chấp nhận — Lượt làm của #7F3A không hợp lệ. 10 điểm đã trả về ký quỹ của “Thói quen đọc sách của sinh viên”.",
+      "Khiếu nại được chấp nhận — Lượt làm của #7F3A trong “Thói quen đọc sách của sinh viên” không hợp lệ. 10 điểm đã hoàn vào Khả dụng của bạn.",
       1,
       false,
     ),

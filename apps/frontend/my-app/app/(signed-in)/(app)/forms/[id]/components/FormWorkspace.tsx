@@ -24,6 +24,7 @@ import { SurveyTabs, type SurveyTab } from "./SurveyTabs";
 const TAB_OF_SEGMENT: Record<string, SurveyTab> = {
   "": "progress",
   reopen: "progress",
+  resubmit: "progress",
   complaints: "progress",
   responses: "responses",
   quality: "quality",
@@ -98,7 +99,9 @@ function SurveyChrome({ tab, children }: { tab: SurveyTab; children: ReactNode }
           <SurveyTabs form={form} active={tab} />
         </div>
 
-        {/* Mobile: the Tiến độ status card carries the actions (62:3324); other tabs get them here. ASSUMED. */}
+        {/* Mobile: the Tiến độ tab renders its own owner actions from `form` (ProgressScreen,
+            Figma 62:3324, shown regardless of progress loading/error state); other tabs get
+            them here. ASSUMED. */}
         {tab !== "progress" ? <HeaderActions form={form} className="px-5 pt-4 lg:hidden" /> : null}
 
         {actions.error ? (

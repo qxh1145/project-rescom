@@ -11,6 +11,8 @@ import { IDENTITY_AUDIT_PORT } from '../src/modules/auth/application/ports/ident
 import { InMemoryIdentityAuditRepository } from '../src/modules/auth/infrastructure/in-memory-identity-audit.repository';
 import { FORM_REPOSITORY_PORT } from '../src/modules/forms/application/ports/form-repository.port';
 import { InMemoryFormRepository } from '../src/modules/forms/infrastructure/in-memory-form.repository';
+import { LEDGER_REPOSITORY_PORT } from '../src/modules/economy/application/ports/ledger-repository.port';
+import { InMemoryLedgerRepository } from '../src/modules/economy/infrastructure/in-memory-ledger.repository';
 import { COMPLETION_CODE_PORT } from '../src/modules/forms/application/ports/completion-code.port';
 import { CompletionCodeService } from '../src/modules/forms/infrastructure/completion-code.service';
 import { SessionService } from '../src/modules/auth/application/session.service';
@@ -83,6 +85,9 @@ describe('Story 4.5: External Survey Setup & Rotation E2E Tests', () => {
       .useValue(auditRepo)
       .overrideProvider(FORM_REPOSITORY_PORT)
       .useValue(formRepo)
+      // Phase 5 M1/M2: GET /forms and GET /forms/:id read each survey's Escrow.
+      .overrideProvider(LEDGER_REPOSITORY_PORT)
+      .useValue(new InMemoryLedgerRepository())
       .overrideProvider(COMPLETION_CODE_PORT)
       .useValue(completionCodeService)
       .overrideProvider(EnvService)
@@ -241,6 +246,107 @@ describe('Story 4.5: External Survey Setup & Rotation E2E Tests', () => {
       expect(getRes.body.data.currentVersion.completionCode).toBeNull();
       expect(getRes.body.data.currentVersion.hasCompletionCode).toBe(true);
       expect(getRes.body.data.plaintextCompletionCode).toBeUndefined();
+    });
+  });
+
+  describe('POST /forms/external with Idempotency-Key (Phase 5 C6)', () => {
+    const body = {
+      title: 'Idempotent Google Form',
+      externalUrl: 'https://docs.google.com/forms/d/e/idempotent/viewform',
+      rewardPerResponse: 15,
+      expectedCompletions: 40,
+      autoPublish: false,
+    };
+
+    function create(
+      tokens: { accessToken: string; csrfToken: string },
+      payload: object,
+      key?: string,
+    ) {
+      const req = request(app.getHttpServer())
+        .post('/forms/external')
+        .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
+        .set('x-csrf-token', tokens.csrfToken)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Content-Type', 'application/json');
+      if (key !== undefined) req.set('Idempotency-Key', key);
+      return req.send(payload);
+    }
+
+    it('replays the created survey (201, same id and code, idempotentReplay) for a retried key', async () => {
+      const { user, tokens } = await createTestUserWithSession(
+        'idempotent-publisher@example.com',
+      );
+
+      const first = await create(tokens, body, 'wizard-draft-1').expect(201);
+      const replay = await create(tokens, body, 'wizard-draft-1').expect(201);
+
+      expect(first.body.data.idempotentReplay).toBeUndefined();
+      expect(replay.body.data.idempotentReplay).toBe(true);
+      expect(replay.body.data.id).toBe(first.body.data.id);
+      expect(replay.body.data.plaintextCompletionCode).toBe(
+        first.body.data.plaintextCompletionCode,
+      );
+      const { total } = await formRepo.findManyByPublisher({
+        publisherId: user.id,
+        page: 1,
+        limit: 10,
+      });
+      expect(total).toBe(1);
+    });
+
+    it('answers 409 IDEMPOTENCY_KEY_CONFLICT when the key is reused with another body', async () => {
+      const { tokens } = await createTestUserWithSession(
+        'idempotent-conflict@example.com',
+      );
+      const first = await create(tokens, body, 'wizard-draft-2').expect(201);
+
+      const res = await create(
+        tokens,
+        { ...body, expectedCompletions: 41 },
+        'wizard-draft-2',
+      ).expect(409);
+
+      expect(res.body.error.code).toBe('IDEMPOTENCY_KEY_CONFLICT');
+      expect(res.body.error.details).toEqual({
+        reason: 'DIFFERENT_REQUEST',
+        formId: first.body.data.id,
+      });
+    });
+
+    it('rejects a malformed key with 400 INVALID_IDEMPOTENCY_KEY and creates nothing', async () => {
+      const { user, tokens } = await createTestUserWithSession(
+        'idempotent-invalid@example.com',
+      );
+
+      const res = await create(tokens, body, 'short').expect(400);
+
+      expect(res.body.error.code).toBe('INVALID_IDEMPOTENCY_KEY');
+      const { total } = await formRepo.findManyByPublisher({
+        publisherId: user.id,
+        page: 1,
+        limit: 10,
+      });
+      expect(total).toBe(0);
+    });
+
+    it('lists the survey with closeKind and completedCompletions (Phase 5 M2)', async () => {
+      const { tokens } = await createTestUserWithSession(
+        'list-fields@example.com',
+      );
+      const created = await create(tokens, body).expect(201);
+
+      const res = await request(app.getHttpServer())
+        .get('/forms')
+        .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
+        .expect(200);
+
+      expect(res.body.data.forms[0]).toMatchObject({
+        id: created.body.data.id,
+        closeKind: null,
+        completedCompletions: 0,
+      });
+      expect(res.body.data.forms[0]).toHaveProperty('escrowLocked');
     });
   });
 

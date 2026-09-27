@@ -127,9 +127,14 @@ export function UserDetailPanel({ user, detailError, onRetryDetail, onUpdated }:
       </dl>
 
       <h3 className="mt-4 text-label font-bold text-ink">Hồ sơ</h3>
-      <p className="mt-1.5 text-body-sm text-ink-strong">{profileLine ?? "Chưa hoàn tất hồ sơ nhân khẩu học."}</p>
+      {/* `undefined` = the API sent no profile data (not "not filled", which is null). */}
+      <p className="mt-1.5 text-body-sm text-ink-strong">
+        {user.profile === undefined ? "Chưa có dữ liệu" : (profileLine ?? "Chưa hoàn tất hồ sơ nhân khẩu học.")}
+      </p>
 
-      {fraudCount ? (
+      {fraudCount === undefined ? (
+        <p className="mt-3.5 text-label text-ink-muted">FraudLog: —</p>
+      ) : fraudCount > 0 ? (
         <Link
           href={`/admin/fraud-log?userId=${encodeURIComponent(user.id)}`}
           className="mt-3.5 inline-block text-label font-bold text-primary hover:underline"
@@ -161,7 +166,7 @@ export function UserDetailPanel({ user, detailError, onRetryDetail, onUpdated }:
         <div className="mt-4 flex flex-col gap-4">
           <Textarea
             id="admin-lock-reason"
-            label="Lý do khoá · ghi vào nhật ký, gửi email"
+            label="Lý do khoá · ghi vào nhật ký kiểm toán"
             rows={3}
             maxLength={LOCK_REASON_MAX}
             value={reason}

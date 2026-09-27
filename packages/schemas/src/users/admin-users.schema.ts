@@ -27,8 +27,19 @@ export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export const updateUserStatusSchema = z
   .object({
     status: userStatusSchema,
+    /** Required by the admin UI when locking; retained in the audit metadata. */
+    reason: z.string().trim().min(10).max(500).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((data, ctx) => {
+    if (data.status === "LOCKED" && !data.reason) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["reason"],
+        message: "reason is required when locking a user",
+      });
+    }
+  });
 
 export type UpdateUserStatusDto = z.infer<typeof updateUserStatusSchema>;
 

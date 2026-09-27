@@ -25,6 +25,7 @@ import {
   FormNotReopenableException,
   ModerationEscrowNotFundedException,
   PricingRewardOutOfBandException,
+  IdempotencyKeyConflictException,
 } from './exceptions/form.exceptions';
 import { FormEntity } from '../domain/form.entity';
 import { FormVersionEntity } from '../domain/form-version.entity';
@@ -3728,6 +3729,263 @@ describe('FormsService', () => {
         max: 10,
       });
       expect((await repository.findById(formId))!.form.status).toBe('DRAFT');
+    });
+  });
+  describe('Phase 5 WP1: management fields (M1/M2) and Idempotency-Key (C6)', () => {
+    let ledgerService: LedgerService;
+    let escrowService: FormsService;
+
+    const externalBody = {
+      title: 'Idempotent External Survey',
+      externalUrl: 'https://forms.gle/idempotent',
+      rewardPerResponse: 10,
+      expectedCompletions: 20, // 20 x 10 = 200 in Escrow
+      estimatedDurationMinutes: 8,
+      autoPublish: true,
+    };
+    const owner = { userId: publisherId, role: 'PUBLISHER' };
+
+    beforeEach(async () => {
+      ledgerService = new LedgerService(new InMemoryLedgerRepository());
+      escrowService = new FormsService(
+        repository,
+        completionCodeService,
+        new FormsEscrowCoordinator(repository, ledgerService),
+        new PassThroughUnitOfWork(),
+      );
+      const system = await ledgerService.getOrCreateAccount(
+        null,
+        'SYSTEM_ISSUANCE',
+      );
+      const available = await ledgerService.getOrCreateAccount(
+        publisherId,
+        'USER_AVAILABLE',
+      );
+      await ledgerService.transfer({
+        fromAccountId: system.id,
+        toAccountId: available.id,
+        amount: 1000,
+        idempotencyKey: 'seed-phase5-wp1-1000',
+      });
+    });
+
+    it('lists closeKind and completedCompletions, and escrowLocked null without an Escrow coordinator', async () => {
+      const draft = await service.createDraft(publisherId, { title: 'Plain' });
+      repository.setRewardableCompletions(draft.id, { completedCount: 4 });
+
+      const { forms } = await service.listForms(publisherId, {
+        page: 1,
+        limit: 10,
+      });
+
+      expect(forms[0]).toMatchObject({
+        id: draft.id,
+        closeKind: null,
+        completedCompletions: 4,
+        escrowLocked: null,
+      });
+      const detail = await service.getFormById(draft.id, owner);
+      expect(detail.completedCompletions).toBe(4);
+      expect(detail.escrowLocked).toBeNull();
+    });
+
+    it('reports the unused Escrow of each survey in the list and the detail, and 0 after the close refund', async () => {
+      const created = await escrowService.createExternalSurvey(
+        publisherId,
+        externalBody,
+      );
+      await approveQueued(created.id);
+      // 5 completions whose rewards are still owed draw 5 x 10 from Escrow.
+      repository.setRewardableCompletions(created.id, {
+        completedCount: 5,
+        externalAttemptIds: Array.from({ length: 5 }, () => randomUUID()),
+      });
+
+      const listed = await escrowService.listForms(publisherId, {
+        page: 1,
+        limit: 10,
+      });
+      expect(listed.forms[0]).toMatchObject({
+        id: created.id,
+        status: 'PUBLISHED',
+        completedCompletions: 5,
+        escrowLocked: 150,
+        closeKind: null,
+      });
+      expect(
+        (await escrowService.getFormById(created.id, owner)).escrowLocked,
+      ).toBe(150);
+
+      await escrowService.closeForm(created.id, owner);
+      const closed = await escrowService.listForms(publisherId, {
+        page: 1,
+        limit: 10,
+      });
+      expect(closed.forms[0]).toMatchObject({
+        status: 'CLOSED',
+        closeKind: 'OWNER',
+        escrowLocked: 0,
+      });
+    });
+
+    it('replays the created survey for the same key: same id and code, one Escrow lock', async () => {
+      const first = await escrowService.createExternalSurvey(
+        publisherId,
+        externalBody,
+        'wizard-key-0001',
+      );
+      const replay = await escrowService.createExternalSurvey(
+        publisherId,
+        { ...externalBody },
+        'wizard-key-0001',
+      );
+
+      expect(first.idempotentReplay).toBeUndefined();
+      expect(replay.idempotentReplay).toBe(true);
+      expect(replay.id).toBe(first.id);
+      expect(replay.plaintextCompletionCode).toBe(
+        first.plaintextCompletionCode,
+      );
+      expect(replay.currentVersion.completionCode).toBeNull();
+      const stored = await repository.findById(first.id);
+      expect(
+        completionCodeService.verifyCode(
+          stored!.currentVersion.id,
+          first.plaintextCompletionCode,
+          stored!.currentVersion.completionCode,
+        ),
+      ).toBe(true);
+      expect(
+        (
+          await repository.findManyByPublisher({
+            publisherId,
+            page: 1,
+            limit: 10,
+          })
+        ).total,
+      ).toBe(1);
+      const wallet = await ledgerService.getWallet(publisherId);
+      expect(wallet.balance.escrow).toBe(200);
+      expect(wallet.balance.available).toBe(800);
+    });
+
+    it('refuses the same key with a different body (409 DIFFERENT_REQUEST)', async () => {
+      const first = await escrowService.createExternalSurvey(
+        publisherId,
+        externalBody,
+        'wizard-key-0002',
+      );
+
+      const error = await escrowService
+        .createExternalSurvey(
+          publisherId,
+          { ...externalBody, expectedCompletions: 30 },
+          'wizard-key-0002',
+        )
+        .catch((cause: unknown) => cause);
+
+      expect(error).toBeInstanceOf(IdempotencyKeyConflictException);
+      expect(error).toMatchObject({
+        reason: 'DIFFERENT_REQUEST',
+        formId: first.id,
+      });
+      expect((await ledgerService.getWallet(publisherId)).balance.escrow).toBe(
+        200,
+      );
+    });
+
+    it('scopes keys per Publisher and derives different codes per key', async () => {
+      const mine = await escrowService.createExternalSurvey(
+        publisherId,
+        { ...externalBody, autoPublish: false },
+        'shared-key-0003',
+      );
+      const theirs = await escrowService.createExternalSurvey(
+        otherUserId,
+        { ...externalBody, autoPublish: false },
+        'shared-key-0003',
+      );
+      const another = await escrowService.createExternalSurvey(
+        publisherId,
+        { ...externalBody, autoPublish: false },
+        'other-key-0004',
+      );
+
+      expect(theirs.id).not.toBe(mine.id);
+      expect(theirs.idempotentReplay).toBeUndefined();
+      expect(another.plaintextCompletionCode).not.toBe(
+        mine.plaintextCompletionCode,
+      );
+    });
+
+    it('refuses to replay a stale code after the survey was rotated (409 SURVEY_CHANGED)', async () => {
+      const body = { ...externalBody, autoPublish: false };
+      const created = await escrowService.createExternalSurvey(
+        publisherId,
+        body,
+        'wizard-key-0005',
+      );
+      await escrowService.rotateCompletionCode(created.id, owner);
+
+      await expect(
+        escrowService.createExternalSurvey(
+          publisherId,
+          body,
+          'wizard-key-0005',
+        ),
+      ).rejects.toMatchObject({ reason: 'SURVEY_CHANGED', formId: created.id });
+    });
+
+    it('replays the winner, not INSUFFICIENT_BALANCE, when the balance covered only the winner (M-3)', async () => {
+      // 90 x 10 = 900 of the 1000 available: a second reservation cannot fit.
+      const body = { ...externalBody, expectedCompletions: 90 };
+      const winner = await escrowService.createExternalSurvey(
+        publisherId,
+        body,
+        'race-key-0007',
+      );
+      // The loser read the key before the winner committed.
+      jest.spyOn(repository, 'findByCreationKey').mockResolvedValueOnce(null);
+
+      const loser = await escrowService.createExternalSurvey(
+        publisherId,
+        body,
+        'race-key-0007',
+      );
+
+      expect(loser.idempotentReplay).toBe(true);
+      expect(loser.id).toBe(winner.id);
+      expect(loser.plaintextCompletionCode).toBe(
+        winner.plaintextCompletionCode,
+      );
+      const wallet = await ledgerService.getWallet(publisherId);
+      expect(wallet.balance.escrow).toBe(900);
+      expect(wallet.balance.available).toBe(100);
+      // Without a key-owned survey, the shortfall is still reported.
+      await expect(
+        escrowService.createExternalSurvey(publisherId, body, 'other-key-0008'),
+      ).rejects.toBeInstanceOf(InsufficientEscrowBalanceException);
+    });
+
+    it('converges concurrent requests with the same key on one survey', async () => {
+      const body = { ...externalBody, autoPublish: false };
+      const [a, b] = await Promise.all([
+        escrowService.createExternalSurvey(publisherId, body, 'race-key-0006'),
+        escrowService.createExternalSurvey(publisherId, body, 'race-key-0006'),
+      ]);
+
+      expect(a.id).toBe(b.id);
+      expect(a.plaintextCompletionCode).toBe(b.plaintextCompletionCode);
+      expect([a.idempotentReplay, b.idempotentReplay]).toContain(true);
+      expect(
+        (
+          await repository.findManyByPublisher({
+            publisherId,
+            page: 1,
+            limit: 10,
+          })
+        ).total,
+      ).toBe(1);
     });
   });
 });

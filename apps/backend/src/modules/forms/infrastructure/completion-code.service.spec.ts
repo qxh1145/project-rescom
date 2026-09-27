@@ -45,6 +45,20 @@ describe('CompletionCodeService', () => {
     });
   });
 
+  describe('deriveSixDigitCode (Phase 5 C6)', () => {
+    it('derives a stable 6-digit code per seed and different codes for different seeds', () => {
+      const code = service.deriveSixDigitCode('external-survey:p1:key-1');
+      expect(code).toMatch(/^[1-9]\d{5}$/);
+      expect(service.deriveSixDigitCode('external-survey:p1:key-1')).toBe(code);
+      const others = new Set(
+        Array.from({ length: 20 }, (_, i) =>
+          service.deriveSixDigitCode(`external-survey:p1:key-${i + 2}`),
+        ),
+      );
+      expect(others.size).toBeGreaterThan(15);
+    });
+  });
+
   describe('computeVerifier', () => {
     it('computes a keyed HMAC verifier with v1 prefix', () => {
       const verifier = service.computeVerifier(formVersionId, '654321');

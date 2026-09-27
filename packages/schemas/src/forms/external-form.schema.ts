@@ -85,7 +85,27 @@ export interface ExternalSurveyResponseDto extends FormDetailDto {
   hasCompletionCode: true;
   externalUrl?: string | null;
   currentVersionNumber?: number;
+  /**
+   * `POST /forms/external` with an `Idempotency-Key` (Phase 5 C6): true when
+   * this response replays the survey an earlier request with the same key
+   * created (no second survey, no second Escrow lock).
+   */
+  idempotentReplay?: boolean;
 }
+
+/**
+ * Phase 5 C6: request header that makes `POST /forms/external` idempotent per
+ * Publisher. One key per survey the client means to create (e.g. a UUID kept
+ * with the wizard draft); 8–128 characters of `A–Z a–z 0–9 . _ : -`.
+ */
+export const IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+export const idempotencyKeySchema = z
+  .string()
+  .regex(
+    /^[A-Za-z0-9._:-]{8,128}$/,
+    "Idempotency-Key must be 8-128 characters of A-Z, a-z, 0-9, '.', '_', ':' or '-'",
+  );
 
 export const externalSurveyResponseSchema = z.object({
   id: z.string().uuid(),

@@ -1,9 +1,11 @@
 import {
+  BadRequestException,
   Body,
   ConflictException,
   Controller,
   Delete,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -22,6 +24,7 @@ import {
   createFormDraftSchema,
   formStatusTransitionSchema,
   FormStatusTransitionInput,
+  idempotencyKeySchema,
   listFormsQuerySchema,
   ListFormsQuery,
   publishFormSchema,
@@ -68,10 +71,29 @@ export class FormsController {
   async createExternalSurvey(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateExternalSurveyInput,
+    // Phase 5 C6: optional; a retry with the same key replays the survey.
+    @Headers('idempotency-key') idempotencyKey?: string,
   ) {
-    const created = await this.formsService.createExternalSurvey(user.id, dto);
+    let key: string | undefined;
+    if (idempotencyKey !== undefined) {
+      const parsed = idempotencyKeySchema.safeParse(idempotencyKey);
+      if (!parsed.success) {
+        throw new BadRequestException({
+          code: 'INVALID_IDEMPOTENCY_KEY',
+          message: parsed.error.errors[0]?.message ?? 'Invalid Idempotency-Key',
+        });
+      }
+      key = parsed.data;
+    }
+    const created = await this.formsService.createExternalSurvey(
+      user.id,
+      dto,
+      key,
+    );
     return createSuccessEnvelope(created, {
-      message: 'External survey created successfully',
+      message: created.idempotentReplay
+        ? 'External survey already created with this Idempotency-Key'
+        : 'External survey created successfully',
     });
   }
 

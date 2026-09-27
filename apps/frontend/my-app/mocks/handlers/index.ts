@@ -1,5 +1,12 @@
 import { adminHandlers } from "./admin";
+import { adminDisputeHandlers } from "./admin-disputes";
+import { adminFraudLogHandlers } from "./admin-fraud-log";
 import { adminModerationHandlers } from "./admin-moderation";
+import { adminOverviewHandlers } from "./admin-overview";
+import { adminQualityHandlers } from "./admin-quality";
+import { adminTopUpHandlers } from "./admin-top-ups";
+import { adminTransactionHandlers } from "./admin-transactions";
+import { adminUserHandlers } from "./admin-users";
 import { authHandlers } from "./auth";
 import { demographicsHandlers } from "./demographics";
 import { economyHandlers } from "./economy";
@@ -19,7 +26,14 @@ import { topUpHandlers } from "./top-up";
 /** One array per domain file; each phase adds its own module here. */
 export const handlers = [
   ...adminHandlers,
+  ...adminOverviewHandlers,
   ...adminModerationHandlers,
+  ...adminTopUpHandlers,
+  ...adminDisputeHandlers,
+  ...adminQualityHandlers,
+  ...adminUserHandlers,
+  ...adminFraudLogHandlers,
+  ...adminTransactionHandlers,
   ...authHandlers,
   ...demographicsHandlers,
   ...economyHandlers,

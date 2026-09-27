@@ -32,7 +32,7 @@ export function ConfirmUserActionDialog({
   onClose,
 }: ConfirmUserActionDialogProps) {
   return (
-    <Dialog open={open} onClose={() => (busy ? undefined : onClose())} labelledBy="admin-user-confirm-title" width={480}>
+    <Dialog open={open} onClose={() => (busy ? undefined : onClose())} labelledBy="admin-user-confirm-title" width={480} dismissible={!busy}>
       <div className="flex flex-col gap-4 p-6">
         <h2 id="admin-user-confirm-title" className="text-title-sm font-extrabold text-ink">
           {title}

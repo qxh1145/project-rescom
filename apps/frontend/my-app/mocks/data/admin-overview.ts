@@ -1,118 +1,123 @@
 import type { AdminOverview } from "@/lib/admin/overview-service";
-import { hoursAgo } from "../db/store";
+import { mockEscrowTotal } from "./economy";
 import { publisherForms } from "./forms";
 import { surveys } from "./surveys";
+import { openDisputeCases } from "./admin-disputes";
+import { FRAUD_REPEAT_WINDOW_DAYS, FRAUD_SEED_USER_IDS, fraudSummaryOf } from "./admin-fraud-log";
+import { moderationQueue, toModerationQueueItem } from "./admin-moderation";
+import { listTopUpsForReview, pendingTopUpSummary, toAdminTopUpDto } from "./admin-top-ups";
 
 /**
  * `GET /admin/overview` (ASSUMED API CONTRACT, `lib/admin/overview-service.ts`).
  *
- * Seed = Figma 11 "Tổng quan" (62:4070). The queue numbers and to-do rows
- * are fixed Figma content for now; the admin section mocks are built in
- * parallel, so the lead wires `buildAdminOverview()` to their data later
- * (one place: the constants below). The escrow total is real: it is summed
- * from the running surveys of the shared catalog.
+ * Seed = Figma 11 "Tổng quan" (62:4070). Queue totals and to-do rows are
+ * composed from the same stores as their detail screens so decisions update
+ * the dashboard immediately. The escrow total is the ledger's (`mockEscrowTotal`,
+ * the same number as the transactions summary).
  */
 
-/** Stable ids so the to-do links and FraudLog links are deterministic. */
-export const OVERVIEW_SEED_IDS = {
-  dispute: "d15b0a7e-7f3a-4c1e-9a55-000000000001",
-  surveyReview: "d15b0a7e-7f3a-4c1e-9a55-000000000002",
-  topUp: "d15b0a7e-7f3a-4c1e-9a55-000000000003",
-  missingCode: "d15b0a7e-7f3a-4c1e-9a55-000000000004",
-  flaggedUser7F3A: "f7a3b1c2-7f3a-4d5e-8a90-00000000007f",
-  flaggedUserA901: "f7a3b1c2-a901-4d5e-8a90-0000000000a9",
-} as const;
-
-/**
- * Points locked in escrow on running (PUBLISHED) surveys. Publisher forms
- * carry their own `escrowLocked`; catalog surveys of other publishers lock
- * their unused slots × reward (ASSUMED: the mock does not model the
- * per-completion platform subsidy).
- */
+/** Ký quỹ card: every wallet's escrow (ledger truth) and the running (PUBLISHED) surveys. */
 function runningEscrow(): { points: number; runningSurveys: number } {
-  const counted = new Set<string>();
-  let points = 0;
+  const running = new Set<string>();
   for (const form of publisherForms.get()) {
-    if (form.status !== "PUBLISHED") continue;
-    counted.add(form.id);
-    points += form.escrowLocked;
+    if (form.status === "PUBLISHED") running.add(form.id);
   }
   for (const survey of surveys.get()) {
-    if (survey.status !== "PUBLISHED" || counted.has(survey.id)) continue;
-    counted.add(survey.id);
-    points += Math.max(0, survey.expectedCompletions - survey.completedCompletions) * survey.rewardPerResponse;
+    if (survey.status === "PUBLISHED") running.add(survey.id);
   }
-  return { points, runningSurveys: counted.size };
+  return { points: mockEscrowTotal(), runningSurveys: running.size };
 }
 
 /** The whole dashboard in one object — the single composition point for the lead. */
 export function buildAdminOverview(): AdminOverview {
+  const surveysToReview = moderationQueue();
+  const topUps = listTopUpsForReview("PENDING");
+  const topUpSummary = pendingTopUpSummary();
+  const issues = openDisputeCases();
+  const disputes = issues.filter((item) => item.kind !== "MISSING_CODE");
+  const missingCodes = issues.filter((item) => item.kind === "MISSING_CODE");
+  const oldestDispute = disputes[0];
+  const oldestMissingCode = missingCodes[0];
+  const oldestSurvey = surveysToReview[0];
+  const oldestTopUp = topUps[0];
+
+  const todo: AdminOverview["todo"] = [];
+  if (oldestDispute) {
+    todo.push({
+      kind: "DISPUTE",
+      id: oldestDispute.id,
+      createdAt: oldestDispute.createdAt,
+      moreCount: Math.max(0, disputes.length - 1),
+      priority: oldestDispute.reviewEndsAt !== null,
+      attemptRef: oldestDispute.respondent.code.replace(/^#/, ""),
+      respondentName: oldestDispute.reporter.name,
+      surveyTitle: oldestDispute.survey.title,
+      pendingReleasesAt: oldestDispute.reviewEndsAt,
+    });
+  }
+  if (oldestSurvey) {
+    const item = toModerationQueueItem(oldestSurvey);
+    todo.push({
+      kind: "SURVEY_REVIEW",
+      id: item.formId,
+      createdAt: item.submittedAt,
+      moreCount: Math.max(0, surveysToReview.length - 1),
+      priority: false,
+      surveyTitle: item.title,
+      publisherName: item.publisherName ?? item.publisherEmail,
+      surveyType: item.type,
+    });
+  }
+  if (oldestTopUp) {
+    const item = toAdminTopUpDto(oldestTopUp);
+    todo.push({
+      kind: "TOP_UP",
+      id: item.id,
+      createdAt: item.createdAt,
+      moreCount: Math.max(0, topUps.length - 1),
+      priority: false,
+      points: item.amount,
+      amountVnd: item.amountVnd,
+      requesterName: item.userName ?? item.userEmail ?? "Người dùng",
+      transferReference: item.transferReference,
+    });
+  }
+  if (oldestMissingCode) {
+    todo.push({
+      kind: "MISSING_CODE",
+      id: oldestMissingCode.id,
+      createdAt: oldestMissingCode.createdAt,
+      moreCount: Math.max(0, missingCodes.length - 1),
+      priority: false,
+      surveyTitle: oldestMissingCode.survey.title,
+      reporterRole: oldestMissingCode.reporter.role === "PUBLISHER" ? "PUBLISHER" : "RESPONDENT",
+    });
+  }
+
+  const khang = fraudSummaryOf(FRAUD_SEED_USER_IDS.khang);
+  const quan = fraudSummaryOf(FRAUD_SEED_USER_IDS.quan);
   return {
-    pendingSurveys: { count: 3 },
-    pendingTopUps: { count: 2, points: 300, amountVnd: 60_000 },
-    openIssues: { disputes: 1, missingCodeReports: 1 },
+    pendingSurveys: { count: surveysToReview.length },
+    pendingTopUps: topUpSummary,
+    openIssues: { disputes: disputes.length, missingCodeReports: missingCodes.length },
     escrow: runningEscrow(),
-    // "cũ nhất trước": createdAt ascending in Figma's row order.
-    todo: [
-      {
-        kind: "DISPUTE",
-        id: OVERVIEW_SEED_IDS.dispute,
-        createdAt: hoursAgo(20),
-        moreCount: 0,
-        priority: true,
-        attemptRef: "7F3A",
-        respondentName: "Linh N.",
-        surveyTitle: "Thói quen đọc sách của sinh viên",
-        // Figma "điểm còn chờ 31 giờ".
-        pendingReleasesAt: hoursAgo(-31),
-      },
-      {
-        kind: "SURVEY_REVIEW",
-        id: OVERVIEW_SEED_IDS.surveyReview,
-        createdAt: hoursAgo(6),
-        moreCount: 2,
-        priority: false,
-        surveyTitle: "Hành vi tiêu dùng của sinh viên Marketing",
-        publisherName: "Linh N.",
-        surveyType: "EXTERNAL",
-      },
-      {
-        kind: "TOP_UP",
-        id: OVERVIEW_SEED_IDS.topUp,
-        createdAt: hoursAgo(4),
-        moreCount: 1,
-        priority: false,
-        points: 200,
-        amountVnd: 40_000,
-        requesterName: "Trần Minh",
-        transferReference: "RESCOM MT4402",
-      },
-      {
-        kind: "MISSING_CODE",
-        id: OVERVIEW_SEED_IDS.missingCode,
-        createdAt: hoursAgo(2),
-        moreCount: 0,
-        priority: false,
-        surveyTitle: "Thói quen dùng AI trong học tập của sinh viên IT",
-        reporterRole: "RESPONDENT",
-      },
-    ],
+    todo,
     flaggedAccounts: [
       {
-        userId: OVERVIEW_SEED_IDS.flaggedUser7F3A,
+        userId: FRAUD_SEED_USER_IDS.khang,
         reference: "7F3A",
-        violationCount: 5,
-        windowDays: 14,
+        violationCount: khang.count14d,
+        windowDays: FRAUD_REPEAT_WINDOW_DAYS,
         types: ["TIME_BARRIER", "COMPLETION_CODE"],
-        repeated: true,
+        repeated: khang.repeated,
       },
       {
-        userId: OVERVIEW_SEED_IDS.flaggedUserA901,
+        userId: FRAUD_SEED_USER_IDS.quan,
         reference: "A901",
-        violationCount: 2,
-        windowDays: 14,
+        violationCount: quan.count14d,
+        windowDays: FRAUD_REPEAT_WINDOW_DAYS,
         types: ["RATE_LIMIT"],
-        repeated: false,
+        repeated: quan.repeated,
       },
     ],
   };

@@ -5,10 +5,18 @@ import { surveyContentOf } from "./survey-content";
 
 /**
  * Form versions of the publisher surveys (Figma 17a "Lịch sử phiên bản",
- * 63:5939). Phase 5C owns it; the Form Builder (5D) may read the v2 draft of
- * "Nhu cầu nhà trọ gần trường" from here.
- * v1 = the published 8 questions (`survey-content.ts`); v2 = draft adding
- * C9, a C3 option and making C8 optional (Figma "Thay đổi so với v1").
+ * 63:5939). Phase 5C owns it.
+ * v1 = the published 8 questions (`survey-content.ts`); v2 = adds C9, a C3
+ * option and makes C8 optional (Figma "Thay đổi so với v1").
+ *
+ * The survey is CLOSED by its owner (Figma 10b/17 "Mở lại thêm mẫu"), so v2 is
+ * seeded as approved: the backend only puts a CLOSED survey back with an
+ * approved current version (`FORM_NOT_REOPENABLE` / `VERSION_NOT_APPROVED`),
+ * and a new draft version exists only while the survey is a DRAFT (`POST
+ * /forms/:id/versions` needs PUBLISHED). Figma 17a's unpublished v2 draft card
+ * ("Mở lại với v2") is a state the backend cannot produce together with 10b.
+ * Timeline: v1 filled the quota on 22/09; the owner re-versioned, v2 was
+ * approved, then the owner closed the survey.
  */
 export interface MockFormVersion {
   id: string;
@@ -71,13 +79,13 @@ function seed(): MockFormVersion[] {
       id: "8d2e4f60-1a2b-4c3d-9e4f-5a6b7c8d9e02",
       formId: HOUSING,
       versionNumber: 2,
-      isPublished: false,
-      publishedAt: null,
-      createdAt: "2026-09-24T10:05:00+07:00",
-      updatedAt: "2026-09-26T21:30:00+07:00",
-      submittedForReviewAt: null,
-      collectedFrom: null,
-      collectedUntil: null,
+      isPublished: true,
+      publishedAt: "2026-09-22T22:40:00+07:00",
+      createdAt: "2026-09-22T21:30:00+07:00",
+      updatedAt: "2026-09-22T22:05:00+07:00",
+      submittedForReviewAt: "2026-09-22T22:05:00+07:00",
+      collectedFrom: "2026-09-22T22:40:00+07:00",
+      collectedUntil: "2026-09-22T23:10:00+07:00",
       blocks: housingV2(housingV1),
     },
   ];

@@ -768,4 +768,72 @@ describe('Story 6.3: Escrow Lock, Release & Refund E2E Tests (FR-14, FR-15, FR-1
       expect((await publisherBalance()).escrow).toBe(before.escrow);
     });
   });
+  describe('Phase 5 WP1: Idempotency-Key and the management fields (C6, M1, M2)', () => {
+    it('locks Escrow once for a retried auto-published Google Forms survey and reports it on GET /forms and GET /forms/:id', async () => {
+      const before = await publisherBalance();
+      const body = {
+        title: 'Retried Google Forms Survey',
+        externalUrl: 'https://docs.google.com/forms/d/retried/viewform',
+        rewardPerResponse: 10,
+        expectedCompletions: 5, // 5 x 10 = 50 in Escrow
+        estimatedDurationMinutes: 8,
+        autoPublish: true,
+      };
+      const send = () =>
+        post('/forms/external', authCookie, csrfToken, body).set(
+          'Idempotency-Key',
+          'escrow-e2e-wizard-key',
+        );
+
+      const first = await send().expect(201);
+      const replay = await send().expect(201);
+
+      expect(replay.body.data.id).toBe(first.body.data.id);
+      expect(replay.body.data.idempotentReplay).toBe(true);
+      expect(replay.body.data.plaintextCompletionCode).toBe(
+        first.body.data.plaintextCompletionCode,
+      );
+      const after = await publisherBalance();
+      expect(after.escrow).toBe(before.escrow + 50);
+      expect(after.available).toBe(before.available - 50);
+
+      const detail = await request(app.getHttpServer())
+        .get(`/forms/${first.body.data.id}`)
+        .set('Cookie', authCookie)
+        .expect(200);
+      expect(detail.body.data).toMatchObject({
+        escrowLocked: 50,
+        completedCompletions: 0,
+      });
+      const list = await request(app.getHttpServer())
+        .get('/forms?page=1&limit=100')
+        .set('Cookie', authCookie)
+        .expect(200);
+      expect(
+        list.body.data.forms.find(
+          (form: { id: string }) => form.id === first.body.data.id,
+        ),
+      ).toMatchObject({
+        status: 'MODERATION_QUEUE',
+        closeKind: null,
+        completedCompletions: 0,
+        escrowLocked: 50,
+      });
+
+      // Withdrawing the queued survey (owner close) refunds the reservation.
+      await post(`/forms/${first.body.data.id}/close`, authCookie, csrfToken, {
+        reason: 'Withdrawn',
+      }).expect(200);
+      expect((await publisherBalance()).escrow).toBe(before.escrow);
+      const closed = await request(app.getHttpServer())
+        .get(`/forms/${first.body.data.id}`)
+        .set('Cookie', authCookie)
+        .expect(200);
+      expect(closed.body.data).toMatchObject({
+        status: 'CLOSED',
+        closeKind: 'OWNER',
+        escrowLocked: 0,
+      });
+    });
+  });
 });

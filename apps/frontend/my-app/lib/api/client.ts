@@ -20,6 +20,8 @@ export interface ApiRequestOptions<T> {
    * login/register and guest-callable routes opt out.
    */
   csrf?: boolean;
+  /** Extra request headers (e.g. `Idempotency-Key`); `Accept`, `Content-Type` and the CSRF token win. */
+  headers?: Record<string, string>;
 }
 
 let csrfTokenPromise: Promise<string> | null = null;
@@ -138,7 +140,7 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const { method = "GET", body, schema, signal } = options;
   const useCsrf = options.csrf ?? method !== "GET";
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const headers: Record<string, string> = { ...options.headers, Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
   // The token promise the last attempt used: a 403 only discards that one.

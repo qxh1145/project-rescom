@@ -177,8 +177,21 @@ test("offline cache round-trips a draft and decides how to restore", () => {
   assert.equal(offline.loadLocalDraft(storage, formId), null);
 });
 
-test("publish helpers: price hint at the Internal discount and settings validation", () => {
-  assert.deepEqual(publish.internalPriceHint(5), { min: 8, max: 16, label: "8–16 điểm/lượt" });
+test("publish helpers: price hint = reward band + Internal price, and settings validation", () => {
+  // C2 (a): the respondent's band (what the reward field is checked against) + what the publisher pays.
+  assert.deepEqual(publish.internalPriceHint(5), {
+    min: 10,
+    max: 20,
+    label: "10–20 điểm/lượt",
+    paidMin: 8,
+    paidMax: 16,
+    paidLabel: "bạn trả 8–16 điểm/lượt",
+  });
+  assert.equal(publish.internalPriceHint(3).label, "5–10 điểm/lượt");
+  // The band follows the backend's effective duration: effort longer than the estimate wins.
+  const definition = { blocks: [{ type: "rating" }], metadata: { expectedEffortSeconds: 12 * 60, minTimeBarrierSeconds: 15 } };
+  assert.equal(publish.internalPriceHint(3, definition).label, "15–25 điểm/lượt");
+  assert.equal(publish.internalPriceHint(3, definition).paidLabel, "bạn trả 12–20 điểm/lượt");
   assert.equal(publish.estimateEscrow({ expectedCompletions: 30, rewardPerResponse: 12 }), 30 * 10);
   const ok = publish.validatePublishSettings({ expectedCompletions: "30", rewardPerResponse: "12", estimatedDurationMinutes: "5" });
   assert.deepEqual(ok, { ok: true, value: { expectedCompletions: 30, rewardPerResponse: 12, estimatedDurationMinutes: 5 } });
@@ -187,4 +200,40 @@ test("publish helpers: price hint at the Internal discount and settings validati
   assert.equal(bad.errors.expectedCompletions, "Trường này là bắt buộc.");
   assert.equal(bad.errors.rewardPerResponse, "Điểm không được âm.");
   assert.equal(bad.errors.estimatedDurationMinutes, "Thời lượng tính bằng phút.");
+  // C1: the duration is capped at the 30-minute attempt reservation.
+  assert.equal(publish.validatePublishSettings({ expectedCompletions: "30", rewardPerResponse: "20", estimatedDurationMinutes: "30" }).ok, true);
+  const long = publish.validatePublishSettings({ expectedCompletions: "30", rewardPerResponse: "20", estimatedDurationMinutes: "31" });
+  assert.equal(long.ok, false);
+  assert.match(long.errors.estimatedDurationMinutes, /Tối đa 30 phút/);
+});
+
+test("publish helpers: isValidDurationInput mirrors the schema's [1, MAX] bound (FR-14 price hint)", () => {
+  assert.equal(publish.isValidDurationInput("5"), true);
+  assert.equal(publish.isValidDurationInput("1"), true);
+  assert.equal(publish.isValidDurationInput("30"), true);
+  // Out of range, non-integer, empty or non-numeric input: never a duration to price from.
+  assert.equal(publish.isValidDurationInput("0"), false);
+  assert.equal(publish.isValidDurationInput("31"), false);
+  assert.equal(publish.isValidDurationInput("99999"), false);
+  assert.equal(publish.isValidDurationInput("-5"), false);
+  assert.equal(publish.isValidDurationInput("2.5"), false);
+  assert.equal(publish.isValidDurationInput("abc"), false);
+  assert.equal(publish.isValidDurationInput(""), false);
+  assert.equal(publish.isValidDurationInput("   "), false);
+  // Surrounding whitespace around an otherwise-valid number is fine.
+  assert.equal(publish.isValidDurationInput(" 12 "), true);
+});
+
+test("C4: the publish step opens only on a saved, publishable draft", () => {
+  const named = {
+    ...blocks.emptyDoc(),
+    title: "Thói quen học nhóm",
+  };
+  const { doc } = blocks.insertBlock(named, "rating");
+  const ready = { ...doc, blocks: doc.blocks.map((block) => ({ ...block, title: "Chấm điểm căng tin" })) };
+  assert.equal(publish.publishReadiness({ doc: ready, localDirty: false }), "ready");
+  assert.equal(publish.publishReadiness({ doc: ready, localDirty: true }), "unsaved");
+  assert.equal(publish.publishReadiness({ doc, localDirty: false }), "invalid");
+  assert.match(publish.PUBLISH_READINESS_NOTICE.unsaved, /chưa lưu/);
+  assert.equal(publish.FROZEN_REWARD_HINT, "Giữ nguyên điểm thưởng của phiên bản đã đăng");
 });

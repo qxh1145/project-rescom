@@ -10,7 +10,7 @@ import {
   type AiAttentionSuggestion,
 } from "@/lib/forms/builder-ai";
 import { createAutosaveController, type AutosaveController, type AutosaveSnapshot } from "@/lib/forms/builder-autosave";
-import { emptyDoc, hasIssues, validateDraft, type BuilderDoc, type DocIssues } from "@/lib/forms/builder-blocks";
+import { emptyDoc, hasIssues, validateDraft, validateForPublish, type BuilderDoc, type DocIssues } from "@/lib/forms/builder-blocks";
 import {
   clearLocalDraft,
   decideRestore,
@@ -45,7 +45,12 @@ export interface BuilderEditor {
   loading: boolean;
   reload: () => void;
   doc: BuilderDoc;
+  /** Issues shown on the cards: draft rules, plus the publish rules once `checkForPublish` ran. */
   issues: DocIssues;
+  /** The draft cannot be autosaved (draft rules only). */
+  draftInvalid: boolean;
+  /** Runs the publish rules and keeps showing them on the cards (P2 / C1). */
+  checkForPublish: () => DocIssues;
   readOnly: boolean;
   selectedId: string | null;
   select: (blockId: string | null) => void;
@@ -92,6 +97,7 @@ export function useBuilderEditor(formId: string): BuilderEditor {
   const [aiBlockIds, setAiBlockIds] = useState<string[]>([]);
   const [aiUndoDoc, setAiUndoDoc] = useState<BuilderDoc | null>(null);
   const [restoreOffer, setRestoreOffer] = useState<LocalBuilderDraft | null>(null);
+  const [publishChecked, setPublishChecked] = useState(false);
 
   const controllerRef = useRef<AutosaveController<DraftPayload> | null>(null);
   const stateRef = useRef({ doc, pending, aiBlockIds });
@@ -100,7 +106,8 @@ export function useBuilderEditor(formId: string): BuilderEditor {
   });
 
   const readOnly = form !== null && form.status !== "DRAFT";
-  const issues = useMemo(() => validateDraft(doc), [doc]);
+  const draftIssues = useMemo(() => validateDraft(doc), [doc]);
+  const issues = useMemo(() => (publishChecked ? validateForPublish(doc) : draftIssues), [publishChecked, doc, draftIssues]);
 
   const writeLocal = useCallback(
     (next: { doc: BuilderDoc; pending: AiAttentionSuggestion[]; aiBlockIds: string[] }, dirty: boolean) => {
@@ -268,6 +275,11 @@ export function useBuilderEditor(formId: string): BuilderEditor {
     },
     doc,
     issues,
+    draftInvalid: hasIssues(draftIssues),
+    checkForPublish: () => {
+      setPublishChecked(true);
+      return validateForPublish(stateRef.current.doc);
+    },
     readOnly,
     selectedId: selectedId && doc.blocks.some((block) => block.id === selectedId) ? selectedId : null,
     select: setSelectedId,

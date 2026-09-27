@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { buttonClassName } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { IconLink } from "@/components/ui/IconButton";
+import { IconButton, IconLink } from "@/components/ui/IconButton";
 import { BuilderStepper } from "./BuilderBits";
 
 interface BuilderHeaderProps {
@@ -12,6 +12,8 @@ interface BuilderHeaderProps {
   statusLine: string;
   saving: boolean;
   onContinue: () => void;
+  /** Flushes the autosave, then opens the preview (C4). */
+  onPreview: () => void;
   continueBusy: boolean;
   readOnly: boolean;
 }
@@ -21,7 +23,7 @@ interface BuilderHeaderProps {
  * status, stepper, "Tạo bằng AI", "Xem trước", "Tiếp tục".
  * Mobile header (69:79): back, title, "Bước 1/3 · Soạn form · …", preview.
  */
-export function BuilderHeader({ formId, title, statusLine, saving, onContinue, continueBusy, readOnly }: BuilderHeaderProps) {
+export function BuilderHeader({ formId, title, statusLine, saving, onContinue, onPreview, continueBusy, readOnly }: BuilderHeaderProps) {
   const name = title.trim() || "Khảo sát chưa có tên";
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface">
@@ -43,10 +45,10 @@ export function BuilderHeader({ formId, title, statusLine, saving, onContinue, c
             Tạo bằng AI
           </Link>
         ) : null}
-        <Link href={`/forms/${formId}/builder/preview`} className={buttonClassName({ variant: "secondary", size: "md", radius: "field", className: "gap-2 text-label" })}>
+        <button type="button" onClick={onPreview} className={buttonClassName({ variant: "secondary", size: "md", radius: "field", className: "gap-2 text-label" })}>
           <Icon name="eye" size={18} />
           Xem trước
-        </Link>
+        </button>
         <button
           type="button"
           onClick={onContinue}
@@ -67,7 +69,7 @@ export function BuilderHeader({ formId, title, statusLine, saving, onContinue, c
             Bước 1/3 · Soạn form · {statusLine}
           </p>
         </div>
-        <IconLink href={`/forms/${formId}/builder/preview`} icon="eye" label="Xem trước" />
+        <IconButton icon="eye" label="Xem trước" onClick={onPreview} />
       </div>
     </header>
   );

@@ -934,8 +934,124 @@ export class LedgerService {
       ...refundJournals,
       ...payoutJournals,
     ]);
-    const live = (journals: LedgerJournalEntity[]) =>
-      journals.filter((journal) => !reversed.has(journal.id));
+    const escrowAccount = await this.ledgerRepo.findAccountByUserAndClass(
+      query.publisherId,
+      'ESCROW',
+    );
+    return this.toFormEscrowPosition(
+      { publishJournals, reopenJournals, refundJournals, payoutJournals },
+      reversed,
+      escrowAccount?.id ?? null,
+    );
+  }
+
+  /**
+   * Phase 5 M-1: `getFormEscrowPosition` for many forms with a constant
+   * number of ledger reads (one key lookup, one prefix lookup, one reversal
+   * lookup and one ESCROW account per Publisher) instead of ~5 per form.
+   * Same journals, same arithmetic: each position equals the single-form one.
+   */
+  async getFormEscrowPositions(
+    queries: FormEscrowPositionQuery[],
+  ): Promise<Map<string, FormEscrowPosition>> {
+    const result = new Map<string, FormEscrowPosition>();
+    if (queries.length === 0) {
+      return result;
+    }
+
+    const payoutKeysOf = (query: FormEscrowPositionQuery) => [
+      ...query.internalResponseIds.flatMap((responseId) => [
+        `internal-reward:${responseId}`,
+        `integrity-hold:${responseId}`,
+      ]),
+      ...query.externalAttemptIds.map((attemptId) =>
+        externalCompletionKey(attemptId),
+      ),
+    ];
+    const publisherIds = Array.from(
+      new Set(queries.map((query) => query.publisherId)),
+    );
+
+    const [keyedJournals, prefixedJournals, escrowAccounts] = await Promise.all(
+      [
+        this.ledgerRepo.findJournalsByIdempotencyKeys(
+          queries.flatMap((query) => [
+            ...query.versionIds.map((versionId) => `publish:${versionId}`),
+            ...payoutKeysOf(query),
+          ]),
+        ),
+        this.ledgerRepo.findJournalsByIdempotencyKeyPrefixes(
+          queries.flatMap((query) => [
+            `reopen-escrow:${query.formId}:`,
+            `close-refund:${query.formId}:`,
+          ]),
+        ),
+        Promise.all(
+          publisherIds.map((publisherId) =>
+            this.ledgerRepo.findAccountByUserAndClass(publisherId, 'ESCROW'),
+          ),
+        ),
+      ],
+    );
+
+    const byKey = new Map(
+      keyedJournals.map((journal) => [journal.idempotencyKey, journal]),
+    );
+    const escrowAccountIds = new Map(
+      publisherIds.map((publisherId, index) => [
+        publisherId,
+        escrowAccounts[index]?.id ?? null,
+      ]),
+    );
+    const reversed = await this.findReversedJournalIds([
+      ...keyedJournals,
+      ...prefixedJournals,
+    ]);
+    const byKeys = (keys: string[]) =>
+      Array.from(new Set(keys)).flatMap((key) => {
+        const journal = byKey.get(key);
+        return journal ? [journal] : [];
+      });
+    const byPrefix = (prefix: string) =>
+      prefixedJournals.filter((journal) =>
+        journal.idempotencyKey.startsWith(prefix),
+      );
+
+    for (const query of queries) {
+      result.set(
+        query.formId,
+        this.toFormEscrowPosition(
+          {
+            publishJournals: byKeys(
+              query.versionIds.map((versionId) => `publish:${versionId}`),
+            ),
+            reopenJournals: byPrefix(`reopen-escrow:${query.formId}:`),
+            refundJournals: byPrefix(`close-refund:${query.formId}:`),
+            payoutJournals: byKeys(payoutKeysOf(query)),
+          },
+          reversed,
+          escrowAccountIds.get(query.publisherId) ?? null,
+        ),
+      );
+    }
+    return result;
+  }
+
+  /** The arithmetic of a form's Escrow position from its journals (P4). */
+  private toFormEscrowPosition(
+    journals: {
+      publishJournals: LedgerJournalEntity[];
+      reopenJournals: LedgerJournalEntity[];
+      refundJournals: LedgerJournalEntity[];
+      payoutJournals: LedgerJournalEntity[];
+    },
+    reversed: Set<string>,
+    escrowAccountId: string | null,
+  ): FormEscrowPosition {
+    const { publishJournals, reopenJournals, refundJournals, payoutJournals } =
+      journals;
+    const live = (list: LedgerJournalEntity[]) =>
+      list.filter((journal) => !reversed.has(journal.id));
 
     const reserved = [...live(publishJournals), ...live(reopenJournals)].reduce(
       (sum, journal) => sum + this.positiveTotal(journal),
@@ -946,18 +1062,14 @@ export class LedgerService {
       0,
     );
 
-    const escrowAccount = await this.ledgerRepo.findAccountByUserAndClass(
-      query.publisherId,
-      'ESCROW',
-    );
-    const consumed = escrowAccount
+    const consumed = escrowAccountId
       ? live(payoutJournals).reduce(
           (sum, journal) =>
             sum +
             journal.entries
               .filter(
                 (entry) =>
-                  entry.accountId === escrowAccount.id && entry.amount < 0,
+                  entry.accountId === escrowAccountId && entry.amount < 0,
               )
               .reduce((total, entry) => total - entry.amount, 0),
           0,

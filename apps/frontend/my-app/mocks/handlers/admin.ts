@@ -3,6 +3,10 @@ import { apiUrl } from "@/lib/api/config";
 import { getMockSessionUser, type MockSessionUser } from "../db/session";
 import { fail, ok, unauthorized } from "../envelope";
 import { applyScenario } from "../scenarios";
+import { disputeQueueCount } from "../data/admin-disputes";
+import { moderationQueueCount } from "../data/admin-moderation";
+import { qualityQueueCount } from "../data/admin-quality";
+import { topUpQueueCount } from "../data/admin-top-ups";
 
 /** Mirrors the backend `RolesGuard`: 401 without a session, 403 for non-admins. */
 export async function requireMockAdmin(): Promise<MockSessionUser | Response> {
@@ -18,12 +22,17 @@ export async function requireMockAdmin(): Promise<MockSessionUser | Response> {
  */
 export const adminHandlers = [
   // ASSUMED API CONTRACT: GET /admin/queue-counts (lib/admin/admin-queue-service.ts).
-  // Seed = Figma 11 sidebar badges; the lead wires it to the section data once they exist.
+  // Counts are composed from the same stores as their corresponding queues.
   http.get(apiUrl("/admin/queue-counts"), async () => {
     const forced = await applyScenario("admin");
     if (forced) return forced;
     const admin = await requireMockAdmin();
     if (admin instanceof Response) return admin;
-    return ok({ surveys: 3, topUps: 2, disputes: 2, quality: 3 });
+    return ok({
+      surveys: moderationQueueCount(),
+      topUps: topUpQueueCount(),
+      disputes: disputeQueueCount(),
+      quality: qualityQueueCount(),
+    });
   }),
 ];

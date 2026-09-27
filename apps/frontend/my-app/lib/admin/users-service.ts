@@ -9,17 +9,17 @@ import { apiRequest } from "../api/client.ts";
  * `user-admin.service.ts`), ADMIN only:
  * - `GET /admin/users?page&limit&search&role&status` → `{ items, pagination }`
  * - `GET /admin/users/:id` → `{ user }`
- * - `PATCH /admin/users/:id/status` `{ status }` (CSRF) → `{ user }`. Locking revokes
- *   every session of the target; 400 `CANNOT_LOCK_SELF` / `CANNOT_LOCK_LAST_ADMIN`,
+ * - `PATCH /admin/users/:id/status` `{ status, reason? }` (CSRF) → `{ user }`. `reason`
+ *   (trimmed, 10–500 chars) is required when `status` is `LOCKED` (400 `VALIDATION_ERROR`
+ *   otherwise) and is stored in the audit-log metadata. Locking revokes every session of
+ *   the target; 400 `CANNOT_LOCK_SELF` / `CANNOT_LOCK_LAST_ADMIN`,
  *   403 `USER_ADMIN_ACTOR_NOT_ACTIVE_ADMIN`, 404 `USER_NOT_FOUND`. Written to the audit log.
  * - `PATCH /admin/users/:id/role` `{ role }` (CSRF) → `{ user }`. Revokes every session of
  *   the target; 400 `CANNOT_DEMOTE_SELF` / `CANNOT_DEMOTE_LAST_ADMIN`.
  *
  * ASSUMED API CONTRACT extensions (the backend user carries only id, email, role,
  * status and dates): the Figma columns below are optional, so the VERIFIED payload
- * still parses and the screen shows "—" for what is missing. The lock `reason`
- * ("Lý do khoá · ghi vào nhật ký, gửi email") is an extra body field the backend's
- * strict `updateUserStatusSchema` does not accept yet.
+ * still parses and the screen shows "—" for what is missing.
  */
 
 export const ADMIN_USERS_PAGE_SIZE = 20;
@@ -97,7 +97,7 @@ export async function getAdminUser(id: string, signal?: AbortSignal): Promise<Ad
   return user;
 }
 
-/** Lock (reason required by the UI) or unlock. `reason` is the ASSUMED extension. */
+/** Lock (reason required by the shared command) or unlock. */
 export async function updateAdminUserStatus(
   id: string,
   status: UserStatus,

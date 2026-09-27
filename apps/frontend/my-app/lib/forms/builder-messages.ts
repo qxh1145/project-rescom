@@ -1,3 +1,4 @@
+import { MAX_PUBLISHABLE_DURATION_MINUTES, SURVEY_DURATION_EXCEEDS_RESERVATION_CODE } from "@rescom/schemas";
 import { isApiError } from "../api/api-error.ts";
 
 /** Vietnamese copy for Form Builder errors (codes: `form.exceptions.ts`, economy, ASSUMED AI routes). */
@@ -38,6 +39,12 @@ const PUBLISH_MESSAGES: Record<string, string> = {
   VALIDATION_ERROR: "Thông tin gửi duyệt chưa hợp lệ.",
   FORM_EDIT_CONFLICT: "Form vừa được sửa ở nơi khác. Tải lại rồi thử lần nữa.",
   TARGETING_VALIDATION_ERROR: "Thiết lập đối tượng chưa hợp lệ.",
+  [SURVEY_DURATION_EXCEEDS_RESERVATION_CODE]: `Khảo sát dài hơn ${MAX_PUBLISHABLE_DURATION_MINUTES} phút chưa được hỗ trợ: mỗi lượt làm bài chỉ được giữ chỗ ${MAX_PUBLISHABLE_DURATION_MINUTES} phút. Hãy giảm thời lượng hoặc bớt câu hỏi.`,
+  FORM_PUBLISHED_FIELDS_IMMUTABLE: "Phiên bản mới phải giữ nguyên điểm thưởng (và loại khảo sát) của phiên bản đã đăng.",
+  EXPECTED_COMPLETIONS_BELOW_COMMITTED: "Số mẫu không được thấp hơn số lượt đã hoàn thành hoặc đang chờ duyệt của khảo sát này.",
+  FORM_VALIDATION_ERROR: "Khảo sát chưa đủ điều kiện gửi duyệt. Hãy kiểm tra lại câu hỏi và thiết lập.",
+  ESTIMATED_DURATION_REQUIRED: "Nhập thời lượng dự kiến để xác định khung điểm thưởng trước khi gửi duyệt.",
+  INVALID_STATUS_TRANSITION: "Trạng thái khảo sát vừa thay đổi nên chưa gửi duyệt được. Tải lại trang để xem trạng thái mới.",
 };
 
 export function publishErrorMessage(error: unknown): string {
@@ -52,6 +59,22 @@ export function aiErrorMessage(error: unknown): string {
   if (error.status === 429) return "Bạn gửi yêu cầu hơi nhanh. Thử lại sau ít phút.";
   if (error.status === 404 || error.status === 501) return "Tính năng soạn bằng AI chưa sẵn sàng. Bạn vẫn có thể soạn tay.";
   return "Trợ lý chưa phản hồi. Bạn vẫn có thể soạn tay bình thường.";
+}
+
+export type AiConversationLoadOutcome = { kind: "empty" } | { kind: "error"; message: string };
+
+/**
+ * `GET /forms/:id/ai/conversation` failures (ASSUMED route): 404
+ * `AI_CONVERSATION_NOT_FOUND` = no conversation yet (the entry screen); a
+ * missing form / no access keeps the form copy; any other 404 or a 501 means
+ * the AI routes are not deployed ("AI chưa sẵn sàng"), not a missing survey.
+ */
+export function aiConversationLoadOutcome(error: unknown): AiConversationLoadOutcome {
+  if (isApiError(error) && error.status === 404 && error.code === "AI_CONVERSATION_NOT_FOUND") return { kind: "empty" };
+  if (isApiError(error) && (error.code === "FORM_NOT_FOUND" || error.code === "FORM_FORBIDDEN" || error.status === 403)) {
+    return { kind: "error", message: loadFormErrorMessage(error) };
+  }
+  return { kind: "error", message: aiErrorMessage(error) };
 }
 
 export const PENDING_ATTENTION_BLOCKER = "Hãy xác nhận hoặc bỏ các gợi ý kiểm tra chú ý của AI trước khi tiếp tục.";

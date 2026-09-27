@@ -11,8 +11,8 @@ import { Spinner } from "@/components/ui/Spinner";
 import { formatDayMonth } from "@/lib/format/date-time";
 import { useFormHeader } from "@/lib/forms/manage-header-context";
 import { progressErrorMessage } from "@/lib/forms/manage-messages";
-import type { FormProgress, OpensRange, PublisherForm } from "@/lib/forms/manage-service";
-import { canReopen, resubmitHref, statusViewOf, type PublisherStatusView } from "@/lib/forms/manage-status";
+import { PAUSE_SUPPORTED, type FormProgress, type OpensRange, type PublisherForm } from "@/lib/forms/manage-service";
+import { canReopen, canWithdraw, resubmitHref, statusViewOf, type PublisherStatusView } from "@/lib/forms/manage-status";
 import { daysUntil, formatDuration, formatFullDate, opensSummary, percentOf } from "@/lib/forms/manage-view";
 import { StatusPill } from "../../components/StatusPill";
 import { useFormActions } from "../hooks/use-form-actions";
@@ -69,12 +69,25 @@ function MobileStatusActions({ form, view }: { form: PublisherForm; view: Publis
   if (view === "RUNNING" || view === "PAUSED") {
     return (
       <div className="mt-3.5 flex gap-2">
-        <button type="button" className={button} onClick={togglePause} disabled={pausing} aria-busy={pausing || undefined}>
-          <Icon name={form.pausedAt ? "play-circle" : "pause"} size={16} />
-          {form.pausedAt ? "Tiếp tục" : "Tạm dừng"}
-        </button>
+        {/* Phase 5 M3: hidden until the backend has a pause route. */}
+        {PAUSE_SUPPORTED ? (
+          <button type="button" className={button} onClick={togglePause} disabled={pausing} aria-busy={pausing || undefined}>
+            <Icon name={form.pausedAt ? "play-circle" : "pause"} size={16} />
+            {form.pausedAt ? "Tiếp tục" : "Tạm dừng"}
+          </button>
+        ) : null}
         <button type="button" className={button} onClick={requestClose}>
           Đóng &amp; hoàn điểm
+        </button>
+      </div>
+    );
+  }
+  // Phase 5 M7: withdraw a survey waiting for review / a re-versioned draft.
+  if (canWithdraw(form, form.currentVersion.versionNumber)) {
+    return (
+      <div className="mt-3.5 flex gap-2">
+        <button type="button" className={button} onClick={requestClose}>
+          Rút lại &amp; hoàn điểm
         </button>
       </div>
     );
@@ -112,12 +125,17 @@ function RejectedPanel({ form }: { form: PublisherForm }) {
       <h2 id="rejected-title" className={CARD_TITLE}>
         Khảo sát bị từ chối
       </h2>
-      <div className="mt-3 rounded-field bg-danger-soft px-3 py-2.5 text-caption leading-[18.9px]">
-        <p className="font-bold text-danger-strong">Lý do từ Admin</p>
-        <p className="mt-1 text-ink">{form.rejection?.reason}</p>
-      </div>
+      {/* `rejection` is ASSUMED on the DTO: without it, show no reason and an amount-free refund line. */}
+      {form.rejection?.reason ? (
+        <div className="mt-3 rounded-field bg-danger-soft px-3 py-2.5 text-caption leading-[18.9px]">
+          <p className="font-bold text-danger-strong">Lý do từ Admin</p>
+          <p className="mt-1 text-ink">{form.rejection.reason}</p>
+        </div>
+      ) : null}
       <p className="mt-3 text-caption font-semibold text-tone-teal-fg">
-        Đã hoàn {form.rejection?.refundedPoints ?? 0} điểm ký quỹ vào số dư
+        {form.rejection
+          ? `Đã hoàn ${form.rejection.refundedPoints} điểm ký quỹ vào số dư`
+          : "Ký quỹ đã được hoàn vào số dư"}
       </p>
       <Link
         href={resubmitHref(form)}
@@ -208,6 +226,7 @@ function ProgressBody({ form, progress, state }: { form: PublisherForm; progress
             <p className="mt-0.5 text-[18px] font-extrabold text-tone-amber-fg">{progress.escrowRemaining}</p>
           </div>
         </div>
+        {/* Figma 62:3324: owner actions sit in the status card once progress has loaded. */}
         <MobileStatusActions form={form} view={view} />
       </section>
 
@@ -325,6 +344,15 @@ export function ProgressScreen({ overlay }: { overlay?: (progress: FormProgress 
   return (
     <div className="mx-auto w-full max-w-[1440px] px-5 pt-4 pb-8 lg:px-12 lg:pt-5 lg:pb-12">
       {body}
+      {/* While progress is loading/errored (or its ASSUMED route is missing), the
+          status card isn't drawn: owner actions (Đóng/Mở lại/Xuất) fall back to
+          `form` alone so mobile — and Google Forms surveys, whose only tab is
+          Tiến độ — keep them. Desktop gets them via `HeaderActions`. */}
+      {form && !progress ? (
+        <div className="mt-4 lg:hidden">
+          <MobileStatusActions form={form} view={statusViewOf(form)} />
+        </div>
+      ) : null}
       {overlay?.(progress)}
     </div>
   );

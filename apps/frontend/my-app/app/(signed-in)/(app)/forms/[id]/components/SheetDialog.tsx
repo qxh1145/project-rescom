@@ -11,6 +11,8 @@ interface SheetDialogProps {
   onClose: () => void;
   /** Desktop panel width (Figma 10b: 576). */
   width?: number;
+  /** false while an action runs: Esc, the backdrop and the X do not close it. */
+  dismissible?: boolean;
   children: ReactNode;
 }
 
@@ -19,13 +21,14 @@ interface SheetDialogProps {
  * a bottom sheet with a grab handle on mobile (10b 63:1844, 10c 62:1721).
  * Always open: the route itself is the dialog, closing navigates away.
  */
-export function SheetDialog({ titleId, title, subtitle, onClose, width = 576, children }: SheetDialogProps) {
+export function SheetDialog({ titleId, title, subtitle, onClose, width = 576, dismissible = true, children }: SheetDialogProps) {
   return (
     <Dialog
       open
       onClose={onClose}
       labelledBy={titleId}
       width={width}
+      dismissible={dismissible}
       className="max-lg:mb-0 max-lg:w-full max-lg:rounded-b-none"
     >
       <div className="px-5 pt-3 pb-5 lg:px-7 lg:pt-7 lg:pb-7">
@@ -37,7 +40,7 @@ export function SheetDialog({ titleId, title, subtitle, onClose, width = 576, ch
             </h2>
             <p className="mt-1 text-caption text-ink-muted lg:text-body-sm">{subtitle}</p>
           </div>
-          <IconButton icon="x" label="Đóng" onClick={onClose} />
+          <IconButton icon="x" label="Đóng" onClick={onClose} disabled={!dismissible} />
         </div>
         {children}
       </div>

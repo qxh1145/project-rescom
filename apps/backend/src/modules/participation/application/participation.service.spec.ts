@@ -135,7 +135,9 @@ describe('ParticipationService', () => {
         internalResponses: [],
         externalAttemptIds: [],
       }),
+      listEscrowInputsByFormIds: jest.fn().mockResolvedValue(new Map()),
       findModerationQueue: jest.fn(),
+      findByCreationKey: jest.fn(),
       countInProgressAttempts: jest.fn().mockResolvedValue(0),
     };
 
@@ -174,6 +176,7 @@ describe('ParticipationService', () => {
 
     mockCompletionCodeService = {
       generateSixDigitCode: jest.fn().mockReturnValue('123456'),
+      deriveSixDigitCode: jest.fn().mockReturnValue('654321'),
       computeVerifier: jest.fn().mockReturnValue('v1:mockdigest'),
       verifyCode: jest.fn().mockReturnValue(true),
       parseVerifier: jest.fn(),

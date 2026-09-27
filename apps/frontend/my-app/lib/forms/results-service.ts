@@ -31,6 +31,11 @@ export const resultQuestionSchema = z.object({
   type: formBlockTypeEnum,
   required: z.boolean(),
   options: z.array(z.object({ value: z.string(), label: z.string() })),
+  /**
+   * ASSUMED (Phase 5 M4): the choice question accepts a free "Khác" answer
+   * (block `allowOther`); such an answer is stored as its text, not an option value.
+   */
+  allowOther: z.boolean().default(false),
   scale: z
     .object({
       min: z.number(),

@@ -23,15 +23,33 @@ const TITLE_ID = "report-missing-code-title";
  * `POST /attempts/:id/report-missing-code` → success state.
  */
 export function ReportMissingCodeDialog({ attemptId, open, onClose }: ReportMissingCodeDialogProps) {
+  const [busy, setBusy] = useState(false);
   return (
-    <Dialog open={open} onClose={onClose} labelledBy={TITLE_ID} width={480}>
+    <Dialog
+      open={open}
+      onClose={() => {
+        if (busy) return;
+        onClose();
+      }}
+      labelledBy={TITLE_ID}
+      width={480}
+      dismissible={!busy}
+    >
       {/* `Dialog` mounts its children only while open: each report starts empty. */}
-      <ReportForm attemptId={attemptId} onClose={onClose} />
+      <ReportForm attemptId={attemptId} onClose={onClose} onBusyChange={setBusy} />
     </Dialog>
   );
 }
 
-function ReportForm({ attemptId, onClose }: { attemptId: string; onClose: () => void }) {
+function ReportForm({
+  attemptId,
+  onClose,
+  onBusyChange,
+}: {
+  attemptId: string;
+  onClose: () => void;
+  onBusyChange: (busy: boolean) => void;
+}) {
   const [reason, setReason] = useState("");
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -44,6 +62,7 @@ function ReportForm({ attemptId, onClose }: { attemptId: string; onClose: () => 
     setFieldError(invalid);
     if (invalid) return;
     setBusy(true);
+    onBusyChange(true);
     setFailure(null);
     try {
       await reportMissingCode(attemptId, reason);
@@ -52,6 +71,7 @@ function ReportForm({ attemptId, onClose }: { attemptId: string; onClose: () => 
       setFailure(reportFailureMessage(error));
     } finally {
       setBusy(false);
+      onBusyChange(false);
     }
   };
 

@@ -1,4 +1,5 @@
 import {
+  checkSurveyFitsReservationWindow,
   computeInternalTimeBarrier,
   deleteBlock,
   draftFormDefinitionSchema,
@@ -6,6 +7,7 @@ import {
   formDefinitionSchema,
   generateBlockId,
   generateOptionId,
+  MAX_PUBLISHABLE_DURATION_MINUTES,
   reindexBlocks,
   type AttentionCheckConfig,
   type BlockIntegrityMetadata,
@@ -16,7 +18,7 @@ import {
   type FormSection,
   type FormSettings,
 } from "@rescom/schemas";
-import { createBuilderBlock } from "./builder-catalog.ts";
+import { createBuilderBlock, DEFAULT_BLOCK_TITLE } from "./builder-catalog.ts";
 
 /**
  * Form Builder document (Figma 13) and its pure operations. Every operation
@@ -524,7 +526,52 @@ export function validateDraft(doc: BuilderDoc): DocIssues {
   return collectIssues(doc, false);
 }
 
-/** Publish rules (`formDefinitionSchema`: at least one question, effort ≥ time barrier). */
-export function validateForPublish(doc: BuilderDoc): DocIssues {
-  return collectIssues(doc, true);
+export const UNTITLED_FORM_ISSUE = "Hãy đặt tên cho khảo sát trước khi gửi duyệt.";
+export const DEFAULT_TITLE_ISSUE = "Câu hỏi còn tiêu đề mặc định. Hãy nhập nội dung câu hỏi.";
+export const RESERVATION_WINDOW_ISSUE = `Khảo sát dài hơn ${MAX_PUBLISHABLE_DURATION_MINUTES} phút chưa được hỗ trợ: mỗi lượt làm bài chỉ được giữ chỗ ${MAX_PUBLISHABLE_DURATION_MINUTES} phút. Hãy bớt câu hỏi hoặc giảm thời lượng.`;
+
+function pushUnique(list: string[], message: string): void {
+  if (!list.includes(message)) list.push(message);
+}
+
+/**
+ * Publish rules: `formDefinitionSchema` (at least one question, effort ≥ time
+ * barrier), a real form title and question titles (P2), and the 30-minute
+ * attempt reservation (`checkSurveyFitsReservationWindow`, decision E5-D2 —
+ * the backend answers 422 `SURVEY_DURATION_EXCEEDS_RESERVATION`).
+ */
+export function validateForPublish(
+  doc: BuilderDoc,
+  options: { estimatedDurationMinutes?: number | null } = {},
+): DocIssues {
+  const issues = collectIssues(doc, true);
+  const title = doc.title.trim();
+  if (title === "" || title === UNTITLED_FORM) pushUnique(issues.form, UNTITLED_FORM_ISSUE);
+  for (const block of doc.blocks) {
+    const blockTitle = block.title.trim();
+    if (blockTitle === "" || blockTitle === DEFAULT_BLOCK_TITLE) {
+      const list = (issues.blocks[block.id] ??= []);
+      if (!list.includes("Câu hỏi chưa có nội dung.")) pushUnique(list, DEFAULT_TITLE_ISSUE);
+    }
+  }
+  const reservation = checkSurveyFitsReservationWindow({
+    type: "INTERNAL",
+    definition: toDraftDefinition(doc),
+    estimatedDurationMinutes: options.estimatedDurationMinutes ?? null,
+  });
+  if (!reservation.fits) pushUnique(issues.form, RESERVATION_WINDOW_ISSUE);
+  return issues;
+}
+
+/**
+ * The one-line summary shown when publishing is refused: a form-level issue
+ * first, otherwise the first flagged question by number ("Câu 3: …").
+ */
+export function publishIssueSummary(doc: BuilderDoc, issues: DocIssues): string | null {
+  if (issues.form.length > 0) return issues.form[0];
+  const numbers = doc.blocks.flatMap((block, i) => (issues.blocks[block.id]?.length ? [i + 1] : []));
+  if (numbers.length === 0) return null;
+  const first = doc.blocks[numbers[0] - 1];
+  const more = numbers.length > 1 ? ` Các câu khác cần sửa: ${numbers.slice(1).join(", ")}.` : "";
+  return `Câu ${numbers[0]}: ${issues.blocks[first.id][0]}${more}`;
 }

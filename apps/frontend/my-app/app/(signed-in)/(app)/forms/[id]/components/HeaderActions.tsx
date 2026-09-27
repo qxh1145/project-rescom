@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { Icon } from "@/components/ui/Icon";
-import type { PublisherForm } from "@/lib/forms/manage-service";
-import { canReopen, resubmitHref, statusViewOf } from "@/lib/forms/manage-status";
+import { PAUSE_SUPPORTED, type PublisherForm } from "@/lib/forms/manage-service";
+import { canReopen, canWithdraw, resubmitHref, statusViewOf } from "@/lib/forms/manage-status";
 import { useFormActions } from "../hooks/use-form-actions";
 
 const BASE =
@@ -18,7 +18,9 @@ const PRIMARY = `${BASE} h-11 border-primary bg-primary text-primary-foreground 
 /**
  * Header actions by status — Figma 10a (Google Forms, running: Mở Google Form ·
  * Tạm dừng · Đóng & hoàn điểm) and 17 (Form Builder, full: Mở lại thêm mẫu ·
- * Xuất dữ liệu). Other combinations are ASSUMED from those two.
+ * Xuất dữ liệu). Other combinations are ASSUMED from those two. "Tạm dừng"
+ * waits for a backend route (`PAUSE_SUPPORTED`, Phase 5 M3); "Rút lại & hoàn
+ * điểm" covers a survey waiting for review and a re-versioned draft (M7).
  */
 export function HeaderActions({ form, className = "" }: { form: PublisherForm; className?: string }) {
   const { requestClose, togglePause, pausing } = useFormActions();
@@ -31,7 +33,7 @@ export function HeaderActions({ form, className = "" }: { form: PublisherForm; c
   if (view === "REJECTED") {
     return (
       <div className={`flex flex-wrap gap-2.5 ${className}`}>
-        <Link href={resubmitHref(form)} className={SECONDARY_LINK}>
+        <Link href={resubmitHref(form)} scroll={false} className={SECONDARY_LINK}>
           Sửa &amp; gửi lại
         </Link>
       </div>
@@ -48,14 +50,21 @@ export function HeaderActions({ form, className = "" }: { form: PublisherForm; c
       ) : null}
       {live ? (
         <>
-          <button type="button" className={SECONDARY} onClick={togglePause} disabled={pausing} aria-busy={pausing || undefined}>
-            <Icon name={form.pausedAt ? "play-circle" : "pause"} size={16} />
-            {form.pausedAt ? "Tiếp tục" : "Tạm dừng"}
-          </button>
+          {PAUSE_SUPPORTED ? (
+            <button type="button" className={SECONDARY} onClick={togglePause} disabled={pausing} aria-busy={pausing || undefined}>
+              <Icon name={form.pausedAt ? "play-circle" : "pause"} size={16} />
+              {form.pausedAt ? "Tiếp tục" : "Tạm dừng"}
+            </button>
+          ) : null}
           <button type="button" className={SECONDARY} onClick={requestClose}>
             Đóng &amp; hoàn điểm
           </button>
         </>
+      ) : null}
+      {canWithdraw(form, form.currentVersion.versionNumber) ? (
+        <button type="button" className={SECONDARY} onClick={requestClose}>
+          Rút lại &amp; hoàn điểm
+        </button>
       ) : null}
       {ended && canReopen(form) ? (
         <Link href={`/forms/${id}/reopen`} scroll={false} className={OUTLINE}>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useCallback, useState } from "react";
 import type { TopUpStatus } from "@rescom/schemas";
 import { useAdminCounts } from "@/components/layout/admin/AdminShell";
@@ -22,7 +23,9 @@ export function useTopUpReview() {
   const [status, setStatusState] = useState<TopUpStatus>("PENDING");
   const query = useApiQuery(`admin:top-ups:${status}`, (signal) => listAdminTopUps({ status }, signal));
   const { counts, refreshCounts } = useAdminCounts();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // `?id=<topUpId>` (links from the overview) preselects that request when it is in the list.
+  const searchParams = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get("id"));
   const [checks, setChecks] = useState<{ id: string | null; values: boolean[] }>({ id: null, values: [] });
   const [busy, setBusy] = useState<ReviewAction | null>(null);
   const [failure, setFailure] = useState<{ action: ReviewAction; error: unknown } | null>(null);

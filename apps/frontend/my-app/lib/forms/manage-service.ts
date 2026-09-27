@@ -19,12 +19,20 @@ import { apiRequest } from "../api/client.ts";
 const nullableIso = z.string().nullable().default(null);
 const count = z.number().int().nonnegative();
 
-/** ASSUMED API CONTRACT extensions shared by `GET /forms` items and `GET /forms/:id`. */
+/**
+ * Management fields shared by `GET /forms` items and `GET /forms/:id`.
+ * `completedCompletions` and `escrowLocked` are VERIFIED (Phase 5 M1/M2:
+ * `FormSummaryDto` / `FormDetailDto`); the others are ASSUMED API CONTRACT.
+ */
 const managementExtensions = {
-  /** Validated completions so far (Figma "6/10"). */
+  /** Completed participations so far (Figma "6/10"). */
   completedCompletions: count.default(0),
-  /** Points still locked in this survey's Escrow ("ký quỹ 100"). */
-  escrowLocked: count.default(0),
+  /**
+   * Unused points this survey still holds in Escrow — what closing it now
+   * refunds ("ký quỹ 100"). `null` = unknown (server could not compute it, or
+   * a response without the field): the UI then shows no number.
+   */
+  escrowLocked: count.nullable().default(null),
   submittedAt: nullableIso,
   publishedAt: nullableIso,
   /** Collection deadline ("hạn 05/10 · còn 9 ngày"). */
@@ -34,7 +42,11 @@ const managementExtensions = {
   hiddenFromMarketplace: z.boolean().default(false),
   /** "Tạm dừng" (Figma 10a) — no backend state exists yet. */
   pausedAt: nullableIso,
-  /** Admin rejection of the submitted version ("Bị từ chối · Đã hoàn 120 điểm"). */
+  /**
+   * Admin rejection of the submitted version ("Bị từ chối · Đã hoàn 120
+   * điểm"): reason + points actually refunded. The rejection itself is
+   * VERIFIED as `status` CLOSED + `closeKind` MODERATION; these details are not.
+   */
   rejection: z
     .object({ reason: z.string(), refundedPoints: count, rejectedAt: z.string().nullable().default(null) })
     .nullable()
@@ -42,8 +54,9 @@ const managementExtensions = {
 };
 
 /**
- * VERIFIED `FormSummaryDto` (`GET /forms` → `forms.service.ts#listForms`)
- * + ASSUMED management fields (incl. `closeKind`, which only the detail DTO has).
+ * VERIFIED `FormSummaryDto` (`GET /forms` → `forms.service.ts#listForms`,
+ * with `closeKind`, `completedCompletions`, `escrowLocked` since Phase 5 M2)
+ * + ASSUMED management fields.
  */
 export const publisherFormSummarySchema = z.object({
   id: z.string().min(1),
@@ -179,10 +192,35 @@ export type DisputeResult = z.infer<typeof disputeResultSchema>;
 
 /** Figma 10 lists every survey on one screen: the backend maximum page size. */
 export const PUBLISHER_FORMS_PAGE_SIZE = 100;
+/** Phase 5 M6: at most 20 pages (2 000 surveys) are loaded for the list and its totals. */
+export const PUBLISHER_FORMS_MAX_PAGES = 20;
 
-/** VERIFIED: `GET /forms?page&limit&status&type` — the caller's own surveys. */
+/**
+ * Every page of the list, up to `PUBLISHER_FORMS_MAX_PAGES` (page 1 first for
+ * `totalPages`, then the rest in parallel). A survey that moved between pages
+ * while loading (the list is ordered by `updatedAt`) is kept once.
+ */
+export async function collectPublisherFormPages(
+  fetchPage: (page: number) => Promise<PublisherFormList>,
+): Promise<PublisherFormList> {
+  const first = await fetchPage(1);
+  const lastPage = Math.min(first.totalPages, PUBLISHER_FORMS_MAX_PAGES);
+  const rest: PublisherFormList[] = [];
+  for (let page = 2; page <= lastPage; page += 1) {
+    rest.push(await fetchPage(page));
+  }
+  const seen = new Set<string>();
+  const forms = [first, ...rest]
+    .flatMap((page) => page.forms)
+    .filter((form) => (seen.has(form.id) ? false : (seen.add(form.id), true)));
+  return { ...first, forms };
+}
+
+/** VERIFIED: `GET /forms?page&limit&status&type` — every survey of the caller (Phase 5 M6). */
 export function listPublisherForms(signal?: AbortSignal): Promise<PublisherFormList> {
-  return apiRequest(`/forms?page=1&limit=${PUBLISHER_FORMS_PAGE_SIZE}`, { schema: publisherFormListSchema, signal });
+  return collectPublisherFormPages((page) =>
+    apiRequest(`/forms?page=${page}&limit=${PUBLISHER_FORMS_PAGE_SIZE}`, { schema: publisherFormListSchema, signal }),
+  );
 }
 
 const formPath = (id: string) => `/forms/${encodeURIComponent(id)}` as const;
@@ -202,7 +240,12 @@ export function getInProgressAttempts(id: string, signal?: AbortSignal): Promise
   return apiRequest(`${formPath(id)}/in-progress-attempts`, { schema: inProgressAttemptsSchema, signal });
 }
 
-/** VERIFIED: `POST /forms/:id/close` (`closeFormSchema`) — "Đóng & hoàn điểm" refunds the unused Escrow. */
+/**
+ * VERIFIED: `POST /forms/:id/close` (`closeFormSchema`) — "Đóng & hoàn điểm"
+ * refunds the unused Escrow. Also "Rút lại & hoàn điểm" (Phase 5 M7): the
+ * owner withdraws a queued survey or closes a re-versioned draft (400
+ * `INVALID_STATUS_TRANSITION` for a never-published draft).
+ */
 export function closePublisherForm(id: string): Promise<PublisherForm> {
   return apiRequest(`${formPath(id)}/close`, { method: "POST", body: {}, schema: publisherFormSchema });
 }
@@ -216,7 +259,13 @@ export function reopenPublisherForm(id: string, additionalCompletions: number): 
   });
 }
 
-/** ASSUMED API CONTRACT: `POST /forms/:id/pause` / `POST /forms/:id/resume` ("Tạm dừng", Figma 10a). */
+/**
+ * Phase 5 M3 (decision Q2, option a): the backend has no pause/resume route,
+ * so "Tạm dừng" / "Tiếp tục" stay hidden until it does.
+ */
+export const PAUSE_SUPPORTED = false;
+
+/** ASSUMED API CONTRACT: `POST /forms/:id/pause` / `POST /forms/:id/resume` ("Tạm dừng", Figma 10a); unused while `PAUSE_SUPPORTED` is false. */
 export function setPublisherFormPaused(id: string, paused: boolean): Promise<PublisherForm> {
   return apiRequest(`${formPath(id)}/${paused ? "pause" : "resume"}`, {
     method: "POST",

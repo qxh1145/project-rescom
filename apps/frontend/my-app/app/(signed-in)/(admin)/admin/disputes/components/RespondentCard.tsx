@@ -7,14 +7,14 @@ import { formatShortDateTime } from "@/lib/format/date-time";
 
 /**
  * Right column of Figma 11c: respondent card (62:1695, 448px) + note (62:1714).
- * ASSUMED links: `/admin/fraud-log?userId=` and `/admin/users?userId=` (the
- * sections are built by other Phase 6 pages; the query only pre-filters).
+ * Links: `/admin/fraud-log?userId=` (pre-filters the log) and
+ * `/admin/users?id=` (opens that user's detail panel).
  */
 export function RespondentCard({ item }: { item: DisputeCase }) {
   const { respondent } = item;
   const hidden = hiddenFraudLogCount(respondent);
   const titleId = `respondent-${item.id}`;
-  const userQuery = `?userId=${encodeURIComponent(respondent.id)}`;
+  const userId = encodeURIComponent(respondent.id);
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -42,14 +42,14 @@ export function RespondentCard({ item }: { item: DisputeCase }) {
             ))}
             <li className="flex h-8.25 items-center justify-between gap-3 border-t border-line-subtle">
               <span className="text-ink">{hidden > 0 ? `+${hidden} mục khác` : ""}</span>
-              <Link href={`/admin/fraud-log${userQuery}`} className="font-bold text-primary hover:underline">
+              <Link href={`/admin/fraud-log?userId=${userId}`} className="font-bold text-primary hover:underline">
                 Xem FraudLog
               </Link>
             </li>
           </ul>
         ) : null}
         <Link
-          href={`/admin/users${userQuery}`}
+          href={`/admin/users?id=${userId}`}
           className="mt-3 flex h-11.5 items-center justify-center rounded-field border border-danger px-4 text-body font-bold text-danger hover:bg-danger-soft"
         >
           Xem hồ sơ &amp; khoá tài khoản…

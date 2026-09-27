@@ -148,6 +148,7 @@ test("logout clears every participation key from both stores", () => {
   const local = keyedStorage({
     "rescom:survey-draft:a-1": "{}",
     "rescom:builder-draft:f-1": "{}",
+    "rescom:create-gform-idempotency:u-1": "key",
     "rescom:mockdb:attempts": "{}",
   });
   const session = keyedStorage({

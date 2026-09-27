@@ -1,20 +1,66 @@
-import { getRewardPricingRange, surveyTargetingSchema, type Gender, type SurveyTargetingCriteria } from "@rescom/schemas";
+import {
+  calculateEscrowCost,
+  getRewardPricingRange,
+  MAX_PUBLISHABLE_DURATION_MINUTES,
+  resolveEffectiveDurationMinutes,
+  resolveRewardBandDurationOptions,
+  surveyTargetingSchema,
+  type Gender,
+  type RewardBandDefinitionLike,
+  type SurveyTargetingCriteria,
+} from "@rescom/schemas";
 import { z } from "zod";
+import { validateForPublish, type BuilderDoc } from "./builder-blocks.ts";
 
 /**
  * Publish settings (builder steps 2 "Đối tượng" and 3 "Số mẫu & điểm") and
- * the FR-14 price hint "Giá gợi ý 8–16 điểm/lượt · rẻ hơn 20%" (Figma 13a):
- * the band of the estimated duration (`getRewardPricingRange`) at the 20 %
- * Internal-form discount (`calculateEscrowCost`).
+ * the FR-14 price hint (Figma 13a), decision C2 (a): "Giá gợi ý" is the
+ * reward band the respondent receives — the band the backend checks
+ * (`checkPublishRewardBand` on the effective duration) — and a second figure
+ * is what the publisher pays per response at the 20 % Internal-form discount
+ * (`calculateEscrowCost`).
  */
 
 export const INTERNAL_DISCOUNT = 0.8;
 
-export function internalPriceHint(minutes: number): { min: number; max: number; label: string } {
-  const band = getRewardPricingRange(Math.max(1, minutes));
-  const min = Math.round(band.min * INTERNAL_DISCOUNT);
-  const max = Math.round(band.max * INTERNAL_DISCOUNT);
-  return { min, max, label: `${min}–${max} điểm/lượt` };
+export interface InternalPriceHint {
+  /** Reward band (what the respondent receives; the reward field is checked against it). */
+  min: number;
+  max: number;
+  label: string;
+  /** Per-response cost to the publisher after the Internal discount. */
+  paidMin: number;
+  paidMax: number;
+  paidLabel: string;
+}
+
+function internalCostPerResponse(reward: number): number {
+  return calculateEscrowCost({ type: "INTERNAL", expectedCompletions: 1, rewardPerResponse: reward }).effectiveRewardPerResponse;
+}
+
+/**
+ * `definition` (the stored or draft Form Definition) makes the band follow
+ * the backend's effective duration: the longest of `minutes`, the declared
+ * effort and the required minimum completion time.
+ */
+export function internalPriceHint(minutes: number, definition?: RewardBandDefinitionLike | null): InternalPriceHint {
+  const estimate = Math.max(1, minutes);
+  const duration =
+    resolveEffectiveDurationMinutes({
+      estimatedDurationMinutes: estimate,
+      ...(definition ? resolveRewardBandDurationOptions("INTERNAL", definition) : {}),
+    }) ?? estimate;
+  const band = getRewardPricingRange(duration);
+  const paidMin = internalCostPerResponse(band.min);
+  const paidMax = internalCostPerResponse(band.max);
+  return {
+    min: band.min,
+    max: band.max,
+    label: `${band.min}–${band.max} điểm/lượt`,
+    paidMin,
+    paidMax,
+    paidLabel: `bạn trả ${paidMin}–${paidMax} điểm/lượt`,
+  };
 }
 
 export const publishSettingsSchema = z.object({
@@ -32,11 +78,29 @@ export const publishSettingsSchema = z.object({
     .number({ invalid_type_error: "Nhập thời lượng." })
     .int("Thời lượng tính bằng phút.")
     .min(1, "Ít nhất 1 phút.")
-    .max(1440, "Tối đa 1.440 phút."),
+    .max(
+      MAX_PUBLISHABLE_DURATION_MINUTES,
+      `Tối đa ${MAX_PUBLISHABLE_DURATION_MINUTES} phút: mỗi lượt làm bài chỉ được giữ chỗ ${MAX_PUBLISHABLE_DURATION_MINUTES} phút.`,
+    ),
 });
 export type PublishSettings = z.infer<typeof publishSettingsSchema>;
 
 export type PublishSettingsErrors = Partial<Record<keyof PublishSettings, string>>;
+
+/**
+ * Whether a raw "Thời lượng dự kiến" input parses to a duration inside the
+ * publishable range (same bounds as `publishSettingsSchema`). The FR-14
+ * price hint (`internalPriceHint`) uses this to decide whether to recompute
+ * from the typed value or keep the last valid one — so a stray keystroke
+ * ("0", "99999", "abc") never flashes a price band for a duration that could
+ * never actually publish.
+ */
+export function isValidDurationInput(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (trimmed === "") return false;
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= MAX_PUBLISHABLE_DURATION_MINUTES;
+}
 
 export function validatePublishSettings(input: Record<keyof PublishSettings, string>):
   | { ok: true; value: PublishSettings }
@@ -59,6 +123,29 @@ export function validatePublishSettings(input: Record<keyof PublishSettings, str
 export function estimateEscrow(settings: Pick<PublishSettings, "expectedCompletions" | "rewardPerResponse">): number {
   return settings.expectedCompletions * Math.round(settings.rewardPerResponse * INTERNAL_DISCOUNT);
 }
+
+/** A survey that already had a published version keeps its reward (backend 409 `FORM_PUBLISHED_FIELDS_IMMUTABLE`). */
+export const FROZEN_REWARD_HINT = "Giữ nguyên điểm thưởng của phiên bản đã đăng";
+
+export type PublishReadiness = "ready" | "unsaved" | "invalid";
+
+/**
+ * C4: the publish step only opens on a saved, publishable draft — unsaved
+ * edits on this device (`loadLocalDraft(...).dirty`) or a definition that
+ * fails `validateForPublish` send the publisher back to the builder, whose
+ * "Tiếp tục" flow validates and saves first. The estimated duration is set on
+ * the publish step itself, so it is checked there (settings schema).
+ */
+export function publishReadiness(input: { doc: BuilderDoc; localDirty: boolean }): PublishReadiness {
+  if (input.localDirty) return "unsaved";
+  const issues = validateForPublish(input.doc);
+  return issues.form.length > 0 || Object.keys(issues.blocks).length > 0 ? "invalid" : "ready";
+}
+
+export const PUBLISH_READINESS_NOTICE: Record<Exclude<PublishReadiness, "ready">, string> = {
+  unsaved: "Form còn thay đổi chưa lưu trên máy này. Quay lại Form Builder để lưu và kiểm tra trước khi gửi duyệt.",
+  invalid: "Form chưa đủ điều kiện gửi duyệt. Quay lại Form Builder để sửa các câu được đánh dấu.",
+};
 
 export const GENDER_LABELS: Record<Gender, string> = {
   MALE: "Nam",

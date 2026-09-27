@@ -13,6 +13,7 @@ import {
   GENDER_CHOICES,
   LOCATION_CHOICES,
   SCHOOL_CHOICES,
+  SCHOOL_TARGETING_SUPPORTED,
   criteriaSummary,
   type GoogleFormWizardDraft,
   type WizardErrors,
@@ -28,7 +29,9 @@ interface AudienceStepProps {
   estimate: EstimateState;
 }
 
-const NOT_SUPPORTED_NOTE = "Chưa hỗ trợ lọc theo thu nhập và sở thích.";
+const NOT_SUPPORTED_NOTE = SCHOOL_TARGETING_SUPPORTED
+  ? "Chưa hỗ trợ lọc theo thu nhập và sở thích."
+  : "Chưa hỗ trợ lọc theo trường, thu nhập và sở thích.";
 
 /** Figma 9b "Bước 2 · đối tượng" (63:266 desktop, 63:1161 mobile) → `surveyTargetingSchema`. */
 export function AudienceStep({ draft, errors, update, estimate }: AudienceStepProps) {
@@ -126,14 +129,17 @@ export function AudienceStep({ draft, errors, update, estimate }: AudienceStepPr
           ) : null}
         </fieldset>
 
-        <Select
-          id="audience-school"
-          label="Trường"
-          className="order-4 lg:order-none"
-          options={[{ value: "", label: "Tất cả trường" }, ...SCHOOL_CHOICES.map((school) => ({ value: school, label: school }))]}
-          value={draft.school}
-          onChange={(event) => update({ school: event.target.value })}
-        />
+        {/* Hidden until the backend targeting supports schools (see SCHOOL_TARGETING_SUPPORTED). */}
+        {SCHOOL_TARGETING_SUPPORTED ? (
+          <Select
+            id="audience-school"
+            label="Trường"
+            className="order-4 lg:order-none"
+            options={[{ value: "", label: "Tất cả trường" }, ...SCHOOL_CHOICES.map((school) => ({ value: school, label: school }))]}
+            value={draft.school}
+            onChange={(event) => update({ school: event.target.value })}
+          />
+        ) : null}
         <Select
           id="audience-location"
           label="Khu vực"

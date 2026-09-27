@@ -20,7 +20,7 @@ import {
 } from "@/lib/forms/results-view";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useResponses } from "../hooks/responses-context";
-import { ComplaintLink, ResponseAnswers, ResponseMeta } from "./ResponseAnswers";
+import { ResponseAnswers, ResponseMeta } from "./ResponseAnswers";
 import { ResponseCards, ResponseDetailMobile } from "./ResponsesMobile";
 import { ResponsesTable } from "./ResponsesTable";
 import { ColumnPicker, QualityChips, QualitySegments, SearchBox } from "./ResponsesToolbar";
@@ -62,13 +62,11 @@ function ResponseAside({
   response,
   position,
   hrefFor,
-  formId,
 }: {
   data: FormResponses;
   response: FormResponse;
   position: ResponsePosition;
   hrefFor: (response: FormResponse) => string;
-  formId: string;
 }) {
   return (
     <aside
@@ -86,7 +84,6 @@ function ResponseAside({
       </div>
       <ResponseMeta response={response} variant="panel" />
       <ResponseAnswers data={data} response={response} variant="panel" />
-      <ComplaintLink formId={formId} response={response} />
     </aside>
   );
 }
@@ -186,7 +183,6 @@ export function ResponsesScreen({ selectedId }: { selectedId: string | null }) {
             position={position}
             listHref={`${base}${queryString}`}
             hrefFor={hrefFor}
-            formId={formId}
           />
         ) : (
           <div className="px-5 pt-4 lg:hidden">
@@ -263,7 +259,7 @@ export function ResponsesScreen({ selectedId }: { selectedId: string | null }) {
             </p>
           </section>
           {shownInAside && position ? (
-            <ResponseAside data={data} response={shownInAside} position={position} hrefFor={hrefFor} formId={formId} />
+            <ResponseAside data={data} response={shownInAside} position={position} hrefFor={hrefFor} />
           ) : (
             <aside className="rounded-[22px] border border-line bg-surface p-5.5 text-body-sm text-ink-muted">
               {selectedId ? "Không tìm thấy câu trả lời này trong phiên bản đang xem." : "Chọn một dòng để xem đủ câu trả lời."}

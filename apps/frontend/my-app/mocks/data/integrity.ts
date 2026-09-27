@@ -1,7 +1,7 @@
 import type { SubmitSurveyFeedbackCommand, SurveyFeedbackDto } from "@rescom/schemas";
 import { createCollection, hoursAgo, mockId, nowIso } from "../db/store";
 import { attempts } from "./attempts";
-import { rewardOutcomeOf } from "./economy";
+import { rewardOutcomeOf, transactionsOf } from "./economy";
 import { findSurvey, SURVEY_IDS } from "./surveys";
 import type { MockSessionUser } from "../db/session";
 
@@ -104,12 +104,15 @@ export function reliabilityOf(user: MockSessionUser) {
     .filter((attempt) => attempt.userId === user.id && attempt.submittedAt !== null)
     .map((attempt) => {
       const held = rewardOutcomeOf(user, attempt.attemptId)?.status === "HELD_IN_INTEGRITY";
+      const reversed = transactionsOf(user).some(
+        (row) => row.kind === "SURVEY_REWARD" && row.attemptId === attempt.attemptId && row.status === "REVERSED",
+      );
       return {
         attemptId: attempt.attemptId,
         surveyTitle: findSurvey(attempt.surveyId)?.title ?? "Khảo sát",
         source: attempt.type,
         submittedAt: attempt.submittedAt ?? nowIso(),
-        result: attempt.type === "EXTERNAL" ? "NOT_ASSESSED" : held ? "PENDING" : "PASSED",
+        result: attempt.type === "EXTERNAL" ? "NOT_ASSESSED" : reversed ? "REVIEW" : held ? "PENDING" : "PASSED",
       };
     });
   const recent = [...own, ...seededRows(user)].sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));

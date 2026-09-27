@@ -291,6 +291,17 @@ export interface FormDetailDto {
    * kind was recorded). Only an `OWNER` close can be reopened.
    */
   closeKind?: "OWNER" | "ADMIN" | "MODERATION" | null;
+  /**
+   * `GET /forms/:id` only (Phase 5 M1/M2): completed participations so far
+   * (quota definition, guests included).
+   */
+  completedCompletions?: number;
+  /**
+   * `GET /forms/:id` only (Phase 5 M1): unused Escrow the survey still holds —
+   * what closing it now would refund (points owed to completed but unsettled
+   * responses excluded). `null` when the server cannot compute it.
+   */
+  escrowLocked?: number | null;
   currentVersion: FormVersionDto;
   createdAt: string;
   updatedAt: string;
@@ -331,6 +342,15 @@ export interface FormSummaryDto {
   expectedCompletions: number;
   estimatedDurationMinutes?: number | null;
   latestVersionNumber: number;
+  /** Who closed the survey most recently (see `FormDetailDto.closeKind`). */
+  closeKind: "OWNER" | "ADMIN" | "MODERATION" | null;
+  /** Completed participations so far (quota definition, guests included). */
+  completedCompletions: number;
+  /**
+   * Unused Escrow the survey still holds (see `FormDetailDto.escrowLocked`);
+   * `null` when the server cannot compute it.
+   */
+  escrowLocked: number | null;
   createdAt: string;
   updatedAt: string;
 }

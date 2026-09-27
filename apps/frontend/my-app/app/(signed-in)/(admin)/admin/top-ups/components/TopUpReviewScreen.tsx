@@ -22,6 +22,8 @@ export function TopUpReviewScreen() {
   const { selected, failure } = review;
 
   function closeReject() {
+    // A reject in flight keeps the dialog (and its eventual error) on screen.
+    if (review.busy === "reject") return;
     setRejecting(null);
     review.clearFailure();
   }

@@ -121,3 +121,12 @@ version id, the frontend compares the ASSUMED `versionNumber` of `GET /attempts/
 the form's `versionNumber`; on a mismatch the runner shows "Khảo sát vừa được cập nhật — bắt
 đầu lại" (cancel via the ASSUMED cancel route, drop the draft, back to the consent screen).
 Without `versionNumber` no check is made.
+
+### Contract gap: complaints about an in-Rescom response
+
+The complaint flow only exists for a Google Forms (`EXTERNAL`) attempt pending its 48h
+review: `app/(signed-in)/(app)/forms/[id]/complaints/[attemptId]/page.tsx`. There is no
+backend route to complain about one answer of an in-Rescom (`INTERNAL`) response, so the
+"Khiếu nại về câu trả lời này" link was removed from the responses screen
+(`ResponseAnswers.tsx`, `ResponsesScreen.tsx`, `ResponsesMobile.tsx`) rather than pointing
+at a 404. Restore it once a backend complaint route for in-Rescom responses exists.

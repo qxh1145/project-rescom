@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useRef, useState, type DragEvent } from "react";
 import Link from "next/link";
 import { formBlockTypeEnum, type FormBlock } from "@rescom/schemas";
 import { Icon } from "@/components/ui/Icon";
@@ -15,6 +15,7 @@ import {
   removeSection,
   renameSection,
   summarizeDoc,
+  toDraftDefinition,
   updateBlock,
   type BuilderSection,
 } from "@/lib/forms/builder-blocks";
@@ -31,7 +32,6 @@ interface CanvasProps {
   formId: string;
   toolboxDragging: boolean;
   onToolboxDrop: () => void;
-  aiBanner: ReactNode;
 }
 
 function DropIndicator({ number }: { number: number }) {
@@ -47,7 +47,7 @@ function DropIndicator({ number }: { number: number }) {
 }
 
 /** Figma 13 canvas (63:4406 empty, 72:252 with questions). */
-export function Canvas({ editor, formId, toolboxDragging, onToolboxDrop, aiBanner }: CanvasProps) {
+export function Canvas({ editor, formId, toolboxDragging, onToolboxDrop }: CanvasProps) {
   const { doc, readOnly } = editor;
   const listRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -157,12 +157,10 @@ export function Canvas({ editor, formId, toolboxDragging, onToolboxDrop, aiBanne
       <DropIndicator number={target.number} />
     ) : null;
 
-  const hint = internalPriceHint(summary.minutes);
+  const hint = internalPriceHint(summary.minutes, toDraftDefinition(doc));
 
   return (
     <div className="mx-auto flex w-full max-w-[680px] flex-col gap-4 px-4 pt-6 pb-16 lg:px-0">
-      {aiBanner}
-
       {/* Title card (63:4407): 6px primary top border. */}
       <div className="rounded-[16px] border border-t-6 border-primary bg-surface px-5.5 pt-4 pb-5">
         <label className="sr-only" htmlFor="builder-title">
@@ -343,7 +341,7 @@ export function Canvas({ editor, formId, toolboxDragging, onToolboxDrop, aiBanne
               <span className="text-ink-strong">· {summary.attentionNumbers.length} câu kiểm tra chú ý</span>
             ) : null}
             <span className="ml-auto inline-flex h-7 items-center rounded-full bg-tone-green-bg px-2.5 font-bold text-tone-green-fg">
-              Giá gợi ý {hint.label} · rẻ hơn 20%
+              Giá gợi ý {hint.label} · {hint.paidLabel}
             </span>
           </div>
         </>
