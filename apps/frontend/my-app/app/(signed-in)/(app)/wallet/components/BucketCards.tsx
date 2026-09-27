@@ -36,7 +36,7 @@ export function BucketCards({ balance, pendingHoursLeft, pendingDue }: BucketCar
 
   return (
     <div className="flex flex-col gap-2">
-      <ul className="grid grid-cols-3 gap-2.5 lg:gap-3">
+      <ul data-tour="wallet-buckets" className="grid grid-cols-3 gap-2.5 lg:gap-3">
         {tiles.map((tile) => (
           <li
             key={tile.label}

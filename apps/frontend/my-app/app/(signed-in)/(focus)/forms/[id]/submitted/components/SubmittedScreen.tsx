@@ -88,7 +88,7 @@ function CodeView({ survey }: { survey: SubmittedSurvey }) {
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 px-5 pt-5 lg:mt-6 lg:grid lg:grid-cols-2 lg:gap-0 lg:overflow-hidden lg:rounded-[28px] lg:border lg:border-line lg:bg-surface lg:p-0">
+      <div data-tour="completion-code" className="flex flex-col gap-4 px-5 pt-5 lg:mt-6 lg:grid lg:grid-cols-2 lg:gap-0 lg:overflow-hidden lg:rounded-[28px] lg:border lg:border-line lg:bg-surface lg:p-0">
         <section
           aria-labelledby="code-title"
           className="rounded-[18px] border border-line bg-surface px-4.5 py-4 lg:rounded-none lg:border-0 lg:border-r lg:px-9 lg:py-8"

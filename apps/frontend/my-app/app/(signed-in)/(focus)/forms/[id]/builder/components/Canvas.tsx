@@ -192,7 +192,7 @@ export function Canvas({ editor, formId, toolboxDragging, onToolboxDrop }: Canva
         <p className="text-caption text-danger">{editor.issues.form.join(" ")}</p>
       ) : null}
 
-      <div ref={listRef} onDragOver={onDragOver} onDrop={onDrop} onDragLeave={(event) => {
+      <div ref={listRef} data-tour="builder-canvas" onDragOver={onDragOver} onDrop={onDrop} onDragLeave={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setToolboxTarget(null);
       }} className="flex flex-col gap-3">
         {doc.blocks.length === 0 && doc.sections.length === 0 ? (

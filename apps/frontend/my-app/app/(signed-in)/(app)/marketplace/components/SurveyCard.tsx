@@ -41,6 +41,7 @@ export function SurveyCard({ survey, featured, starting, disabled, onStart }: Su
   return (
     <article
       aria-labelledby={titleId}
+      data-tour={featured ? "survey-card" : undefined}
       className={[
         "flex flex-col rounded-[18px] border border-line p-4 lg:rounded-[20px] lg:p-5",
         completed ? "bg-surface-subtle" : "bg-surface",
@@ -111,6 +112,7 @@ export function SurveyCard({ survey, featured, starting, disabled, onStart }: Su
             disabled={disabled || starting}
             aria-busy={starting || undefined}
             aria-label={`Bắt đầu: ${survey.title}`}
+            data-tour={featured ? "survey-start" : undefined}
             className={buttonClassName({
               variant: featured ? "primary" : "outline",
               size: "md",

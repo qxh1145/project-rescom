@@ -20,6 +20,7 @@ import { notificationHandlers } from "./notifications";
 import { participationHandlers } from "./participation";
 import { externalParticipationHandlers } from "./participation-external";
 import { internalParticipationHandlers } from "./participation-internal";
+import { productTourHandlers } from "./product-tours";
 import { profileHandlers } from "./profile";
 import { topUpHandlers } from "./top-up";
 
@@ -47,6 +48,7 @@ export const handlers = [
   ...participationHandlers,
   ...internalParticipationHandlers,
   ...externalParticipationHandlers,
+  ...productTourHandlers,
   ...profileHandlers,
   ...topUpHandlers,
 ];

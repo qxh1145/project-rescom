@@ -320,6 +320,7 @@ export function BuilderScreen() {
         </main>
         <aside
           aria-label="Thuộc tính câu hỏi"
+          data-tour="builder-properties"
           className="sticky top-17 h-[calc(100dvh-68px)] w-85 shrink-0 overflow-y-auto border-l border-line bg-surface"
         >
           <PropertiesPanel key={editor.selectedId ?? "none"} editor={editor} />

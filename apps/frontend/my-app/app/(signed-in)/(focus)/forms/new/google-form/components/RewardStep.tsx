@@ -246,7 +246,7 @@ export function RewardAside({ draft, quote }: { draft: GoogleFormWizardDraft; qu
   const topic = TOPIC_OPTIONS.find((option) => option.value === draft.topic)?.value;
   return (
     <>
-      <section aria-label="Tóm tắt ký quỹ" className="rounded-[20px] border border-line bg-surface px-5 py-5">
+      <section aria-label="Tóm tắt ký quỹ" data-tour="escrow-summary" className="rounded-[20px] border border-line bg-surface px-5 py-5">
         {quote ? (
           <EscrowRows quote={quote} large />
         ) : (

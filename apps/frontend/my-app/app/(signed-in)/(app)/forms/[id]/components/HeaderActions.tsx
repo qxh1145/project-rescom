@@ -22,7 +22,7 @@ const PRIMARY = `${BASE} h-11 border-primary bg-primary text-primary-foreground 
  * waits for a backend route (`PAUSE_SUPPORTED`, Phase 5 M3); "Rút lại & hoàn
  * điểm" covers a survey waiting for review and a re-versioned draft (M7).
  */
-export function HeaderActions({ form, className = "" }: { form: PublisherForm; className?: string }) {
+export function HeaderActions({ form, className = "", tourTarget }: { form: PublisherForm; className?: string; tourTarget?: string }) {
   const { requestClose, togglePause, pausing } = useFormActions();
   const view = statusViewOf(form);
   const id = encodeURIComponent(form.id);
@@ -41,7 +41,7 @@ export function HeaderActions({ form, className = "" }: { form: PublisherForm; c
   }
 
   return (
-    <div className={`flex flex-wrap gap-2.5 ${className}`}>
+    <div data-tour={tourTarget} className={`flex flex-wrap gap-2.5 ${className}`}>
       {externalUrl && (live || ended) ? (
         <a href={externalUrl} target="_blank" rel="noopener noreferrer" className={SECONDARY_LINK}>
           <Icon name="external-link" size={16} />

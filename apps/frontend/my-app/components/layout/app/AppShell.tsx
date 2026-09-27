@@ -1,4 +1,5 @@
 import { Suspense, type ReactNode } from "react";
+import { TourLauncher } from "@/components/product-tour/TourWidgets";
 import { AppHeader } from "./AppHeader";
 import { BottomNav } from "./BottomNav";
 import { SessionGate } from "./SessionGate";
@@ -17,6 +18,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <AppHeader />
           <main className="flex-1 pb-[calc(62px+env(safe-area-inset-bottom))] lg:pb-0">{children}</main>
           <BottomNav />
+          <TourLauncher />
         </div>
       </SessionGate>
     </Suspense>

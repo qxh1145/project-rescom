@@ -218,7 +218,7 @@ function EstimateText({ estimate, format }: { estimate: EstimateState; format: "
 export function AudienceAside({ draft, estimate }: { draft: GoogleFormWizardDraft; estimate: EstimateState }) {
   return (
     <>
-      <div className="rounded-[20px] bg-tone-teal-bg p-5">
+      <div data-tour="audience-estimate" className="rounded-[20px] bg-tone-teal-bg p-5">
         <span className="flex size-11 items-center justify-center rounded-field bg-tone-teal-accent text-ink">
           <Icon name="users" size={22} />
         </span>

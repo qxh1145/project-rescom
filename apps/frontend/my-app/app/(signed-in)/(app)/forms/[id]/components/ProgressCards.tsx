@@ -22,7 +22,7 @@ export function PendingAttemptsCard({
 }) {
   const open = attempts.filter((attempt) => attempt.dispute === null);
   return (
-    <section aria-labelledby="pending-attempts-title" className={CARD}>
+    <section aria-labelledby="pending-attempts-title" data-tour="pending-attempts" className={CARD}>
       <h2 id="pending-attempts-title" className={CARD_TITLE}>
         Lượt đang chờ 48 giờ · {open.length}
       </h2>

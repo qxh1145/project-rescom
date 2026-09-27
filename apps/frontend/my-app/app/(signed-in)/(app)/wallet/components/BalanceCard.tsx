@@ -42,6 +42,7 @@ export function BalanceCard({ available }: { available: number }) {
       </div>
       <Link
         href={CREATE_SURVEY_HREF}
+        data-tour="wallet-create-survey"
         className="relative mt-5 hidden h-12 items-center justify-center rounded-field bg-surface text-body font-extrabold text-primary transition-colors hover:bg-tone-green-bg lg:flex"
       >
         Tạo khảo sát bằng điểm
