@@ -5,18 +5,26 @@ import {
   currentClient,
   runInTransaction,
 } from '../../../common/database/prisma-unit-of-work';
-import { listCompletionRefsForForm } from '../../../common/database/completion-counts';
+import {
+  countCompletionsByFormIds,
+  listCompletionRefsByFormIds,
+  listCompletionRefsForForm,
+} from '../../../common/database/completion-counts';
 import {
   CreateVersionOptions,
   FormCompletionRefs,
+  FormCreationKey,
+  FormEscrowInputs,
   FormRepositoryPort,
   FormSummaryItem,
   FormUpdateExpectation,
+  FormWithCreationKey,
   FormWithVersion,
   ListFormsParams,
   ModerationQueuePage,
   ModerationQueueParams,
 } from '../application/ports/form-repository.port';
+import { FormCreationKeyTakenException } from '../application/exceptions/form.exceptions';
 import { FormEntity } from '../domain/form.entity';
 import { FormVersionEntity } from '../domain/form-version.entity';
 import {
@@ -46,6 +54,21 @@ function toFormEntity(raw: any, versions?: FormVersionEntity[]): FormEntity {
   );
 }
 
+/** Phase 5 C6: the unique `(publisher_id, creation_idempotency_key)` index. */
+function isCreationKeyViolation(error: unknown): boolean {
+  if (
+    !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+    error.code !== 'P2002'
+  ) {
+    return false;
+  }
+  const target = JSON.stringify(error.meta?.target ?? '');
+  return (
+    target.includes('creation_idempotency_key') ||
+    target.includes('creationIdempotencyKey')
+  );
+}
+
 function toFormVersionEntity(raw: any): FormVersionEntity {
   return new FormVersionEntity(
     raw.id,
@@ -68,6 +91,7 @@ export class PrismaFormRepository implements FormRepositoryPort {
   async create(
     form: FormEntity,
     initialVersion: FormVersionEntity,
+    creationKey?: FormCreationKey,
   ): Promise<FormWithVersion> {
     // Run Form + FormVersion creation atomically so a partial write
     // (e.g. form row inserted but version row fails) never leaves the DB in an
@@ -87,6 +111,8 @@ export class PrismaFormRepository implements FormRepositoryPort {
           closeCount: form.closeCount,
           closeKind: form.closeKind,
           estimatedDurationMinutes: form.estimatedDurationMinutes,
+          creationIdempotencyKey: creationKey?.key ?? null,
+          creationRequestHash: creationKey?.requestHash ?? null,
           updatedAt: form.updatedAt,
           versions: {
             create: {
@@ -110,6 +136,13 @@ export class PrismaFormRepository implements FormRepositoryPort {
           },
         },
       });
+    }).catch((error: unknown) => {
+      // A concurrent request with the same key won; the aborted transaction
+      // (and any Escrow reserved in it) rolls back.
+      if (creationKey && isCreationKeyViolation(error)) {
+        throw new FormCreationKeyTakenException(creationKey.key);
+      }
+      throw error;
     });
 
     const versionEntities = raw.versions.map(toFormVersionEntity);
@@ -119,6 +152,30 @@ export class PrismaFormRepository implements FormRepositoryPort {
       form: formEntity,
       currentVersion: versionEntities[0],
       versions: versionEntities,
+    };
+  }
+
+  async findByCreationKey(
+    publisherId: string,
+    key: string,
+  ): Promise<FormWithCreationKey | null> {
+    const raw = await currentClient(this.prisma).form.findUnique({
+      where: {
+        publisherId_creationIdempotencyKey: {
+          publisherId,
+          creationIdempotencyKey: key,
+        },
+      },
+      include: { versions: { orderBy: { versionNumber: 'desc' } } },
+    });
+    if (!raw || raw.versions.length === 0) return null;
+
+    const versionEntities = raw.versions.map(toFormVersionEntity);
+    return {
+      form: toFormEntity(raw, versionEntities),
+      currentVersion: versionEntities[0],
+      versions: versionEntities,
+      creationRequestHash: raw.creationRequestHash ?? '',
     };
   }
 
@@ -184,10 +241,18 @@ export class PrismaFormRepository implements FormRepositoryPort {
       this.prisma.form.count({ where }),
     ]);
 
+    // One grouped count for the page (same completion definition as the
+    // participation quota and the Marketplace auto-hide).
+    const completedCounts = await countCompletionsByFormIds(
+      this.prisma,
+      items.map((raw) => raw.id),
+    );
+
     const forms: FormSummaryItem[] = items.map((raw) => ({
       form: toFormEntity(raw),
       latestVersionNumber:
         raw.versions.length > 0 ? raw.versions[0].versionNumber : 1,
+      completedCompletions: completedCounts.get(raw.id) ?? 0,
     }));
 
     return {
@@ -408,6 +473,36 @@ export class PrismaFormRepository implements FormRepositoryPort {
 
   async listRewardableCompletions(formId: string): Promise<FormCompletionRefs> {
     return listCompletionRefsForForm(currentClient(this.prisma), formId);
+  }
+
+  async listEscrowInputsByFormIds(
+    formIds: string[],
+  ): Promise<Map<string, FormEscrowInputs>> {
+    const result = new Map<string, FormEscrowInputs>();
+    if (formIds.length === 0) return result;
+    const client = currentClient(this.prisma);
+    const [versions, completions] = await Promise.all([
+      client.formVersion.findMany({
+        where: { formId: { in: formIds } },
+        select: { id: true, formId: true },
+        orderBy: { versionNumber: 'asc' },
+      }),
+      listCompletionRefsByFormIds(client, formIds),
+    ]);
+    for (const formId of formIds) {
+      result.set(formId, {
+        versionIds: [],
+        completions: completions.get(formId) ?? {
+          completedCount: 0,
+          internalResponses: [],
+          externalAttemptIds: [],
+        },
+      });
+    }
+    for (const version of versions) {
+      result.get(version.formId)?.versionIds.push(version.id);
+    }
+    return result;
   }
 
   async countInProgressAttempts(

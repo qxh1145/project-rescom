@@ -451,6 +451,36 @@ describe('Admin Users & RBAC E2E Tests (Story 1.4)', () => {
       expect(missingToken.body.error.code).toBe('AUTH_INVALID_CSRF_TOKEN');
     });
 
+    it('should reject locking without a reason with 400 VALIDATION_ERROR', async () => {
+      const { tokens } = await createTestUserWithSession(
+        'admin-lock-noreason@example.com',
+        'ADMIN',
+      );
+      const target = await userRepo.create({
+        email: 'lock-noreason-target@example.com',
+        passwordHash: 'hash',
+        role: 'RESPONDENT',
+        status: 'ACTIVE',
+      });
+
+      for (const body of [
+        { status: 'LOCKED' },
+        { status: 'LOCKED', reason: '  ngắn  ' },
+      ]) {
+        const res = await request(app.getHttpServer())
+          .patch(`/admin/users/${target.id}/status`)
+          .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
+          .set('Origin', 'http://localhost:3000')
+          .set('x-csrf-token', tokens.csrfToken)
+          .send(body)
+          .expect(400);
+        expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      }
+
+      const unchanged = await userRepo.findById(target.id);
+      expect(unchanged?.status).toBe('ACTIVE');
+    });
+
     it('should reject admin self-locking with 400 CANNOT_LOCK_SELF', async () => {
       const { user: admin, tokens } = await createTestUserWithSession(
         'admin-selflock@example.com',
@@ -462,7 +492,10 @@ describe('Admin Users & RBAC E2E Tests (Story 1.4)', () => {
         .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`])
         .set('Origin', 'http://localhost:3000')
         .set('x-csrf-token', tokens.csrfToken)
-        .send({ status: 'LOCKED' })
+        .send({
+          status: 'LOCKED',
+          reason: 'Vi phạm quy định cộng đồng nhiều lần',
+        })
         .expect(400);
 
       expect(res.body.error.code).toBe('CANNOT_LOCK_SELF');
@@ -522,7 +555,10 @@ describe('Admin Users & RBAC E2E Tests (Story 1.4)', () => {
         .set('Cookie', [`${AUTH_COOKIE_NAME}=${adminTokens.accessToken}`])
         .set('Origin', 'http://localhost:3000')
         .set('x-csrf-token', adminTokens.csrfToken)
-        .send({ status: 'LOCKED' })
+        .send({
+          status: 'LOCKED',
+          reason: 'Vi phạm quy định cộng đồng nhiều lần',
+        })
         .expect(200);
 
       expect(res.body.data.user.status).toBe('LOCKED');

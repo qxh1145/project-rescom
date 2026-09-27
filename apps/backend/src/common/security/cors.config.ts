@@ -16,6 +16,7 @@ export function createCorsOptions(envService: EnvService): CorsOptions {
       'Content-Type',
       'Authorization',
       'x-csrf-token',
+      'Idempotency-Key',
       'Cookie',
       'Accept',
       'Origin',

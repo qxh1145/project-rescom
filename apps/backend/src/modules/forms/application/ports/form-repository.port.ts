@@ -13,6 +13,21 @@ export interface FormWithVersion {
 export interface FormSummaryItem {
   form: FormEntity;
   latestVersionNumber: number;
+  /** Completed participations (quota definition, guests included). */
+  completedCompletions: number;
+}
+
+/**
+ * Phase 5 C6: the `Idempotency-Key` a survey was created with, scoped to its
+ * Publisher, and the fingerprint of the creating request body.
+ */
+export interface FormCreationKey {
+  key: string;
+  requestHash: string;
+}
+
+export interface FormWithCreationKey extends FormWithVersion {
+  creationRequestHash: string;
 }
 
 export interface ListFormsParams {
@@ -68,11 +83,32 @@ export interface FormCompletionRefs {
   externalAttemptIds: string[];
 }
 
+/**
+ * Phase 5 M-1: what the Escrow position of one form is computed from — its
+ * version ids (`publish:` reservations) and its completions.
+ */
+export interface FormEscrowInputs {
+  versionIds: string[];
+  completions: FormCompletionRefs;
+}
+
 export interface FormRepositoryPort {
+  /**
+   * With `creationKey`, the key is stored with the form; a second form of the
+   * same Publisher with the same key throws `FormCreationKeyTakenException`
+   * (unique constraint — the caller's Unit of Work rolls back).
+   */
   create(
     form: FormEntity,
     initialVersion: FormVersionEntity,
+    creationKey?: FormCreationKey,
   ): Promise<FormWithVersion>;
+
+  /** Phase 5 C6: the Publisher's form created with this `Idempotency-Key`. */
+  findByCreationKey(
+    publisherId: string,
+    key: string,
+  ): Promise<FormWithCreationKey | null>;
 
   findById(id: string): Promise<FormWithVersion | null>;
 
@@ -121,6 +157,15 @@ export interface FormRepositoryPort {
    * Escrow. Joins the ambient Unit of Work (read inside close/publish).
    */
   listRewardableCompletions(formId: string): Promise<FormCompletionRefs>;
+
+  /**
+   * Phase 5 M-1: `findAllVersions` ids + `listRewardableCompletions` for a
+   * page of forms in a constant number of grouped reads. Every requested
+   * form id is present in the result.
+   */
+  listEscrowInputsByFormIds(
+    formIds: string[],
+  ): Promise<Map<string, FormEscrowInputs>>;
 
   /**
    * Decision E5-D4: the form's unexpired IN_PROGRESS attempts (started on or

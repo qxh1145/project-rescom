@@ -121,7 +121,7 @@ describe('AdminUsersController', () => {
     it('should delegate to service with actor id and audit metadata and return updated user', async () => {
       const response = await controller.updateUserStatus(
         sampleUser.id,
-        { status: 'LOCKED' },
+        { status: 'LOCKED', reason: 'Spam khảo sát hàng loạt' },
         adminActor,
         mockReq,
       );
@@ -134,6 +134,7 @@ describe('AdminUsersController', () => {
         {
           ipAddress: '127.0.0.1',
           userAgent: 'Jest-Test',
+          reason: 'Spam khảo sát hàng loạt',
         },
       );
       expect(response.data!.user.status).toBe('LOCKED');

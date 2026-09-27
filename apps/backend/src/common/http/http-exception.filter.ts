@@ -64,6 +64,7 @@ import {
   PricingRewardOutOfBandException,
   FormPublishedFieldsImmutableException,
   FormInModerationException,
+  IdempotencyKeyConflictException,
 } from '../../modules/forms/application/exceptions/form.exceptions';
 import {
   ParticipantNotEligibleException,
@@ -217,6 +218,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
       code = exception.code;
       message = exception.message;
       details = { reason: exception.reason, closeKind: exception.closeKind };
+    } else if (exception instanceof IdempotencyKeyConflictException) {
+      // Phase 5 C6: an Idempotency-Key reused for another request body, or
+      // for a survey that changed since it was created.
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = { reason: exception.reason, formId: exception.formId };
     } else if (exception instanceof ModerationEscrowNotFundedException) {
       // Epic 8 review P2: queue entry / approval of an unfunded survey.
       status = HttpStatus.CONFLICT;

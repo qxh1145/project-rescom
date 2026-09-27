@@ -63,7 +63,10 @@ describe('Admin last-admin HTTP error envelopes', () => {
 
     const response = await request(app.getHttpServer())
       .patch('/admin/users/123e4567-e89b-12d3-a456-426614174000/status')
-      .send({ status: 'LOCKED' })
+      .send({
+        status: 'LOCKED',
+        reason: 'Vi phạm quy định cộng đồng nhiều lần',
+      })
       .expect(400);
 
     expect(response.body.error.code).toBe('CANNOT_LOCK_LAST_ADMIN');
@@ -89,7 +92,10 @@ describe('Admin last-admin HTTP error envelopes', () => {
 
     const response = await request(app.getHttpServer())
       .patch('/admin/users/123e4567-e89b-12d3-a456-426614174000/status')
-      .send({ status: 'LOCKED' })
+      .send({
+        status: 'LOCKED',
+        reason: 'Vi phạm quy định cộng đồng nhiều lần',
+      })
       .expect(403);
 
     expect(response.body.error.code).toBe('USER_ADMIN_ACTOR_NOT_ACTIVE_ADMIN');

@@ -127,6 +127,55 @@ export async function listCompletionRefsForForm(
 }
 
 /**
+ * Phase 5 M-1: `listCompletionRefsForForm` for many forms in three grouped
+ * reads (same filters, same completion definition). Every requested form id
+ * is present in the result.
+ */
+export async function listCompletionRefsByFormIds(
+  client: CompletionCountClient,
+  formIds: string[],
+): Promise<Map<string, FormCompletionRefs>> {
+  const result = new Map<string, FormCompletionRefs>();
+  if (formIds.length === 0) return result;
+
+  const [counts, responses, attempts] = await Promise.all([
+    countCompletionsByFormIds(client, formIds),
+    client.response.findMany({
+      where: {
+        formId: { in: formIds },
+        isGuest: false,
+        respondentId: { not: null },
+        status: { in: [...SETTLEABLE_RESPONSE_STATUSES] },
+      },
+      select: { id: true, status: true, formId: true },
+    }),
+    client.surveyAttempt.findMany({
+      where: { surveyId: { in: formIds }, status: 'COMPLETED', response: null },
+      select: { id: true, surveyId: true },
+    }),
+  ]);
+
+  for (const formId of formIds) {
+    result.set(formId, {
+      completedCount: counts.get(formId) ?? 0,
+      internalResponses: [],
+      externalAttemptIds: [],
+    });
+  }
+  const completedStatuses: readonly string[] = COMPLETED_RESPONSE_STATUSES;
+  for (const response of responses) {
+    result.get(response.formId)?.internalResponses.push({
+      id: response.id,
+      rewardable: completedStatuses.includes(response.status),
+    });
+  }
+  for (const attempt of attempts) {
+    result.get(attempt.surveyId)?.externalAttemptIds.push(attempt.id);
+  }
+  return result;
+}
+
+/**
  * Forms the respondent has completed: a SUBMITTED/VALIDATED Response OR a
  * COMPLETED attempt (External completions; Internal ones whose Response was
  * later DISPUTED/REJECTED). Same definition as participation's

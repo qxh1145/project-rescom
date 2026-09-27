@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import {
   calculateEscrowCost,
   checkPublishRewardBand,
@@ -40,6 +40,8 @@ import {
   updateFormDraftSchema,
 } from '@rescom/schemas';
 import {
+  FormCompletionRefs,
+  FormCreationKey,
   FormRepositoryPort,
   FormWithVersion,
 } from './ports/form-repository.port';
@@ -53,6 +55,7 @@ import {
   FormsEscrowCoordinator,
 } from './forms-escrow.coordinator';
 import { FormEntity } from '../domain/form.entity';
+import { InsufficientBalanceException } from '../../economy/application/exceptions/economy.exceptions';
 import { FormVersionEntity } from '../domain/form-version.entity';
 import {
   FormAlreadyClosedException,
@@ -64,7 +67,9 @@ import {
   FormNotInDraftStatusException,
   FormNotPublishedException,
   FormConflictException,
+  FormCreationKeyTakenException,
   FormInModerationException,
+  IdempotencyKeyConflictException,
   FormPublishedFieldsImmutableException,
   FormValidationException,
   InvalidFormDraftException,
@@ -157,6 +162,29 @@ function withNormalizedEffort(
   };
 }
 
+/**
+ * Phase 5 C6: canonical JSON (object keys sorted) of the validated request
+ * body, so the same logical request always yields the same fingerprint.
+ */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+function requestFingerprint(value: unknown): string {
+  return createHash('sha256').update(canonicalJson(value)).digest('hex');
+}
+
 export class FormsService {
   constructor(
     private readonly formRepository: FormRepositoryPort,
@@ -244,16 +272,36 @@ export class FormsService {
     return toFormDetailDto(created);
   }
 
+  /**
+   * Phase 5 C6 (decision Q6, option a): with an `Idempotency-Key`, a retry of
+   * the same request by the same Publisher returns the survey the first one
+   * created (`idempotentReplay: true`, same one-time completion code) without
+   * creating or funding a second survey; the same key with a different body
+   * is refused (409 `IDEMPOTENCY_KEY_CONFLICT`). The code of a keyed request
+   * is derived from the key with the server secret, so it can be disclosed
+   * again without storing the plaintext.
+   */
   async createExternalSurvey(
     publisherId: string,
     rawDto: CreateExternalSurveyInput,
+    idempotencyKey?: string,
   ): Promise<ExternalSurveyResponseDto> {
     const dto = createExternalSurveySchema.parse(rawDto);
+    const creationKey: FormCreationKey | undefined = idempotencyKey
+      ? { key: idempotencyKey, requestHash: requestFingerprint(dto) }
+      : undefined;
+    if (creationKey) {
+      const replay = await this.replayExternalSurvey(publisherId, creationKey);
+      if (replay) return replay;
+    }
+
     const formId = randomUUID();
     const versionId = randomUUID();
     const now = new Date();
 
-    const plaintextCode = this.getCompletionCodePort().generateSixDigitCode();
+    const plaintextCode = creationKey
+      ? this.creationKeyCode(publisherId, creationKey.key)
+      : this.getCompletionCodePort().generateSixDigitCode();
     const verifier = this.getCompletionCodePort().computeVerifier(
       versionId,
       plaintextCode,
@@ -330,16 +378,37 @@ export class FormsService {
     // AD-16 Publish+Escrow: an auto-published survey reserves its Escrow in the
     // same Unit of Work that creates it, so an unfunded survey never reaches the
     // moderation queue (insufficient balance → nothing is created).
-    const created = dto.autoPublish
-      ? await this.unitOfWork.run(`publish:${versionId}`, async () => {
-          await this.escrowCoordinator?.coordinatePublish(
-            form,
-            version,
-            publisherId,
-          );
-          return this.formRepository.create(form, version);
-        })
-      : await this.formRepository.create(form, version);
+    // A concurrent request with the same key loses on the unique key: its
+    // Unit of Work (with its Escrow reservation) rolls back and it replays
+    // the winner's survey. When the balance only covers one survey, the loser
+    // fails the reservation instead (the winner's lock consumed it); it still
+    // replays the winner's survey rather than reporting INSUFFICIENT_BALANCE.
+    let created: FormWithVersion;
+    try {
+      created = dto.autoPublish
+        ? await this.unitOfWork.run(`publish:${versionId}`, async () => {
+            await this.escrowCoordinator?.coordinatePublish(
+              form,
+              version,
+              publisherId,
+            );
+            return this.formRepository.create(form, version, creationKey);
+          })
+        : await this.formRepository.create(form, version, creationKey);
+    } catch (error) {
+      if (
+        creationKey &&
+        (error instanceof FormCreationKeyTakenException ||
+          error instanceof InsufficientBalanceException)
+      ) {
+        const replay = await this.replayExternalSurvey(
+          publisherId,
+          creationKey,
+        );
+        if (replay) return replay;
+      }
+      throw error;
+    }
     const detail = toFormDetailDto(created);
     return {
       ...detail,
@@ -348,6 +417,73 @@ export class FormsService {
       externalUrl: created.currentVersion.externalUrl,
       currentVersionNumber: created.currentVersion.versionNumber,
     };
+  }
+
+  /** Phase 5 C6: the survey an earlier request with this key created. */
+  private async replayExternalSurvey(
+    publisherId: string,
+    creationKey: FormCreationKey,
+  ): Promise<ExternalSurveyResponseDto | null> {
+    const existing = await this.formRepository.findByCreationKey(
+      publisherId,
+      creationKey.key,
+    );
+    if (!existing) return null;
+    if (existing.creationRequestHash !== creationKey.requestHash) {
+      throw new IdempotencyKeyConflictException(
+        'DIFFERENT_REQUEST',
+        existing.form.id,
+      );
+    }
+    // The disclosed code belongs to the created version; after a rotation or
+    // a new version it would be stale, so the replay is refused instead.
+    const version = existing.currentVersion;
+    const plaintextCode = this.creationKeyCode(publisherId, creationKey.key);
+    if (
+      version.versionNumber !== 1 ||
+      !this.getCompletionCodePort().verifyCode(
+        version.id,
+        plaintextCode,
+        version.completionCode,
+      )
+    ) {
+      throw new IdempotencyKeyConflictException(
+        'SURVEY_CHANGED',
+        existing.form.id,
+      );
+    }
+    return {
+      ...toFormDetailDto(existing),
+      plaintextCompletionCode: plaintextCode,
+      hasCompletionCode: true,
+      externalUrl: version.externalUrl,
+      currentVersionNumber: version.versionNumber,
+      idempotentReplay: true,
+    };
+  }
+
+  private creationKeyCode(publisherId: string, key: string): string {
+    return this.getCompletionCodePort().deriveSixDigitCode(
+      `external-survey:${publisherId}:${key}`,
+    );
+  }
+
+  /**
+   * Phase 5 M1: the unused Escrow a form still holds — what closing it now
+   * would refund. `null` without an Escrow coordinator.
+   */
+  private async heldEscrow(
+    form: FormEntity,
+    completions: FormCompletionRefs,
+  ): Promise<number | null> {
+    if (!this.escrowCoordinator) return null;
+    const position = await this.escrowCoordinator.getFundingPosition(
+      form,
+      form.publisherId,
+      [],
+      completions,
+    );
+    return position.held;
   }
 
   async getFormById(
@@ -366,7 +502,27 @@ export class FormsService {
       throw new FormForbiddenException();
     }
 
-    return toFormDetailDto(record);
+    return this.toManagedDetailDto(record);
+  }
+
+  /**
+   * Phase 5 M1/M2: the detail with the management facts the Publisher's
+   * survey header shows (`GET /forms/:id`, and the close / reopen answers so
+   * the header does not fall back to unknown values after the action).
+   */
+  private async toManagedDetailDto(
+    record: FormWithVersion,
+  ): Promise<FormDetailDto> {
+    // The completions are read once and reused for the Escrow position.
+    const completions = await this.formRepository.listRewardableCompletions(
+      record.form.id,
+    );
+    const escrowLocked = await this.heldEscrow(record.form, completions);
+    return {
+      ...toFormDetailDto(record),
+      completedCompletions: completions.completedCount,
+      escrowLocked,
+    };
   }
 
   async listForms(
@@ -390,6 +546,14 @@ export class FormsService {
       type: query.type,
     });
 
+    // Phase 5 M2: the Escrow of each form comes from its own journals, read
+    // for the whole page in a constant number of queries (M-1).
+    const escrow = this.escrowCoordinator
+      ? await this.escrowCoordinator.getHeldEscrowByForm(
+          forms.map((item) => item.form),
+        )
+      : null;
+
     const items: FormSummaryDto[] = forms.map((item) => ({
       id: item.form.id,
       publisherId: item.form.publisherId,
@@ -401,6 +565,9 @@ export class FormsService {
       expectedCompletions: item.form.expectedCompletions,
       estimatedDurationMinutes: item.form.estimatedDurationMinutes,
       latestVersionNumber: item.latestVersionNumber,
+      closeKind: item.form.closeKind,
+      completedCompletions: item.completedCompletions,
+      escrowLocked: escrow?.get(item.form.id) ?? null,
       createdAt: item.form.createdAt.toISOString(),
       updatedAt: item.form.updatedAt.toISOString(),
     }));
@@ -849,7 +1016,7 @@ export class FormsService {
       },
     );
 
-    return toFormDetailDto(saved);
+    return this.toManagedDetailDto(saved);
   }
 
   async transitionStatus(
@@ -1232,7 +1399,7 @@ export class FormsService {
       },
     );
 
-    return toFormDetailDto(saved);
+    return this.toManagedDetailDto(saved);
   }
 
   /**

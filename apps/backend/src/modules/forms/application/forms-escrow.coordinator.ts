@@ -3,8 +3,14 @@ import {
   EscrowCostCalculationResult,
   escrowDrawPerCompletion,
 } from '@rescom/schemas';
-import { FormRepositoryPort } from './ports/form-repository.port';
-import { LedgerService } from '../../economy/application/ledger.service';
+import {
+  FormCompletionRefs,
+  FormRepositoryPort,
+} from './ports/form-repository.port';
+import {
+  FormEscrowPosition,
+  LedgerService,
+} from '../../economy/application/ledger.service';
 import { FormEntity } from '../domain/form.entity';
 import { FormVersionEntity } from '../domain/form-version.entity';
 
@@ -147,11 +153,14 @@ export class FormsEscrowCoordinator {
    * to be 0. A free survey (effective cost 0) needs no Escrow.
    * `extraVersionIds`: versions not persisted yet whose `publish:` journal
    * counts (auto-publish creates the version in the same Unit of Work).
+   * `completions`: the form's completions when the caller already loaded
+   * them (read once, not twice).
    */
   async getFundingPosition(
     form: FormEntity,
     publisherId: string,
     extraVersionIds: string[] = [],
+    completions?: FormCompletionRefs,
   ): Promise<EscrowFundingPosition> {
     if (this.getEscrowQuote(form).effectiveCost <= 0) {
       return { required: 0, held: 0, shortfall: 0 };
@@ -160,6 +169,7 @@ export class FormsEscrowCoordinator {
       form,
       publisherId,
       extraVersionIds,
+      completions,
     );
     const openSlots = Math.max(
       0,
@@ -168,6 +178,55 @@ export class FormsEscrowCoordinator {
     const required = openSlots * state.draw;
     const held = Math.max(0, state.remaining);
     return { required, held, shortfall: Math.max(0, required - held) };
+  }
+
+  /**
+   * Phase 5 M-1: `getFundingPosition(form, form.publisherId).held` for a
+   * whole page of forms with a constant number of reads (grouped version /
+   * completion reads and one batched ledger lookup) instead of ~6 per form.
+   * Free surveys hold 0, as in `getFundingPosition`.
+   */
+  async getHeldEscrowByForm(forms: FormEntity[]): Promise<Map<string, number>> {
+    const held = new Map<string, number>();
+    const paid = forms.filter(
+      (form) => this.getEscrowQuote(form).effectiveCost > 0,
+    );
+    for (const form of forms) held.set(form.id, 0);
+    if (paid.length === 0) return held;
+
+    const inputs = await this.formRepository.listEscrowInputsByFormIds(
+      paid.map((form) => form.id),
+    );
+    const empty: FormCompletionRefs = {
+      completedCount: 0,
+      internalResponses: [],
+      externalAttemptIds: [],
+    };
+    const positions = await this.ledgerService.getFormEscrowPositions(
+      paid.map((form) => {
+        const completions = inputs.get(form.id)?.completions ?? empty;
+        return {
+          publisherId: form.publisherId,
+          formId: form.id,
+          versionIds: inputs.get(form.id)?.versionIds ?? [],
+          internalResponseIds: completions.internalResponses.map(
+            (response) => response.id,
+          ),
+          externalAttemptIds: completions.externalAttemptIds,
+        };
+      }),
+    );
+    for (const form of paid) {
+      const position = positions.get(form.id);
+      if (!position) continue;
+      const state = toEscrowState(
+        form,
+        inputs.get(form.id)?.completions ?? empty,
+        position,
+      );
+      held.set(form.id, Math.max(0, state.remaining));
+    }
+    return held;
   }
 
   /**
@@ -289,10 +348,12 @@ export class FormsEscrowCoordinator {
     form: FormEntity,
     publisherId: string,
     extraVersionIds: string[] = [],
+    preloadedCompletions?: FormCompletionRefs,
   ): Promise<FormEscrowState> {
     const [versions, completions] = await Promise.all([
       this.formRepository.findAllVersions(form.id),
-      this.formRepository.listRewardableCompletions(form.id),
+      preloadedCompletions ??
+        this.formRepository.listRewardableCompletions(form.id),
     ]);
     const versionIds = Array.from(
       new Set([...versions.map((version) => version.id), ...extraVersionIds]),
@@ -308,26 +369,38 @@ export class FormsEscrowCoordinator {
       externalAttemptIds: completions.externalAttemptIds,
     });
 
-    const draw = escrowDrawPerCompletion(form);
-    const unsettled =
-      completions.internalResponses.filter(
-        (response) =>
-          response.rewardable && !position.settledResponseIds.has(response.id),
-      ).length +
-      completions.externalAttemptIds.filter(
-        (attemptId) => !position.settledAttemptIds.has(attemptId),
-      ).length;
-
-    return {
-      remaining:
-        position.reserved -
-        position.refunded -
-        position.consumed -
-        unsettled * draw,
-      completedCount: completions.completedCount,
-      draw,
-    };
+    return toEscrowState(form, completions, position);
   }
+}
+
+/**
+ * A form's Escrow state from its completions and ledger position (shared by
+ * the single-form and the batched reads, so both compute the same value).
+ */
+function toEscrowState(
+  form: FormEntity,
+  completions: FormCompletionRefs,
+  position: FormEscrowPosition,
+): FormEscrowState {
+  const draw = escrowDrawPerCompletion(form);
+  const unsettled =
+    completions.internalResponses.filter(
+      (response) =>
+        response.rewardable && !position.settledResponseIds.has(response.id),
+    ).length +
+    completions.externalAttemptIds.filter(
+      (attemptId) => !position.settledAttemptIds.has(attemptId),
+    ).length;
+
+  return {
+    remaining:
+      position.reserved -
+      position.refunded -
+      position.consumed -
+      unsettled * draw,
+    completedCount: completions.completedCount,
+    draw,
+  };
 }
 
 /**

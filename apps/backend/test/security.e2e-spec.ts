@@ -89,6 +89,19 @@ describe('Security & API Foundation E2E Tests (Story 1.6)', () => {
       expect(res.headers['access-control-allow-methods']).toContain('GET');
     });
 
+    it('allows the Idempotency-Key request header on preflight (POST /forms/external)', async () => {
+      const res = await request(app.getHttpServer())
+        .options('/forms/external')
+        .set('Origin', 'http://localhost:3000')
+        .set('Access-Control-Request-Method', 'POST')
+        .set('Access-Control-Request-Headers', 'content-type,idempotency-key');
+
+      expect(res.status).toBe(204);
+      expect(
+        res.headers['access-control-allow-headers'].toLowerCase(),
+      ).toContain('idempotency-key');
+    });
+
     it('should NOT allow unauthorized origin on preflight OPTIONS', async () => {
       const res = await request(app.getHttpServer())
         .options('/system/metrics')

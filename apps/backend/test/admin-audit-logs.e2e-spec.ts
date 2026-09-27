@@ -296,7 +296,10 @@ describe('Admin Audit Logs E2E Tests (Story 1.5)', () => {
         .set('Cookie', adminCookies)
         .set('Origin', 'http://localhost:3000')
         .set('x-csrf-token', adminCsrfToken)
-        .send({ status: 'LOCKED' });
+        .send({
+          status: 'LOCKED',
+          reason: 'Gian lận điểm thưởng qua nhiều tài khoản',
+        });
 
       expect(patchRes.status).toBe(200);
 
@@ -318,6 +321,7 @@ describe('Admin Audit Logs E2E Tests (Story 1.5)', () => {
       expect(log.metadata).toMatchObject({
         previousStatus: 'ACTIVE',
         newStatus: 'LOCKED',
+        reason: 'Gian lận điểm thưởng qua nhiều tài khoản',
       });
     });
   });

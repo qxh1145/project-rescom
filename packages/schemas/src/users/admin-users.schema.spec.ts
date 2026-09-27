@@ -1,5 +1,5 @@
 import { MAX_PAGINATION_OFFSET } from "../common/pagination.schema";
-import { listUsersQuerySchema } from "./admin-users.schema";
+import { listUsersQuerySchema, updateUserStatusSchema } from "./admin-users.schema";
 
 describe("listUsersQuerySchema pagination bounds", () => {
   it("accepts page up to MAX_PAGINATION_OFFSET", () => {
@@ -17,5 +17,13 @@ describe("listUsersQuerySchema pagination bounds", () => {
         expect(result.error.issues[0].path).toEqual(["page"]);
       }
     }
+  });
+});
+
+describe("updateUserStatusSchema", () => {
+  it("requires an audit reason when locking and accepts unlock without one", () => {
+    expect(updateUserStatusSchema.safeParse({ status: "LOCKED" }).success).toBe(false);
+    expect(updateUserStatusSchema.safeParse({ status: "LOCKED", reason: "Vi phạm lặp lại" }).success).toBe(true);
+    expect(updateUserStatusSchema.safeParse({ status: "ACTIVE" }).success).toBe(true);
   });
 });

@@ -332,3 +332,44 @@ export class PricingRewardOutOfBandException extends Error {
     this.name = 'PricingRewardOutOfBandException';
   }
 }
+
+/**
+ * Phase 5 C6: another form of the same Publisher already carries this
+ * `Idempotency-Key` (unique constraint hit by a concurrent request). The
+ * service converges on that form; never mapped to HTTP directly.
+ */
+export class FormCreationKeyTakenException extends Error {
+  readonly code = 'FORM_CREATION_KEY_TAKEN';
+
+  constructor(readonly key: string) {
+    super(`A form was already created with this Idempotency-Key.`);
+    this.name = 'FormCreationKeyTakenException';
+  }
+}
+
+/** Why an `Idempotency-Key` cannot replay the survey it created. */
+export type IdempotencyKeyConflictReason =
+  'DIFFERENT_REQUEST' | 'SURVEY_CHANGED';
+
+/**
+ * Phase 5 C6: `POST /forms/external` reused an `Idempotency-Key` with a
+ * different request body (`DIFFERENT_REQUEST`), or the survey it created has
+ * since moved to another version, so its one-time completion code can no
+ * longer be replayed (`SURVEY_CHANGED`). Maps to HTTP 409 with
+ * `details: { reason, formId }`.
+ */
+export class IdempotencyKeyConflictException extends Error {
+  readonly code = 'IDEMPOTENCY_KEY_CONFLICT';
+
+  constructor(
+    readonly reason: IdempotencyKeyConflictReason,
+    readonly formId: string,
+  ) {
+    super(
+      reason === 'DIFFERENT_REQUEST'
+        ? 'This Idempotency-Key was already used with a different request body.'
+        : 'The survey created with this Idempotency-Key has changed since; its creation response can no longer be replayed.',
+    );
+    this.name = 'IdempotencyKeyConflictException';
+  }
+}

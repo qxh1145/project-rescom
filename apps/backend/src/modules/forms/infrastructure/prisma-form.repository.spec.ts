@@ -1,4 +1,6 @@
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../common/database/prisma.service';
+import { FormCreationKeyTakenException } from '../application/exceptions/form.exceptions';
 import { FormEntity } from '../domain/form.entity';
 import { FormVersionEntity } from '../domain/form-version.entity';
 import { PrismaFormRepository } from './prisma-form.repository';
@@ -557,5 +559,113 @@ describe('PrismaFormRepository', () => {
       expect(page.items[0].currentVersion.id).toBe('version-2');
       expect(page.items[0].versions).toHaveLength(2);
     });
+  });
+  it('turns a unique violation on the Idempotency-Key into FormCreationKeyTakenException (Phase 5 C6)', async () => {
+    const violation = new Prisma.PrismaClientKnownRequestError(
+      'Unique constraint failed',
+      {
+        code: 'P2002',
+        clientVersion: 'test',
+        meta: { target: ['publisher_id', 'creation_idempotency_key'] },
+      },
+    );
+    const transaction = {
+      form: { create: jest.fn().mockRejectedValue(violation) },
+    };
+    const prisma = {
+      $transaction: jest.fn(
+        async (callback: (tx: typeof transaction) => Promise<unknown>) =>
+          callback(transaction),
+      ),
+    } as unknown as PrismaService;
+    const repository = new PrismaFormRepository(prisma);
+    const form = new FormEntity(
+      rawForm.id,
+      rawForm.publisherId,
+      'EXTERNAL',
+      'DRAFT',
+      'Survey',
+      null,
+      10,
+      10,
+      now,
+      now,
+    );
+    const version = new FormVersionEntity(
+      rawVersion.id,
+      rawVersion.formId,
+      1,
+      schema,
+      null,
+      false,
+      null,
+      null,
+      null,
+      now,
+    );
+
+    await expect(
+      repository.create(form, version, { key: 'key-1', requestHash: 'h' }),
+    ).rejects.toBeInstanceOf(FormCreationKeyTakenException);
+    expect(transaction.form.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          creationIdempotencyKey: 'key-1',
+          creationRequestHash: 'h',
+        }),
+      }),
+    );
+  });
+
+  it('loads the Escrow inputs of a page of forms in grouped reads (Phase 5 M-1)', async () => {
+    const prisma = {
+      formVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'v-1', formId: 'form-1' },
+          { id: 'v-2', formId: 'form-1' },
+        ]),
+      },
+      response: {
+        groupBy: jest.fn().mockResolvedValue([]),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      surveyAttempt: {
+        groupBy: jest.fn().mockResolvedValue([]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: 'a-1', surveyId: 'form-2' }]),
+      },
+    };
+    const repository = new PrismaFormRepository(
+      prisma as unknown as PrismaService,
+    );
+
+    const inputs = await repository.listEscrowInputsByFormIds([
+      'form-1',
+      'form-2',
+    ]);
+
+    expect(inputs.get('form-1')).toEqual({
+      versionIds: ['v-1', 'v-2'],
+      completions: {
+        completedCount: 0,
+        internalResponses: [],
+        externalAttemptIds: [],
+      },
+    });
+    expect(inputs.get('form-2')).toEqual({
+      versionIds: [],
+      completions: {
+        completedCount: 0,
+        internalResponses: [],
+        externalAttemptIds: ['a-1'],
+      },
+    });
+    expect(prisma.formVersion.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.formVersion.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { formId: { in: ['form-1', 'form-2'] } },
+      }),
+    );
   });
 });

@@ -165,6 +165,26 @@ export class PrismaLedgerRepository implements LedgerRepositoryPort {
     return rows.map((row) => this.toJournalEntity(row));
   }
 
+  async findJournalsByIdempotencyKeyPrefixes(
+    prefixes: string[],
+  ): Promise<LedgerJournalEntity[]> {
+    const unique = Array.from(new Set(prefixes));
+    const journals: LedgerJournalEntity[] = [];
+    for (let i = 0; i < unique.length; i += KEY_LOOKUP_CHUNK_SIZE) {
+      const rows = await this.client.ledgerJournal.findMany({
+        where: {
+          OR: unique
+            .slice(i, i + KEY_LOOKUP_CHUNK_SIZE)
+            .map((prefix) => ({ idempotencyKey: { startsWith: prefix } })),
+        },
+        include: { entries: true },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      });
+      journals.push(...rows.map((row) => this.toJournalEntity(row)));
+    }
+    return journals;
+  }
+
   async findJournalsByIdempotencyKeyPrefixAndDescription(
     prefix: string,
     descriptionFragment: string,

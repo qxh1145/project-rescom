@@ -254,6 +254,28 @@ describe('PrismaLedgerRepository (Epic 6 review P7/P14)', () => {
     );
   });
 
+  it('looks up several key prefixes in one query (Phase 5 M-1)', async () => {
+    const { prisma, repository } = setup();
+
+    await repository.findJournalsByIdempotencyKeyPrefixes([
+      'reopen-escrow:f1:',
+      'close-refund:f1:',
+      'reopen-escrow:f1:',
+    ]);
+
+    expect(prisma.ledgerJournal.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.ledgerJournal.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { idempotencyKey: { startsWith: 'reopen-escrow:f1:' } },
+            { idempotencyKey: { startsWith: 'close-refund:f1:' } },
+          ],
+        },
+      }),
+    );
+  });
+
   it('reports an overdraft without account ids or balances (P11)', async () => {
     const { tx, repository } = setup();
     tx.$queryRaw.mockImplementation(async () => [
