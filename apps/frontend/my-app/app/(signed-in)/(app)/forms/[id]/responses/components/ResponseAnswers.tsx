@@ -1,4 +1,5 @@
 import { Icon } from "@/components/ui/Icon";
+import { Tag } from "@/components/ui/Tag";
 import { reviewReasonText } from "@/lib/forms/results-messages";
 import type { FormResponse, FormResponses, ResultQuestion } from "@/lib/forms/results-service";
 import {
@@ -12,12 +13,18 @@ import { QualityTag } from "./QualityTag";
 
 type Variant = "panel" | "page";
 
-/** "Nộp 18/09 16:48 · 6 phút 02 giây" + quality pill (+ ASSUMED reason line for "Cần xem lại"). */
+/**
+ * "Nộp 18/09 16:48 · 6 phút 02 giây" + quality pill + "Ẩn danh" (publishers only ever see the
+ * response code — ASSUMED hint) (+ ASSUMED reason line for "Cần xem lại").
+ */
 export function ResponseMeta({ response, variant }: { response: FormResponse; variant: Variant }) {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-caption text-ink-muted">
         <QualityTag quality={response.quality} withCheck={variant === "page"} />
+        <Tag tone="neutral" icon={<Icon name="lock" size={12} />}>
+          Ẩn danh
+        </Tag>
         <span>Nộp {formatSubmittedAt(response.submittedAt)}</span>
         <span aria-hidden="true">·</span>
         <span>{formatDurationLong(response.durationSeconds)}</span>

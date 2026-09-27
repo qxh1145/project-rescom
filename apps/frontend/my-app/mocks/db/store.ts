@@ -16,8 +16,9 @@ const PREFIX = "rescom:mockdb:";
 /**
  * Bump when seed shapes change so stale browser state is discarded.
  * 2: attempts use the backend `AttemptStatus` values (Phase 3 review).
+ * 3: survey response analytics seed (321-response and empty publisher surveys).
  */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 interface Persisted<T> {
   version: number;

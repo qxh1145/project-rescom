@@ -11,6 +11,17 @@
   --primary-blue-light: #eff6ff;
   --card-bg: #ffffff;
   --card-border: #e2e8f0;
+  /* Response analytics (read by Recharts via var(), so plain :root, not @theme) — categorical slots in fixed order (slot 1 = primary),
+     validated for CVD separation and 3:1 contrast on white; "Khác" is neutral. */
+  --color-chart-1: #2b7a33;
+  --color-chart-2: #3b73c4;
+  --color-chart-3: #c9820a;
+  --color-chart-4: #9a5bb8;
+  --color-chart-5: #2aa198;
+  --color-chart-other: #9aa3b5;
+  --color-chart-grid: #eef1f6; /* = line-subtle */
+  --color-chart-axis: #596078; /* = ink-muted */
+  --color-chart-track: #f1f4f9; /* = surface-subtle */
 }
 
 @theme inline {

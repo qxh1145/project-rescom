@@ -1,4 +1,5 @@
 import { createCollection, hoursAgo } from "../db/store";
+import { analyticsQualitySnapshots, analyticsResponses } from "./form-analytics-seed";
 import { PUBLISHER_FORM_IDS } from "./forms";
 
 /**
@@ -8,6 +9,8 @@ import { PUBLISHER_FORM_IDS } from "./forms";
  * the Figma content, rows 11–20 plausible (collected on launch day).
  * "Thói quen đọc sách": 6 Google Forms responses — only the verified
  * completion code lives in Rescom, the answers stay in Google Forms.
+ * "Đánh giá trải nghiệm nền tảng RESCOM": 321 generated responses
+ * (`form-analytics-seed.ts`, exact counts per answer).
  */
 
 export type MockAnswer = string | number | string[] | null;
@@ -129,6 +132,7 @@ function readingResponses(): MockFormResponse[] {
 export const formResponses = createCollection<MockFormResponse[]>("form-responses", () => [
   ...housingResponses(),
   ...readingResponses(),
+  ...analyticsResponses(),
 ]);
 
 /** Newest first. */
@@ -188,6 +192,7 @@ export const QUALITY_SNAPSHOTS: MockQualitySnapshot[] = [
     answerChangesQuestion: null,
     updatedAt: hoursAgo(5),
   },
+  ...analyticsQualitySnapshots(),
 ];
 
 /** Policy `survey-quality-v1` (ASSUMED): a verdict needs this many responses. */
