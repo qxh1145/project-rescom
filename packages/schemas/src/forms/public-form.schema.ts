@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { formBlockSchema } from "./form-blocks.schema";
 import {
+  formSectionSchema,
   formSettingsSchema,
 } from "./form-definition.schema";
 import { formIntegrityMetadataSchema } from "./form-integrity.schema";
@@ -17,6 +18,7 @@ export const publicFormDetailsSchema = z
     type: z.literal("INTERNAL"),
     versionNumber: z.number().int().positive(),
     blocks: z.array(formBlockSchema).min(1),
+    sections: z.array(formSectionSchema).max(50).optional(),
     settings: formSettingsSchema,
     metadata: formIntegrityMetadataSchema,
     publicUrl: z.string().min(1),

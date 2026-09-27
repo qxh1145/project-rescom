@@ -69,6 +69,7 @@ export class PublicFormsService {
       type: 'INTERNAL',
       versionNumber: formWithVer.currentVersion.versionNumber,
       blocks,
+      sections: schemaJson?.sections,
       settings,
       metadata,
       publicUrl: `/f/${formWithVer.form.id}`,

@@ -1,5 +1,9 @@
+"use client";
+
 import Link from "next/link";
-import { buttonClassName } from "@/components/ui/Button";
+import { useEffect, useRef } from "react";
+import { Alert } from "@/components/ui/Alert";
+import { Button, buttonClassName } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { formatClock } from "@/lib/participation/completion-view";
 
@@ -47,8 +51,18 @@ export function SubmitFailedPanel({
   );
 }
 
+/** Focus a state's heading when it replaces the page content (screen readers hear the change). */
+function useFocusOnMount<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    ref.current?.focus();
+  }, []);
+  return ref;
+}
+
 /** ASSUMED (not in Figma): the attempt's reservation ran out. */
 export function ExpiredPanel({ restartHref, onRestart }: { restartHref: string; onRestart: () => void }) {
+  const headingRef = useFocusOnMount<HTMLHeadingElement>();
   return (
     <section className="flex flex-col gap-4 rounded-[18px] border border-line bg-surface p-[18px] lg:rounded-[20px] lg:p-6">
       <div className="flex items-start gap-3">
@@ -56,7 +70,9 @@ export function ExpiredPanel({ restartHref, onRestart }: { restartHref: string; 
           <Icon name="hourglass" size={22} />
         </span>
         <div className="flex flex-col gap-1">
-          <h2 className="text-body-lg font-extrabold text-ink">Lượt làm đã hết hạn</h2>
+          <h2 ref={headingRef} tabIndex={-1} className="text-body-lg font-extrabold text-ink focus:outline-none">
+            Lượt làm đã hết hạn
+          </h2>
           <p className="text-body-sm text-ink-muted">
             Lượt làm chỉ được giữ chỗ trong một khoảng thời gian nên câu trả lời chưa gửi không còn được nhận. Bạn có thể
             bắt đầu lại nếu khảo sát vẫn còn chỗ.
@@ -72,5 +88,48 @@ export function ExpiredPanel({ restartHref, onRestart }: { restartHref: string; 
         </Link>
       </div>
     </section>
+  );
+}
+
+/**
+ * ASSUMED (not in Figma): the published form moved to a newer version than
+ * the one this attempt is pinned to (`versionNumber` of the ASSUMED
+ * GET /attempts/:id vs GET /public/forms/:id). Answers of the old version
+ * cannot be submitted against the new one, so the attempt is restarted.
+ */
+export function FormUpdatedPanel({
+  onRestart,
+  busy,
+  error,
+}: {
+  onRestart: () => void;
+  busy: boolean;
+  error: string | null;
+}) {
+  const headingRef = useFocusOnMount<HTMLHeadingElement>();
+  return (
+    <main className="flex flex-1 items-start justify-center px-5 py-10 lg:items-center">
+      <section className="flex w-full max-w-[480px] flex-col gap-4 rounded-card border border-line bg-surface p-6 lg:p-8">
+        <span className="flex size-11 items-center justify-center rounded-field bg-tone-amber-bg text-tone-amber-fg">
+          <Icon name="refresh" size={22} />
+        </span>
+        <h1 ref={headingRef} tabIndex={-1} className="text-[22px] font-extrabold text-ink focus:outline-none">
+          Khảo sát vừa được cập nhật — bắt đầu lại
+        </h1>
+        <p className="text-body-sm text-ink-muted">
+          Người đăng đã sửa câu hỏi sau khi bạn bắt đầu, nên lượt làm này không nộp được nữa. Bắt đầu lại để làm theo
+          phiên bản mới.
+        </p>
+        {error ? <Alert tone="danger">{error}</Alert> : null}
+        <div className="flex flex-wrap gap-3">
+          <Link href="/marketplace" className={buttonClassName({ variant: "secondary", size: "base", radius: "field" })}>
+            Về Khám phá
+          </Link>
+          <Button size="base" radius="field" onClick={onRestart} loading={busy} loadingLabel="Đang mở lại…">
+            Bắt đầu lại
+          </Button>
+        </div>
+      </section>
+    </main>
   );
 }

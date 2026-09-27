@@ -18,7 +18,8 @@ export interface CompletionView {
 
 interface AttemptLike {
   type: "INTERNAL" | "EXTERNAL";
-  status: string;
+  /** ASSUMED `rewardStatus` of GET /attempts/:id (absent on older payloads). */
+  rewardStatus?: RewardSettlementStatus | null;
   submittedAt: string | null;
   survey: { rewardPerResponse: number };
 }
@@ -33,12 +34,15 @@ function kindOf(status: RewardSettlementStatus | null, attempt: AttemptLike): Co
   if (status === "HELD_IN_INTEGRITY") return "held";
   if (status === "PENDING") return "pending";
   if (status === "SETTLED") return "available";
-  return attempt.type === "EXTERNAL" || attempt.status === "PENDING_REVIEW" ? "pending" : "available";
+  // No reward state at all: Google Forms rewards start in the 48h review.
+  return attempt.type === "EXTERNAL" ? "pending" : "available";
 }
 
 /**
  * Sources, most specific first: the ASSUMED outcome route, the submit
- * response kept in sessionStorage (VERIFIED shape), then the attempt itself.
+ * response kept in sessionStorage (VERIFIED shape), then the attempt's
+ * ASSUMED `rewardStatus`, then its type. "Tài khoản đã kích hoạt" is only
+ * claimed for a confirmed reward: a pending (48h) or held one unlocks nothing.
  */
 export function resolveCompletionView(
   attempt: AttemptLike,
@@ -46,10 +50,11 @@ export function resolveCompletionView(
   stashed: Pick<InternalFormSubmissionResponseDto, "reward" | "submittedAt"> | null,
 ): CompletionView {
   const reward = outcome?.reward ?? stashed?.reward ?? null;
+  const kind = kindOf(reward?.status ?? attempt.rewardStatus ?? null, attempt);
   return {
-    kind: kindOf(reward?.status ?? null, attempt),
+    kind,
     amount: reward && reward.amount > 0 ? reward.amount : attempt.survey.rewardPerResponse,
-    activated: outcome?.accountActivated ?? false,
+    activated: kind === "available" && (outcome?.accountActivated ?? false),
     submittedAt: outcome?.submittedAt ?? stashed?.submittedAt ?? attempt.submittedAt,
   };
 }

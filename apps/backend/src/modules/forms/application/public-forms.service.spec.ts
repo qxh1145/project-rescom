@@ -77,6 +77,10 @@ describe('PublicFormsService', () => {
             order: 1,
           },
         ],
+        sections: [
+          { id: 'section-1', title: 'Thông tin chung', blockIds: ['q1'] },
+          { id: 'section-2', title: 'Đánh giá', blockIds: ['q2'] },
+        ],
         settings: {
           shuffleBlocks: false,
           progressBar: true,
@@ -207,6 +211,10 @@ describe('PublicFormsService', () => {
       expect(publicForm.title).toBe('Customer Satisfaction Survey');
       expect(publicForm.type).toBe('INTERNAL');
       expect(publicForm.blocks).toHaveLength(2);
+      expect(publicForm.sections).toEqual([
+        { id: 'section-1', title: 'Thông tin chung', blockIds: ['q1'] },
+        { id: 'section-2', title: 'Đánh giá', blockIds: ['q2'] },
+      ]);
       expect(publicForm.settings.allowPublicAccess).toBe(true);
     });
 

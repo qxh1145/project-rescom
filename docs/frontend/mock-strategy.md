@@ -31,8 +31,14 @@ mocks/
 ├── handlers/
 │   ├── index.ts        all handlers
 │   ├── auth.ts         /auth/login, /auth/register, /auth/me, /auth/csrf, /auth/refresh, MOCK-ONLY routes
-│   └── demographics.ts GET /demographics
-└── data/auth.ts        demo accounts, id/name mappers
+│   ├── demographics.ts GET /demographics
+│   ├── participation*.ts  start/read attempt, in-Rescom submit + feedback, Google Forms code (Phase 3)
+│   └── marketplace.ts  feed + starter-points status
+└── data/
+    ├── auth.ts         demo accounts, id/name mappers
+    ├── attempts.ts     attempts (backend `AttemptStatus`), wrong-code totals, active reservations
+    ├── economy.ts      wallets + history; rules in `economy-rules.ts` (pure, unit-tested)
+    └── …
 ```
 
 Handlers validate bodies with the same `@rescom/schemas` the backend uses and return the
@@ -41,6 +47,11 @@ backend's error codes. Auth state is delegated to the legacy `mockRepository`
 `user-active-002` are mapped to stable UUIDs because the shared schemas require UUIDs.
 
 ## Reset
+
+Collections re-read localStorage on every `get()` (parsing again only when the stored JSON
+changed), so two tabs never overwrite each other's writes. `SCHEMA_VERSION` in
+`mocks/db/store.ts` discards stored state when shapes change (2 = attempts use the backend
+`AttemptStatus` values).
 
 `?msw-reset=1` (or `resetMockDb()` in `mocks/db/store.ts`) clears every mock key in
 localStorage: the `rescom:mockdb:*` collections, the legacy demo store
@@ -66,6 +77,15 @@ Default latency is 400–700 ms.
 | `unauthenticated` | Every session route (`/auth/me`, `/auth/refresh`, data endpoints) → 401; guest routes (login, register, Google, `/auth/password/forgot`) behave normally |
 | `api-error` / `api-offline` | Data endpoints → 500 / network failure (not login/register/me/refresh/Google) |
 | `google-link-required` | Mock "Tiếp tục với Google" → 409 `AUTH_GOOGLE_LINK_REQUIRED` → `/auth/link-google` (15d, email `minh.le@fpt.edu.vn`) |
+| `gform-no-barrier` | Google Forms attempts have no time barrier (the mock default is 4:12, Figma 5): the code can be confirmed at once |
+| `marketplace-empty` | `GET /marketplace/feed` → no surveys (Khám phá 3b empty state) |
+| `starter-expiring` | Starter points not yet unlocked expire in ~2.5 days ("Còn 3 ngày", 15f) |
+| `submit-offline` | `POST /responses/:responseId/submit` → network failure (4b "Chưa gửi được bài", answers stay in the local draft) |
+| `integrity-hold` | In-Rescom submit → reward `HELD_IN_INTEGRITY` (17c "Điểm đang giữ để xét"); starter points stay frozen |
+| `release-pending` | MOCK-ONLY: every Google Forms reward still in its 48h review is released on the next wallet / starter-status / outcome read, then the starter points unlock (without it, rows release once their `releasesAt` passed) |
+
+The public `GET /surveys/:id` (survey summary, also used by the public 18.7 page) needs no
+session: `unauthenticated` leaves it alone.
 
 ## Demo accounts (password `Password123!`)
 
@@ -74,6 +94,7 @@ Default latency is 400–700 ms.
 | `minh.le@fpt.edu.vn` | `/marketplace` (profile complete) |
 | `student@fpt.edu.vn` | `/onboarding?required=1` |
 | `linh.onboarding@fpt.edu.vn` | `/onboarding?required=1` |
+| `admin@rescom.vn` (ADMIN, "Hùng Nguyễn") | admin console `/admin` (Phase 6) |
 
 Accounts registered through MSW keep their own password. "Tiếp tục với Google" in mock
 mode signs in `student@fpt.edu.vn` via `/auth/callback?provider=mock-google`.

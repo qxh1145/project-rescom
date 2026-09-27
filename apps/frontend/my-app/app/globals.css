@@ -74,6 +74,15 @@
   --color-tone-teal-ink: #1b4f47;
   /* Page 14 consent footer divider (62:1011), page 17d list separators (63:5137). */
   --color-line-subtle: #eef1f6;
+  /* Page 14d notifications (62:2132): unread row background. */
+  --color-tone-green-tint: #f4faf3;
+  /* Page 16b leaderboard (63:3146–63:3162): rank 2 / rank 3 badges (rank 1 = rating). */
+  --color-medal-silver: #c9cfda;
+  --color-medal-bronze: #e3b58a;
+  /* Page 13 Form Builder (63:690, 62:2359): pending AI attention check card, amber chip border, user chat bubble. */
+  --color-tone-amber-tint: #fffcf2;
+  --color-tone-amber-line: #e9c766;
+  --color-chat-bubble: #e9edf3;
 
   --radius-field: 12px;
   --radius-control: 14px;

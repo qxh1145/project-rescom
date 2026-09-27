@@ -7,8 +7,9 @@ import {
 } from "@rescom/schemas";
 import { http } from "msw";
 import { apiUrl } from "@/lib/api/config";
-import { transactionsOf, walletOf } from "../data/economy";
-import { completedSurveyIdsOf, findSurvey, surveys, SURVEY_IDS, type MockSurvey } from "../data/surveys";
+import { releaseDuePendingRewards, transactionsOf, walletOf } from "../data/economy";
+import { hasConfirmedReward, pendingActivationReward } from "../data/economy-rules";
+import { completedSurveyIdsOf, surveys, SURVEY_IDS, type MockSurvey } from "../data/surveys";
 import { getMockSessionUser } from "../db/session";
 import { fail, ok, unauthorized } from "../envelope";
 import { applyScenario, getActiveScenario } from "../scenarios";
@@ -127,13 +128,19 @@ export const marketplaceHandlers = [
     const user = await getMockSessionUser();
     if (!user) return unauthorized();
 
+    // A Google Forms reward whose 48h review ended unlocks the starter points here.
+    releaseDuePendingRewards(user);
     const wallet = walletOf(user);
     const history = transactionsOf(user);
     const grant = history.find((row) => row.kind === "STARTER_GRANT");
     const unlock = history.find((row) => row.kind === "STARTER_UNLOCK");
     const isGranted = Boolean(grant) || wallet.frozen > 0;
     const isUnlocked = Boolean(unlock) && wallet.frozen === 0;
-    const hasCompletedMarketplaceSurvey = completedSurveyIdsOf(user.id, user.email).length > 0;
+    // Only a confirmed completion counts (Story 7.2): a Google Forms reward in its
+    // 48h review keeps the account in PENDING_CONFIRMATION.
+    const hasCompletedMarketplaceSurvey =
+      hasConfirmedReward(history) || (Boolean(unlock) && completedSurveyIdsOf(user.id, user.email).length > 0);
+    const pendingReward = isUnlocked || hasCompletedMarketplaceSurvey ? null : pendingActivationReward(history);
 
     const now = Date.now();
     let registeredAt = grant ? Date.parse(grant.createdAt) : now;
@@ -154,9 +161,11 @@ export const marketplaceHandlers = [
         ? "NOT_GRANTED"
         : !user.profileComplete
           ? "DEMOGRAPHICS_REQUIRED"
-          : !hasCompletedMarketplaceSurvey
-            ? "SURVEY_REQUIRED"
-            : "READY_TO_UNLOCK";
+          : pendingReward
+            ? "PENDING_CONFIRMATION"
+            : !hasCompletedMarketplaceSurvey
+              ? "SURVEY_REQUIRED"
+              : "READY_TO_UNLOCK";
 
     return ok(
       starterPointsStatusSchema.parse({
@@ -174,25 +183,17 @@ export const marketplaceHandlers = [
         activationState,
         activatedAt: isUnlocked && unlock ? unlock.createdAt : null,
         isVerifiedMember: isUnlocked || (user.profileComplete && hasCompletedMarketplaceSurvey),
-        activationSurvey: null,
+        activationSurvey: pendingReward
+          ? {
+              source: "EXTERNAL",
+              formId: pendingReward.surveyId ?? "",
+              completedAt: pendingReward.createdAt,
+              confirmsAt: pendingReward.releasesAt ?? pendingReward.createdAt,
+              status: "PENDING_REVIEW",
+            }
+          : null,
       }),
     );
   }),
 
-  // ASSUMED API CONTRACT: GET /surveys/:id/summary (18.7 "Khảo sát đã đủ người").
-  http.get(apiUrl("/surveys/:id/summary"), async ({ params }) => {
-    const forced = await applyScenario("marketplace");
-    if (forced) return forced;
-    const user = await getMockSessionUser();
-    if (!user) return unauthorized();
-    const survey = findSurvey(String(params.id));
-    if (!survey) return fail(404, "SURVEY_NOT_FOUND", "Survey not found.");
-    return ok({
-      id: survey.id,
-      title: survey.title,
-      status: survey.status,
-      expectedCompletions: survey.expectedCompletions,
-      completedCompletions: survey.completedCompletions,
-    });
-  }),
 ];

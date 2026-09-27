@@ -7,6 +7,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { useApiQuery } from "@/lib/api/use-api-query";
 import { activationViewOf, getStarterPointsStatus } from "@/lib/economy/starter-points-service";
+import { SUPPORT_MAILTO } from "@/lib/feedback/error-pages";
 import { feedErrorMessage, MARKETPLACE_MESSAGES } from "@/lib/marketplace/marketplace-messages";
 import {
   hasNarrowingFilters,
@@ -88,6 +89,14 @@ export function MarketplaceScreen() {
               {notice ? (
                 <Alert tone={notice.tone} onDismiss={dismissNotice}>
                   {notice.message}
+                  {notice.support ? (
+                    <>
+                      {" "}
+                      <a href={SUPPORT_MAILTO} className="font-bold text-primary underline">
+                        Báo Admin
+                      </a>
+                    </>
+                  ) : null}
                 </Alert>
               ) : null}
 

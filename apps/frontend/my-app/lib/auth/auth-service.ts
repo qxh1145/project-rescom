@@ -2,7 +2,8 @@ import { demographicProfileStatusSchema, sanitizedUserSchema } from "@rescom/sch
 import { apiRequest, resetCsrfToken, type ResponseSchema } from "../api/client.ts";
 import { POST_ONBOARDING_DEFAULT_PATH } from "../onboarding.ts";
 import { browserSessionStorage, clearAllOnboardingDrafts } from "../onboarding/onboarding-draft.ts";
-import { resolvePostLoginPath } from "./post-login-redirect.ts";
+import { browserParticipationStores, clearParticipationStorage } from "../participation/clear-participation-storage.ts";
+import { resolveAdminPostLoginPath, resolvePostLoginPath } from "./post-login-redirect.ts";
 import type {
   AuthSessionResponse,
   AuthUser,
@@ -151,7 +152,9 @@ export async function completeMockGoogleSignIn(signal?: AbortSignal): Promise<Au
 export async function resolvePostLoginDestination(
   returnTo: string | null,
   signal?: AbortSignal,
+  role?: AuthUser["role"],
 ): Promise<string> {
+  if (role === "ADMIN") return resolveAdminPostLoginPath(returnTo);
   try {
     const status = await apiRequest("/demographics", {
       schema: demographicProfileStatusSchema,
@@ -191,5 +194,6 @@ export async function logout(): Promise<void> {
   } finally {
     resetCsrfToken();
     clearAllOnboardingDrafts(browserSessionStorage());
+    clearParticipationStorage(...browserParticipationStores());
   }
 }

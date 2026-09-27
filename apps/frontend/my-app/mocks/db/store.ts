@@ -13,18 +13,29 @@ import { CREDENTIALS_KEY } from "../data/auth";
 import { SCENARIO_STORAGE_KEY } from "../scenarios";
 
 const PREFIX = "rescom:mockdb:";
-/** Bump when seed shapes change so stale browser state is discarded. */
-const SCHEMA_VERSION = 1;
+/**
+ * Bump when seed shapes change so stale browser state is discarded.
+ * 2: attempts use the backend `AttemptStatus` values (Phase 3 review).
+ */
+const SCHEMA_VERSION = 2;
 
 interface Persisted<T> {
   version: number;
   value: T;
 }
 
-function read<T>(key: string): T | undefined {
+/** The stored JSON of a collection; `undefined` when storage is blocked. */
+function readRaw(key: string): string | null | undefined {
   try {
-    const raw = window.localStorage.getItem(PREFIX + key);
-    if (!raw) return undefined;
+    return window.localStorage.getItem(PREFIX + key);
+  } catch {
+    return undefined;
+  }
+}
+
+function parse<T>(raw: string | null): T | undefined {
+  if (!raw) return undefined;
+  try {
     const parsed = JSON.parse(raw) as Persisted<T>;
     return parsed.version === SCHEMA_VERSION ? parsed.value : undefined;
   } catch {
@@ -32,12 +43,15 @@ function read<T>(key: string): T | undefined {
   }
 }
 
-function write<T>(key: string, value: T): void {
+/** Writes and returns the stored JSON (`undefined` when storage is blocked or full). */
+function write<T>(key: string, value: T): string | undefined {
   try {
-    const payload: Persisted<T> = { version: SCHEMA_VERSION, value };
-    window.localStorage.setItem(PREFIX + key, JSON.stringify(payload));
+    const raw = JSON.stringify({ version: SCHEMA_VERSION, value } satisfies Persisted<T>);
+    window.localStorage.setItem(PREFIX + key, raw);
+    return raw;
   } catch {
     // Storage full or blocked: state then lives for this page load only.
+    return undefined;
   }
 }
 
@@ -47,18 +61,27 @@ export interface Collection<T> {
   update(mutator: (draft: T) => T | void): T;
 }
 
-const memory = new Map<string, unknown>();
+/**
+ * Parsed value per collection, tagged with the JSON it came from. Every
+ * `get()` re-reads localStorage (a cheap string read) and parses again only
+ * when the JSON changed — so a write from another tab is seen before this
+ * tab updates the same collection (no lost updates between tabs).
+ */
+const memory = new Map<string, { raw: string | null | undefined; value: unknown }>();
 
 export function createCollection<T>(key: string, seed: () => T): Collection<T> {
   const get = (): T => {
-    if (memory.has(key)) return memory.get(key) as T;
-    const value = read<T>(key) ?? seed();
-    memory.set(key, value);
+    const raw = readRaw(key);
+    const cached = memory.get(key);
+    // Blocked storage (`undefined`): the in-memory copy is the only state.
+    if (cached && (raw === undefined || raw === cached.raw)) return cached.value as T;
+    const value = parse<T>(raw ?? null) ?? seed();
+    memory.set(key, { raw, value });
     return value;
   };
   const set = (value: T) => {
-    memory.set(key, value);
-    write(key, value);
+    // A failed write keeps the stored JSON as the tag, so this tab's copy still wins.
+    memory.set(key, { raw: write(key, value) ?? readRaw(key), value });
   };
   return {
     get,

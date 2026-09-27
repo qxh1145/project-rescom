@@ -28,6 +28,12 @@ export const DEMO_ACCOUNTS: readonly DemoAccount[] = [
     name: "Trần Mai Linh",
     description: "Hồ sơ đang làm dở",
   },
+  {
+    email: "admin@rescom.vn",
+    password: DEMO_PASSWORD,
+    name: "Hùng Nguyễn",
+    description: "Admin · bảng điều khiển /admin",
+  },
 ];
 
 /** localStorage key of passwords registered through MSW (cleared by `?msw-reset=1`). */

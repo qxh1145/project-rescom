@@ -1,4 +1,4 @@
-import { formStatusEnum, marketplaceFeedResponseSchema, marketplaceSurveyCardSchema } from "@rescom/schemas";
+import { marketplaceFeedResponseSchema, marketplaceSurveyCardSchema } from "@rescom/schemas";
 import { z } from "zod";
 import { apiRequest } from "../api/client.ts";
 import { toFeedQueryParams, type MarketplaceFilters } from "./marketplace-query.ts";
@@ -29,22 +29,4 @@ export function getMarketplaceFeed(filters: MarketplaceFilters, signal?: AbortSi
     schema: marketplaceFeedSchema,
     signal,
   });
-}
-
-/**
- * ASSUMED API CONTRACT: `GET /surveys/:id/summary` — public facts about one
- * survey for screens reached without the feed (18.7 "Khảo sát đã đủ người").
- * No backend route yet. 404 `SURVEY_NOT_FOUND`.
- */
-export const surveySummarySchema = z.object({
-  id: z.string().uuid(),
-  title: z.string(),
-  status: formStatusEnum,
-  expectedCompletions: z.number().int().nonnegative(),
-  completedCompletions: z.number().int().nonnegative(),
-});
-export type SurveySummary = z.infer<typeof surveySummarySchema>;
-
-export function getSurveySummary(surveyId: string, signal?: AbortSignal): Promise<SurveySummary> {
-  return apiRequest(`/surveys/${encodeURIComponent(surveyId)}/summary`, { schema: surveySummarySchema, signal });
 }

@@ -57,3 +57,13 @@ export function sessionGateRedirect(status: SessionStatus, currentPath: string):
       return null;
   }
 }
+
+/**
+ * A data request failed because the session ended (401) or the account was
+ * locked: screens then call `useSession().refresh()` so `SessionGate`
+ * redirects, instead of showing a retry that cannot succeed.
+ */
+export function isSessionLost(error: unknown): boolean {
+  const status = sessionStatusFromError(error);
+  return status === "unauthenticated" || status === "locked";
+}

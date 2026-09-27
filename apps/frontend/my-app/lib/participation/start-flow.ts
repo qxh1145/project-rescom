@@ -1,6 +1,12 @@
-import { SELF_PARTICIPATION_FORBIDDEN_CODE, type SurveyAttemptResponseDto } from "@rescom/schemas";
+import {
+  COMPLETION_CODE_LIMIT_REACHED_CODE,
+  SELF_PARTICIPATION_FORBIDDEN_CODE,
+  participationRateLimitDetailsSchema,
+  type SurveyAttemptResponseDto,
+} from "@rescom/schemas";
 import { isApiError } from "../api/api-error.ts";
 import { buildOnboardingRedirect, isDemographicProfileRequiredError } from "../onboarding.ts";
+import { isSessionLost } from "../session/session-status.ts";
 import { conflictingAttemptOf, startSurveyAttempt } from "./attempts-service.ts";
 import { START_FLOW_MESSAGES } from "./start-flow-messages.ts";
 
@@ -14,16 +20,54 @@ import { START_FLOW_MESSAGES } from "./start-flow-messages.ts";
  * - EXTERNAL card → `POST /surveys/:id/attempts` → `/attempts/:attemptId/google-form`.
  * - 409 CONFLICTING_ACTIVE_ATTEMPT → resume the caller's own attempt.
  * - 409 SURVEY_QUOTA_FULL → `/surveys/:id/full` (18.7).
- * - SURVEY_ALREADY_COMPLETED, SURVEY_NOT_AVAILABLE, not eligible, own survey, 429,
- *   network → inline message.
+ * - SURVEY_ALREADY_COMPLETED, SURVEY_NOT_AVAILABLE, not eligible, own survey,
+ *   COMPLETION_CODE_LIMIT_REACHED → info message (retrying cannot help);
+ *   429, network, anything else → danger message worth a retry.
  * - 403 DEMOGRAPHIC_PROFILE_REQUIRED → onboarding, then back to `returnTo`.
+ * - 401 / AUTH_USER_LOCKED → `session` (the caller refreshes the session).
  */
 
 export type SurveyKind = "INTERNAL" | "EXTERNAL";
 
 export type StartDecision =
   | { kind: "navigate"; href: string }
-  | { kind: "message"; tone: "info" | "danger"; message: string };
+  /** 401 / AUTH_USER_LOCKED: call `useSession().refresh()` — `SessionGate` redirects. */
+  | { kind: "session" }
+  | {
+      kind: "message";
+      /** `info`: a final answer (no retry button); `danger`: a failure worth retrying. */
+      tone: "info" | "danger";
+      message: string;
+      /** Show the "Báo Admin" support hint (COMPLETION_CODE_LIMIT_REACHED). */
+      support?: boolean;
+    };
+
+const info = (message: string): StartDecision => ({ kind: "message", tone: "info", message });
+const danger = (message: string): StartDecision => ({ kind: "message", tone: "danger", message });
+
+/** "45 giây" / "3 phút" (rounded up). */
+export function formatRetryAfter(seconds: number): string {
+  const whole = Math.max(1, Math.ceil(seconds));
+  return whole < 60 ? `${whole} giây` : `${Math.ceil(whole / 60)} phút`;
+}
+
+/**
+ * 429 `PARTICIPATION_RATE_LIMITED` with `details.scope === "COMPLETIONS"`
+ * (decision E8-D6): the completions window, with its numbers. null for
+ * burst limits and other errors.
+ */
+export function completionsLimitMessage(error: unknown): string | null {
+  if (!isApiError(error) || error.code !== "PARTICIPATION_RATE_LIMITED") return null;
+  const parsed = participationRateLimitDetailsSchema.safeParse(error.details);
+  if (!parsed.success || parsed.data.scope !== "COMPLETIONS") return null;
+  const details = parsed.data;
+  return START_FLOW_MESSAGES.completionsLimited({
+    limit: details.limit,
+    windowMinutes: Math.max(1, Math.round(details.windowSeconds / 60)),
+    retryAfter: formatRetryAfter(error.retryAfterSeconds ?? details.retryAfterSeconds),
+    inProgress: details.inProgressAttempts ?? 0,
+  });
+}
 
 export function consentPath(surveyId: string): string {
   return `/surveys/${encodeURIComponent(surveyId)}/start`;
@@ -46,25 +90,31 @@ export function decisionForStartError(surveyId: string, error: unknown, returnTo
   if (isDemographicProfileRequiredError(error)) {
     return { kind: "navigate", href: buildOnboardingRedirect(returnTo) };
   }
-  if (!isApiError(error)) return { kind: "message", tone: "danger", message: START_FLOW_MESSAGES.generic };
-  if (error.kind === "network") return { kind: "message", tone: "danger", message: START_FLOW_MESSAGES.network };
+  if (isSessionLost(error)) return { kind: "session" };
+  if (!isApiError(error)) return danger(START_FLOW_MESSAGES.generic);
+  if (error.kind === "network") return danger(START_FLOW_MESSAGES.network);
   switch (error.code) {
     case "SURVEY_QUOTA_FULL":
       return { kind: "navigate", href: surveyFullPath(surveyId) };
     case "SURVEY_ALREADY_COMPLETED":
-      return { kind: "message", tone: "info", message: START_FLOW_MESSAGES.alreadyCompleted };
+      return info(START_FLOW_MESSAGES.alreadyCompleted);
     case "SURVEY_NOT_AVAILABLE":
-      return { kind: "message", tone: "info", message: START_FLOW_MESSAGES.notAvailable };
+      return info(START_FLOW_MESSAGES.notAvailable);
     case "PARTICIPANT_NOT_ELIGIBLE":
-      return { kind: "message", tone: "info", message: START_FLOW_MESSAGES.notEligible };
+      return info(START_FLOW_MESSAGES.notEligible);
     // Decision E4-DN2: a publisher cannot take their own survey.
     case SELF_PARTICIPATION_FORBIDDEN_CODE:
-      return { kind: "message", tone: "info", message: START_FLOW_MESSAGES.ownSurvey };
+      return info(START_FLOW_MESSAGES.ownSurvey);
+    // Decision E5-D1: 6 wrong codes on this FormVersion — only an Admin can reset it.
+    case COMPLETION_CODE_LIMIT_REACHED_CODE:
+      return { kind: "message", tone: "info", message: START_FLOW_MESSAGES.codeLimitReached, support: true };
+    case "PARTICIPATION_RATE_LIMITED":
+      return danger(completionsLimitMessage(error) ?? START_FLOW_MESSAGES.rateLimited);
     default:
       break;
   }
-  if (error.status === 429) return { kind: "message", tone: "danger", message: START_FLOW_MESSAGES.rateLimited };
-  return { kind: "message", tone: "danger", message: START_FLOW_MESSAGES.generic };
+  if (error.status === 429) return danger(START_FLOW_MESSAGES.rateLimited);
+  return danger(START_FLOW_MESSAGES.generic);
 }
 
 export type StartAttempt = (surveyId: string) => Promise<Pick<SurveyAttemptResponseDto, "attemptId" | "type">>;

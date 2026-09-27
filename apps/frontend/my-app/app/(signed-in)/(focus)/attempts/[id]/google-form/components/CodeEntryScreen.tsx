@@ -25,7 +25,8 @@ const HELP_ID = "completion-code-help";
  * drawn — desktop ASSUMED to show the same alert in the code panel).
  */
 export function CodeEntryScreen({ attempt, state, onReport }: CodeEntryScreenProps) {
-  const url = attempt.survey.externalUrl;
+  // Validated against the shared Google Forms allowlist (`externalSurveyUrlSchema`).
+  const url = state.formUrl;
   const wrong = state.wrong;
   const counting = state.remainingSeconds > 0;
 
@@ -38,15 +39,21 @@ export function CodeEntryScreen({ attempt, state, onReport }: CodeEntryScreenPro
       loading={state.busy}
       loadingLabel="Đang xác nhận…"
       leadingIcon={counting ? <Icon name="clock" size={18} /> : undefined}
+      // Static name while counting down (the timer above carries the time).
+      aria-label={counting && !state.busy ? "Xác nhận mã (chưa đủ thời gian làm bài)" : undefined}
     >
-      {counting ? `Nhập được mã sau ${state.countdown}` : "Xác nhận mã"}
+      {counting ? <span aria-hidden="true">Nhập được mã sau {state.countdown}</span> : "Xác nhận mã"}
     </Button>
   );
 
   return (
     <>
       <main className="flex flex-1 flex-col gap-4 px-5 pb-6 pt-5 lg:items-center lg:px-12 lg:pb-12 lg:pt-12">
-        {!url ? <Alert tone="danger">Khảo sát chưa có đường dẫn Google Form. Hãy báo Admin.</Alert> : null}
+        {!url ? (
+          <Alert tone="danger">
+            {state.formUrlInvalid ? EXTERNAL_MESSAGES.formUrlInvalid : EXTERNAL_MESSAGES.formUrlMissing}
+          </Alert>
+        ) : null}
 
         {/* Mobile: step 1 card (hidden in 5b, which shows "Mở lại Google Form" below instead). */}
         {!wrong ? (
@@ -270,7 +277,13 @@ function StepsPanel({ attempt, url, opened, onOpen, onReport }: OpenFormProps & 
           +{attempt.survey.rewardPerResponse} điểm
         </span>
       </div>
-      <h1 className="mt-5 max-w-[399px] text-title leading-[33.8px] font-extrabold text-ink">{attempt.survey.title}</h1>
+      <h1
+        data-focus-heading
+        tabIndex={-1}
+        className="mt-5 max-w-[399px] text-title leading-[33.8px] font-extrabold text-ink focus:outline-none"
+      >
+        {attempt.survey.title}
+      </h1>
 
       <ol className="mt-5 flex flex-col gap-4">
         <Step state={opened ? "done" : "current"} number={1} title="Mở Google Form">

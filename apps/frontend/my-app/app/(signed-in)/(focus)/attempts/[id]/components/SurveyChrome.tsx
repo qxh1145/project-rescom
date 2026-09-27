@@ -12,7 +12,13 @@ interface ProgressProps {
 }
 
 /** Figma 62:159 — logo, progress "4/8 câu", "Lưu và thoát". */
-export function DesktopSurveyHeader({ answeredUpTo, total, onSaveAndExit }: ProgressProps & { onSaveAndExit: () => void }) {
+interface ExitProps {
+  onSaveAndExit: () => void;
+  /** While the submit is in flight: leaving could drop the answer. */
+  exitDisabled?: boolean;
+}
+
+export function DesktopSurveyHeader({ answeredUpTo, total, onSaveAndExit, exitDisabled }: ProgressProps & ExitProps) {
   return (
     <header className="sticky top-0 z-30 hidden h-18.25 items-center gap-6 border-b border-line bg-surface px-12 lg:flex">
       <RescomLogo size="md" />
@@ -31,7 +37,8 @@ export function DesktopSurveyHeader({ answeredUpTo, total, onSaveAndExit }: Prog
       <button
         type="button"
         onClick={onSaveAndExit}
-        className="h-10.5 shrink-0 rounded-[10px] border border-line-strong bg-surface px-4 text-label font-semibold text-ink transition-colors hover:border-ink-muted hover:bg-surface-subtle"
+        disabled={exitDisabled}
+        className="h-10.5 shrink-0 rounded-[10px] border border-line-strong bg-surface px-4 text-label font-semibold text-ink transition-colors hover:border-ink-muted hover:bg-surface-subtle disabled:cursor-not-allowed disabled:opacity-50"
       >
         Lưu và thoát
       </button>
@@ -47,11 +54,12 @@ export function MobileSurveyHeader({
   answeredUpTo,
   total,
   onSaveAndExit,
-}: ProgressProps & { title: string; rangeLabel: string; reward: number; onSaveAndExit: () => void }) {
+  exitDisabled,
+}: ProgressProps & ExitProps & { title: string; rangeLabel: string; reward: number }) {
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface pt-[max(env(safe-area-inset-top),8px)] lg:hidden">
       <div className="flex items-center gap-3 px-5">
-        <IconButton icon="x" label="Lưu và thoát khảo sát" onClick={onSaveAndExit} />
+        <IconButton icon="x" label="Lưu và thoát khảo sát" onClick={onSaveAndExit} disabled={exitDisabled} />
         <div className="mr-auto min-w-0">
           <p className="truncate text-body font-bold text-ink">{title}</p>
           <p className="text-[12px] text-ink-muted">{rangeLabel}</p>

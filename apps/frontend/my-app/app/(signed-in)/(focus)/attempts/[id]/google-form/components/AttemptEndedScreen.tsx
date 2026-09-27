@@ -48,7 +48,13 @@ export function AttemptEndedScreen({ variant, onReport }: AttemptEndedScreenProp
           <Icon name="lock" size={14} />
           {copy.tag}
         </span>
-        <h1 className="mt-3.5 text-title-sm leading-[28.6px] font-extrabold text-ink">{copy.title}</h1>
+        <h1
+          data-focus-heading
+          tabIndex={-1}
+          className="mt-3.5 text-title-sm leading-[28.6px] font-extrabold text-ink focus:outline-none"
+        >
+          {copy.title}
+        </h1>
         <p className="mt-3.5 text-body-relaxed text-ink-muted">{copy.body}</p>
         <div className="mt-6 flex w-full flex-col gap-2.5">
           {onReport ? (

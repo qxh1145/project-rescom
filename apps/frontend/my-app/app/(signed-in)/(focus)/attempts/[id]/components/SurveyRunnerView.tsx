@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import type { AttemptDetails } from "@/lib/participation/attempts-service";
 import { pageRangeLabel } from "@/lib/participation/survey-form";
-import { formatEffortMinutes, type SurveyForm } from "@/lib/participation/survey-form-service";
+import { formatClock } from "@/lib/participation/completion-view";
+import { formatEffortMinutes } from "@/lib/participation/effort-minutes";
+import type { SurveyForm } from "@/lib/participation/survey-form-service";
 import { useSurveyRunner } from "../hooks/use-survey-runner";
 import { QuestionCard } from "./QuestionCard";
 import { DesktopSurveyHeader, MobileSurveyHeader, PaceNotice, RewardCard, SectionNav } from "./SurveyChrome";
@@ -31,12 +33,19 @@ export function SurveyRunnerView({ attempt, form }: { attempt: AttemptDetails; f
   const submitting = run.phase === "submitting";
   const blocked = run.barrierSeconds > 0;
 
+  // Screen readers hear the barrier once (static text); the ticking seconds are visual only.
   const notices: ReactNode = (
     <>
+      {run.expiringSoon && !expired ? (
+        <Alert tone="info">
+          Lượt làm được giữ chỗ đến {formatClock(attempt.expiresAt)}. Hãy nộp bài sớm để không mất câu trả lời.
+        </Alert>
+      ) : null}
       {blocked ? (
         <Alert tone="info">
           Bạn đang làm nhanh hơn thời gian tối thiểu của khảo sát. Hãy đọc lại câu trả lời — có thể nộp sau{" "}
-          {run.barrierSeconds} giây.
+          <span aria-hidden="true">{run.barrierSeconds} giây</span>
+          <span className="sr-only">khoảng {run.barrierStartSeconds} giây</span>.
         </Alert>
       ) : null}
       {run.submitError ? <Alert tone="danger">{run.submitError}</Alert> : null}
@@ -62,8 +71,10 @@ export function SurveyRunnerView({ attempt, form }: { attempt: AttemptDetails; f
       loading={submitting}
       loadingLabel="Đang gửi…"
       disabled={blocked}
+      // Static name while the seconds tick, so assistive tech is not re-announced every second.
+      aria-label={blocked && !submitting ? "Nộp bài (chưa đủ thời gian tối thiểu)" : undefined}
     >
-      {blocked ? `Nộp bài (${run.barrierSeconds}s)` : "Nộp bài"}
+      {blocked ? <span aria-hidden="true">Nộp bài ({run.barrierSeconds}s)</span> : "Nộp bài"}
     </Button>
   ) : (
     <Button size="lg" className="flex-1 lg:flex-none lg:pr-6 lg:pl-7" onClick={run.next}>
@@ -91,7 +102,12 @@ export function SurveyRunnerView({ attempt, form }: { attempt: AttemptDetails; f
 
   return (
     <>
-      <DesktopSurveyHeader answeredUpTo={reached} total={total} onSaveAndExit={run.saveAndExit} />
+      <DesktopSurveyHeader
+        answeredUpTo={reached}
+        total={total}
+        onSaveAndExit={run.saveAndExit}
+        exitDisabled={submitting}
+      />
       <MobileSurveyHeader
         title={attempt.survey.title}
         rangeLabel={rangeLabel}
@@ -99,6 +115,7 @@ export function SurveyRunnerView({ attempt, form }: { attempt: AttemptDetails; f
         answeredUpTo={reached}
         total={total}
         onSaveAndExit={run.saveAndExit}
+        exitDisabled={submitting}
       />
 
       <main className="flex-1">
@@ -124,7 +141,9 @@ export function SurveyRunnerView({ attempt, form }: { attempt: AttemptDetails; f
                 expiresAt={attempt.expiresAt}
               />
             ) : (
-              <div className="flex flex-col gap-4 lg:gap-5">
+              // A disabled fieldset locks every answer control while the submit is in flight.
+              <fieldset disabled={submitting} className="flex min-w-0 flex-col gap-4 lg:gap-5">
+                <legend className="sr-only">{rangeLabel}</legend>
                 {page?.blocks.map((block) => (
                   <QuestionCard
                     key={block.id}
@@ -136,7 +155,7 @@ export function SurveyRunnerView({ attempt, form }: { attempt: AttemptDetails; f
                     onBlur={() => run.blurAnswer(block)}
                   />
                 ))}
-              </div>
+              </fieldset>
             )}
 
             <div className="mt-4 flex flex-col gap-3 empty:hidden">{notices}</div>

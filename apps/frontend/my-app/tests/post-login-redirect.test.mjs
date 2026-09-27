@@ -112,3 +112,13 @@ test("validateCredentials mirrors the shared backend schemas", () => {
     true,
   );
 });
+
+test("resolveAdminPostLoginPath sends admins to the console", async () => {
+  const { resolveAdminPostLoginPath, ADMIN_HOME_PATH } = await import("../lib/auth/post-login-redirect.ts");
+  assert.equal(ADMIN_HOME_PATH, "/admin");
+  assert.equal(resolveAdminPostLoginPath(null), "/admin");
+  assert.equal(resolveAdminPostLoginPath("/marketplace"), "/admin");
+  assert.equal(resolveAdminPostLoginPath("/admin/top-ups?status=pending"), "/admin/top-ups?status=pending");
+  assert.equal(resolveAdminPostLoginPath("/administrator"), "/admin");
+  assert.equal(resolveAdminPostLoginPath("/.//evil.example"), "/admin");
+});

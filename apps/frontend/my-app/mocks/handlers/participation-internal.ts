@@ -9,7 +9,7 @@ import {
 } from "@rescom/schemas";
 import { apiUrl } from "@/lib/api/config";
 import { attempts, findAttempt, updateAttempt, type MockAttempt } from "../data/attempts";
-import { creditSurveyReward, holdSurveyReward, rewardOutcomeOf } from "../data/economy";
+import { creditSurveyReward, holdSurveyReward, releaseDuePendingRewards, rewardOutcomeOf } from "../data/economy";
 import { acceptConsent, consentOf, reliabilityOf, saveFeedback, surveyFeedback } from "../data/integrity";
 import { updateNotifications } from "../data/notifications";
 import { publicFormOf, surveyContentOf } from "../data/survey-content";
@@ -40,7 +40,7 @@ function validationFailed(message: string, details: unknown) {
   return fail(400, "VALIDATION_ERROR", message, { details });
 }
 
-const FINISHED = new Set(["SUBMITTED", "PENDING_REVIEW"]);
+const isFinished = (attempt: MockAttempt) => attempt.status === "COMPLETED";
 
 function pushNotification(userId: string, type: "REWARD_EARNED" | "REWARD_PENDING" | "ACCOUNT_ACTIVATED", message: string) {
   updateNotifications(userId, (items) => {
@@ -49,20 +49,22 @@ function pushNotification(userId: string, type: "REWARD_EARNED" | "REWARD_PENDIN
 }
 
 export const internalParticipationHandlers: RequestHandler[] = [
-  // ASSUMED API CONTRACT: GET /surveys/:id — consent screen card (survey-form-service.ts).
+  // ASSUMED API CONTRACT: GET /surveys/:id — the one public survey summary
+  // (consent card + 18.7 "Khảo sát đã đủ người"). No session needed.
   http.get(apiUrl("/surveys/:id"), async ({ params }) => {
-    const forced = await applyScenario("participation");
+    const forced = await applyScenario("public-surveys");
     if (forced) return forced;
-    const user = await getMockSessionUser();
-    if (!user) return unauthorized();
     const survey = findSurvey(String(params.id));
     if (!survey) return fail(404, "SURVEY_NOT_FOUND", "Survey not found.");
     return ok({
       id: survey.id,
       title: survey.title,
       type: survey.type,
+      status: survey.status,
       rewardPerResponse: survey.rewardPerResponse,
       estimatedEffortSeconds: survey.estimatedEffortSeconds,
+      expectedCompletions: survey.expectedCompletions,
+      completedCompletions: survey.completedCompletions,
       publisherName: survey.publisherName,
     });
   }),
@@ -126,7 +128,9 @@ export const internalParticipationHandlers: RequestHandler[] = [
     if (!attempt || (body.data.attemptId && body.data.attemptId !== attempt.attemptId)) {
       return fail(404, "RESPONSE_NOT_FOUND", "Response not found.");
     }
-    if (FINISHED.has(attempt.status)) {
+    // Decision E5-D3: a resubmission replays the original result (200).
+    if (isFinished(attempt) && attempt.submission) return ok(attempt.submission);
+    if (isFinished(attempt)) {
       return fail(409, "SURVEY_ALREADY_COMPLETED", "You have already completed this survey.");
     }
     if (attempt.status !== "IN_PROGRESS" || Date.parse(attempt.expiresAt) <= Date.now()) {
@@ -165,7 +169,7 @@ export const internalParticipationHandlers: RequestHandler[] = [
 
     const submittedAt = nowIso();
     updateAttempt(attempt.attemptId, (target) => {
-      target.status = "SUBMITTED";
+      target.status = "COMPLETED";
       target.submittedAt = submittedAt;
       target.answers = validation.normalizedAnswers;
     });
@@ -195,22 +199,26 @@ export const internalParticipationHandlers: RequestHandler[] = [
       }
     }
 
-    return ok({
+    const result = {
       responseId,
       attemptId: attempt.attemptId,
       formId: survey.id,
       formVersionId: attempt.formVersionId,
-      status: "VALIDATED",
+      status: "VALIDATED" as const,
       submittedAt,
       reward: {
-        status: held ? "HELD_IN_INTEGRITY" : "SETTLED",
+        status: held ? ("HELD_IN_INTEGRITY" as const) : ("SETTLED" as const),
         journalId: mockId(),
         amount: reward.amount,
-        targetAccountClass: held ? "INTEGRITY_HOLD" : "USER_AVAILABLE",
+        targetAccountClass: held ? ("INTEGRITY_HOLD" as const) : ("USER_AVAILABLE" as const),
         settledAt: submittedAt,
       },
-      policyMode: held ? "ENFORCED" : "SHADOW",
+      policyMode: held ? ("ENFORCED" as const) : ("SHADOW" as const),
+    };
+    updateAttempt(attempt.attemptId, (target) => {
+      target.submission = result;
     });
+    return ok(result);
   }),
 
   // ASSUMED API CONTRACT: GET /attempts/:attemptId/outcome (submission-service.ts).
@@ -221,6 +229,7 @@ export const internalParticipationHandlers: RequestHandler[] = [
     if (!user) return unauthorized();
     const attempt = findAttempt(String(params.attemptId));
     if (!attempt || attempt.userId !== user.id) return fail(404, "ATTEMPT_NOT_FOUND", "Attempt not found.");
+    releaseDuePendingRewards(user);
     const outcome = rewardOutcomeOf(user, attempt.attemptId);
     return ok({
       attemptId: attempt.attemptId,
@@ -243,7 +252,7 @@ export const internalParticipationHandlers: RequestHandler[] = [
       return fail(404, "FEEDBACK_ATTEMPT_NOT_FOUND", "Survey attempt not found.");
     }
     const feedback = surveyFeedback.get()[attempt.attemptId] ?? null;
-    const state = feedback ? "SUBMITTED" : FINISHED.has(attempt.status) ? "ELIGIBLE" : "NOT_ELIGIBLE";
+    const state = feedback ? "SUBMITTED" : isFinished(attempt) ? "ELIGIBLE" : "NOT_ELIGIBLE";
     return ok({ attemptId: attempt.attemptId, state, feedback });
   }),
 
@@ -259,7 +268,7 @@ export const internalParticipationHandlers: RequestHandler[] = [
     if (!attempt || attempt.userId !== user.id) {
       return fail(404, "FEEDBACK_ATTEMPT_NOT_FOUND", "Survey attempt not found.");
     }
-    if (!FINISHED.has(attempt.status)) {
+    if (!isFinished(attempt)) {
       return fail(409, "FEEDBACK_NOT_ALLOWED", "Feedback is only allowed after completing the survey.");
     }
     const body = submitSurveyFeedbackInputSchema.safeParse(await readJson(request));

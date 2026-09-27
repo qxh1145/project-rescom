@@ -9,7 +9,8 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Icon } from "@/components/ui/Icon";
-import { formatEffortMinutes } from "@/lib/participation/survey-form-service";
+import { SUPPORT_MAILTO } from "@/lib/feedback/error-pages";
+import { formatEffortMinutes } from "@/lib/participation/effort-minutes";
 import { FocusError, FocusLoading } from "../../../../_participation/FocusPageState";
 import { useStartSurvey } from "../hooks/use-start-survey";
 import { FullNoticeBody, NeverRecordedNote, PurposeParagraph, RecordedList, SurveyMeta } from "./ConsentContent";
@@ -25,10 +26,24 @@ export function StartSurveyScreen() {
   const start = useStartSurvey(surveyId);
   const [noticeOpen, setNoticeOpen] = useState(false);
 
+  const supportLink = start.error?.support ? (
+    <a href={SUPPORT_MAILTO} className="text-label font-bold text-primary hover:underline">
+      Báo Admin kiểm tra
+    </a>
+  ) : null;
+
   if (start.loading) return <FocusLoading />;
   if (start.autoStart) {
     return start.error ? (
-      <FocusError title="Chưa mở được khảo sát" message={start.error} onRetry={start.retry} />
+      <FocusError
+        title="Chưa mở được khảo sát"
+        message={start.error.message}
+        tone={start.error.tone}
+        // An info answer (already completed, not eligible…) cannot change on retry.
+        onRetry={start.error.tone === "danger" ? start.retry : undefined}
+      >
+        {supportLink}
+      </FocusError>
     ) : (
       <FocusLoading label="Đang mở khảo sát…" />
     );
@@ -40,7 +55,12 @@ export function StartSurveyScreen() {
   const reward = summary?.rewardPerResponse ?? null;
   const decline = () => router.push("/marketplace");
 
-  const errorAlert = start.error ? <Alert tone="danger">{start.error}</Alert> : null;
+  const errorAlert = start.error ? (
+    <div className="flex flex-col gap-2">
+      <Alert tone={start.error.tone}>{start.error.message}</Alert>
+      {supportLink}
+    </div>
+  ) : null;
 
   return (
     <>

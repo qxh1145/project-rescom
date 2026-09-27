@@ -12,6 +12,7 @@ import { ResetDemoModal } from "./ResetDemoModal";
 import { BrandLogo } from "./BrandLogo";
 import { NotificationBell } from "./NotificationBell";
 import { browserSessionStorage, clearAllOnboardingDrafts } from "@/lib/onboarding/onboarding-draft";
+import { browserParticipationStores, clearParticipationStorage } from "@/lib/participation/clear-participation-storage";
 
 interface PortalShellProps {
   children: React.ReactNode;
@@ -96,6 +97,7 @@ export function PortalShell({ children }: PortalShellProps) {
   async function handleLogout() {
     await mockRepository.logout();
     clearAllOnboardingDrafts(browserSessionStorage());
+    clearParticipationStorage(...browserParticipationStores());
     router.push("/login");
   }
 

@@ -93,13 +93,12 @@ export function useEmailAuth({ mode, returnTo }: UseEmailAuthOptions) {
     setFieldErrors({});
 
     try {
-      if (mode === "register") {
-        await authService.register(validation.data, controller.signal);
-      } else {
-        await authService.login(validation.data, controller.signal);
-      }
+      const user =
+        mode === "register"
+          ? await authService.register(validation.data, controller.signal)
+          : await authService.login(validation.data, controller.signal);
       setStatus("redirecting");
-      const destination = await authService.resolvePostLoginDestination(returnTo, controller.signal);
+      const destination = await authService.resolvePostLoginDestination(returnTo, controller.signal, user.role);
       if (!controller.signal.aborted) router.replace(destination);
       return null;
     } catch (error) {

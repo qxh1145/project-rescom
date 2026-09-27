@@ -5,7 +5,7 @@ import { Spinner } from "./Spinner";
  * Page 8 (62:1477): primary = "Nút chính", secondary = "Nút phụ" (neutral
  * outline), outline = green outline (login Google button), ghost = text-only.
  */
-export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "danger";
+export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "danger" | "danger-outline";
 /** Heights in px: sm 40 · md 44 · base 48 · lg 52 · xl 54 · 2xl 56 (17px label, page 15 CTAs). */
 export type ButtonSize = "sm" | "md" | "base" | "lg" | "xl" | "2xl";
 /** Corner radius: control 14px (default) · field 12px (page 15 buttons and dialogs). */
@@ -26,6 +26,8 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   outline: "border border-primary bg-surface text-primary hover:bg-primary/5 active:bg-primary/10",
   ghost: "text-primary hover:bg-tone-green-bg active:bg-tone-green-bg",
   danger: "bg-danger text-primary-foreground hover:brightness-95 active:brightness-90",
+  // Admin 11a "Từ chối…" (62:3513): white fill, 1px danger border and label.
+  "danger-outline": "border border-danger bg-surface text-danger hover:bg-danger-soft active:bg-danger-soft",
 };
 
 // Page 8 "Không dùng được": dashed control border, #EEF1F6 fill, #3A4460 text.

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Alert } from "@/components/ui/Alert";
 import { Button, buttonClassName } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
+import { formatEffortMinutes } from "@/lib/participation/effort-minutes";
 import { EXTERNAL_MESSAGES } from "@/lib/participation/external-messages";
 import { useGoogleFormAttempt } from "../hooks/use-google-form-attempt";
 import { AttemptEndedScreen, type AttemptEndedVariant } from "./AttemptEndedScreen";
@@ -13,19 +14,33 @@ import { CodeEntryScreen } from "./CodeEntryScreen";
 import { GoogleFormHeader } from "./GoogleFormHeader";
 import { ReportMissingCodeDialog } from "./ReportMissingCodeDialog";
 
-function minutesLabel(seconds: number): string {
-  return `${Math.max(1, Math.round(seconds / 60))} phút`;
-}
-
 /** Figma page 5 "Google Forms + mã hoàn thành": 62:2 · 62:359 · 62:784 · 62:67. */
 export function GoogleFormAttempt({ attemptId }: { attemptId: string }) {
   const state = useGoogleFormAttempt(attemptId);
   const [reportOpen, setReportOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const { attempt, screen, query } = state;
+  const ended: AttemptEndedVariant | null =
+    screen?.kind === "locked"
+      ? screen.reason === "account-limit"
+        ? "account-limit"
+        : "locked"
+      : screen?.kind === "closed"
+        ? screen.reason
+        : null;
+  const view = !attempt || !screen ? "loading" : screen.kind === "form" ? "form" : (ended ?? screen.kind);
+
+  // A new state replaces the page: move focus to its (visible) heading.
+  useEffect(() => {
+    if (view === "loading") return;
+    const heading = Array.from(document.querySelectorAll<HTMLElement>("[data-focus-heading]")).find(
+      (element) => element.getClientRects().length > 0,
+    );
+    heading?.focus({ preventScroll: true });
+  }, [view]);
 
   if (!attempt || !screen || screen.kind === "redirect") {
-    if (query.error && !attempt) {
+    if (query.error && !attempt && !state.sessionLost) {
       const notFound = query.error.status === 404 || query.error.status === 403;
       return (
         <main className="mx-auto flex w-full max-w-[440px] flex-1 flex-col justify-center gap-4 px-5 py-10">
@@ -50,16 +65,8 @@ export function GoogleFormAttempt({ attemptId }: { attemptId: string }) {
     );
   }
 
-  const subtitle = `Google Forms · ${minutesLabel(attempt.survey.estimatedEffortSeconds)}`;
+  const subtitle = `Google Forms · ${formatEffortMinutes(attempt.survey.estimatedEffortSeconds)}`;
   const inForm = screen.kind === "form";
-  const ended: AttemptEndedVariant | null =
-    screen.kind === "locked"
-      ? "reason" in screen && screen.reason === "account-limit"
-        ? "account-limit"
-        : "locked"
-      : screen.kind === "closed"
-        ? screen.reason
-        : null;
 
   return (
     <>

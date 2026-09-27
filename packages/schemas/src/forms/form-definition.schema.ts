@@ -4,6 +4,64 @@ import { formIntegrityMetadataSchema } from "./form-integrity.schema";
 import { validateAttentionChecks } from "./attention-check.validation";
 import { computeInternalTimeBarrier } from "../participation/bot-protection";
 
+/** A named group of blocks stored with the immutable form version. */
+export const formSectionSchema = z
+  .object({
+    id: z.string().trim().min(1, "Section ID is required").max(100),
+    title: z.string().trim().min(1, "Section title is required").max(200),
+    blockIds: z.array(z.string().trim().min(1).max(100)).max(200),
+  })
+  .strict();
+
+export type FormSection = z.infer<typeof formSectionSchema>;
+
+export function validateFormSections(
+  data: { blocks: Array<{ id: string }>; sections?: FormSection[] },
+  ctx: z.RefinementCtx,
+): void {
+  if (data.sections === undefined) return;
+
+  const knownBlockIds = new Set(data.blocks.map((block) => block.id));
+  const sectionIds = new Set<string>();
+  const assignedBlockIds = new Set<string>();
+
+  data.sections.forEach((section, sectionIndex) => {
+    if (sectionIds.has(section.id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sections", sectionIndex, "id"],
+        message: `Duplicate section ID "${section.id}" found in form definition`,
+      });
+    }
+    sectionIds.add(section.id);
+
+    section.blockIds.forEach((blockId, blockIndex) => {
+      if (!knownBlockIds.has(blockId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["sections", sectionIndex, "blockIds", blockIndex],
+          message: `Section references unknown block ID "${blockId}"`,
+        });
+      } else if (assignedBlockIds.has(blockId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["sections", sectionIndex, "blockIds", blockIndex],
+          message: `Block ID "${blockId}" belongs to more than one section`,
+        });
+      }
+      assignedBlockIds.add(blockId);
+    });
+  });
+
+  if (data.sections.length > 0 && data.blocks.some((block) => !assignedBlockIds.has(block.id))) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["sections"],
+      message: "Every block must belong to exactly one section when sections are present",
+    });
+  }
+}
+
 export const formSettingsSchema = z
   .object({
     shuffleBlocks: z.boolean().default(false),
@@ -35,6 +93,7 @@ export const formDefinitionSchema = z
       .array(formBlockSchema)
       .min(1, "Form must contain at least one question block")
       .max(200, "Form cannot exceed 200 blocks"),
+    sections: z.array(formSectionSchema).max(50).optional(),
     settings: formSettingsSchema.default({}),
     metadata: formIntegrityMetadataSchema.default({
       expectedEffortSeconds: 60,
@@ -65,6 +124,8 @@ export const formDefinitionSchema = z
       }
       blockOrders.add(block.order);
     }
+
+    validateFormSections(data, ctx);
 
     const pairMap = new Map<string, string>();
 

@@ -78,6 +78,20 @@ export const MOCK_INCOMPLETE_USER: MockUser = {
   createdAt: INCOMPLETE_USER_REGISTERED_AT,
 };
 
+/** Phase 6 admin console demo account (Figma 11 "Admin Hùng"). Mock login ignores the password. */
+export const MOCK_ADMIN_USER: MockUser = {
+  id: "user-admin-004",
+  email: "admin@rescom.vn",
+  name: "Hùng Nguyễn",
+  role: "ADMIN",
+  isOnboarded: true,
+  isActivated: true,
+  hasUnlockedFrozenPoints: true,
+  streak: 0,
+  completedSurveyIds: [],
+  createdAt: "2026-08-01T08:00:00.000Z",
+};
+
 export const MOCK_INCOMPLETE_DRAFT: MockOnboardingDraft = {
   step: 2,
   answers: {
@@ -521,6 +535,7 @@ export function createInitialStoreState(): MockStoreState {
       "user-new-001": { ...MOCK_NEW_USER },
       "user-active-002": { ...MOCK_ACTIVATED_USER },
       "user-onboarding-003": { ...MOCK_INCOMPLETE_USER },
+      "user-admin-004": { ...MOCK_ADMIN_USER },
     },
     demographics: {
       "user-active-002": { ...MOCK_ACTIVATED_DEMOGRAPHICS },

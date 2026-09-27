@@ -17,6 +17,10 @@ export const EXTERNAL_MESSAGES = {
   network: "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.",
   generic: "Chưa xác nhận được mã. Vui lòng thử lại sau ít phút.",
   loadFailed: "Không tải được lượt làm khảo sát.",
+  // ASSUMED (not drawn): no link, or a link outside the Google Forms allowlist (never opened).
+  formUrlMissing: "Khảo sát chưa có đường dẫn Google Form. Hãy báo Admin.",
+  formUrlInvalid:
+    "Đường dẫn của khảo sát này không phải liên kết Google Forms hợp lệ nên Rescom không mở. Hãy báo Admin kiểm tra.",
   notFound: "Không tìm thấy lượt làm này. Có thể nó đã hết hạn hoặc thuộc tài khoản khác.",
 
   // Report missing code dialog — ASSUMED (not drawn).

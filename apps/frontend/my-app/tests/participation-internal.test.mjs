@@ -135,13 +135,14 @@ test("draft storage: save, load, restore only known blocks, clear", () => {
   assert.equal(saved.pageIndex, 2);
   assert.equal(saved.savedAt, now.toISOString());
 
-  const loaded = draft.loadAnswerDraft(storage, "a-1");
+  const soon = now.getTime() + 60_000;
+  const loaded = draft.loadAnswerDraft(storage, "a-1", soon);
   assert.deepEqual(loaded.answers, { q1: "Năm 1", gone: 1 });
   assert.deepEqual(draft.restorableAnswers(loaded, ["q1", "q2"]), { q1: "Năm 1" });
-  assert.equal(draft.loadAnswerDraft(storage, "a-2"), null, "drafts are per attempt");
+  assert.equal(draft.loadAnswerDraft(storage, "a-2", soon), null, "drafts are per attempt");
 
   draft.clearAnswerDraft(storage, "a-1");
-  assert.equal(draft.loadAnswerDraft(storage, "a-1"), null);
+  assert.equal(draft.loadAnswerDraft(storage, "a-1", soon), null);
 });
 
 test("draft storage: corrupt or foreign data is discarded; storage failures are no-ops", () => {

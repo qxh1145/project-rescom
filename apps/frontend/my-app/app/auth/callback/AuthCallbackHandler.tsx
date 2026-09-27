@@ -28,10 +28,11 @@ export function AuthCallbackHandler() {
         if (isApiMockingEnabled && provider === MOCK_GOOGLE_PROVIDER) {
           await authService.completeMockGoogleSignIn(controller.signal);
         }
-        await authService.getCurrentUser(controller.signal);
+        const user = await authService.getCurrentUser(controller.signal);
         const destination = await authService.resolvePostLoginDestination(
           returnTo,
           controller.signal,
+          user.role,
         );
         if (!controller.signal.aborted) router.replace(destination);
       } catch (error) {

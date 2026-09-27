@@ -37,7 +37,12 @@ export function QuestionCard({ block, number, value, error, onChange, onBlur }: 
         error ? "border-danger" : "border-line"
       }`}
     >
-      <h2 id={titleId} className="text-lead font-bold leading-[23.2px] text-ink lg:text-body-lg lg:leading-normal">
+      {/* tabIndex -1: focus lands here when a new page of questions opens. */}
+      <h2
+        id={titleId}
+        tabIndex={-1}
+        className="text-lead font-bold leading-[23.2px] text-ink focus:outline-none lg:text-body-lg lg:leading-normal"
+      >
         {number}. {block.title}
         {block.required ? (
           <>

@@ -30,6 +30,8 @@ export const MOCK_SCENARIOS = [
   // In-Rescom survey: submit → network failure (4b) / reward held for quality review (17c).
   "submit-offline",
   "integrity-hold",
+  // MOCK-ONLY: every Google Forms reward in its 48h review is released on the next wallet/status read.
+  "release-pending",
 ] as const;
 
 export type MockScenario = (typeof MOCK_SCENARIOS)[number];
@@ -49,7 +51,7 @@ export type MockEndpoint =
 const AUTH_ENDPOINTS = new Set(["login", "register", "me", "refresh", "google"]);
 
 /** Guest routes: callable without a session, so `unauthenticated` leaves them alone. */
-const GUEST_ENDPOINTS = new Set(["login", "register", "google", "password-forgot"]);
+const GUEST_ENDPOINTS = new Set(["login", "register", "google", "password-forgot", "public-surveys"]);
 
 /** localStorage key of the remembered scenario (cleared by `?msw-reset=1`). */
 export const SCENARIO_STORAGE_KEY = "rescom:msw-scenario";

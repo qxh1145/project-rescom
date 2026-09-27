@@ -60,11 +60,11 @@ export function reportMissingCode(
 /**
  * ASSUMED API CONTRACT: `POST /attempts/:attemptId/cancel` ("Huỷ lượt làm").
  * The backend has an ABANDONED attempt status but no route to abandon one.
- * → 200 `{ attemptId, status: "CANCELLED" }`; 409 ATTEMPT_NOT_IN_PROGRESS.
+ * → 200 `{ attemptId, status: "ABANDONED" }` (backend `AttemptStatus`); 409 ATTEMPT_NOT_IN_PROGRESS.
  */
 export const cancelAttemptResponseSchema = z.object({
   attemptId: z.string().uuid(),
-  status: z.literal("CANCELLED"),
+  status: z.literal("ABANDONED"),
 });
 
 export function cancelAttempt(attemptId: string, signal?: AbortSignal) {

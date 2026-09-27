@@ -9,6 +9,7 @@ import {
   rememberPassword,
   toSanitizedUser,
 } from "../data/auth";
+import { isMockAccountLocked } from "../data/admin-users";
 import { fail, ok, unauthorized } from "../envelope";
 import { applyScenario } from "../scenarios";
 
@@ -48,6 +49,8 @@ export const authHandlers = [
 
     const { email, password } = parsed.data;
     if (password !== expectedPassword(email)) return invalidCredentials();
+    // Phase 6: an account locked in Admin · Người dùng cannot sign in (backend AUTH_USER_LOCKED).
+    if (isMockAccountLocked(email)) return fail(403, "AUTH_USER_LOCKED", "User account is locked.");
 
     try {
       const { user } = await mockRepository.login({ email });

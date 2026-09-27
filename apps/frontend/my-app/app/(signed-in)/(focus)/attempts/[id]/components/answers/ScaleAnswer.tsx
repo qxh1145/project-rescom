@@ -3,8 +3,9 @@
 /**
  * Figma 4 Q4 "Button – 1…5" (62:185 / 62:760): equal-width 52px (desktop) /
  * 48px (mobile) buttons, #7C869C border; selected = primary fill, white
- * extra-bold. End labels underneath. Native radios (visually hidden) give
- * arrow-key navigation.
+ * extra-bold. End labels underneath (visual); assistive tech gets them in the
+ * first/last radio's name ("1 – Rất không hài lòng"). Native radios (visually
+ * hidden) give arrow-key navigation.
  */
 interface ScaleAnswerProps {
   name: string;
@@ -38,7 +39,7 @@ export function ScaleAnswer({
         aria-required={required || undefined}
         className="flex gap-2 lg:gap-2.5"
       >
-        {values.map((option) => (
+        {values.map((option, index) => (
           <label
             key={option}
             className={[
@@ -54,6 +55,7 @@ export function ScaleAnswer({
               value={option}
               checked={value === option}
               onChange={() => onChange(option)}
+              aria-label={endLabel(option, index, values.length, minLabel, maxLabel)}
               className="sr-only"
             />
             {option}
@@ -68,6 +70,13 @@ export function ScaleAnswer({
       ) : null}
     </div>
   );
+}
+
+/** Accessible name of an end point that carries a label; `undefined` keeps the plain number. */
+function endLabel(option: number, index: number, count: number, minLabel?: string, maxLabel?: string): string | undefined {
+  if (index === 0 && minLabel) return `${option} – ${minLabel}`;
+  if (index === count - 1 && maxLabel) return `${option} – ${maxLabel}`;
+  return undefined;
 }
 
 export function scaleValues(min: number, max: number, step = 1): number[] {

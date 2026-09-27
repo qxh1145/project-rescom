@@ -5,14 +5,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { computeInternalTimeBarrier, type FormBlock } from "@rescom/schemas";
 import { useSurveyTelemetry } from "@/app/forms/hooks/useSurveyTelemetry";
 import { isApiError } from "@/lib/api/api-error";
+import { useApiQuery } from "@/lib/api/use-api-query";
 import {
   browserDraftStorage,
   clearAnswerDraft,
   loadAnswerDraft,
+  pruneExpiredAnswerDrafts,
   restorableAnswers,
   saveAnswerDraft,
 } from "@/lib/participation/answer-draft";
-import type { AttemptDetails } from "@/lib/participation/attempts-service";
+import { attemptPhase, type AttemptDetails } from "@/lib/participation/attempts-service";
+import { getIntegrityConsent } from "@/lib/participation/consent-service";
 import {
   invalidBlockIds,
   isAttemptExpiredError,
@@ -30,15 +33,36 @@ import {
   validateBlocks,
 } from "@/lib/participation/survey-form";
 import type { SurveyForm } from "@/lib/participation/survey-form-service";
+import { isSessionLost } from "@/lib/session/session-status";
 import { useSession } from "@/lib/session/SessionProvider";
 
 export type RunnerPhase = "answering" | "submitting" | "offline" | "expired";
 
 const AUTOSAVE_DELAY_MS = 600;
+/** ASSUMED (not in Figma): "sắp hết giờ giữ chỗ" notice 5 minutes before `expiresAt`. */
+export const EXPIRY_WARNING_MS = 5 * 60 * 1000;
 const FREE_TEXT = new Set<FormBlock["type"]>(["text", "textarea", "number"]);
+const FOCUSABLE = "input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled])";
 
 function initialDraft(attemptId: string) {
-  return loadAnswerDraft(browserDraftStorage(), attemptId);
+  const storage = browserDraftStorage();
+  // Drafts of attempts past the reservation window can never be sent: drop them.
+  pruneExpiredAnswerDrafts(storage);
+  return loadAnswerDraft(storage, attemptId);
+}
+
+type FocusRequest = { kind: "page" } | { kind: "invalid"; blockId: string };
+
+/** Moves focus after a page change (first question heading) or a failed validation (first invalid control). */
+function applyFocus(request: FocusRequest, firstBlockId: string | undefined): void {
+  if (request.kind === "invalid") {
+    const section = document.getElementById(`q-${request.blockId}`);
+    const control = section?.querySelector<HTMLElement>(FOCUSABLE);
+    (control ?? document.getElementById(`q-${request.blockId}-title`))?.focus({ preventScroll: true });
+    section?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  if (firstBlockId) document.getElementById(`q-${firstBlockId}-title`)?.focus({ preventScroll: true });
 }
 
 /**
@@ -63,30 +87,43 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
   const [savedAt, setSavedAt] = useState<string | null>(() => restored?.savedAt ?? null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [phase, setPhase] = useState<RunnerPhase>(() =>
-    attempt.status === "EXPIRED" || Date.parse(attempt.expiresAt) <= Date.now() ? "expired" : "answering",
+    attemptPhase(attempt) === "expired" ? "expired" : "answering",
   );
+  const [expiringSoon, setExpiringSoon] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   // 4b stays on screen while "Thử gửi lại" is in flight.
   const [offlineRetry, setOfflineRetry] = useState(false);
   const [barrierUntil, setBarrierUntil] = useState<number | null>(null);
+  /** Seconds left when the barrier was hit: the static figure screen readers get. */
+  const [barrierStartSeconds, setBarrierStartSeconds] = useState(0);
   const [now, setNow] = useState(() => Date.now());
 
   const answersRef = useRef(answers);
   const pageRef = useRef(pageIndex);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Set once the submit succeeded: no autosave may bring the draft back. */
+  const submittedRef = useRef(false);
+  /** Double-submit guard (a second click lands before `phase` re-renders). */
+  const busyRef = useRef(false);
+  const focusRequest = useRef<FocusRequest | null>(null);
+  const blockIds = useMemo(() => new Set(form.blocks.map((block) => block.id)), [form]);
 
+  // Telemetry batches carry the notice version the respondent accepted (ASSUMED consent route).
+  const consent = useApiQuery("integrity-consent", (signal) => getIntegrityConsent(signal));
   const telemetry = useSurveyTelemetry({
     formId: attempt.formId,
     attemptId: attempt.attemptId,
     responseId: attempt.responseId,
     formVersionId: attempt.formVersionId,
     enabled: phase !== "expired",
+    consentNoticeVersion: consent.data?.acceptedVersion ?? null,
   });
   const { recordEvent, flushQueue } = telemetry;
 
   const saveNow = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = null;
+    if (submittedRef.current) return;
     const draft = saveAnswerDraft(storage, {
       attemptId: attempt.attemptId,
       answers: answersRef.current,
@@ -100,16 +137,57 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
     saveTimer.current = setTimeout(saveNow, AUTOSAVE_DELAY_MS);
   }, [saveNow]);
 
-  // Keep a pending save from being lost when the page unmounts.
+  // Keep a pending save from being lost when the page unmounts (never after a successful submit).
   useEffect(
     () => () => {
       if (saveTimer.current) {
         clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        if (submittedRef.current) return;
         saveAnswerDraft(storage, { attemptId: attempt.attemptId, answers: answersRef.current, pageIndex: pageRef.current });
       }
     },
     [attempt.attemptId, storage],
   );
+
+  // Reservation end: switch to the expired state at `expiresAt`, warn 5 minutes before.
+  // Timers are re-armed when the tab becomes visible (background tabs throttle them).
+  useEffect(() => {
+    if (phase === "expired") return;
+    const expiresAt = Date.parse(attempt.expiresAt);
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const arm = () => {
+      timers.splice(0).forEach(clearTimeout);
+      const left = expiresAt - Date.now();
+      setExpiringSoon(left <= EXPIRY_WARNING_MS);
+      // An in-flight submit is decided by the server's answer, not by the local clock.
+      const expire = () => setPhase((current) => (current === "submitting" ? current : "expired"));
+      if (left <= 0) {
+        expire();
+        return;
+      }
+      if (left > EXPIRY_WARNING_MS) timers.push(setTimeout(() => setExpiringSoon(true), left - EXPIRY_WARNING_MS));
+      timers.push(setTimeout(expire, left));
+    };
+    arm();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") arm();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      timers.forEach(clearTimeout);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [attempt.expiresAt, phase]);
+
+  const page = layout.pages[pageIndex] ?? layout.pages[0];
+  // Focus follows navigation and validation (after the new page / errors render).
+  useEffect(() => {
+    const request = focusRequest.current;
+    if (!request) return;
+    focusRequest.current = null;
+    applyFocus(request, page?.blocks[0]?.id);
+  }, [page, errors]);
 
   // Telemetry: start/resume once, then every page's questions as they are shown.
   const startedRef = useRef(false);
@@ -119,7 +197,6 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
     recordEvent(restored ? "SURVEY_ATTEMPT_RESUMED" : "SURVEY_ATTEMPT_STARTED");
   }, [recordEvent, restored, telemetry.isEnabled]);
 
-  const page = layout.pages[pageIndex] ?? layout.pages[0];
   useEffect(() => {
     if (phase !== "answering" || !page) return;
     for (const block of page.blocks) recordEvent("QUESTION_SHOWN", block.id);
@@ -137,10 +214,20 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
   }, [barrierUntil]);
 
   const barrierSeconds = barrierUntil === null ? 0 : Math.max(0, Math.ceil((barrierUntil - now) / 1000));
-  const requiredSeconds = useMemo(
-    () => computeInternalTimeBarrier({ blocks: form.blocks, metadata: form.metadata }).requiredSeconds,
-    [form],
-  );
+  // The barrier the server announced wins; the form-derived one is the fallback.
+  const earliestSubmitAt = useMemo(() => {
+    const announced = attempt.timeBarrier ? Date.parse(attempt.timeBarrier.earliestSubmitAt) : Number.NaN;
+    if (Number.isFinite(announced)) return announced;
+    const { requiredSeconds } = computeInternalTimeBarrier({ blocks: form.blocks, metadata: form.metadata });
+    return Date.parse(attempt.startedAt) + requiredSeconds * 1000;
+  }, [attempt.startedAt, attempt.timeBarrier, form]);
+
+  const blockUntil = useCallback((until: number) => {
+    const current = Date.now();
+    setNow(current);
+    setBarrierUntil(until);
+    setBarrierStartSeconds(Math.max(1, Math.ceil((until - current) / 1000)));
+  }, []);
 
   const setAnswer = useCallback(
     (block: FormBlock, value: unknown) => {
@@ -181,6 +268,7 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
   const goToPage = useCallback(
     (index: number) => {
       const target = Math.max(0, Math.min(index, lastPage));
+      focusRequest.current = { kind: "page" };
       pageRef.current = target;
       setPageIndex(target);
       setFurthestPage((current) => Math.max(current, target));
@@ -191,13 +279,17 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
     [lastPage, saveNow],
   );
 
-  const showErrors = useCallback((found: Record<string, string>) => {
-    setErrors(found);
-    const first = Object.keys(found)[0];
-    if (!first) return;
-    for (const id of Object.keys(found)) recordEvent("QUESTION_SKIPPED", id);
-    requestAnimationFrame(() => document.getElementById(`q-${first}`)?.scrollIntoView({ behavior: "smooth" }));
-  }, [recordEvent]);
+  const showErrors = useCallback(
+    (found: Record<string, string>) => {
+      setErrors(found);
+      const first = Object.keys(found)[0];
+      if (!first) return;
+      focusRequest.current = { kind: "invalid", blockId: first };
+      // Telemetry only for questions of this form (never for server keys like `_errors`).
+      for (const id of Object.keys(found)) if (blockIds.has(id)) recordEvent("QUESTION_SKIPPED", id);
+    },
+    [blockIds, recordEvent],
+  );
 
   const next = useCallback(() => {
     if (!page) return;
@@ -224,12 +316,14 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
   );
 
   const saveAndExit = useCallback(() => {
+    if (busyRef.current) return;
     saveNow();
     void flushQueue();
     router.push("/marketplace");
   }, [flushQueue, router, saveNow]);
 
   const submit = useCallback(async () => {
+    if (busyRef.current) return;
     const all = validateBlocks(form.blocks, answersRef.current);
     if (Object.keys(all).length > 0) {
       const target = firstPageWith(layout, Object.keys(all));
@@ -238,11 +332,9 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
       setPhase("answering");
       return;
     }
-    const earliest = Date.parse(attempt.startedAt) + requiredSeconds * 1000;
-    if (Date.now() < earliest) {
+    if (Date.now() < earliestSubmitAt) {
       recordEvent("TIME_BARRIER_TRIGGERED");
-      setNow(Date.now());
-      setBarrierUntil(earliest);
+      blockUntil(earliestSubmitAt);
       return;
     }
     if (!attempt.responseId) {
@@ -251,6 +343,7 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
     }
 
     saveNow();
+    busyRef.current = true;
     setSubmitError(null);
     setPhase("submitting");
     try {
@@ -258,13 +351,27 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
         attemptId: attempt.attemptId,
         answers: toSubmissionAnswers(form.blocks, answersRef.current),
       });
+      // From here on nothing may write the draft back (autosave timer, unmount).
+      submittedRef.current = true;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = null;
       recordEvent("SURVEY_SUBMITTED");
       void flushQueue();
       stashSubmission(result);
       clearAnswerDraft(storage, attempt.attemptId);
       refresh();
       router.replace(`/attempts/${attempt.attemptId}/complete`);
+      return; // stay busy until the completion screen mounts
     } catch (cause) {
+      busyRef.current = false;
+      // Session ended: keep the local draft and let SessionGate send the user to login.
+      if (isSessionLost(cause)) {
+        saveNow();
+        setOfflineRetry(false);
+        setPhase("answering");
+        refresh();
+        return;
+      }
       if (isOfflineFailure(cause)) {
         setOfflineRetry(true);
         setPhase("offline");
@@ -276,6 +383,7 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
         return;
       }
       if (isApiError(cause) && cause.code === "SURVEY_ALREADY_COMPLETED") {
+        submittedRef.current = true;
         clearAnswerDraft(storage, attempt.attemptId);
         router.replace(`/attempts/${attempt.attemptId}/complete`);
         return;
@@ -284,11 +392,10 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
       const remaining = timeBarrierRemainingSeconds(cause);
       if (remaining !== null) {
         recordEvent("TIME_BARRIER_TRIGGERED");
-        setNow(Date.now());
-        setBarrierUntil(Date.now() + remaining * 1000);
+        blockUntil(Date.now() + remaining * 1000);
         return;
       }
-      const invalid = invalidBlockIds(cause);
+      const invalid = invalidBlockIds(cause, blockIds);
       if (invalid.length > 0) {
         const target = firstPageWith(layout, invalid);
         if (target >= 0) goToPage(target);
@@ -298,6 +405,9 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
     }
   }, [
     attempt,
+    blockIds,
+    blockUntil,
+    earliestSubmitAt,
     flushQueue,
     form.blocks,
     goToPage,
@@ -305,7 +415,6 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
     pageIndex,
     recordEvent,
     refresh,
-    requiredSeconds,
     router,
     saveNow,
     showErrors,
@@ -335,6 +444,9 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
     savedAt,
     answeredCount: countAnswered(form.blocks, answers),
     barrierSeconds,
+    barrierStartSeconds,
+    /** ASSUMED: the reservation ends within `EXPIRY_WARNING_MS`. */
+    expiringSoon,
     setAnswer,
     blurAnswer,
     next,

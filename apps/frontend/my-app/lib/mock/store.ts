@@ -64,6 +64,13 @@ export function loadStore(): MockStoreState {
       storage.setItem(STORAGE_KEY, JSON.stringify(initial));
       return initial;
     }
+    // Seed users added after a browser saved its store (e.g. the Phase 6 admin) are backfilled.
+    const seeded = createInitialStoreState().users;
+    const missing = Object.keys(seeded).filter((id) => !(id in parsed.users));
+    if (missing.length) {
+      for (const id of missing) parsed.users[id] = seeded[id];
+      storage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+    }
     return parsed as MockStoreState;
   } catch {
     // JSON parse error or access exception -> reset safely

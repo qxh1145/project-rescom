@@ -15,6 +15,11 @@ interface SegmentedControlProps<T extends string> {
   label: string;
   /** Stretch segments to fill the container (mobile). */
   fullWidth?: boolean;
+  /**
+   * `bordered` = Figma 16b "Loại bảng xếp hạng" (63:3136): 50px track with a
+   * #7C869C border and 4px padding, 40px segments, active one outlined in ink.
+   */
+  variant?: "pill" | "bordered";
   className?: string;
 }
 
@@ -32,8 +37,10 @@ export function SegmentedControl<T extends string>({
   onChange,
   label,
   fullWidth = false,
+  variant = "pill",
   className = "",
 }: SegmentedControlProps<T>) {
+  const bordered = variant === "bordered";
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
   const selectedIndex = segments.findIndex((segment) => segment.value === value);
   const tabStop = selectedIndex >= 0 ? selectedIndex : 0;
@@ -42,7 +49,12 @@ export function SegmentedControl<T extends string>({
     <div
       role="radiogroup"
       aria-label={label}
-      className={`inline-flex rounded-[14px] bg-surface-subtle p-1.25 ${fullWidth ? "w-full" : ""} ${className}`}
+      className={[
+        "inline-flex bg-surface-subtle",
+        bordered ? "rounded-field border border-line-strong p-1" : "rounded-[14px] p-1.25",
+        fullWidth ? "w-full" : "",
+        className,
+      ].join(" ")}
     >
       {segments.map((segment, index) => {
         const active = index === selectedIndex;
@@ -65,9 +77,12 @@ export function SegmentedControl<T extends string>({
               if (segments[target].value !== value) onChange(segments[target].value);
             }}
             className={[
-              "h-9 whitespace-nowrap rounded-[10px] px-4 text-label transition-colors",
+              "whitespace-nowrap px-4 text-label transition-colors",
+              bordered ? "h-10 rounded-[9px] border" : "h-9 rounded-[10px]",
               fullWidth ? "flex-1" : "",
-              active ? "bg-surface font-bold text-ink shadow-[0_1px_2px_rgba(30,36,70,0.12)]" : "font-semibold text-ink-muted hover:text-ink",
+              active
+                ? `bg-surface font-bold text-ink ${bordered ? "border-ink" : "shadow-[0_1px_2px_rgba(30,36,70,0.12)]"}`
+                : `font-semibold hover:text-ink ${bordered ? "border-transparent text-ink-strong" : "text-ink-muted"}`,
             ].join(" ")}
           >
             {segment.label}

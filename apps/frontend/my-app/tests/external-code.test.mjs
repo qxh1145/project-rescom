@@ -78,24 +78,41 @@ test("canConfirmCode needs the barrier passed AND 6 digits", () => {
   assert.equal(canConfirmCode({ remainingSeconds: 0, code: "482917", busy: true }), false);
 });
 
-test("screenForAttempt routes by type and status", () => {
-  const base = { attemptId: "a-1", type: "EXTERNAL" };
-  assert.deepEqual(screenForAttempt({ ...base, type: "INTERNAL", status: "IN_PROGRESS" }), {
+test("screenForAttempt routes by backend AttemptStatus, expiry and the account budget", () => {
+  const now = Date.parse("2026-09-27T10:00:00.000Z");
+  const open = "2026-09-27T10:20:00.000Z";
+  const past = "2026-09-27T09:59:00.000Z";
+  const base = { attemptId: "a-1", type: "EXTERNAL", expiresAt: open };
+  assert.deepEqual(screenForAttempt({ ...base, type: "INTERNAL", status: "IN_PROGRESS" }, now), {
     kind: "redirect",
     href: "/attempts/a-1",
   });
-  assert.deepEqual(screenForAttempt({ ...base, status: "PENDING_REVIEW" }), {
+  assert.deepEqual(screenForAttempt({ ...base, status: "COMPLETED" }, now), {
     kind: "redirect",
     href: "/attempts/a-1/complete",
   });
-  assert.deepEqual(screenForAttempt({ ...base, status: "SUBMITTED" }), {
-    kind: "redirect",
-    href: "/attempts/a-1/complete",
+  assert.deepEqual(screenForAttempt({ ...base, status: "LOCKED" }, now), { kind: "locked", reason: "attempt" });
+  // Expired reservation: still IN_PROGRESS until the backend abandons it lazily.
+  assert.deepEqual(screenForAttempt({ ...base, status: "IN_PROGRESS", expiresAt: past }, now), {
+    kind: "closed",
+    reason: "expired",
   });
-  assert.deepEqual(screenForAttempt({ ...base, status: "LOCKED" }), { kind: "locked" });
-  assert.deepEqual(screenForAttempt({ ...base, status: "EXPIRED" }), { kind: "closed", reason: "expired" });
-  assert.deepEqual(screenForAttempt({ ...base, status: "CANCELLED" }), { kind: "closed", reason: "cancelled" });
-  assert.deepEqual(screenForAttempt({ ...base, status: "IN_PROGRESS" }), { kind: "form" });
+  assert.deepEqual(screenForAttempt({ ...base, status: "ABANDONED", expiresAt: past }, now), {
+    kind: "closed",
+    reason: "expired",
+  });
+  assert.deepEqual(screenForAttempt({ ...base, status: "ABANDONED" }, now), { kind: "closed", reason: "cancelled" });
+  assert.deepEqual(screenForAttempt({ ...base, status: "ABANDONED", closedReason: "CANCELLED", expiresAt: past }, now), {
+    kind: "closed",
+    reason: "cancelled",
+  });
+  assert.deepEqual(screenForAttempt({ ...base, status: "IN_PROGRESS" }, now), { kind: "form" });
+  // Account+version budget used up (6 wrong codes): no code can be accepted on reload.
+  assert.deepEqual(screenForAttempt({ ...base, status: "IN_PROGRESS", accountWrongCodeCount: 6 }, now), {
+    kind: "locked",
+    reason: "account-limit",
+  });
+  assert.deepEqual(screenForAttempt({ ...base, status: "IN_PROGRESS", accountWrongCodeCount: 5 }, now), { kind: "form" });
 });
 
 test("remaining tries come from details.remainingAttempts, clamped to the policy", () => {
@@ -110,6 +127,10 @@ test("remaining tries come from details.remainingAttempts, clamped to the policy
   assert.equal(remainingTriesFromCount(0), 3);
   assert.equal(remainingTriesFromCount(1), 2);
   assert.equal(remainingTriesFromCount(4), 0);
+  // With the account+version total (ASSUMED accountWrongCodeCount): the smaller budget wins.
+  assert.equal(remainingTriesFromCount(1, 5), 1, "not 'còn 2 lần thử' when the account has 1 try left");
+  assert.equal(remainingTriesFromCount(1, 6), 0);
+  assert.equal(remainingTriesFromCount(1, 1), 2);
 });
 
 test("verifyFailureOf maps backend error codes to UI states", () => {
@@ -117,9 +138,19 @@ test("verifyFailureOf maps backend error codes to UI states", () => {
     kind: "wrong",
     remainingTries: 2,
   });
-  assert.deepEqual(verifyFailureOf(httpError(400, "INVALID_COMPLETION_CODE", { remainingAttempts: 0 })), {
+  // remainingAttempts 0 on this attempt's 3rd wrong code: the attempt limit.
+  assert.deepEqual(verifyFailureOf(httpError(400, "INVALID_COMPLETION_CODE", { remainingAttempts: 0 }), 2), {
     kind: "locked",
     reason: "attempt",
+  });
+  // remainingAttempts 0 although this attempt had tries left: the account+version budget ran out.
+  assert.deepEqual(verifyFailureOf(httpError(400, "INVALID_COMPLETION_CODE", { remainingAttempts: 0 })), {
+    kind: "locked",
+    reason: "account-limit",
+  });
+  assert.deepEqual(verifyFailureOf(httpError(400, "INVALID_COMPLETION_CODE", { remainingAttempts: 0 }), 1), {
+    kind: "locked",
+    reason: "account-limit",
   });
   assert.deepEqual(verifyFailureOf(httpError(409, "ATTEMPT_LOCKED")), { kind: "locked", reason: "attempt" });
   assert.deepEqual(verifyFailureOf(httpError(409, "COMPLETION_CODE_LIMIT_REACHED")), {

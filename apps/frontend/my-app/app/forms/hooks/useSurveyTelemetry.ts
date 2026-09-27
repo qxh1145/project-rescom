@@ -20,7 +20,15 @@ interface UseSurveyTelemetryOptions {
   responseId?: string | null;
   formVersionId?: string;
   enabled?: boolean;
+  /**
+   * `consentNoticeVersion` sent with each batch: the integrity notice version
+   * the respondent accepted. `null` = unknown (omitted from the payload);
+   * left out = the legacy renderer's "v1.0".
+   */
+  consentNoticeVersion?: string | number | null;
 }
+
+const LEGACY_NOTICE_VERSION = "v1.0";
 
 export function useSurveyTelemetry({
   formId,
@@ -28,7 +36,13 @@ export function useSurveyTelemetry({
   responseId,
   formVersionId,
   enabled = true,
+  consentNoticeVersion = LEGACY_NOTICE_VERSION,
 }: UseSurveyTelemetryOptions) {
+  // Read at flush time: the accepted version may load after the first events.
+  const noticeVersionRef = useRef(consentNoticeVersion);
+  useEffect(() => {
+    noticeVersionRef.current = consentNoticeVersion;
+  }, [consentNoticeVersion]);
   const queueRef = useRef<TelemetryEventItem[]>(
     createTelemetryQueue(TELEMETRY_QUEUE_MAX),
   );
@@ -56,7 +70,7 @@ export function useSurveyTelemetry({
     isFlushingRef.current = true;
     let outcome: "ok" | "retry" | "drop" = "retry";
     try {
-      const payload = formatTelemetryPayload(batch, "v1.0");
+      const payload = formatTelemetryPayload(batch, noticeVersionRef.current ?? undefined);
       const res = await fetch(url, {
         method: "POST",
         headers: {

@@ -13,6 +13,17 @@ import {
 import { CONSENT_NOT_RECORDED_MESSAGE } from "@/lib/participation/participation-messages";
 import { consentPath, startAttemptDecision } from "@/lib/participation/start-flow";
 import { getSurveySummary } from "@/lib/participation/survey-form-service";
+import { isSessionLost } from "@/lib/session/session-status";
+import { useSession } from "@/lib/session/SessionProvider";
+import { useSessionLossRedirect } from "@/lib/session/use-session-loss";
+
+export interface StartError {
+  /** `info`: a final answer, nothing to retry; `danger`: a failure worth retrying. */
+  tone: "info" | "danger";
+  message: string;
+  /** "Báo Admin" hint (completion-code limit). */
+  support?: boolean;
+}
 
 /**
  * `/surveys/:id/start` (Figma 14): show the integrity notice for in-Rescom
@@ -22,13 +33,16 @@ import { getSurveySummary } from "@/lib/participation/survey-form-service";
  */
 export function useStartSurvey(surveyId: string) {
   const router = useRouter();
+  const { refresh } = useSession();
   const summary = useApiQuery(`survey-summary:${surveyId}`, (signal) => getSurveySummary(surveyId, signal));
   const consent = useApiQuery("integrity-consent", (signal) => getIntegrityConsent(signal));
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<StartError | null>(null);
   const autoStarted = useRef(false);
+  // 401 while loading: SessionGate takes over (the notice is not shown to a signed-out visitor).
+  const sessionLost = useSessionLossRedirect(summary.error, consent.error);
 
-  const loading = summary.loading || consent.loading;
+  const loading = summary.loading || consent.loading || sessionLost;
   const noticeVersion = consent.data?.currentVersion ?? FALLBACK_NOTICE_VERSION;
   // A failed summary (route missing) falls back to the in-Rescom notice.
   const isExternal = summary.data?.type === "EXTERNAL";
@@ -37,13 +51,14 @@ export function useStartSurvey(surveyId: string) {
   const run = useCallback(
     async (recordConsent: boolean) => {
       if (recordConsent) {
-        const recorded = await acceptIntegrityConsent(noticeVersion).then(
-          () => true,
-          (cause: unknown) => isConsentRouteMissing(cause),
+        const failure = await acceptIntegrityConsent(noticeVersion).then(
+          () => null,
+          (cause: unknown) => (isConsentRouteMissing(cause) ? null : cause),
         );
-        if (!recorded) {
-          setError(CONSENT_NOT_RECORDED_MESSAGE);
+        if (failure !== null) {
           setBusy(false);
+          if (isSessionLost(failure)) refresh();
+          else setError({ tone: "danger", message: CONSENT_NOT_RECORDED_MESSAGE });
           return;
         }
       }
@@ -53,10 +68,14 @@ export function useStartSurvey(surveyId: string) {
         router.replace(decision.href);
         return;
       }
-      setError(decision.message);
       setBusy(false);
+      if (decision.kind === "session") {
+        refresh();
+        return;
+      }
+      setError({ tone: decision.tone, message: decision.message, support: decision.support });
     },
-    [noticeVersion, router, surveyId],
+    [noticeVersion, refresh, router, surveyId],
   );
 
   useEffect(() => {

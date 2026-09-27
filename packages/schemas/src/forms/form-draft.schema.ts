@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { formBlockSchema } from "./form-blocks.schema";
 import { formIntegrityMetadataSchema } from "./form-integrity.schema";
-import { formSettingsSchema } from "./form-definition.schema";
+import {
+  formSectionSchema,
+  formSettingsSchema,
+  validateFormSections,
+} from "./form-definition.schema";
 import { validateAttentionChecks } from "./attention-check.validation";
 import { surveyTargetingSchema, SurveyTargetingCriteria } from "./form-targeting.schema";
 import { externalSurveyUrlSchema } from "./external-url.schema";
@@ -39,6 +43,7 @@ export const draftFormDefinitionSchema = z
       .array(formBlockSchema)
       .max(200, "Form cannot exceed 200 blocks")
       .default([]),
+    sections: z.array(formSectionSchema).max(50).optional(),
     settings: formSettingsSchema.default({}),
     metadata: formIntegrityMetadataSchema.default({
       expectedEffortSeconds: 60,
@@ -69,6 +74,8 @@ export const draftFormDefinitionSchema = z
       }
       blockOrders.add(block.order);
     }
+
+    validateFormSections(data, ctx);
 
     const pairMap = new Map<string, string>();
 

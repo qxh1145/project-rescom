@@ -55,17 +55,19 @@ export function SuccessView({
     <FeedbackDoneCard sent={form.sent !== null} />
   );
 
+  // One layout tree (responsive classes) so the rating form, its ids and the
+  // sticky mobile "Gửi đánh giá" (form=…) exist exactly once.
   return (
     <>
       <CompletionDesktopHeader />
 
-      {/* Desktop */}
-      <main className="relative hidden flex-1 overflow-hidden bg-surface-hero lg:block">
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[520px]">
+      <main className="relative flex flex-1 flex-col lg:block lg:overflow-hidden lg:bg-surface-hero">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 hidden h-[520px] lg:block">
           <Image src="/brand/hills-desktop.jpg" alt="" fill sizes="100vw" className="object-cover object-top" />
         </div>
-        <div className="relative mx-auto flex max-w-[1100px] items-start justify-center gap-[38px] px-6 pt-12 pb-24">
-          <section className="flex w-[434px] shrink-0 flex-col items-center pt-3 text-center">
+        <div className="relative flex flex-col lg:mx-auto lg:max-w-[1100px] lg:flex-row lg:items-start lg:justify-center lg:gap-[38px] lg:px-6 lg:pt-12 lg:pb-24">
+          {/* Desktop celebration (left column). */}
+          <section className="hidden w-[434px] shrink-0 flex-col items-center pt-3 text-center lg:flex">
             <Mascot name="cheer" height={220} />
             <h1 className="mt-[15px] text-[36px] font-extrabold tracking-[-0.7px] text-ink">Nộp bài thành công!</h1>
             <div className="mt-[18px]">
@@ -77,30 +79,33 @@ export function SuccessView({
               </div>
             ) : null}
           </section>
-          <div className="w-[586px] shrink-0">{rating}</div>
-        </div>
-      </main>
 
-      {/* Mobile */}
-      <main className="flex flex-1 flex-col lg:hidden">
-        <section className="relative h-[330px] shrink-0 overflow-hidden">
-          <Image src="/brand/hills-mobile.jpg" alt="" fill priority sizes="100vw" className="object-cover" />
-          <div className="relative flex h-full flex-col items-center pt-[max(env(safe-area-inset-top),16px)] text-center">
-            <h1 className="mt-10 text-[26px] font-extrabold tracking-[-0.5px] text-ink">Nộp bài thành công!</h1>
-            <div className="mt-2">
-              <RewardPill amount={view.amount} kind={view.kind} />
+          {/* Mobile hills hero. */}
+          <section className="relative h-[330px] shrink-0 overflow-hidden lg:hidden">
+            <Image src="/brand/hills-mobile.jpg" alt="" fill priority sizes="100vw" className="object-cover" />
+            <div className="relative flex h-full flex-col items-center pt-[max(env(safe-area-inset-top),16px)] text-center">
+              <h1 className="mt-10 text-[26px] font-extrabold tracking-[-0.5px] text-ink">Nộp bài thành công!</h1>
+              <div className="mt-2">
+                <RewardPill amount={view.amount} kind={view.kind} />
+              </div>
+              <div className="mt-auto">
+                <Mascot name="cheer" height={160} />
+              </div>
             </div>
-            <div className="mt-auto">
-              <Mascot name="cheer" height={160} />
-            </div>
+          </section>
+
+          <div className="flex flex-col gap-3.5 px-5 pb-8 lg:w-[586px] lg:shrink-0 lg:p-0">
+            {view.activated ? (
+              <div className="lg:hidden">
+                <ActivationCard />
+              </div>
+            ) : null}
+            <div className={view.activated ? "" : "mt-4 lg:mt-0"}>{rating}</div>
           </div>
-        </section>
-        <div className="flex flex-col gap-3.5 px-5 pb-8">
-          {view.activated ? <ActivationCard /> : null}
-          <div className={view.activated ? "" : "mt-4"}>{rating}</div>
         </div>
+
         {form.open ? (
-          <div className="sticky bottom-0 z-20 mt-auto flex gap-3 border-t border-line bg-surface px-5 pt-3.5 pb-[max(env(safe-area-inset-bottom),14px)]">
+          <div className="sticky bottom-0 z-20 mt-auto flex gap-3 border-t border-line bg-surface px-5 pt-3.5 pb-[max(env(safe-area-inset-bottom),14px)] lg:hidden">
             {later("xl", "w-[94px] px-0")}
             {send("flex-1")}
           </div>

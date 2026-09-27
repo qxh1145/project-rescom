@@ -1,10 +1,50 @@
-import { walletBalanceSchema, type WalletBalanceDto } from "@rescom/schemas";
+import { z } from "zod";
+import {
+  walletBalanceSchema,
+  walletDetailsSchema,
+  walletTransactionItemSchema,
+  type WalletBalanceDto,
+} from "@rescom/schemas";
 import { apiRequest, type ResponseSchema } from "../api/client.ts";
 
 /**
+ * One ledger entry of `GET /economy/wallet` (VERIFIED
+ * `walletTransactionItemSchema`) plus `surveyTitle`.
+ *
+ * ASSUMED API CONTRACT: `surveyTitle` — Figma 7 shows the survey title of
+ * reward rows ("Khảo sát / ghi chú"), but the backend only returns the
+ * journal `description` (English, with the attempt id). Optional so the
+ * verified backend response still parses; the history then falls back to a
+ * generic note (`wallet-history.ts`).
+ */
+export const walletTransactionSchema = walletTransactionItemSchema.extend({
+  surveyTitle: z.string().min(1).nullable().optional(),
+});
+export type WalletTransaction = z.infer<typeof walletTransactionSchema>;
+
+export const walletViewSchema = walletDetailsSchema.extend({
+  transactions: z.array(walletTransactionSchema),
+});
+export type WalletView = z.infer<typeof walletViewSchema>;
+
+/** Figma 7 "Lịch sử giao dịch" page size (backend default 50, clamps to 1…100). */
+export const WALLET_HISTORY_LIMIT = 50;
+
+/**
+ * VERIFIED: `GET /economy/wallet?limit&offset` (`ledger.controller.ts` →
+ * `ledger.service.ts#getWallet`): balance buckets + the ledger entries of the
+ * caller's own accounts, newest first, from `offset` ("Tải thêm"). A page of
+ * exactly `WALLET_HISTORY_LIMIT` entries means there may be more. There is
+ * no type filter: Nhận / Chi / Nạp are applied client-side (`filterHistory`).
+ */
+export function getWalletDetails(signal?: AbortSignal, offset = 0): Promise<WalletView> {
+  const query = offset > 0 ? `limit=${WALLET_HISTORY_LIMIT}&offset=${offset}` : `limit=${WALLET_HISTORY_LIMIT}`;
+  return apiRequest(`/economy/wallet?${query}`, { schema: walletViewSchema, signal });
+}
+
+/**
  * Only the balance part of `GET /economy/wallet` (VERIFIED,
- * `ledger.controller.ts` → `walletDetailsSchema`). The wallet screen adds the
- * full details service next to this one.
+ * `ledger.controller.ts` → `walletDetailsSchema`), for the header chip.
  */
 const walletBalanceOnlySchema: ResponseSchema<WalletBalanceDto> = {
   safeParse(value) {

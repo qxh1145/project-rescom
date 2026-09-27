@@ -84,3 +84,40 @@ Session replaced on another device (15e): the backend keeps one session per user
 old token then gets a generic 401 `AUTH_UNAUTHORIZED` (no dedicated code). The dialog is
 driven by the ASSUMED signal `/login?reason=session-replaced[&at=<ISO>]`
 (`lib/auth/session-notice.ts`).
+
+## Participation endpoints in use (Phase 3 — respondent flow)
+
+Services: `lib/participation/*-service.ts`, `lib/marketplace/marketplace-service.ts`.
+Mocks: `mocks/handlers/participation*.ts`, `mocks/handlers/marketplace.ts`.
+
+| Endpoint | Label | Notes |
+|---|---|---|
+| `GET /marketplace/feed` | VERIFIED | 403 `DEMOGRAPHIC_PROFILE_REQUIRED`; `topic` per card is an ASSUMED extension |
+| `GET /surveys/:id` | ASSUMED API CONTRACT | The one survey summary (consent card 14 + public 18.7 "đã đủ người"): `id, title, type, status, rewardPerResponse, estimatedEffortSeconds, expectedCompletions, completedCompletions, publisherName?`. **Public** (no session), 404 `SURVEY_NOT_FOUND` |
+| `POST /surveys/:id/attempts` | VERIFIED | 201 `surveyAttemptResponseSchema`. 409 `CONFLICTING_ACTIVE_ATTEMPT` (details = own attempt → resume), 409 `SURVEY_QUOTA_FULL` (completions + active reservations), 409 `SURVEY_ALREADY_COMPLETED`, 409 `COMPLETION_CODE_LIMIT_REACHED` (External, 6 wrong codes on the version → info + "Báo Admin"), **404** `SURVEY_NOT_AVAILABLE`, 403 `DEMOGRAPHIC_PROFILE_REQUIRED`, 429 `PARTICIPATION_RATE_LIMITED` (`details.scope === "COMPLETIONS"` → copy with limit / window / `retryAfterSeconds`) |
+| `GET /attempts/:attemptId` | ASSUMED API CONTRACT | No backend read route. `status` = backend `AttemptStatus` (`IN_PROGRESS \| COMPLETED \| ABANDONED \| LOCKED`; expiry derived from `expiresAt`); ASSUMED extras: `rewardStatus` (reward state of a COMPLETED attempt: `PENDING` 48h / `HELD_IN_INTEGRITY` / `SETTLED`), `closedReason` (`EXPIRED \| CANCELLED`), `versionNumber` (pinned FormVersion), `accountWrongCodeCount` (E5-D1 total), `timeBarrier` |
+| `POST /attempts/:attemptId/cancel` | ASSUMED API CONTRACT | "Huỷ lượt làm" and the in-Rescom restart after a form update → `{ attemptId, status: "ABANDONED" }`; 409 `ATTEMPT_NOT_IN_PROGRESS` |
+| `GET /public/forms/:id` | VERIFIED | `publicFormDetailsSchema` (+ ASSUMED `sections`); `versionNumber` is compared with the attempt's |
+| `POST /responses/:responseId/submit` | VERIFIED | 200 `internalFormSubmissionResponseSchema`; a resubmission replays the original result (200, decision E5-D3); 400 `INVALID_FORM_SUBMISSION` (details by block id — only the form's block ids are marked), 409 `ATTEMPT_EXPIRED`, 422 `SUBMISSION_TOO_FAST`, 429 |
+| `POST /responses/:responseId/integrity-events` | VERIFIED | Telemetry batches; `consentNoticeVersion` = the accepted notice version |
+| `GET /attempts/:attemptId/outcome` | ASSUMED API CONTRACT | Reward of a finished attempt + `accountActivated` (only claimed for a confirmed reward) |
+| `GET` / `POST /attempts/:attemptId/feedback` | VERIFIED | Rating form (Figma 6) |
+| `POST /attempts/:attemptId/verify-code` | VERIFIED | 400 `INVALID_COMPLETION_CODE` (`details.remainingAttempts`; 0 while the attempt still had tries = account limit), 409 `ATTEMPT_LOCKED` / `COMPLETION_CODE_LIMIT_REACHED` / `ATTEMPT_EXPIRED`, 422 `SUBMISSION_TOO_FAST` |
+| `POST /attempts/:attemptId/report-missing-code` | VERIFIED | Backend refuses a LOCKED attempt (409 `ATTEMPT_LOCKED`; the mock accepts it for Figma 5c) |
+| `GET` / `POST /integrity/consent` | ASSUMED API CONTRACT | Notice version accepted per user |
+| `GET /integrity/reliability/me` | ASSUMED API CONTRACT | Trust screen |
+| `GET /economy/starter-points/status` | VERIFIED | `PENDING_CONFIRMATION` while a Google Forms reward is in its 48h review |
+
+Session loss: a 401 / `AUTH_USER_LOCKED` on any of these calls triggers
+`useSession().refresh()` (`useSessionLossRedirect`, `lib/session/use-session-loss.ts`) so
+`SessionGate` redirects; local drafts are kept (logout clears them).
+
+### Contract gap: pinned form version
+
+An attempt is pinned to `formVersionId`, but the only respondent read route for questions,
+`GET /public/forms/:id`, returns the **current** published version and no `formVersionId`.
+Until the backend serves the pinned version (e.g. `GET /attempts/:id/form`) or exposes the
+version id, the frontend compares the ASSUMED `versionNumber` of `GET /attempts/:id` with
+the form's `versionNumber`; on a mismatch the runner shows "Khảo sát vừa được cập nhật — bắt
+đầu lại" (cancel via the ASSUMED cancel route, drop the draft, back to the consent screen).
+Without `versionNumber` no check is made.

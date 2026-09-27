@@ -1,6 +1,21 @@
 import { http } from "msw";
+import {
+  COMPLETION_CODE_LIMIT_REACHED_CODE,
+  COMPLETION_CODE_POLICY,
+  COMPLETION_CODE_POLICY_VERSION,
+  isCompletionCodeLimitReached,
+} from "@rescom/schemas";
 import { apiUrl } from "@/lib/api/config";
-import { activeAttemptOf, createAttempt, findAttempt, mockTimeBarrierOf, type MockAttempt } from "../data/attempts";
+import {
+  accountWrongCodeCount,
+  activeAttemptOf,
+  activeReservationCount,
+  createAttempt,
+  findAttempt,
+  mockTimeBarrierOf,
+  type MockAttempt,
+} from "../data/attempts";
+import { releaseDuePendingRewards, rewardOutcomeOf } from "../data/economy";
 import { completedSurveyIdsOf, findSurvey } from "../data/surveys";
 import { getMockSessionUser } from "../db/session";
 import { fail, missingCsrf, ok, unauthorized } from "../envelope";
@@ -42,8 +57,9 @@ export const participationHandlers = [
     }
 
     const survey = findSurvey(String(params.id));
+    // `http-exception.filter.ts` maps SurveyNotAvailableException to 404.
     if (!survey || survey.status !== "PUBLISHED") {
-      return fail(409, "SURVEY_NOT_AVAILABLE", "Survey is not available for participation.");
+      return fail(404, "SURVEY_NOT_AVAILABLE", "Survey is not available for participation.");
     }
     if (completedSurveyIdsOf(user.id, user.email).includes(survey.id)) {
       return fail(409, "SURVEY_ALREADY_COMPLETED", "You have already completed this survey.");
@@ -60,14 +76,28 @@ export const participationHandlers = [
         },
       });
     }
-    if (survey.completedCompletions >= survey.expectedCompletions) {
-      return fail(409, "SURVEY_QUOTA_FULL", "This survey has reached its response quota.");
+    // Decision E5-D1: 6 wrong codes on this FormVersion refuse new attempts too.
+    const wrongCodes = accountWrongCodeCount(user.id, survey.formVersionId);
+    if (survey.type === "EXTERNAL" && isCompletionCodeLimitReached(wrongCodes)) {
+      return fail(409, COMPLETION_CODE_LIMIT_REACHED_CODE, "You have used every completion-code try for this survey version.", {
+        details: {
+          formVersionId: survey.formVersionId,
+          failedVerifications: wrongCodes,
+          limit: COMPLETION_CODE_POLICY.maxFailuresPerAccountVersion,
+          policyVersion: COMPLETION_CODE_POLICY_VERSION,
+        },
+      });
+    }
+    // Completions plus unexpired reservations of other respondents hold the quota.
+    if (survey.completedCompletions + activeReservationCount(survey.id) >= survey.expectedCompletions) {
+      return fail(409, "SURVEY_QUOTA_FULL", "This survey has reached its maximum response quota or active reservation capacity.");
     }
 
     const attempt = createAttempt({
       userId: user.id,
       surveyId: survey.id,
       formVersionId: survey.formVersionId,
+      versionNumber: survey.versionNumber,
       type: survey.type,
     });
     return ok(toAttemptDto(attempt, survey.externalUrl), 201);
@@ -83,18 +113,25 @@ export const participationHandlers = [
     if (!attempt || attempt.userId !== user.id) return fail(404, "ATTEMPT_NOT_FOUND", "Attempt not found.");
     const survey = findSurvey(attempt.surveyId);
     if (!survey) return fail(404, "ATTEMPT_NOT_FOUND", "Attempt not found.");
+    // The backend abandons an expired reservation lazily; the ASSUMED read route reports it.
     const expired = attempt.status === "IN_PROGRESS" && Date.parse(attempt.expiresAt) <= Date.now();
+    if (attempt.status === "COMPLETED") releaseDuePendingRewards(user);
+    const reward = attempt.status === "COMPLETED" ? rewardOutcomeOf(user, attempt.attemptId) : null;
     return ok({
       attemptId: attempt.attemptId,
       responseId: attempt.responseId,
       formId: attempt.surveyId,
       formVersionId: attempt.formVersionId,
+      versionNumber: attempt.versionNumber ?? survey.versionNumber,
       type: attempt.type,
-      status: expired ? "EXPIRED" : attempt.status,
+      status: expired ? "ABANDONED" : attempt.status,
+      closedReason: expired ? "EXPIRED" : attempt.closedReason,
+      rewardStatus: reward?.status ?? null,
       startedAt: attempt.startedAt,
       expiresAt: attempt.expiresAt,
       submittedAt: attempt.submittedAt,
       wrongCodeCount: attempt.wrongCodeCount,
+      accountWrongCodeCount: accountWrongCodeCount(attempt.userId, attempt.formVersionId),
       timeBarrier: mockTimeBarrierOf(attempt),
       survey: {
         title: survey.title,

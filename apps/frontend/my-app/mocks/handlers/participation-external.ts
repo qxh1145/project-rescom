@@ -12,7 +12,13 @@ import {
   verifyExternalCompletionCodeInputSchema,
 } from "@rescom/schemas";
 import { apiUrl } from "@/lib/api/config";
-import { attempts, externalBarrierSecondsOf, findAttempt, updateAttempt, type MockAttempt } from "../data/attempts";
+import {
+  accountWrongCodeCount,
+  externalBarrierSecondsOf,
+  findAttempt,
+  updateAttempt,
+  type MockAttempt,
+} from "../data/attempts";
 import { creditSurveyReward } from "../data/economy";
 import { updateNotifications } from "../data/notifications";
 import { findSurvey, markSurveyCompleted, updateSurvey } from "../data/surveys";
@@ -39,7 +45,7 @@ async function readJson(request: Request): Promise<unknown> {
 type Guarded = { user: MockSessionUser; attempt: MockAttempt } | { response: Response };
 
 /** Session, CSRF, ownership and EXTERNAL type — the backend answers 404/403/400 like this. */
-async function guard(request: Request, attemptId: string): Promise<Guarded> {
+async function guard(request: Request, attemptId: string, requireExternal = true): Promise<Guarded> {
   const user = await getMockSessionUser();
   if (!user) return { response: unauthorized() };
   const csrf = missingCsrf(request);
@@ -49,7 +55,7 @@ async function guard(request: Request, attemptId: string): Promise<Guarded> {
   if (attempt.userId !== user.id) {
     return { response: fail(403, "PARTICIPANT_NOT_ELIGIBLE", "Unauthorized attempt access.") };
   }
-  if (attempt.type !== "EXTERNAL") {
+  if (requireExternal && attempt.type !== "EXTERNAL") {
     return { response: fail(400, "ATTEMPT_NOT_EXTERNAL", "This attempt is not an external survey attempt.") };
   }
   return { user, attempt };
@@ -61,10 +67,7 @@ function isExpired(attempt: MockAttempt): boolean {
 
 /** Wrong codes of this user on the attempt's FormVersion (decision E5-D1). */
 function accountFailuresOf(attempt: MockAttempt): number {
-  return attempts
-    .get()
-    .filter((item) => item.userId === attempt.userId && item.formVersionId === attempt.formVersionId)
-    .reduce((sum, item) => sum + item.wrongCodeCount, 0);
+  return accountWrongCodeCount(attempt.userId, attempt.formVersionId);
 }
 
 function completionDto(attempt: MockAttempt, amount: number) {
@@ -103,16 +106,16 @@ export const externalParticipationHandlers = [
     }
 
     const survey = findSurvey(attempt.surveyId);
-    if (attempt.status === "PENDING_REVIEW" || attempt.status === "SUBMITTED") {
+    if (attempt.status === "COMPLETED") {
       return ok(completionDto(attempt, survey?.rewardPerResponse ?? 0)); // idempotent replay
     }
     if (attempt.status === "LOCKED") {
       return fail(409, "ATTEMPT_LOCKED", "This survey attempt is locked due to too many failed completion code attempts.");
     }
-    if (attempt.status === "CANCELLED") {
+    if (attempt.status === "ABANDONED") {
       return fail(409, "ATTEMPT_EXPIRED", "Survey attempt was abandoned and can no longer be completed.");
     }
-    if (attempt.status === "EXPIRED" || isExpired(attempt)) {
+    if (isExpired(attempt)) {
       return fail(409, "ATTEMPT_EXPIRED", "Survey attempt reservation has expired. Please start a new attempt.");
     }
     if (!survey || survey.status !== "PUBLISHED") {
@@ -171,7 +174,7 @@ export const externalParticipationHandlers = [
     }
 
     const completed = updateAttempt(attempt.attemptId, (target) => {
-      target.status = "PENDING_REVIEW";
+      target.status = "COMPLETED";
       target.submittedAt = nowIso();
     });
     markSurveyCompleted(user.id, user.email, survey.id);
@@ -215,10 +218,10 @@ export const externalParticipationHandlers = [
     // The backend answers 409 ATTEMPT_LOCKED here. ASSUMED: Figma 5c ("Báo Admin
     // kiểm tra" on a locked attempt) needs the report accepted, so the mock
     // accepts it — the UI still maps ATTEMPT_LOCKED if the backend keeps refusing.
-    if (attempt.status === "PENDING_REVIEW" || attempt.status === "SUBMITTED") {
+    if (attempt.status === "COMPLETED") {
       return fail(409, "SURVEY_ALREADY_COMPLETED", "This survey attempt is already completed.");
     }
-    if (attempt.status === "CANCELLED") {
+    if (attempt.status === "ABANDONED") {
       return fail(409, "ATTEMPT_EXPIRED", "This survey attempt was abandoned.");
     }
     return ok({
@@ -230,22 +233,21 @@ export const externalParticipationHandlers = [
     });
   }),
 
-  // ASSUMED API CONTRACT: POST /attempts/:attemptId/cancel ("Huỷ lượt làm").
-  // INTERNAL attempts fall through (`undefined`) to any handler registered later.
+  // ASSUMED API CONTRACT: POST /attempts/:attemptId/cancel ("Huỷ lượt làm"; also the
+  // in-Rescom "bắt đầu lại" after a form update). Both types → ABANDONED.
   http.post(apiUrl("/attempts/:attemptId/cancel"), async ({ request, params }) => {
-    const existing = findAttempt(String(params.attemptId));
-    if (existing && existing.type !== "EXTERNAL") return undefined;
     const forced = await applyScenario("participation");
     if (forced) return forced;
-    const guarded = await guard(request, String(params.attemptId));
+    const guarded = await guard(request, String(params.attemptId), false);
     if ("response" in guarded) return guarded.response;
     const { attempt } = guarded;
     if (attempt.status !== "IN_PROGRESS" || isExpired(attempt)) {
       return fail(409, "ATTEMPT_NOT_IN_PROGRESS", "Only an in-progress attempt can be cancelled.");
     }
     updateAttempt(attempt.attemptId, (target) => {
-      target.status = "CANCELLED";
+      target.status = "ABANDONED";
+      target.closedReason = "CANCELLED";
     });
-    return ok({ attemptId: attempt.attemptId, status: "CANCELLED" as const });
+    return ok({ attemptId: attempt.attemptId, status: "ABANDONED" as const });
   }),
 ];

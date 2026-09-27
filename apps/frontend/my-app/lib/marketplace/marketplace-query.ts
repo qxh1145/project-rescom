@@ -1,3 +1,5 @@
+import { effortMinutes, maxSecondsShownAs } from "../participation/effort-minutes.ts";
+
 /**
  * Khám phá (Figma page 3) filter state ↔ URL query ↔ `GET /marketplace/feed`
  * query. Pure helpers (no React/Next) shared by the page hook and tests.
@@ -105,14 +107,16 @@ export function serializeMarketplaceParams(filters: MarketplaceFilters, base?: U
 }
 
 /**
- * Backend has only `maxDuration` (seconds, inclusive): "Dưới 5 phút" = up to
- * 4:59; "5 – 10 phút" = up to 10:00 plus a client-side lower bound
- * (`matchesClientFilters`). ASSUMED: no `minDuration` on the backend yet.
+ * Backend has only `maxDuration` (seconds, inclusive). Bounds follow the
+ * minutes the cards display (`effortMinutes`, rounded up): "Dưới 5 phút" =
+ * shown as 1–4 phút (≤ 4:00); "5 – 10 phút" = shown as 5–10 phút (4:01–10:00),
+ * the lower bound applied client-side (`matchesClientFilters`). ASSUMED: no
+ * `minDuration` on the backend yet.
  */
 const DURATION_BOUNDS: Record<DurationFilter, { minSeconds: number | null; maxSeconds: number | null }> = {
   all: { minSeconds: null, maxSeconds: null },
-  under5: { minSeconds: null, maxSeconds: 5 * 60 - 1 },
-  "5to10": { minSeconds: 5 * 60, maxSeconds: 10 * 60 },
+  under5: { minSeconds: null, maxSeconds: maxSecondsShownAs(4) },
+  "5to10": { minSeconds: maxSecondsShownAs(4) + 1, maxSeconds: maxSecondsShownAs(10) },
 };
 
 /**
@@ -166,10 +170,8 @@ export function toggleSurveyType(types: SurveyTypeFilter, key: keyof SurveyTypeF
   return next.internal || next.external ? next : types;
 }
 
-/** Whole minutes for card meta ("5 phút"); at least 1. */
-export function effortMinutes(seconds: number): number {
-  return Math.max(1, Math.round(seconds / 60));
-}
+/** Whole minutes for card meta ("5 phút"): the shared formatter (rounded up, at least 1). */
+export { effortMinutes };
 
 /** "Còn 38/100 suất" — never negative. */
 export function remainingSlots(survey: { expectedCompletions: number; completedCompletions: number }): number {

@@ -6,7 +6,7 @@ import { RescomLogo } from "@/components/brand/RescomLogo";
 import { Avatar, initialsOf } from "@/components/ui/Avatar";
 import { useSession } from "@/lib/session/SessionProvider";
 import { DESKTOP_NAV, isNavActive } from "./nav-items";
-import { NotificationBellLink } from "./NotificationBellLink";
+import { NotificationBellMenu } from "./NotificationBellMenu";
 import { PointsChip } from "./PointsChip";
 
 /**
@@ -42,7 +42,7 @@ export function AppHeader() {
       </nav>
       <div className="ml-auto flex items-center gap-3">
         <PointsChip variant="desktop" />
-        <NotificationBellLink />
+        <NotificationBellMenu />
         <Link href="/account" aria-label="Tài khoản" className="rounded-full">
           <Avatar initials={initialsOf(displayName || "?")} />
         </Link>

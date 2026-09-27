@@ -1,12 +1,15 @@
 import { timeBarrierRejectionDetailsSchema } from "@rescom/schemas";
 import { isApiError } from "../api/api-error.ts";
 import { SURVEY_FEEDBACK_ERROR_MESSAGES } from "../survey-feedback.ts";
+import { completionsLimitMessage } from "./start-flow.ts";
 
 /** Vietnamese copy for in-Rescom participation errors (codes: `participation.exceptions.ts`). */
 
 const NETWORK = "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.";
 
 function rateLimited(error: unknown): string {
+  const completions = completionsLimitMessage(error);
+  if (completions) return completions;
   const seconds = isApiError(error) ? error.retryAfterSeconds : null;
   return seconds
     ? `Bạn thao tác quá nhanh. Vui lòng thử lại sau ${seconds} giây.`
@@ -54,12 +57,17 @@ export function timeBarrierRemainingSeconds(error: unknown): number | null {
   return error.retryAfterSeconds ?? 1;
 }
 
-/** Block errors from a 400 `INVALID_FORM_SUBMISSION` (`details` = message by block id). */
-export function invalidBlockIds(error: unknown): string[] {
+/**
+ * Block errors from a 400 `INVALID_FORM_SUBMISSION` (`details` = message by
+ * block id), limited to `knownBlockIds` when given — other keys (`_errors`, a
+ * block of another version) have no question to mark.
+ */
+export function invalidBlockIds(error: unknown, knownBlockIds?: ReadonlySet<string>): string[] {
   if (!isApiError(error) || error.code !== "INVALID_FORM_SUBMISSION") return [];
   const details = error.details;
   if (typeof details !== "object" || details === null || Array.isArray(details)) return [];
-  return Object.keys(details);
+  const ids = Object.keys(details);
+  return knownBlockIds ? ids.filter((id) => knownBlockIds.has(id)) : ids;
 }
 
 export function feedbackErrorMessage(error: unknown): string {

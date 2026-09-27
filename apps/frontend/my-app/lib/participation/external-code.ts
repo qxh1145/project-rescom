@@ -1,11 +1,15 @@
 import {
   COMPLETION_CODE_POLICY,
   DEFAULT_EXTERNAL_TIME_BARRIER_SECONDS,
+  isCompletionCodeLimitReached,
+  remainingCompletionCodeTries,
   timeBarrierRejectionDetailsSchema,
 } from "@rescom/schemas";
 import { isApiError } from "../api/api-error.ts";
 import { sessionStatusFromError } from "../session/session-status.ts";
+import { attemptPhase, type AttemptStatus } from "./attempts-service.ts";
 import { EXTERNAL_MESSAGES } from "./external-messages.ts";
+import { completionsLimitMessage } from "./start-flow.ts";
 
 /**
  * Pure rules of the Google Forms flow (`/attempts/[id]/google-form`),
@@ -67,34 +71,49 @@ export function canConfirmCode(input: { remainingSeconds: number; code: string; 
 
 // ── Attempt status → screen ────────────────────────────────────────────────
 
+export type CodeLockReason = "attempt" | "account-limit";
+
 export type GoogleFormScreen =
   | { kind: "redirect"; href: string }
   | { kind: "form" }
-  /** Figma 5c. */
-  | { kind: "locked" }
+  /** Figma 5c (`attempt`) or the ASSUMED account+version limit screen. */
+  | { kind: "locked"; reason: CodeLockReason }
   /** ASSUMED (not drawn): the 30-minute reservation ran out or the attempt was cancelled. */
   | { kind: "closed"; reason: "expired" | "cancelled" };
 
-export function screenForAttempt(attempt: {
-  attemptId: string;
-  type: "INTERNAL" | "EXTERNAL";
-  status: string;
-}): GoogleFormScreen {
+export function screenForAttempt(
+  attempt: {
+    attemptId: string;
+    type: "INTERNAL" | "EXTERNAL";
+    status: AttemptStatus;
+    expiresAt: string;
+    closedReason?: "EXPIRED" | "CANCELLED" | null;
+    accountWrongCodeCount?: number;
+  },
+  nowMs: number = Date.now(),
+): GoogleFormScreen {
   const base = `/attempts/${encodeURIComponent(attempt.attemptId)}`;
   if (attempt.type === "INTERNAL") return { kind: "redirect", href: base };
-  switch (attempt.status) {
-    case "PENDING_REVIEW":
-    case "SUBMITTED":
+  switch (attemptPhase(attempt, nowMs)) {
+    case "completed":
       return { kind: "redirect", href: `${base}/complete` };
-    case "LOCKED":
-      return { kind: "locked" };
-    case "EXPIRED":
+    case "locked":
+      return { kind: "locked", reason: "attempt" };
+    case "expired":
       return { kind: "closed", reason: "expired" };
-    case "CANCELLED":
+    case "cancelled":
       return { kind: "closed", reason: "cancelled" };
     default:
-      return { kind: "form" };
+      // The account used every try on this version (decision E5-D1): no code can be accepted.
+      return isAccountCodeBudgetUsed(attempt.accountWrongCodeCount)
+        ? { kind: "locked", reason: "account-limit" }
+        : { kind: "form" };
   }
+}
+
+/** True when the known account+version wrong-code total reached the policy limit. */
+export function isAccountCodeBudgetUsed(accountWrongCodeCount: number | undefined): boolean {
+  return accountWrongCodeCount !== undefined && isCompletionCodeLimitReached(accountWrongCodeCount);
 }
 
 // ── Verify-code errors → UI state ──────────────────────────────────────────
@@ -103,7 +122,7 @@ export type VerifyFailure =
   /** 400 INVALID_COMPLETION_CODE (Figma 5b). */
   | { kind: "wrong"; remainingTries: number }
   /** 409 ATTEMPT_LOCKED (Figma 5c) or 409 COMPLETION_CODE_LIMIT_REACHED (6 wrong codes on the version). */
-  | { kind: "locked"; reason: "attempt" | "account-limit" }
+  | { kind: "locked"; reason: CodeLockReason }
   /** 422 SUBMISSION_TOO_FAST: restart the countdown from the server's numbers. */
   | { kind: "too-fast"; remainingSeconds: number }
   /** 409 ATTEMPT_EXPIRED. */
@@ -128,9 +147,16 @@ export function remainingTriesFrom(details: unknown, previousWrongCount = 0): nu
   return Math.max(0, MAX_CODE_TRIES - (previousWrongCount + 1));
 }
 
-/** Tries left shown on load (ASSUMED GET /attempts/:id exposes `wrongCodeCount`). */
-export function remainingTriesFromCount(wrongCodeCount: number): number {
-  return Math.max(0, MAX_CODE_TRIES - Math.max(0, Math.floor(wrongCodeCount)));
+/**
+ * Tries left shown on load (ASSUMED GET /attempts/:id exposes `wrongCodeCount`
+ * and, when known, the account+version total `accountWrongCodeCount`): the
+ * smaller of the attempt's and the account's budget, like the backend.
+ */
+export function remainingTriesFromCount(wrongCodeCount: number, accountWrongCodeCount?: number): number {
+  if (accountWrongCodeCount === undefined) {
+    return Math.max(0, MAX_CODE_TRIES - Math.max(0, Math.floor(wrongCodeCount)));
+  }
+  return remainingCompletionCodeTries({ attemptFailures: wrongCodeCount, accountFailures: accountWrongCodeCount });
 }
 
 export function verifyFailureOf(error: unknown, previousWrongCount = 0): VerifyFailure {
@@ -142,7 +168,14 @@ export function verifyFailureOf(error: unknown, previousWrongCount = 0): VerifyF
   switch (error.code) {
     case "INVALID_COMPLETION_CODE": {
       const remainingTries = remainingTriesFrom(error.details, previousWrongCount);
-      return remainingTries > 0 ? { kind: "wrong", remainingTries } : { kind: "locked", reason: "attempt" };
+      if (remainingTries > 0) return { kind: "wrong", remainingTries };
+      // No try left although this attempt is not at its own limit: the account's
+      // budget on this version ran out (the backend locks the attempt with 409
+      // ATTEMPT_LOCKED instead when the attempt itself is used up).
+      return {
+        kind: "locked",
+        reason: previousWrongCount + 1 < MAX_CODE_TRIES ? "account-limit" : "attempt",
+      };
     }
     case "ATTEMPT_LOCKED":
       return { kind: "locked", reason: "attempt" };
@@ -162,7 +195,7 @@ export function verifyFailureOf(error: unknown, previousWrongCount = 0): VerifyF
     case "SURVEY_NOT_AVAILABLE":
       return { kind: "message", message: EXTERNAL_MESSAGES.notAvailable };
     case "PARTICIPATION_RATE_LIMITED":
-      return { kind: "message", message: EXTERNAL_MESSAGES.rateLimited };
+      return { kind: "message", message: completionsLimitMessage(error) ?? EXTERNAL_MESSAGES.rateLimited };
     case "VALIDATION_ERROR":
       return { kind: "message", message: EXTERNAL_MESSAGES.invalidFormat };
     default:
