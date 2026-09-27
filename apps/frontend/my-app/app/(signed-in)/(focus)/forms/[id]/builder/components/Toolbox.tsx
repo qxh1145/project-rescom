@@ -62,7 +62,7 @@ export function Toolbox({ disabled, draggingType, onAdd, onAddSection, onDragSta
   const showSection = !query.trim() || "phan moi bo cuc section".includes(query.trim().toLowerCase());
 
   return (
-    <nav aria-label="Khối câu hỏi" className="flex flex-col px-4 pt-4 pb-6">
+    <nav aria-label="Khối câu hỏi" data-tour="builder-toolbox" className="flex flex-col px-4 pt-4 pb-6">
       <label className="relative block">
         <span className="sr-only">Tìm loại câu hỏi</span>
         <Icon name="search" size={18} className="pointer-events-none absolute top-3 left-3 text-ink-muted" />

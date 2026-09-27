@@ -192,3 +192,33 @@ body {
   background: var(--card-bg);
   box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04);
 }
+
+/* Product tour beacon (canvas section 20): pulsing yellow dot on a tour target.
+   Positioned by the component (fixed); the global reduced-motion rule stops the pulse. */
+.tour-beacon {
+  position: fixed;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: #fadc7a;
+  box-shadow: 0 0 0 3px #1e2446;
+  pointer-events: none;
+}
+.tour-beacon::after {
+  content: "";
+  position: absolute;
+  inset: -9px;
+  border-radius: 9999px;
+  border: 3px solid #fadc7a;
+  animation: tour-pulse 1.6s ease-out infinite;
+}
+@keyframes tour-pulse {
+  from {
+    transform: scale(0.55);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}

@@ -31,6 +31,7 @@ export function ActivationBanner({ view }: { view: VisibleActivation }) {
   return (
     <section
       aria-labelledby="activation-title"
+      data-tour="activation-banner"
       className="relative overflow-hidden rounded-[20px] bg-primary p-4.5 text-primary-foreground lg:h-[150px] lg:rounded-card lg:px-9 lg:pb-0 lg:pt-[38px]"
     >
       <div className="relative z-10 max-w-[212px] lg:max-w-none">

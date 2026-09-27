@@ -16,6 +16,7 @@ import { StorageModule } from './modules/storage/storage.module';
 import { EconomyModule } from './modules/economy/economy.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ModerationModule } from './modules/moderation/moderation.module';
+import { ProductToursModule } from './modules/product-tours/product-tours.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { ModerationModule } from './modules/moderation/moderation.module';
     EconomyModule,
     NotificationsModule,
     ModerationModule,
+    ProductToursModule,
   ],
   providers: [
     {

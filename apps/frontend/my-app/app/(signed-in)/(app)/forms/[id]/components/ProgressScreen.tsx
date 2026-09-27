@@ -177,7 +177,7 @@ function ProgressBody({ form, progress, state }: { form: PublisherForm; progress
       ) : null}
 
       {/* Desktop stat cards (62:2612–62:2628). */}
-      <div className="hidden gap-4 lg:grid lg:grid-cols-4">
+      <div data-tour="form-kpis" className="hidden gap-4 lg:grid lg:grid-cols-4">
         <StatCard
           label="Hoàn thành"
           value={
