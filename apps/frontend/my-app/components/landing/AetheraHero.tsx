@@ -23,11 +23,7 @@ export function AetheraHero({ fontClassName }: { fontClassName?: string }) {
         <Link href="/" aria-label="Rescom">
           <RescomLogo size="md" highPriority />
         </Link>
-        <Link href="/login" className="rounded-full text-sm text-[#000000] hover:scale-[1.03] transition-transform">
-          <GlassSurface width={150} height={44} borderRadius={22}>
-            Bắt đầu ngay
-          </GlassSurface>
-        </Link>
+       
       </nav>
 
       {/* Hero */}
