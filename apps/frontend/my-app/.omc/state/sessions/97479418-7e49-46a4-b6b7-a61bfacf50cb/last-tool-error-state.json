@@ -1,0 +1,7 @@
+{
+  "tool_name": "mcp__Claude_Browser__javascript_tool",
+  "tool_input_preview": "{\"action\":\"javascript_exec\",\"text\":\"const v=document.querySelector('video'); const log=[]; const d=v.duration; v.currentTime=d-0.8; await new Promise(r=>setTimeout(r,150)); log.push(['before-end', v.c...",
+  "error": "javascript_tool timed out after 45s. The Browser pane is currently hidden. The script did not finish (a promise that never settles, or polling that never ends); return sooner or split the work across calls.",
+  "timestamp": "2026-09-27T10:02:31.927Z",
+  "retry_count": 1
+}

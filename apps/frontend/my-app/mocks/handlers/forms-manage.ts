@@ -12,6 +12,7 @@ import { apiUrl } from "@/lib/api/config";
 import { reopenRefusalOf } from "@/lib/forms/manage-status";
 import { activeReservationCount } from "../data/attempts";
 import { refundSurveyEscrow, reserveSurveyEscrow } from "../data/economy";
+import { ensureDemoRunningForm, findFormDraft, formDrafts, nextUpdatedAt, saveFormDraft } from "../data/form-drafts";
 import { versionsOf } from "../data/form-versions";
 import { findPublisherForm, publisherForms, updatePublisherForm, type MockPublisherForm } from "../data/forms";
 import { trackingOf, updateTracking, type OpensRange } from "../data/forms-manage";
@@ -25,7 +26,7 @@ import { createdFormExtras } from "./forms-create";
 /**
  * Phase 5B — publisher survey management (Figma page 10). Mirrors
  * `forms.controller.ts`: `GET /forms`, `GET /forms/:id`, `POST /forms/:id/close`,
- * `POST /forms/:id/reopen`, `GET /forms/:id/in-progress-attempts` (VERIFIED);
+ * `POST /forms/:id/reopen`, `POST /forms/:id/versions`, `DELETE /forms/:id`, `GET /forms/:id/in-progress-attempts` (VERIFIED);
  * progress, pause/resume and attempt disputes are ASSUMED API CONTRACTS.
  */
 
@@ -168,6 +169,8 @@ export const formsManageHandlers: RequestHandler[] = [
     if (forced) return forced;
     const user = await getMockSessionUser();
     if (!user) return unauthorized();
+    // MOCK-ONLY: a running Form Builder survey to try "Chỉnh sửa" on.
+    ensureDemoRunningForm(user.email);
     const query = listFormsQuerySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
     if (!query.success) return fail(400, "VALIDATION_ERROR", "Invalid query.", { details: query.error.format() });
     const { page, limit, status, type } = query.data;
@@ -320,6 +323,66 @@ export const formsManageHandlers: RequestHandler[] = [
       });
     }
     return ok(toDetail(updated ?? form, user.id));
+  }),
+
+  // VERIFIED: DELETE /forms/:id — backend `deleteDraft`: a DRAFT that never had a published version.
+  http.delete(apiUrl("/forms/:id"), async ({ request, params }) => {
+    const guarded = await guard(request, String(params.id), { mutate: true });
+    if ("response" in guarded) return guarded.response;
+    const { form } = guarded;
+    if (form.status !== "DRAFT") {
+      return fail(409, "FORM_NOT_IN_DRAFT_STATUS", `Form is in ${form.status} status and cannot be deleted.`);
+    }
+    if (hasPublishedVersion(form)) {
+      return fail(409, "FORM_HAS_PUBLISHED_VERSIONS", `Form with ID "${form.id}" cannot be deleted because it has published version history.`);
+    }
+    publisherForms.update((all) => all.filter((item) => item.id !== form.id));
+    if (findFormDraft(form.id)) {
+      formDrafts.update((all) => {
+        delete all[form.id];
+      });
+    }
+    return ok({ id: form.id });
+  }),
+
+  // VERIFIED: POST /forms/:id/versions — "Chỉnh sửa" a running survey: vN+1 cloned
+  // from the newest version, survey back to DRAFT (backend `createNewVersion`).
+  http.post(apiUrl("/forms/:id/versions"), async ({ request, params }) => {
+    const guarded = await guard(request, String(params.id), { mutate: true });
+    if ("response" in guarded) return guarded.response;
+    const { user, form } = guarded;
+    if (form.status !== "PUBLISHED") {
+      return fail(
+        409,
+        "FORM_NOT_PUBLISHED",
+        `Cannot create a new version of form "${form.id}": form must be in PUBLISHED status, but current status is "${form.status}".`,
+      );
+    }
+    const interruptedAttempts = activeReservationCount(form.id);
+    const versionNumber = form.versionNumber + 1;
+    // The Escrow stays held (a later publish locks only the shortfall); off Khám phá until approved.
+    const updated = updatePublisherForm(form.id, (draft) => {
+      draft.status = "DRAFT";
+      draft.versionNumber = versionNumber;
+      draft.pausedAt = null;
+      draft.hiddenFromMarketplace = true;
+      draft.submittedAt = null;
+    });
+    // The builder answers `GET /forms/:id` from its own draft: move it to vN+1 too.
+    const builderDraft = findFormDraft(form.id);
+    if (builderDraft) {
+      saveFormDraft({
+        ...builderDraft,
+        status: "DRAFT",
+        versionNumber,
+        escrowLocked: form.escrowLocked,
+        submittedAt: null,
+        updatedAt: nextUpdatedAt(builderDraft.updatedAt),
+      });
+    }
+    // Khám phá lists PUBLISHED catalog entries only; approval of vN+1 puts it back.
+    if (findSurvey(form.id)) updateSurvey(form.id, (survey) => void (survey.status = "CLOSED"));
+    return ok({ ...toDetail(updated ?? form, user.id), interruptedAttempts }, 201);
   }),
 
   // ASSUMED API CONTRACT: POST /forms/:id/pause and /resume ("Tạm dừng", Figma 10a).

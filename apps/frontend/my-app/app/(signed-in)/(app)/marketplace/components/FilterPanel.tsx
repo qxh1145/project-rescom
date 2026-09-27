@@ -31,7 +31,7 @@ export function FilterPanel({ idPrefix, filters, onChange }: FilterPanelProps) {
           />
           <Checkbox
             id={`${idPrefix}-type-external`}
-            label="Google Forms"
+            label="Nền tảng khác"
             checked={filters.types.external}
             onChange={() => onChange({ types: toggleSurveyType(filters.types, "external") })}
           />

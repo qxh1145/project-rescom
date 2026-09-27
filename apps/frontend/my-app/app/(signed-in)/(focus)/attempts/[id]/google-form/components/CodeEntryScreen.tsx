@@ -65,6 +65,7 @@ export function CodeEntryScreen({ attempt, state, onReport }: CodeEntryScreenPro
 
           <section
             aria-label="Nhập mã hoàn thành"
+            data-tour="gf-code"
             className="flex flex-col px-5 pb-5 pt-5 lg:w-1/2 lg:bg-surface-panel lg:px-10 lg:pb-10 lg:pt-10"
           >
             <div className="flex flex-col items-center text-center">
@@ -285,7 +286,7 @@ function StepsPanel({ attempt, url, opened, onOpen, onReport }: OpenFormProps & 
         {attempt.survey.title}
       </h1>
 
-      <ol className="mt-5 flex flex-col gap-4">
+      <ol data-tour="gf-steps" className="mt-5 flex flex-col gap-4">
         <Step state={opened ? "done" : "current"} number={1} title="Mở Google Form">
           {opened ? (
             <>

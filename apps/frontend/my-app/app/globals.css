@@ -131,6 +131,24 @@
   --text-field-lg--line-height: normal;
 }
 
+/* Landing hero entrance animations (animate-fade-rise, -delay, -delay-2). */
+@theme {
+  --animate-fade-rise: fade-rise 0.8s ease-out both;
+  --animate-fade-rise-delay: fade-rise 0.8s ease-out 0.2s both;
+  --animate-fade-rise-delay-2: fade-rise 0.8s ease-out 0.4s both;
+
+  @keyframes fade-rise {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
 /* The Figma design is light-only. Force light for the whole app: native controls
    and scrollbars stay light, and `dark:` utilities (still present in legacy pages)
    only apply under a `.dark` class, which nothing sets — so a dark OS no longer
@@ -173,4 +191,68 @@ body {
   border: 1px solid var(--card-border);
   background: var(--card-bg);
   box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+}
+
+/* Product tour beacon (canvas section 20): pulsing yellow dot on a tour target.
+   Positioned by the component (fixed); the global reduced-motion rule stops the pulse. */
+.tour-beacon {
+  position: fixed;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: #fadc7a;
+  box-shadow: 0 0 0 3px #1e2446;
+  pointer-events: none;
+}
+.tour-beacon::after {
+  content: "";
+  position: absolute;
+  inset: -9px;
+  border-radius: 9999px;
+  border: 3px solid #fadc7a;
+  animation: tour-pulse 1.6s ease-out infinite;
+}
+/* Product tour: the dim layer fades in when a tour starts. */
+.tour-fade-in {
+  animation: tour-fade-in 220ms ease-out both;
+}
+@keyframes tour-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes tour-pulse {
+  from {
+    transform: scale(0.55);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+/* Form builder reorder (builder/hooks/use-reorder-drag.ts): while a question is
+   dragged the whole page shows the grabbing hand and text selection is off. */
+html.reorder-dragging,
+html.reorder-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+/* Drop indicator pops in, then glides between gaps (transition on translate). */
+.drop-indicator-in {
+  animation: drop-indicator-in 160ms ease-out both;
+}
+@keyframes drop-indicator-in {
+  from {
+    opacity: 0;
+    scale: 0.96 0.6;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
 }

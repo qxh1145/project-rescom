@@ -91,7 +91,7 @@ function SurveyChrome({ tab, children }: { tab: SurveyTab; children: ReactNode }
               </div>
               <p className="mt-1.5 text-body-sm text-ink-muted">{headerMeta(form)}</p>
             </div>
-            <HeaderActions form={form} className="shrink-0 justify-end" />
+            <HeaderActions form={form} className="shrink-0 justify-end" tourTarget="form-actions" />
           </div>
         </div>
 

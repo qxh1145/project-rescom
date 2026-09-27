@@ -12,7 +12,7 @@ import { formatDayMonth } from "@/lib/format/date-time";
 import { useFormHeader } from "@/lib/forms/manage-header-context";
 import { progressErrorMessage } from "@/lib/forms/manage-messages";
 import { PAUSE_SUPPORTED, type FormProgress, type OpensRange, type PublisherForm } from "@/lib/forms/manage-service";
-import { canReopen, canWithdraw, resubmitHref, statusViewOf, type PublisherStatusView } from "@/lib/forms/manage-status";
+import { canEditLive, canReopen, canWithdraw, resubmitHref, statusViewOf, type PublisherStatusView } from "@/lib/forms/manage-status";
 import { daysUntil, formatDuration, formatFullDate, opensSummary, percentOf } from "@/lib/forms/manage-view";
 import { StatusPill } from "../../components/StatusPill";
 import { useFormActions } from "../hooks/use-form-actions";
@@ -62,13 +62,19 @@ function deadlineFacts(form: PublisherForm, view: PublisherStatusView, now: numb
 
 /** Mobile status card buttons (Figma 62:3324–62:3328); ended surveys get the 10b/17 links. */
 function MobileStatusActions({ form, view }: { form: PublisherForm; view: PublisherStatusView }) {
-  const { requestClose, togglePause, pausing } = useFormActions();
+  const { requestClose, requestEdit, togglePause, pausing } = useFormActions();
   const id = encodeURIComponent(form.id);
   const button =
     "inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-field border border-line-strong bg-surface text-label font-bold text-ink disabled:opacity-60";
   if (view === "RUNNING" || view === "PAUSED") {
     return (
       <div className="mt-3.5 flex gap-2">
+        {canEditLive(form) ? (
+          <button type="button" className={button} onClick={requestEdit}>
+            <Icon name="pencil" size={16} />
+            Chỉnh sửa
+          </button>
+        ) : null}
         {/* Phase 5 M3: hidden until the backend has a pause route. */}
         {PAUSE_SUPPORTED ? (
           <button type="button" className={button} onClick={togglePause} disabled={pausing} aria-busy={pausing || undefined}>
@@ -177,7 +183,7 @@ function ProgressBody({ form, progress, state }: { form: PublisherForm; progress
       ) : null}
 
       {/* Desktop stat cards (62:2612–62:2628). */}
-      <div className="hidden gap-4 lg:grid lg:grid-cols-4">
+      <div data-tour="form-kpis" className="hidden gap-4 lg:grid lg:grid-cols-4">
         <StatCard
           label="Hoàn thành"
           value={

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { liftGhost, settledRect, startAutoScroll, trackPointer, type Ghost } from "./drag-ghost";
 
 /**
  * Drop targets are read from the DOM of the canvas: every question card has
@@ -16,11 +17,14 @@ export interface DropTarget {
   number: number;
   /** Card the gap sits above; null = end of the section. */
   beforeBlockId: string | null;
+  /** Middle of the gap in px from the container top (where the indicator is drawn). */
+  y: number;
 }
 
-export function findDropTarget(container: HTMLElement, clientY: number): DropTarget | null {
+export function findDropTarget(container: HTMLElement, clientY: number, halfGap = 6): DropTarget | null {
   const items = Array.from(container.querySelectorAll<HTMLElement>("[data-drop-card],[data-drop-empty]"));
   if (items.length === 0) return null;
+  const top = container.getBoundingClientRect().top;
   const read = (item: HTMLElement) => ({
     sectionId: item.dataset.section || null,
     index: Number(item.dataset.index ?? 0),
@@ -31,73 +35,131 @@ export function findDropTarget(container: HTMLElement, clientY: number): DropTar
     const rect = item.getBoundingClientRect();
     if (clientY < rect.top + rect.height / 2) {
       const info = read(item);
-      return { sectionId: info.sectionId, index: info.index, number: info.number, beforeBlockId: info.blockId };
+      const y = info.blockId ? rect.top - top - halfGap : rect.top - top + rect.height / 2;
+      return { sectionId: info.sectionId, index: info.index, number: info.number, beforeBlockId: info.blockId, y };
     }
   }
-  const last = read(items[items.length - 1]);
+  const lastItem = items[items.length - 1];
+  const rect = lastItem.getBoundingClientRect();
+  const last = read(lastItem);
   return last.blockId
-    ? { sectionId: last.sectionId, index: last.index + 1, number: last.number + 1, beforeBlockId: null }
-    : { sectionId: last.sectionId, index: 0, number: last.number, beforeBlockId: null };
+    ? { sectionId: last.sectionId, index: last.index + 1, number: last.number + 1, beforeBlockId: null, y: rect.bottom - top + halfGap }
+    : { sectionId: last.sectionId, index: 0, number: last.number, beforeBlockId: null, y: rect.top - top + rect.height / 2 };
 }
 
-const EDGE = 80;
-const SCROLL_STEP = 14;
+export function sameTarget(a: DropTarget | null, b: DropTarget | null) {
+  return a === b || (a !== null && b !== null && a.sectionId === b.sectionId && a.index === b.index && a.number === b.number && a.y === b.y);
+}
+
+/** Put on the grip icon: the only place a touch / pen drag may start (it keeps page scrolling elsewhere). */
+export const gripProps = { "data-drag-grip": "", style: { touchAction: "none" as const } };
+
+/** Mouse presses on these never start a drag. */
+const NO_DRAG = "input,textarea,select,[contenteditable],[role='switch'],[data-no-drag]";
+
+export interface DragState {
+  blockId: string;
+  /** `drag`: the card is a dimmed placeholder; `settle`: the ghost is flying into place. */
+  phase: "drag" | "settle";
+}
 
 /**
- * Pointer-based reorder (mouse, pen and touch — the grip has
- * `touch-action: none`), used on desktop (13a) and in the mobile reorder mode
- * (13e). Keyboard users have the move up/down buttons instead.
+ * Pointer-based reorder, used on the desktop canvas (13a) and the mobile list
+ * (13e). A mouse drags a card from anywhere on it (after a small move or a
+ * short hold, so clicks still select); touch and pen start from the grip. The
+ * card stays as a dimmed placeholder while a lifted clone follows the pointer,
+ * the page scrolls near the viewport edges, and on drop the clone glides into
+ * the new slot. Esc cancels. Keyboard users have the move up/down buttons.
  */
 export function useReorderDrag(
   containerRef: RefObject<HTMLElement | null>,
   onDrop: (blockId: string, target: DropTarget) => void,
+  { halfGap = 6 }: { halfGap?: number } = {},
 ) {
-  const [dragging, setDragging] = useState<{ blockId: string; offsetY: number } | null>(null);
+  const [dragging, setDragging] = useState<DragState | null>(null);
   const [target, setTarget] = useState<DropTarget | null>(null);
-  const start = useRef<{ blockId: string; startY: number; scrollY: number } | null>(null);
+  const targetRef = useRef<DropTarget | null>(null);
+  const onDropRef = useRef(onDrop);
+  const abortRef = useRef<(() => void) | null>(null);
 
-  const onPointerDown = useCallback((blockId: string, event: ReactPointerEvent<HTMLElement>) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    start.current = { blockId, startY: event.clientY, scrollY: window.scrollY };
-    setDragging({ blockId, offsetY: 0 });
-  }, []);
+  useEffect(() => {
+    onDropRef.current = onDrop;
+  });
+  // Unmounted mid-drag (route change): drop the clone and the global cursor.
+  useEffect(() => () => abortRef.current?.(), []);
 
-  const onPointerMove = useCallback(
-    (event: ReactPointerEvent<HTMLElement>) => {
-      const current = start.current;
-      const container = containerRef.current;
-      if (!current || !container) return;
-      if (event.clientY < EDGE) window.scrollBy(0, -SCROLL_STEP);
-      else if (event.clientY > window.innerHeight - EDGE) window.scrollBy(0, SCROLL_STEP);
-      setDragging({
-        blockId: current.blockId,
-        offsetY: event.clientY - current.startY + (window.scrollY - current.scrollY),
+  const onPointerDown = useCallback(
+    (blockId: string, event: ReactPointerEvent<HTMLElement>) => {
+      if (event.button !== 0) return;
+      const pressed = event.target as Element;
+      const fromGrip = pressed.closest("[data-drag-grip]") !== null;
+      const allowed = fromGrip || (event.pointerType === "mouse" && pressed.closest(NO_DRAG) === null);
+      if (!allowed) return;
+      const el = event.currentTarget;
+      const startY = event.clientY;
+      const origin = {
+        sectionId: el.dataset.section || null,
+        index: Number(el.dataset.index ?? 0),
+        number: Number(el.dataset.number ?? 1),
+      };
+      let ghost: Ghost | null = null;
+      let pointerY = startY;
+      let stopScroll = () => {};
+
+      const update = () => {
+        const container = containerRef.current;
+        if (!container) return;
+        let next = findDropTarget(container, pointerY, halfGap);
+        // Dropping right above or below itself changes nothing: hide the indicator.
+        if (next && next.sectionId === origin.sectionId && (next.index === origin.index || next.index === origin.index + 1)) {
+          next = null;
+        }
+        // Numbers after the dragged card shift up once it leaves its slot.
+        if (next && next.number > origin.number) next = { ...next, number: next.number - 1 };
+        if (!sameTarget(next, targetRef.current)) {
+          targetRef.current = next;
+          setTarget(next);
+        }
+      };
+
+      abortRef.current = trackPointer(event, {
+        lift(point) {
+          pointerY = point.y;
+          ghost = liftGhost(el, { dx: 0, dy: point.y - startY });
+          setDragging({ blockId, phase: "drag" });
+          stopScroll = startAutoScroll(() => pointerY, update);
+          update();
+        },
+        move(point) {
+          pointerY = point.y;
+          ghost?.moveTo(0, point.y - startY);
+          update();
+        },
+        end(commit) {
+          abortRef.current = null;
+          stopScroll();
+          const dropTarget = targetRef.current;
+          targetRef.current = null;
+          setTarget(null);
+          setDragging({ blockId, phase: "settle" });
+          if (commit && dropTarget) onDropRef.current(blockId, dropTarget);
+          // Next frame: React has moved the card; the clone glides onto its (new or original) slot.
+          requestAnimationFrame(() => {
+            const container = containerRef.current;
+            const card = container?.querySelector<HTMLElement>(`[data-drop-card="${CSS.escape(blockId)}"]`);
+            void ghost
+              ?.land(card && container ? settledRect(card, container) : null)
+              .then(() => setDragging((state) => (state?.blockId === blockId && state.phase === "settle" ? null : state)));
+          });
+        },
       });
-      setTarget(findDropTarget(container, event.clientY));
     },
-    [containerRef],
+    [containerRef, halfGap],
   );
 
-  const finish = useCallback(
-    (commit: boolean) => {
-      const current = start.current;
-      start.current = null;
-      if (commit && current && target) onDrop(current.blockId, target);
-      setDragging(null);
-      setTarget(null);
-    },
-    [onDrop, target],
-  );
-
-  const gripProps = (blockId: string) => ({
+  const dragProps = (blockId: string) => ({
     onPointerDown: (event: ReactPointerEvent<HTMLElement>) => onPointerDown(blockId, event),
-    onPointerMove,
-    onPointerUp: () => finish(true),
-    onPointerCancel: () => finish(false),
-    style: { touchAction: "none" as const },
   });
 
-  return { dragging, target, gripProps };
+  return { dragging, target, dragProps };
 }

@@ -8,6 +8,7 @@ import { RescomLogo } from "@/components/brand/RescomLogo";
 import { Alert } from "@/components/ui/Alert";
 import { buttonClassName } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
+import { useLogout } from "@/lib/auth/use-logout";
 import { OnboardingHeader } from "./OnboardingHeader";
 
 const HOW_IT_WORKS = [
@@ -43,6 +44,8 @@ interface WelcomeScreenProps {
 export function WelcomeScreen({ name, questionCount, startHref, required }: WelcomeScreenProps) {
   const duration = `${questionCount} câu ngắn · khoảng 2 phút`;
   const headingRef = useRef<HTMLHeadingElement>(null);
+  // Every signed-in page leads here until the profile is done, so this is the way out (wrong account).
+  const { signOut, pending, error, dismissError } = useLogout();
 
   useEffect(() => {
     headingRef.current?.focus();
@@ -100,7 +103,7 @@ export function WelcomeScreen({ name, questionCount, startHref, required }: Welc
             ))}
           </ul>
 
-          <div className="mt-auto flex flex-col-reverse gap-2.5 pt-8 pb-[max(env(safe-area-inset-bottom),32px)] lg:mt-7 lg:flex-row lg:items-center lg:gap-4 lg:p-0">
+          <div className="mt-auto flex flex-col-reverse gap-2.5 pt-8 lg:mt-7 lg:flex-row lg:items-center lg:gap-4 lg:p-0">
             <Link href={startHref} className={buttonClassName({ size: "2xl", fullWidth: true, className: "lg:w-auto lg:px-8" })}>
               <span>
                 Bắt đầu
@@ -110,6 +113,25 @@ export function WelcomeScreen({ name, questionCount, startHref, required }: Welc
             <p className="text-center text-caption text-ink-muted lg:text-left lg:text-body-sm">
               {duration}
               <span className="lg:hidden"> · sửa được sau</span>
+            </p>
+          </div>
+
+          <div className="pt-4 pb-[max(env(safe-area-inset-bottom),32px)] lg:pt-6 lg:pb-0">
+            {error ? (
+              <Alert tone="danger" onDismiss={dismissError} className="mb-3 lg:max-w-130">
+                {error}
+              </Alert>
+            ) : null}
+            <p className="text-center text-caption text-ink-muted lg:text-left lg:text-body-sm">
+              Không phải {name}?{" "}
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                disabled={pending}
+                className="font-bold text-ink underline disabled:opacity-60"
+              >
+                {pending ? "Đang đăng xuất…" : "Đăng xuất"}
+              </button>
             </p>
           </div>
         </section>

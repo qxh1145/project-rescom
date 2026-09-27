@@ -175,6 +175,25 @@ export function canWithdraw(form: StatusFacts, versionNumber: number): boolean {
 }
 
 /**
+ * "Xoá" of a list row: backend `deleteDraft` only removes a DRAFT with no
+ * published version. As in `canWithdraw`, a draft past v1 is taken as
+ * re-versioned (it withdraws instead); a legacy rejected draft is not offered.
+ */
+export function canDelete(form: StatusFacts, versionNumber: number): boolean {
+  return statusViewOf(form) === "DRAFT" && versionNumber === 1;
+}
+
+/**
+ * "Chỉnh sửa" of a running Form Builder survey (`POST /forms/:id/versions`
+ * needs PUBLISHED; a paused survey is still PUBLISHED). Google Forms surveys
+ * are edited on Google itself, so they never offer it.
+ */
+export function canEditLive(form: StatusFacts & { type: FormTypeEnum }): boolean {
+  const view = statusViewOf(form);
+  return form.type === "INTERNAL" && (view === "RUNNING" || view === "PAUSED");
+}
+
+/**
  * "Sửa & gửi lại" of a rejected survey. The backend never edits a CLOSED
  * survey, so both paths create a new one: the Google Forms wizard (5A)
  * prefilled from this survey, or `/forms/:id/resubmit` — a confirmation over

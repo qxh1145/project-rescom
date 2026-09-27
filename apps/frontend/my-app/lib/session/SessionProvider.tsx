@@ -3,18 +3,23 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { WalletBalanceDto } from "@rescom/schemas";
 import { getCurrentUser } from "../auth/auth-service.ts";
+import { getDemographics } from "../demographics/demographics-service.ts";
 import { refreshSession, shouldRefreshBeforeLoad, startSessionRefreshScheduler } from "../auth/session-refresh.ts";
 import type { AuthUser } from "../auth/types.ts";
 import { getUnreadCount } from "../notifications/notification-service.ts";
 import { getUserProfile, type UserProfile } from "../profile/profile-service.ts";
 import { getWalletBalance } from "../wallet/wallet-service.ts";
+import { onboardingStatusOf, type OnboardingStatus } from "./onboarding-gate.ts";
 import { sessionStatusAfterFailure, sessionStatusFromError, type SessionStatus } from "./session-status.ts";
 
 export type { SessionStatus } from "./session-status.ts";
+export type { OnboardingStatus } from "./onboarding-gate.ts";
 
 export interface SessionState {
   status: SessionStatus;
   user: AuthUser | null;
+  /** Set together with `authenticated`, so `SessionGate` never renders on a stale value. */
+  onboarding: OnboardingStatus;
   profile: UserProfile | null;
   balance: WalletBalanceDto | null;
   unreadCount: number;
@@ -23,6 +28,8 @@ export interface SessionState {
   /** Re-fetch everything (after a mutation that moves points, etc.). */
   refresh: () => void;
   setUnreadCount: (count: number) => void;
+  /** Right after a successful onboarding submit, before `refresh()` confirms it. */
+  markOnboardingComplete: () => void;
 }
 
 const SessionContext = createContext<SessionState | null>(null);
@@ -30,6 +37,7 @@ const SessionContext = createContext<SessionState | null>(null);
 interface AuthState {
   status: SessionStatus;
   user: AuthUser | null;
+  onboarding: OnboardingStatus;
 }
 
 function isAbortError(error: unknown): boolean {
@@ -43,7 +51,7 @@ function isAbortError(error: unknown): boolean {
  * While authenticated it keeps the access cookie fresh (`session-refresh.ts`).
  */
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [auth, setAuth] = useState<AuthState>({ status: "loading", user: null });
+  const [auth, setAuth] = useState<AuthState>({ status: "loading", user: null, onboarding: "unknown" });
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [balance, setBalance] = useState<WalletBalanceDto | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -59,9 +67,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (shouldRefreshBeforeLoad()) await refreshSession().catch(() => undefined);
       if (signal.aborted) return;
 
-      const me = await getCurrentUser(signal);
+      const [me, demographics] = await Promise.all([
+        getCurrentUser(signal),
+        // Fails open (`unknown`): only `/auth/me` decides whether the session exists.
+        getDemographics(signal).catch(() => null),
+      ]);
       if (signal.aborted) return;
-      setAuth({ status: "authenticated", user: me });
+      setAuth((current) => ({
+        status: "authenticated",
+        user: me,
+        // A failed re-read for the same user keeps the known status instead of opening the gate.
+        onboarding:
+          demographics === null && current.user?.id === me.id
+            ? current.onboarding
+            : onboardingStatusOf(me.role, demographics),
+      }));
       // Shell extras are best-effort: a failure leaves the chip/badge empty.
       const [wallet, count, userProfile] = await Promise.allSettled([
         getWalletBalance(signal),
@@ -78,7 +98,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (signal.aborted || isAbortError(error)) return;
       setAuth((current) => {
         const status = sessionStatusAfterFailure(current.status, error);
-        return status === current.status && status === "authenticated" ? current : { status, user: null };
+        return status === current.status && status === "authenticated"
+          ? current
+          : { status, user: null, onboarding: "unknown" };
       });
     });
     return () => controller.abort();
@@ -89,25 +111,36 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (!authenticated) return;
     // Stops on unmount and whenever the session ends (logout → 401, locked).
     return startSessionRefreshScheduler({
-      onSessionEnded: (error) => setAuth({ status: sessionStatusFromError(error), user: null }),
+      onSessionEnded: (error) => setAuth({ status: sessionStatusFromError(error), user: null, onboarding: "unknown" }),
     });
   }, [authenticated]);
 
   const refresh = useCallback(() => setVersion((current) => current + 1), []);
+  const markOnboardingComplete = useCallback(
+    () =>
+      setAuth((current) =>
+        current.status === "authenticated" && current.onboarding === "incomplete"
+          ? { ...current, onboarding: "complete" }
+          : current,
+      ),
+    [],
+  );
 
   const value = useMemo<SessionState>(() => {
     const fallback = auth.user?.email.split("@")[0] ?? "";
     return {
       status: auth.status,
       user: auth.user,
+      onboarding: auth.onboarding,
       profile,
       balance,
       unreadCount,
       displayName: profile?.displayName?.trim() || fallback,
       refresh,
       setUnreadCount,
+      markOnboardingComplete,
     };
-  }, [auth, profile, balance, unreadCount, refresh]);
+  }, [auth, profile, balance, unreadCount, refresh, markOnboardingComplete]);
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

@@ -86,9 +86,10 @@ export function profileFieldGroups(answers: OnboardingAnswers, currentYear: numb
 /**
  * "Sửa": ASSUMED — no per-field editor is drawn, so it reopens that onboarding
  * question (prefilled from the server) and comes back here after "Hoàn tất".
+ * `edit=1` lets a finished respondent past the `/onboarding` entry guard.
  */
 export function profileEditHref(step: QuestionStep): string {
-  const params = new URLSearchParams({ step, returnTo: "/account/profile" });
+  const params = new URLSearchParams({ step, edit: "1", returnTo: "/account/profile" });
   return `/onboarding?${params.toString()}`;
 }
 

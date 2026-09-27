@@ -198,7 +198,7 @@ export function PreviewScreen() {
               {summary.questionCount} câu · khoảng {summary.minutes} phút · thưởng theo mức bạn đặt ở bước 3. Trước câu đầu tiên, Rescom hiện thông báo về dữ liệu chất lượng bên dưới để người trả lời đồng ý.
             </p>
           </section>
-          <section aria-labelledby="quality-title" className="rounded-[20px] border border-line bg-surface px-5.5 py-5">
+          <section aria-labelledby="quality-title" data-tour="preview-quality" className="rounded-[20px] border border-line bg-surface px-5.5 py-5">
             <h2 id="quality-title" className="flex gap-2 text-lead font-extrabold text-ink">
               <Icon name="shield-check" size={18} className="mt-0.5 text-tone-amber-strong" />
               Dữ liệu chất lượng form này có thể thu thập

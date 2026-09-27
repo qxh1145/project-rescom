@@ -13,7 +13,7 @@ import {
   weeklyRankLabel,
 } from "@/lib/profile/account-view";
 import { useAccountData } from "../hooks/use-account-data";
-import { useLogout } from "../hooks/use-logout";
+import { useLogout } from "@/lib/auth/use-logout";
 import { AccountDesktop } from "./AccountDesktop";
 import { GoogleLinkDialog } from "./GoogleLinkDialog";
 import { MenuList, MenuRow, SectionLabel } from "./AccountParts";

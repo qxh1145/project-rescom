@@ -4,9 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, Suspense, useContext, useMemo, type ReactNode } from "react";
 import { RescomLogo } from "@/components/brand/RescomLogo";
+import { Alert } from "@/components/ui/Alert";
 import { Icon } from "@/components/ui/Icon";
 import { getAdminQueueCounts, type AdminQueueCounts } from "@/lib/admin/admin-queue-service";
 import { useApiQuery } from "@/lib/api/use-api-query";
+import { useLogout } from "@/lib/auth/use-logout";
+import { useSession } from "@/lib/session/SessionProvider";
 import { SessionGate } from "../app/SessionGate";
 import { ADMIN_NAV, isAdminNavActive } from "./admin-nav";
 
@@ -58,7 +61,7 @@ function AdminFrame({ children }: { children: ReactNode }) {
 function AdminSidebar({ counts }: { counts: AdminQueueCounts | undefined }) {
   const pathname = usePathname();
   return (
-    <aside className="shrink-0 border-b border-line bg-surface lg:sticky lg:top-0 lg:h-dvh lg:w-70.25 lg:border-r lg:border-b-0">
+    <aside className="flex shrink-0 flex-col border-b border-line bg-surface lg:sticky lg:top-0 lg:h-dvh lg:w-70.25 lg:border-r lg:border-b-0">
       <div className="flex items-center gap-2 px-6 pt-6">
         <Link href="/admin" aria-label="Rescom Admin — Tổng quan">
           {/* Figma logo is 26px high; `sm` (24px) is the closest shared size. */}
@@ -95,6 +98,40 @@ function AdminSidebar({ counts }: { counts: AdminQueueCounts | undefined }) {
           );
         })}
       </nav>
+      <AdminAccount />
     </aside>
+  );
+}
+
+/**
+ * ASSUMED: Figma 11 draws no account block; the admin's email and "Đăng xuất"
+ * sit at the bottom of the sidebar (a row under the nav below lg).
+ */
+function AdminAccount() {
+  const { user } = useSession();
+  const { signOut, pending, error, dismissError } = useLogout();
+  return (
+    <div className="flex flex-col gap-3 border-t border-line px-4 py-4 lg:mt-auto">
+      {error ? (
+        <Alert tone="danger" onDismiss={dismissError}>
+          {error}
+        </Alert>
+      ) : null}
+      <div className="flex items-center gap-2.5">
+        <p className="min-w-0 flex-1 truncate px-2 text-body-sm text-ink-muted" title={user?.email}>
+          {user?.email}
+        </p>
+        <button
+          type="button"
+          onClick={() => void signOut()}
+          disabled={pending}
+          aria-busy={pending || undefined}
+          className="inline-flex h-10 shrink-0 items-center gap-2 rounded-[10px] px-3 text-body font-semibold text-danger transition-colors hover:bg-surface-subtle disabled:opacity-60"
+        >
+          <Icon name="log-out" size={20} />
+          {pending ? "Đang đăng xuất…" : "Đăng xuất"}
+        </button>
+      </div>
+    </div>
   );
 }

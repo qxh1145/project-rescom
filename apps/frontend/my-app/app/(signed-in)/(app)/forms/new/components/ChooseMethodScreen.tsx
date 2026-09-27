@@ -11,6 +11,8 @@ const EXAMPLE_RANGE = getRewardPricingRange(8);
 const internalPoints = (points: number) => Math.round(points * 0.8);
 
 interface MethodCardProps {
+  /** `data-tour` target for the product tour (canvas 20D.1). */
+  tourTarget?: string;
   href: string;
   icon: IconName;
   iconTone: string;
@@ -21,10 +23,11 @@ interface MethodCardProps {
   tags: ReactNode;
 }
 
-function MethodCard({ href, icon, iconTone, title, subtitle, description, highlighted = false, tags }: MethodCardProps) {
+function MethodCard({ href, icon, iconTone, title, subtitle, description, highlighted = false, tags, tourTarget }: MethodCardProps) {
   return (
     <Link
       href={href}
+      data-tour={tourTarget}
       className={[
         "group flex flex-col gap-2.5 rounded-[18px] bg-surface p-4 transition-colors hover:bg-surface-subtle",
         highlighted ? "border-2 border-primary" : "border border-line-strong",
@@ -84,7 +87,7 @@ export function ChooseMethodScreen() {
           Điểm thưởng mỗi lượt được trả từ số dư của bạn và khoá vào Ký quỹ khi gửi duyệt.
         </p>
 
-        <div className="mt-5 grid gap-4 lg:mt-8 lg:grid-cols-2 lg:gap-6">
+        <div data-tour="create-methods" className="mt-5 grid gap-4 lg:mt-8 lg:grid-cols-2 lg:gap-6">
           <MethodCard
             href="/forms/new/google-form"
             icon="file-text"
@@ -104,6 +107,7 @@ export function ChooseMethodScreen() {
           />
           <MethodCard
             href="/forms/new/builder"
+            tourTarget="create-method-builder"
             icon="layout-grid"
             iconTone="bg-tone-teal-bg text-tone-teal-fg"
             title="Tạo form trong Rescom"

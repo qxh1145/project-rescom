@@ -503,3 +503,47 @@ test("Google Forms surveys are never copied through the builder", async () => {
   await assert.rejects(resubmit.copyRejectedForm(rejectedSource("src-ext", { type: "EXTERNAL" }), request));
   assert.equal(calls.length, 0);
 });
+
+test("Chỉnh sửa: only a running or paused Form Builder survey re-versions (POST /forms/:id/versions needs PUBLISHED)", () => {
+  const internal = (overrides) => ({ ...facts(overrides), type: "INTERNAL" });
+  assert.equal(status.canEditLive(internal({ status: "PUBLISHED" })), true);
+  assert.equal(status.canEditLive(internal({ status: "PUBLISHED", pausedAt: "2026-09-27T00:00:00.000Z" })), true);
+  assert.equal(status.canEditLive({ ...facts({ status: "PUBLISHED" }), type: "EXTERNAL" }), false);
+  assert.equal(status.canEditLive(internal({ status: "DRAFT" })), false);
+  assert.equal(status.canEditLive(internal({ status: "MODERATION_QUEUE" })), false);
+  assert.equal(status.canEditLive(internal({ status: "CLOSED", closeKind: "OWNER" })), false);
+});
+
+test("createdFormVersionSchema: interruptedAttempts defaults to 0", () => {
+  const detail = {
+    id: "f1",
+    publisherId: "u1",
+    type: "INTERNAL",
+    status: "DRAFT",
+    title: "T",
+    rewardPerResponse: 10,
+    expectedCompletions: 30,
+    currentVersion: { id: "v2", versionNumber: 2 },
+    createdAt: "2026-09-27T00:00:00.000Z",
+    updatedAt: "2026-09-27T00:00:00.000Z",
+  };
+  assert.equal(service.createdFormVersionSchema.parse(detail).interruptedAttempts, 0);
+  assert.equal(service.createdFormVersionSchema.parse({ ...detail, interruptedAttempts: 2 }).interruptedAttempts, 2);
+});
+
+test("Xoá: only a never-published draft (DELETE /forms/:id → backend deleteDraft)", () => {
+  assert.equal(status.canDelete(facts({ status: "DRAFT" }), 1), true);
+  // A draft past v1 was re-versioned from a published survey: it withdraws instead.
+  assert.equal(status.canDelete(facts({ status: "DRAFT" }), 2), false);
+  assert.equal(status.canDelete(facts({ status: "DRAFT", rejection: { reason: "x", refundedPoints: 0 } }), 1), false);
+  assert.equal(status.canDelete(facts({ status: "MODERATION_QUEUE" }), 1), false);
+  assert.equal(status.canDelete(facts({ status: "PUBLISHED" }), 1), false);
+  assert.equal(status.canDelete(facts({ status: "CLOSED", closeKind: "OWNER" }), 1), false);
+});
+
+test("Xoá: backend refusals read in Vietnamese", () => {
+  for (const code of ["FORM_NOT_IN_DRAFT_STATUS", "FORM_HAS_PUBLISHED_VERSIONS"]) {
+    const error = new ApiError({ kind: "http", status: 409, code, message: code });
+    assert.notEqual(messages.formActionErrorMessage(error, "fallback"), "fallback");
+  }
+});

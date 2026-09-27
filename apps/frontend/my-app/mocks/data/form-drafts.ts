@@ -1,4 +1,4 @@
-import type { DraftFormDefinition, FormBlock, FormStatusEnum } from "@rescom/schemas";
+import { escrowDrawPerCompletion, type DraftFormDefinition, type FormBlock, type FormStatusEnum } from "@rescom/schemas";
 import type { AiConversation } from "@/lib/forms/builder-ai";
 import { createCollection, hoursAgo, mockId, nowIso } from "../db/store";
 import { addPublisherForm, findPublisherForm, updatePublisherForm } from "./forms";
@@ -191,4 +191,64 @@ export function createFormDraft(input: {
 export function ensureDemoDraftListed(): void {
   const demo = findFormDraft(DEMO_BUILDER_FORM_ID);
   if (demo && !findPublisherForm(DEMO_BUILDER_FORM_ID)) syncPublisherForm(demo);
+}
+
+// --- Demo: a running Form Builder survey per publisher ("Chỉnh sửa" → new version) ---
+
+/** MOCK-ONLY: which demo running survey each account got (email → form id). */
+const demoRunningForms = createCollection<Record<string, string>>("demo-running-forms", () => ({}));
+
+/**
+ * Gives `ownerEmail` one approved, running In-Rescom survey the first time its
+ * list loads, so "Chỉnh sửa" (`POST /forms/:id/versions`) can be tried without
+ * going through publish + Admin approval. Created once per account.
+ */
+export function ensureDemoRunningForm(ownerEmail: string): void {
+  if (demoRunningForms.get()[ownerEmail]) return;
+  const title = "Thói quen dùng thư viện của sinh viên";
+  const description = "Khảo sát ngắn về cách sinh viên dùng thư viện trường. Khoảng 4 phút, câu trả lời được ẩn danh.";
+  const blocks = [
+    choice("lib-freq", "Bạn đến thư viện trường bao nhiêu lần mỗi tuần?", ["Không đến", "1 lần", "2–3 lần", "Từ 4 lần trở lên"]),
+    choice("lib-purpose", "Bạn thường đến thư viện để làm gì?", ["Tự học", "Mượn sách", "Học nhóm", "Dùng máy tính / Wi-Fi"], {
+      multiple: true,
+    }),
+    scale("lib-quiet", "Không gian thư viện yên tĩnh đến mức nào?", "Rất ồn", "Rất yên tĩnh"),
+    stars("lib-rate", "Bạn chấm thư viện trường mấy sao?"),
+    paragraph("lib-wish", "Bạn muốn thư viện cải thiện điều gì nhất?"),
+  ];
+  const expected = 30;
+  const completed = 12;
+  const reward = 10;
+  const escrow = (expected - completed) * escrowDrawPerCompletion({ type: "INTERNAL", rewardPerResponse: reward });
+  const draft: MockFormDraft = {
+    id: mockId(),
+    ownerEmail,
+    status: "PUBLISHED",
+    title,
+    description,
+    rewardPerResponse: reward,
+    expectedCompletions: expected,
+    estimatedDurationMinutes: 4,
+    schema: definition(title, description, blocks, 240),
+    targetingJson: null,
+    versionNumber: 1,
+    escrowLocked: escrow,
+    createdAt: hoursAgo(24 * 3),
+    updatedAt: hoursAgo(24 * 2),
+    submittedAt: hoursAgo(24 * 3),
+    ai: null,
+  };
+  saveFormDraft(draft);
+  syncPublisherForm(draft);
+  updatePublisherForm(draft.id, (form) => {
+    form.completedCompletions = completed;
+    form.publishedAt = hoursAgo(24 * 2);
+    form.deadlineAt = hoursAgo(-24 * 7);
+    form.hiddenFromMarketplace = false;
+    form.questionCount = blocks.length;
+    form.audienceLabel = "Mọi sinh viên";
+  });
+  demoRunningForms.update((all) => {
+    all[ownerEmail] = draft.id;
+  });
 }

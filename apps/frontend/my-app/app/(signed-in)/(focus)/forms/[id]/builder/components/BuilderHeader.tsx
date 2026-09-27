@@ -45,7 +45,7 @@ export function BuilderHeader({ formId, title, statusLine, saving, onContinue, o
             Tạo bằng AI
           </Link>
         ) : null}
-        <button type="button" onClick={onPreview} className={buttonClassName({ variant: "secondary", size: "md", radius: "field", className: "gap-2 text-label" })}>
+        <button type="button" onClick={onPreview} data-tour="builder-preview" className={buttonClassName({ variant: "secondary", size: "md", radius: "field", className: "gap-2 text-label" })}>
           <Icon name="eye" size={18} />
           Xem trước
         </button>

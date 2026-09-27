@@ -291,7 +291,7 @@ function QuestionScreen({ step, flow }: { step: QuestionStep; flow: Flow }) {
 function FlowStatus({ flow }: { flow: Flow }) {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-surface px-5 lg:bg-surface-muted">
-      {flow.loadError ? (
+      {flow.loadError && !flow.redirecting ? (
         <div className="flex w-full max-w-110 flex-col gap-4">
           <Alert tone="danger">{ONBOARDING_MESSAGES.loadFailed}</Alert>
           <Button variant="secondary" size="lg" onClick={flow.reload}>
@@ -313,7 +313,7 @@ export function OnboardingFlow() {
   const flow = useOnboardingFlow();
   const { step, answers } = flow;
 
-  if (!flow.ready) return <FlowStatus flow={flow} />;
+  if (flow.redirecting || !flow.ready) return <FlowStatus flow={flow} />;
 
   if (step === "welcome") {
     return (

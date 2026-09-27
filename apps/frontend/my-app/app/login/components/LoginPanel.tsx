@@ -9,6 +9,7 @@ import { readSessionReplacedNotice } from "@/lib/auth/session-notice";
 import type { EmailAuthField } from "@/lib/auth/types";
 import { sanitizeReturnTo } from "@/lib/onboarding";
 import { useEmailAuth, type AuthFocusTarget } from "../hooks/use-email-auth";
+import { useRedirectIfSignedIn } from "../hooks/use-redirect-if-signed-in";
 import { AuthFooterNote } from "./AuthFooterNote";
 import { DemoAccountsHint } from "./DemoAccountsHint";
 import { EmailAuthForm } from "./EmailAuthForm";
@@ -34,6 +35,7 @@ export function LoginPanel() {
   const sessionNotice = readSessionReplacedNotice(searchParams);
 
   const auth = useEmailAuth({ mode: "login", returnTo });
+  useRedirectIfSignedIn(returnTo);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(sessionNotice !== null);
   // A new object per request, so the same target is refocused on repeat failures.
   const [focusRequest, setFocusRequest] = useState<{ target: AuthFocusTarget } | null>(null);

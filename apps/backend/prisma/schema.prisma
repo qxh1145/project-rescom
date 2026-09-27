@@ -274,6 +274,9 @@ model User {
   integrityReviews     IntegrityReview[]
   fraudLogs            FraudLog[]
 
+  /// Interactive product tours (canvas section 20): progress per account.
+  productTours ProductTourProgress[]
+
   @@map("users")
 }
 
@@ -956,4 +959,34 @@ model StoredObject {
   @@index([ownerContext, ownerRecordId, questionId])
   @@index([status, scanStatus])
   @@map("stored_objects")
+}
+
+/// Interactive product tours (canvas section 20). Values must stay identical to
+/// `PRODUCT_TOUR_IDS` / `PRODUCT_TOUR_STATUSES` in @rescom/schemas.
+enum ProductTourId {
+  FIRST_SURVEY
+  FIRST_PUBLISH
+  TRACK_SURVEY
+  FORM_BUILDER
+}
+
+enum ProductTourStatus {
+  IN_PROGRESS
+  COMPLETED
+  DISMISSED
+}
+
+/// One row per (user, tour) the user has started, finished or dismissed.
+model ProductTourProgress {
+  userId    String            @map("user_id") @db.Uuid
+  tourId    ProductTourId     @map("tour_id")
+  status    ProductTourStatus
+  step      Int               @default(0)
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, tourId])
+  @@map("product_tour_progress")
 }

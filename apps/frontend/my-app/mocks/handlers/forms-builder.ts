@@ -4,6 +4,7 @@ import {
   checkPublishRewardBand,
   checkSurveyFitsReservationWindow,
   createFormDraftSchema,
+  escrowDrawPerCompletion,
   formDefinitionSchema,
   getRewardPricingRange,
   normalizeExpectedEffortSeconds,
@@ -254,17 +255,25 @@ export const formsBuilderHandlers: RequestHandler[] = [
     if (band === "OUT_OF_BAND") {
       return fail(422, "PRICING_REWARD_OUT_OF_BAND", "Reward is outside the pricing band of this duration.");
     }
-    const cost = calculateEscrowCost({
-      type: "INTERNAL",
-      expectedCompletions: draft.expectedCompletions,
-      rewardPerResponse: draft.rewardPerResponse,
-    }).effectiveCost;
-    const refused = reservePublishEscrow(user, draft, cost);
+    // `coordinatePublish`: a new version of a survey that already ran ("Chỉnh sửa") keeps the
+    // Escrow it still holds and locks only the shortfall (open slots × draw − held).
+    const row = findPublisherForm(draft.id);
+    const held = row?.publishedAt ? row.escrowLocked : 0;
+    const openSlots = Math.max(0, (row?.expectedCompletions ?? draft.expectedCompletions) - (row?.completedCompletions ?? 0));
+    const required = row?.publishedAt
+      ? openSlots * escrowDrawPerCompletion({ type: "INTERNAL", rewardPerResponse: draft.rewardPerResponse })
+      : calculateEscrowCost({
+          type: "INTERNAL",
+          expectedCompletions: draft.expectedCompletions,
+          rewardPerResponse: draft.rewardPerResponse,
+        }).effectiveCost;
+    const shortfall = Math.max(0, required - held);
+    const refused = reservePublishEscrow(user, draft, shortfall);
     if (refused) return refused;
     const published: MockFormDraft = {
       ...candidate,
       status: "MODERATION_QUEUE",
-      escrowLocked: cost,
+      escrowLocked: held + shortfall,
       submittedAt: new Date().toISOString(),
       updatedAt: nextUpdatedAt(draft.updatedAt),
     };
