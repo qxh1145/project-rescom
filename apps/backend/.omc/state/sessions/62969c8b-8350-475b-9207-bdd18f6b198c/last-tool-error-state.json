@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd /Users/quan/HocTap/Vibecode/project-rescom/apps/frontend/my-app && npx tsc --noEmit -p . 2>&1 | rtk proxy grep -i \\\"Canvas.tsx\\\\|BuilderScreen.tsx\\\" \"}",
+  "error": "Exit code 1",
+  "timestamp": "2026-09-27T07:45:50.397Z",
+  "retry_count": 1
+}
