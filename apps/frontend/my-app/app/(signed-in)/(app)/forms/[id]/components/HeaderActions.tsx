@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/ui/Icon";
 import { PAUSE_SUPPORTED, type PublisherForm } from "@/lib/forms/manage-service";
-import { canReopen, canWithdraw, resubmitHref, statusViewOf } from "@/lib/forms/manage-status";
+import { canEditLive, canReopen, canWithdraw, resubmitHref, statusViewOf } from "@/lib/forms/manage-status";
 import { useFormActions } from "../hooks/use-form-actions";
 
 const BASE =
@@ -21,9 +21,10 @@ const PRIMARY = `${BASE} h-11 border-primary bg-primary text-primary-foreground 
  * Xuất dữ liệu). Other combinations are ASSUMED from those two. "Tạm dừng"
  * waits for a backend route (`PAUSE_SUPPORTED`, Phase 5 M3); "Rút lại & hoàn
  * điểm" covers a survey waiting for review and a re-versioned draft (M7).
+ * "Chỉnh sửa" (ASSUMED placement) re-versions a running Form Builder survey.
  */
 export function HeaderActions({ form, className = "", tourTarget }: { form: PublisherForm; className?: string; tourTarget?: string }) {
-  const { requestClose, togglePause, pausing } = useFormActions();
+  const { requestClose, requestEdit, togglePause, pausing } = useFormActions();
   const view = statusViewOf(form);
   const id = encodeURIComponent(form.id);
   const live = view === "RUNNING" || view === "PAUSED";
@@ -47,6 +48,12 @@ export function HeaderActions({ form, className = "", tourTarget }: { form: Publ
           <Icon name="external-link" size={16} />
           Mở Google Form
         </a>
+      ) : null}
+      {canEditLive(form) ? (
+        <button type="button" className={SECONDARY} onClick={requestEdit}>
+          <Icon name="pencil" size={16} />
+          Chỉnh sửa
+        </button>
       ) : null}
       {live ? (
         <>

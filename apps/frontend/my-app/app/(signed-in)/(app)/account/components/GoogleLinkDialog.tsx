@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
-import { TextField } from "@/components/ui/TextField";
+import { PasswordField } from "@/components/ui/PasswordField";
 import { isApiError } from "@/lib/api/api-error";
 import { AUTH_MESSAGES, getGoogleLinkErrorMessage } from "@/lib/auth/auth-error-messages";
 import { startGoogleLink } from "@/lib/auth/auth-service";
@@ -95,11 +95,10 @@ export function GoogleLinkDialog({ open, onClose }: GoogleLinkDialogProps) {
           </h2>
           <p className="mt-2 text-body-relaxed text-ink-muted">{ACCOUNT_MESSAGES.googleLinkNote}</p>
         </div>
-        <TextField
+        <PasswordField
           ref={passwordRef}
           id={PASSWORD_ID}
           label="Mật khẩu Rescom"
-          type="password"
           autoComplete="current-password"
           autoFocus
           value={password}

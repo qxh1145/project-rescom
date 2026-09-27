@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, type CSSProperties } from "react";
+import { forwardRef, useState, type CSSProperties } from "react";
 import { Mascot } from "@/components/brand/Mascot";
 import { Icon } from "@/components/ui/Icon";
 import { buttonClassName } from "@/components/ui/Button";
@@ -12,7 +12,10 @@ interface TourCoachmarkProps {
   step: TourStep;
   index: number;
   total: number;
+  /** `null` while the target is away: the card keeps its last place. */
   position: CoachPosition | null;
+  /** No target on screen (next step still loading): fade out in place. */
+  hidden?: boolean;
   onNext: () => void;
   onBack: () => void;
   onStop: () => void;
@@ -36,17 +39,26 @@ function arrowStyle(position: CoachPosition): CSSProperties | null {
   }
 }
 
+function samePosition(a: CoachPosition | null, b: CoachPosition | null): boolean {
+  if (!a || !b) return a === b;
+  return a.placement === b.placement && a.x === b.x && a.y === b.y && a.arrowOffset === b.arrowOffset;
+}
+
 /**
  * Coachmark — canvas 20 "Thành phần tour": info (Tiếp), action (waits for the
  * real click, "Bỏ qua bước"), final (Xong). Positioned by `placeCoachmark`.
  */
 export const TourCoachmark = forwardRef<HTMLDivElement, TourCoachmarkProps>(function TourCoachmark(
-  { tourTitle, step, index, total, position, onNext, onBack, onStop },
+  { tourTitle, step, index, total, position, hidden = false, onNext, onBack, onStop },
   ref,
 ) {
   const titleId = "product-tour-title";
   const bodyId = "product-tour-body";
-  const arrow = position ? arrowStyle(position) : null;
+  // Last place next to a target, kept while the next one loads (adjusting state during render).
+  const [placed, setPlaced] = useState(position);
+  if (position && !samePosition(position, placed)) setPlaced(position);
+  const shownAt = position ?? placed;
+  const arrow = shownAt ? arrowStyle(shownAt) : null;
 
   return (
     <div
@@ -56,11 +68,16 @@ export const TourCoachmark = forwardRef<HTMLDivElement, TourCoachmarkProps>(func
       aria-labelledby={titleId}
       aria-describedby={bodyId}
       className="fixed z-[62] flex flex-col gap-3.5 rounded-[20px] bg-surface px-5 pt-4.5 pb-5 text-ink shadow-[0_22px_56px_rgba(8,12,32,0.38)]"
+      aria-hidden={hidden || undefined}
       style={{
         width: COACHMARK_WIDTH,
-        left: position?.x ?? 0,
-        top: position?.y ?? 0,
-        visibility: position ? "visible" : "hidden",
+        left: shownAt?.x ?? 0,
+        top: shownAt?.y ?? 0,
+        visibility: shownAt ? "visible" : "hidden",
+        opacity: hidden ? 0 : 1,
+        pointerEvents: hidden ? "none" : undefined,
+        // Position follows the gliding spotlight frame by frame (`TourOverlay`); only visibility eases.
+        transition: "opacity 180ms ease",
       }}
     >
       {arrow ? <span aria-hidden className="absolute size-4.5 rotate-45 rounded-[3px] bg-surface" style={arrow} /> : null}

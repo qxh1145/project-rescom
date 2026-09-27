@@ -259,6 +259,30 @@ export function reopenPublisherForm(id: string, additionalCompletions: number): 
   });
 }
 
+export const deletedFormSchema = z.object({ id: z.string() });
+
+/**
+ * VERIFIED: `DELETE /forms/:id` — deletes a never-published draft for good
+ * (409 `FORM_NOT_IN_DRAFT_STATUS` / `FORM_HAS_PUBLISHED_VERSIONS` otherwise).
+ */
+export function deleteFormDraft(id: string): Promise<{ id: string }> {
+  return apiRequest(formPath(id), { method: "DELETE", schema: deletedFormSchema });
+}
+
+/** VERIFIED `CreateFormVersionResultDto`: the form detail + attempts on the old version that were cut off. */
+export const createdFormVersionSchema = publisherFormSchema.extend({ interruptedAttempts: count.default(0) });
+export type CreatedFormVersion = z.infer<typeof createdFormVersionSchema>;
+
+/**
+ * VERIFIED: `POST /forms/:id/versions` — "Chỉnh sửa" of a running survey. The
+ * backend clones the newest version into vN+1 and moves the survey back to
+ * DRAFT (off Khám phá until the new version is approved); only PUBLISHED
+ * surveys (409 `FORM_NOT_PUBLISHED` otherwise).
+ */
+export function createFormVersion(id: string): Promise<CreatedFormVersion> {
+  return apiRequest(`${formPath(id)}/versions`, { method: "POST", body: {}, schema: createdFormVersionSchema });
+}
+
 /**
  * Phase 5 M3 (decision Q2, option a): the backend has no pause/resume route,
  * so "Tạm dừng" / "Tiếp tục" stay hidden until it does.

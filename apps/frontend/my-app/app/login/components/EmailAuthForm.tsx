@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { FormEvent, Ref } from "react";
 import { Button } from "@/components/ui/Button";
+import { PasswordField } from "@/components/ui/PasswordField";
 import { TextField } from "@/components/ui/TextField";
 import type {
   AuthSubmitStatus,
@@ -57,11 +58,10 @@ export function EmailAuthForm({
         onChange={(event) => onFieldChange("email", event.target.value)}
       />
       <div className="flex flex-col gap-2">
-        <TextField
+        <PasswordField
           ref={passwordRef}
           id="auth-password"
           name="password"
-          type="password"
           label="Mật khẩu"
           placeholder="••••••••"
           autoComplete="current-password"

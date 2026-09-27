@@ -212,6 +212,18 @@ body {
   border: 3px solid #fadc7a;
   animation: tour-pulse 1.6s ease-out infinite;
 }
+/* Product tour: the dim layer fades in when a tour starts. */
+.tour-fade-in {
+  animation: tour-fade-in 220ms ease-out both;
+}
+@keyframes tour-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
 @keyframes tour-pulse {
   from {
     transform: scale(0.55);
@@ -220,5 +232,27 @@ body {
   to {
     transform: scale(1.7);
     opacity: 0;
+  }
+}
+
+/* Form builder reorder (builder/hooks/use-reorder-drag.ts): while a question is
+   dragged the whole page shows the grabbing hand and text selection is off. */
+html.reorder-dragging,
+html.reorder-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+/* Drop indicator pops in, then glides between gaps (transition on translate). */
+.drop-indicator-in {
+  animation: drop-indicator-in 160ms ease-out both;
+}
+@keyframes drop-indicator-in {
+  from {
+    opacity: 0;
+    scale: 0.96 0.6;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
   }
 }

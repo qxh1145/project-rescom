@@ -40,6 +40,8 @@ const ACTION_MESSAGES: Record<string, string> = {
   FORM_VALIDATION_ERROR: "Số người trả lời thêm vượt giới hạn cho phép.",
   VALIDATION_ERROR: "Thông tin chưa hợp lệ. Kiểm tra lại rồi thử lại.",
   FORM_NOT_PUBLISHED: "Khảo sát không còn chạy.",
+  FORM_NOT_IN_DRAFT_STATUS: "Khảo sát đã được gửi duyệt nên không xoá được nữa.",
+  FORM_HAS_PUBLISHED_VERSIONS: "Khảo sát đã từng được đăng nên không xoá được. Bạn có thể rút lại để hoàn điểm.",
   // Phase 5 M7: a never-published draft is deleted, not withdrawn.
   INVALID_STATUS_TRANSITION: "Bản nháp này chưa từng được đăng nên không có ký quỹ để hoàn. Bạn có thể xoá bản nháp.",
   // ASSUMED dispute codes (no backend route yet).

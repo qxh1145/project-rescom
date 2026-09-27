@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Icon } from "@/components/ui/Icon";
 import { TextDivider } from "@/components/ui/TextDivider";
+import { PasswordField } from "@/components/ui/PasswordField";
 import { TextField } from "@/components/ui/TextField";
 import { AUTH_MESSAGES } from "@/lib/auth/auth-error-messages";
 import { sanitizeReturnTo } from "@/lib/onboarding";
@@ -115,11 +116,10 @@ export function RegisterPanel() {
         />
 
         <div className="flex flex-col gap-2.5">
-          <TextField
+          <PasswordField
             ref={passwordRef}
             id={IDS.password}
             name="password"
-            type="password"
             label="Mật khẩu"
             placeholder="Ít nhất 12 ký tự"
             autoComplete="new-password"
@@ -150,7 +150,7 @@ export function RegisterPanel() {
               if (event.target.checked) setTermsError(null);
             }}
             label={
-              // Terms/privacy pages are not built yet (ASSUMED routes).
+              // /terms and /privacy are placeholders until the legal copy is ready.
               <span className="text-body-sm">
                 Tôi đồng ý với{" "}
                 <Link href="/terms" target="_blank" className={`${INLINE_LINK} text-primary`}>

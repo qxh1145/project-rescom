@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { Button, buttonClassName } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
+import { PasswordField } from "@/components/ui/PasswordField";
 import { TextField } from "@/components/ui/TextField";
 import { clearPendingEmail, readPendingEmail, subscribePendingEmail } from "@/lib/auth/pending-email";
 import { AuthCard } from "../../../login/components/AuthCard";
@@ -95,11 +96,10 @@ export function LinkGooglePanel() {
             }}
           />
         )}
-        <TextField
+        <PasswordField
           ref={passwordRef}
           id="link-google-password"
           name="password"
-          type="password"
           label="Mật khẩu Rescom"
           placeholder="••••••••"
           autoComplete="current-password"

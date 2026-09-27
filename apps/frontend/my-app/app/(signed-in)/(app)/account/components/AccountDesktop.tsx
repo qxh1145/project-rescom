@@ -69,12 +69,14 @@ function AccountSidebar() {
           <NavLink href={SUPPORT_MAILTO} icon="help-circle">
             Trợ giúp
           </NavLink>
-          {/* Tours are desktop-only, and the floating launcher hides once every tour is done. */}
+          {/* Tours are desktop-only, and the floating launcher hides once every tour is done.
+              Opens the hub, where each tour can be replayed ("Xem lại"). */}
           {tour.enabled ? (
             <li>
               <button
                 type="button"
-                onClick={() => tour.start("FIRST_SURVEY")}
+                onClick={tour.openHub}
+                aria-haspopup="dialog"
                 className={`${NAV_ITEM} font-semibold text-ink`}
               >
                 <Icon name="play-circle" size={20} />

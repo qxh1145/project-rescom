@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import type { TourDefinition } from "@/lib/product-tour/tour-definitions";
 import { placeCoachmark, spotlightRect, SPOTLIGHT_RADIUS, type CoachPosition, type Rect } from "@/lib/product-tour/tour-logic";
 import { COACHMARK_WIDTH, TourCoachmark } from "./TourCoachmark";
-import { prefersReducedMotion, useLiveRect, useTourTarget, useViewport } from "./tour-dom";
+import { prefersReducedMotion, SPOTLIGHT_FADE_MS, useLiveRect, useSpotlight, useTourTarget, useViewport } from "./tour-dom";
 
 interface TourOverlayProps {
   tour: TourDefinition;
@@ -25,15 +25,22 @@ const OPTIONAL_WAIT_MS = 1500;
  * hole 8px around the target with a 3px #FADC7A ring, and places the
  * coachmark beside it. Info steps block the page; action steps let clicks
  * through the hole only, and the click on the target moves the tour on.
+ *
+ * Mounted once per tour, not per step (`TourProvider` keys it by tour): the
+ * hole glides between targets and the dim layer stays up across route
+ * changes (`useSpotlight`), so nothing blinks between steps.
  */
 export function TourOverlay({ tour, index, onRoute, onNext, onBack, onStop }: TourOverlayProps) {
   const step = tour.steps[index];
   const element = useTourTarget(onRoute ? step.target : null);
   const target = useLiveRect(element);
+  const spotlight = useSpotlight(target, String(index));
   const viewport = useViewport();
   const cardRef = useRef<HTMLDivElement>(null);
   const [card, setCard] = useState<{ width: number; height: number } | null>(null);
   const hasTarget = target !== null;
+  // The layer renders a frame after the target is found (the spotlight runs on rAF).
+  const shown = spotlight !== null;
 
   // Optional steps (activation banner, 48-hour list) skip themselves when absent.
   useEffect(() => {
@@ -69,13 +76,13 @@ export function TourOverlay({ tour, index, onRoute, onNext, onBack, onStop }: To
     const observer = new ResizeObserver(measure);
     observer.observe(node);
     return () => observer.disconnect();
-  }, [hasTarget, index]);
+  }, [shown, index]);
 
   // Focus the step title so screen readers announce it; keyboard shortcuts.
   useEffect(() => {
-    if (!hasTarget) return;
+    if (!hasTarget || !shown) return;
     cardRef.current?.querySelector<HTMLElement>("h2")?.focus({ preventScroll: true });
-  }, [index, hasTarget]);
+  }, [index, hasTarget, shown]);
 
   useEffect(() => {
     if (!target) return;
@@ -93,29 +100,54 @@ export function TourOverlay({ tour, index, onRoute, onNext, onBack, onStop }: To
     return () => document.removeEventListener("keydown", onKey);
   }, [target, step.kind, index, onNext, onBack, onStop]);
 
-  if (!target || viewport.width === 0) return null;
+  if (!spotlight || viewport.width === 0) return null;
 
-  const hole = spotlightRect(target);
-  const position: CoachPosition | null = card
-    ? placeCoachmark(target, { width: COACHMARK_WIDTH, height: card.height }, viewport, step.placement)
-    : null;
+  const hole = spotlightRect(spotlight.rect);
+  const holeWidth = Math.max(0, hole.width);
+  const holeHeight = Math.max(0, hole.height);
+  const liveHole = target && !spotlight.holding ? spotlightRect(target) : null;
+  // Placed by the drawn hole, so the card glides with it; the side is the one it ends on next to
+  // the target. While the target is away the card keeps its last place (faded out).
+  const cardSize = card ? { width: COACHMARK_WIDTH, height: card.height } : null;
+  const side = cardSize && target ? placeCoachmark(target, cardSize, viewport, step.placement).placement : null;
+  const position: CoachPosition | null =
+    cardSize && target && !spotlight.holding
+      ? placeCoachmark(spotlight.rect, cardSize, viewport, side === "floating" || !side ? step.placement : side)
+      : null;
 
   return createPortal(
     <div data-product-tour="" className="contents">
-      <svg aria-hidden className="pointer-events-none fixed inset-0 z-[60]" width={viewport.width} height={viewport.height}>
+      <svg
+        aria-hidden
+        className="tour-fade-in pointer-events-none fixed inset-0 z-[60]"
+        width={viewport.width}
+        height={viewport.height}
+        style={{ opacity: spotlight.fading ? 0 : 1, transition: `opacity ${SPOTLIGHT_FADE_MS}ms ease` }}
+      >
         <defs>
           <mask id="product-tour-mask">
             <rect x={0} y={0} width={viewport.width} height={viewport.height} fill="#fff" />
-            <rect x={hole.x} y={hole.y} width={hole.width} height={hole.height} rx={SPOTLIGHT_RADIUS} fill="#000" />
+            <rect x={hole.x} y={hole.y} width={holeWidth} height={holeHeight} rx={SPOTLIGHT_RADIUS} fill="#000" />
           </mask>
         </defs>
         <rect x={0} y={0} width={viewport.width} height={viewport.height} fill="#0e1226" fillOpacity={0.72} mask="url(#product-tour-mask)" />
-        <rect x={hole.x} y={hole.y} width={hole.width} height={hole.height} rx={SPOTLIGHT_RADIUS} fill="none" stroke="#fadc7a" strokeWidth={3} />
+        <rect
+          x={hole.x}
+          y={hole.y}
+          width={holeWidth}
+          height={holeHeight}
+          rx={SPOTLIGHT_RADIUS}
+          fill="none"
+          stroke="#fadc7a"
+          strokeWidth={3}
+          style={{ opacity: spotlight.holding ? 0 : 1, transition: "opacity 200ms ease" }}
+        />
       </svg>
 
-      <Blockers hole={hole} viewport={viewport} passThrough={step.kind === "action"} />
+      {/* Only around a target on screen: a closed hole waiting for the next page never traps it. */}
+      {liveHole ? <Blockers hole={liveHole} viewport={viewport} passThrough={step.kind === "action"} /> : null}
 
-      {step.kind === "action" ? (
+      {step.kind === "action" && liveHole && !spotlight.moving ? (
         <span aria-hidden className="tour-beacon z-[61]" style={{ left: hole.x + hole.width - 13, top: hole.y - 5 }} />
       ) : null}
 
@@ -126,6 +158,7 @@ export function TourOverlay({ tour, index, onRoute, onNext, onBack, onStop }: To
         index={index}
         total={tour.steps.length}
         position={position}
+        hidden={spotlight.holding}
         onNext={onNext}
         onBack={onBack}
         onStop={onStop}

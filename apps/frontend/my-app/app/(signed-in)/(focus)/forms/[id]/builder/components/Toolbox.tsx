@@ -1,20 +1,18 @@
 "use client";
 
-import { useState, type DragEvent } from "react";
+import { useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { FormBlockType } from "@rescom/schemas";
 import { Icon } from "@/components/ui/Icon";
 import { SECTION_TOOL, TOOLBOX_CATEGORIES, searchBlockTypes } from "@/lib/forms/builder-catalog";
 import { GripIcon } from "./BuilderBits";
-
-export const BLOCK_TYPE_MIME = "application/x-rescom-block-type";
 
 interface ToolboxProps {
   disabled: boolean;
   draggingType: FormBlockType | null;
   onAdd: (type: FormBlockType) => void;
   onAddSection: () => void;
-  onDragStart: (type: FormBlockType) => void;
-  onDragEnd: () => void;
+  /** Press-and-drag handlers for a type (see hooks/use-palette-drag.ts). */
+  itemProps: (type: FormBlockType) => { onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void };
 }
 
 function ToolItem({
@@ -22,24 +20,28 @@ function ToolItem({
   label,
   disabled,
   onActivate,
+  slot,
   drag,
 }: {
   icon: string;
   label: string;
   disabled: boolean;
   onActivate: () => void;
-  drag?: { onDragStart: (event: DragEvent<HTMLButtonElement>) => void; onDragEnd: () => void };
+  slot?: string;
+  drag?: { onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void };
 }) {
   return (
-    <li>
+    <li data-palette-slot={slot}>
       <button
         type="button"
         disabled={disabled}
-        draggable={Boolean(drag) && !disabled}
-        onDragStart={drag?.onDragStart}
-        onDragEnd={drag?.onDragEnd}
+        onPointerDown={disabled ? undefined : drag?.onPointerDown}
         onClick={onActivate}
-        className="flex h-12 w-full items-center gap-2.5 rounded-field border border-line bg-surface pr-3 pl-1.5 text-left text-body-sm font-semibold text-ink transition-colors hover:border-primary hover:bg-tone-green-tint disabled:opacity-60"
+        className={`flex h-12 w-full items-center gap-2.5 rounded-field select-none border border-line bg-surface pr-3 pl-1.5 text-left text-body-sm font-semibold text-ink transition-[border-color,background-color,box-shadow,translate] duration-150 hover:border-primary hover:bg-tone-green-tint disabled:opacity-60 ${
+          drag && !disabled
+            ? "cursor-grab hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(30,36,70,0.08)] active:cursor-grabbing active:translate-y-0"
+            : "cursor-pointer"
+        }`}
       >
         <GripIcon size={16} />
         <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-surface-subtle">
@@ -53,10 +55,11 @@ function ToolItem({
 
 /**
  * Figma 13 "Khối câu hỏi" aside (63:4256): search, one group per category,
- * each type draggable onto the canvas or added with a click / Enter ("thêm
- * vào cuối phần đang chọn"). While dragging, the item shows "Đang kéo …".
+ * each type dragged onto the canvas (press and hold or move; a copy follows the
+ * pointer) or added with a click / Enter ("thêm vào cuối phần đang chọn").
+ * While dragging, the item shows "Đang kéo …".
  */
-export function Toolbox({ disabled, draggingType, onAdd, onAddSection, onDragStart, onDragEnd }: ToolboxProps) {
+export function Toolbox({ disabled, draggingType, onAdd, onAddSection, itemProps }: ToolboxProps) {
   const [query, setQuery] = useState("");
   const matches = searchBlockTypes(query);
   const showSection = !query.trim() || "phan moi bo cuc section".includes(query.trim().toLowerCase());
@@ -89,7 +92,8 @@ export function Toolbox({ disabled, draggingType, onAdd, onAddSection, onDragSta
                 draggingType === info.type ? (
                   <li
                     key={info.type}
-                    className="flex h-12.5 items-center rounded-field border-2 border-dashed border-primary bg-tone-green-tint px-3 text-caption font-semibold text-primary"
+                    data-palette-slot={info.type}
+                    className="flex h-12 items-center rounded-field border-2 border-dashed border-primary bg-tone-green-tint px-3 text-caption font-semibold text-primary"
                   >
                     Đang kéo &ldquo;{info.label}&rdquo;…
                   </li>
@@ -100,15 +104,8 @@ export function Toolbox({ disabled, draggingType, onAdd, onAddSection, onDragSta
                     label={info.label}
                     disabled={disabled}
                     onActivate={() => onAdd(info.type)}
-                    drag={{
-                      onDragStart: (event) => {
-                        event.dataTransfer.setData(BLOCK_TYPE_MIME, info.type);
-                        event.dataTransfer.setData("text/plain", info.label);
-                        event.dataTransfer.effectAllowed = "copy";
-                        onDragStart(info.type);
-                      },
-                      onDragEnd,
-                    }}
+                    slot={info.type}
+                    drag={itemProps(info.type)}
                   />
                 ),
               )}

@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"grep -rn \\\"versionNumber\\\" 'app/(signed-in)/(focus)/forms' lib/forms/builder-*.ts | head; grep -n \\\"approve\\\" -A40 mocks/handlers/admin-moderation.ts | grep -n \\\"survey\\\\|Survey\\\\|status\\\\...",
+  "error": "Exit code 1\napp/(signed-in)/(focus)/forms/[id]/builder/components/BuilderScreen.tsx:161:  const statusLine = `Bản nháp v${form.currentVersion.versionNumber} · ${autosaveLabel(editor.autosave, invalid, (iso) => timeFormat.format(new Date(iso)))}`;\napp/(signed-in)/(focus)/forms/[id]/builder/preview/components/PreviewScreen.tsx:106:            Bản nháp v{form.currentVersion.versionNumber} · câu trả lời lúc xem trước không được lưu\napp/(signed-in)/(focus)/forms/[id]/builder/publish/components/Publis...",
+  "timestamp": "2026-09-27T13:14:24.206Z",
+  "retry_count": 1
+}

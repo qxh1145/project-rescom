@@ -1,0 +1,7 @@
+{
+  "tool_name": "mcp__Claude_Browser__browser_batch",
+  "tool_input_preview": "{\"actions\":[{\"name\":\"computer\",\"input\":{\"action\":\"left_click\",\"ref\":\"ref_31\",\"tabId\":\"tab-1\"}},{\"name\":\"computer\",\"input\":{\"action\":\"wait\",\"duration\":3,\"tabId\":\"tab-1\"}},{\"name\":\"navigate\",\"input\":{\"u...",
+  "error": "actions[0] (computer:left_click) failed: ref not found: ref_31 (0 completed, 4 remaining)",
+  "timestamp": "2026-09-27T13:04:06.597Z",
+  "retry_count": 1
+}

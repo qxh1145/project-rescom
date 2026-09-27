@@ -6,10 +6,13 @@ import { formActionErrorMessage } from "@/lib/forms/manage-messages";
 import { setPublisherFormPaused } from "@/lib/forms/manage-service";
 import { useSession } from "@/lib/session/SessionProvider";
 import { CloseFormDialog } from "../components/CloseFormDialog";
+import { EditVersionDialog } from "../components/EditVersionDialog";
 
 interface FormActions {
   /** Opens the "Đóng & hoàn điểm" confirmation. */
   requestClose: () => void;
+  /** Opens the "Chỉnh sửa" (new version) confirmation of a running Form Builder survey. */
+  requestEdit: () => void;
   /** "Tạm dừng" / "Tiếp tục" (ASSUMED API). */
   togglePause: () => void;
   pausing: boolean;
@@ -28,6 +31,7 @@ export function FormActionsProvider({ children }: { children: ReactNode }) {
   const { form, applyForm } = useFormHeader();
   const { refresh } = useSession();
   const [closeOpen, setCloseOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [pausing, setPausing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,6 +51,7 @@ export function FormActionsProvider({ children }: { children: ReactNode }) {
   const value = useMemo<FormActions>(
     () => ({
       requestClose: () => setCloseOpen(true),
+      requestEdit: () => setEditOpen(true),
       togglePause: () => void togglePause(),
       pausing,
       error,
@@ -58,6 +63,17 @@ export function FormActionsProvider({ children }: { children: ReactNode }) {
   return (
     <FormActionsContext.Provider value={value}>
       {children}
+      {form ? (
+        <EditVersionDialog
+          open={editOpen}
+          form={form}
+          onClose={() => setEditOpen(false)}
+          onCreated={(updated) => {
+            setEditOpen(false);
+            applyForm(updated);
+          }}
+        />
+      ) : null}
       {form ? (
         <CloseFormDialog
           open={closeOpen}

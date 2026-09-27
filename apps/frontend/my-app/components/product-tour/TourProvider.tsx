@@ -261,7 +261,7 @@ export function ProductTourProvider({ children }: { children: ReactNode }) {
         <>
           {activeTour && active ? (
             <TourOverlay
-              key={`${active.tourId}:${active.step}`}
+              key={active.tourId}
               tour={activeTour}
               index={active.step}
               onRoute={activeTour.steps[active.step].route.test(pathname) && !confirmStop}

@@ -34,6 +34,7 @@ import {
 import { internalPriceHint } from "@/lib/forms/builder-publish";
 import { getAiConversation, sendAiMessage, suggestAiBlock } from "@/lib/forms/builder-service";
 import { useBuilderEditor } from "../hooks/use-builder-editor";
+import { usePaletteDrag } from "../hooks/use-palette-drag";
 import { AddQuestionSheet } from "./AddQuestionSheet";
 import { AiReviewBanner } from "./AiReviewBanner";
 import { BuilderHeader } from "./BuilderHeader";
@@ -59,7 +60,17 @@ export function BuilderScreen() {
   const editor = useBuilderEditor(formId);
   const { doc, form } = editor;
 
-  const [draggingType, setDraggingType] = useState<FormBlockType | null>(null);
+  const canvasListRef = useRef<HTMLDivElement>(null);
+  const palette = usePaletteDrag(canvasListRef, (type, target) => {
+    let created = "";
+    editor.change((current) => {
+      const result = insertBlock(current, type, { sectionId: target.sectionId, index: target.index });
+      created = result.blockId;
+      return result.doc;
+    }, `Đã thêm câu ${blockTypeInfo(type).label} vào vị trí câu ${target.number}.`);
+    if (created) editor.select(created);
+    return created || null;
+  });
   const [continueError, setContinueError] = useState<string | null>(null);
   const [continuing, setContinuing] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
@@ -303,19 +314,19 @@ export function BuilderScreen() {
         <aside className="sticky top-17 h-[calc(100dvh-68px)] w-68 shrink-0 overflow-y-auto border-r border-line bg-surface">
           <Toolbox
             disabled={editor.readOnly}
-            draggingType={draggingType}
+            draggingType={palette.draggingType}
             onAdd={(type) => void addBlock(type)}
             onAddSection={addSectionAtEnd}
-            onDragStart={setDraggingType}
-            onDragEnd={() => setDraggingType(null)}
+            itemProps={palette.itemProps}
           />
         </aside>
         <main className="min-w-0 flex-1 bg-surface-subtle">
           <Canvas
             editor={editor}
             formId={formId}
-            toolboxDragging={draggingType !== null}
-            onToolboxDrop={() => setDraggingType(null)}
+            listRef={canvasListRef}
+            paletteDragging={palette.draggingType !== null}
+            paletteTarget={palette.target}
           />
         </main>
         <aside

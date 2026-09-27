@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState, type DragEvent } from "react";
+import { useRef, useState, type RefObject } from "react";
 import Link from "next/link";
-import { formBlockTypeEnum, type FormBlock } from "@rescom/schemas";
+import type { FormBlock } from "@rescom/schemas";
 import { Icon } from "@/components/ui/Icon";
 import {
   addSection,
@@ -19,39 +19,50 @@ import {
   updateBlock,
   type BuilderSection,
 } from "@/lib/forms/builder-blocks";
-import { blockTypeInfo } from "@/lib/forms/builder-catalog";
 import { internalPriceHint } from "@/lib/forms/builder-publish";
 import type { BuilderEditor } from "../hooks/use-builder-editor";
-import { findDropTarget, useReorderDrag, type DropTarget } from "../hooks/use-reorder-drag";
+import { useFlipLayout } from "../hooks/use-flip-layout";
+import { useReorderDrag, type DropTarget } from "../hooks/use-reorder-drag";
 import { BlockCard } from "./BlockCard";
 import { SectionPill } from "./BuilderBits";
-import { BLOCK_TYPE_MIME } from "./Toolbox";
 
 interface CanvasProps {
   editor: BuilderEditor;
   formId: string;
-  toolboxDragging: boolean;
-  onToolboxDrop: () => void;
+  /** The question list; the toolbox drag (hooks/use-palette-drag.ts) reads drop targets from it. */
+  listRef: RefObject<HTMLDivElement | null>;
+  /** A toolbox type is being dragged, and the gap it would land in. */
+  paletteDragging: boolean;
+  paletteTarget: DropTarget | null;
 }
 
-function DropIndicator({ number }: { number: number }) {
+/**
+ * One indicator for the whole list, drawn over the gap (it takes no space, so
+ * the cards never jump) and gliding from gap to gap as the pointer moves.
+ */
+function DropIndicator({ target }: { target: DropTarget }) {
   return (
-    <div className="relative my-1 h-6" aria-hidden="true">
-      <span className="absolute top-1/2 right-0 left-0 h-0.75 -translate-y-1/2 rounded-full bg-primary" />
-      <span className="absolute top-1/2 -left-1.25 size-2.5 -translate-y-1/2 rounded-full bg-primary" />
-      <span className="absolute top-0 left-1/2 inline-flex h-6 -translate-x-1/2 items-center rounded-full bg-primary px-2.5 text-[12px] font-bold text-surface">
-        Thả vào đây · câu {number}
-      </span>
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute top-0 right-0 left-0 z-10 h-6 transition-[translate] duration-150 ease-out"
+      style={{ translate: `0 ${target.y - 12}px` }}
+    >
+      <div className="drop-indicator-in relative h-full">
+        <span className="absolute top-1/2 right-0 left-0 h-0.75 -translate-y-1/2 rounded-full bg-primary" />
+        <span className="absolute top-1/2 -left-1.25 size-2.5 -translate-y-1/2 rounded-full bg-primary" />
+        <span className="absolute top-0 left-1/2 inline-flex h-6 -translate-x-1/2 items-center rounded-full bg-primary px-2.5 text-[12px] font-bold whitespace-nowrap text-surface shadow-[0_4px_10px_rgba(30,36,70,0.18)]">
+          Thả vào đây · câu {target.number}
+        </span>
+      </div>
     </div>
   );
 }
 
 /** Figma 13 canvas (63:4406 empty, 72:252 with questions). */
-export function Canvas({ editor, formId, toolboxDragging, onToolboxDrop }: CanvasProps) {
+export function Canvas({ editor, formId, listRef, paletteDragging, paletteTarget }: CanvasProps) {
   const { doc, readOnly } = editor;
-  const listRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const [toolboxTarget, setToolboxTarget] = useState<DropTarget | null>(null);
   const summary = summarizeDoc(doc);
   const numberOf = new Map(doc.blocks.map((block, i) => [block.id, i + 1]));
 
@@ -61,7 +72,8 @@ export function Canvas({ editor, formId, toolboxDragging, onToolboxDrop }: Canva
       `Đã chuyển câu hỏi tới vị trí câu ${Math.min(target.number, doc.blocks.length)}.`,
     );
   });
-  const target = reorder.target ?? toolboxTarget;
+  const target = reorder.target ?? paletteTarget;
+  useFlipLayout(rootRef);
 
   const selectedSectionId =
     (editor.selectedId && doc.sections.find((s) => s.blockIds.includes(editor.selectedId as string))?.id) || null;
@@ -76,39 +88,11 @@ export function Canvas({ editor, formId, toolboxDragging, onToolboxDrop }: Canva
     if (created) editor.select(created);
   };
 
-  const onDragOver = (event: DragEvent<HTMLDivElement>) => {
-    if (readOnly || !event.dataTransfer.types.includes(BLOCK_TYPE_MIME)) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-    const container = listRef.current;
-    setToolboxTarget(container ? findDropTarget(container, event.clientY) : null);
-  };
-
-  const onDrop = (event: DragEvent<HTMLDivElement>) => {
-    const parsed = formBlockTypeEnum.safeParse(event.dataTransfer.getData(BLOCK_TYPE_MIME));
-    const dropTarget = toolboxTarget;
-    setToolboxTarget(null);
-    onToolboxDrop();
-    if (!parsed.success) return;
-    event.preventDefault();
-    let created = "";
-    editor.change((current) => {
-      const result = insertBlock(current, parsed.data, {
-        sectionId: dropTarget?.sectionId ?? null,
-        index: dropTarget?.index,
-      });
-      created = result.blockId;
-      return result.doc;
-    }, `Đã thêm câu ${blockTypeInfo(parsed.data).label}.`);
-    if (created) editor.select(created);
-  };
-
   const renderCard = (block: FormBlock, section: BuilderSection | null, indexInSection: number) => {
     const number = numberOf.get(block.id) ?? 0;
     const pendingAttention = editor.pending.some((item) => item.blockId === block.id);
     return (
-      <div key={block.id}>
-        {target?.beforeBlockId === block.id ? <DropIndicator number={target.number} /> : null}
+      <div key={block.id} data-flip={block.id}>
         <BlockCard
           block={block}
           number={number}
@@ -119,8 +103,8 @@ export function Canvas({ editor, formId, toolboxDragging, onToolboxDrop }: Canva
           isAi={editor.aiBlockIds.has(block.id)}
           issues={editor.issues.blocks[block.id] ?? []}
           readOnly={readOnly}
-          dragOffset={reorder.dragging?.blockId === block.id ? reorder.dragging.offsetY : null}
-          gripProps={reorder.gripProps(block.id)}
+          dragPhase={reorder.dragging?.blockId === block.id ? reorder.dragging.phase : null}
+          dragProps={reorder.dragProps(block.id)}
           canMoveUp={canMoveBy(doc, block.id, -1)}
           canMoveDown={canMoveBy(doc, block.id, 1)}
           onSelect={() => editor.select(block.id)}
@@ -152,15 +136,10 @@ export function Canvas({ editor, formId, toolboxDragging, onToolboxDrop }: Canva
     );
   };
 
-  const endIndicator = (sectionId: string | null) =>
-    target && target.beforeBlockId === null && (target.sectionId ?? null) === sectionId ? (
-      <DropIndicator number={target.number} />
-    ) : null;
-
   const hint = internalPriceHint(summary.minutes, toDraftDefinition(doc));
 
   return (
-    <div className="mx-auto flex w-full max-w-[680px] flex-col gap-4 px-4 pt-6 pb-16 lg:px-0">
+    <div ref={rootRef} className="mx-auto flex w-full max-w-[680px] flex-col gap-4 px-4 pt-6 pb-16 lg:px-0">
       {/* Title card (63:4407): 6px primary top border. */}
       <div className="rounded-[16px] border border-t-6 border-primary bg-surface px-5.5 pt-4 pb-5">
         <label className="sr-only" htmlFor="builder-title">
@@ -192,17 +171,16 @@ export function Canvas({ editor, formId, toolboxDragging, onToolboxDrop }: Canva
         <p className="text-caption text-danger">{editor.issues.form.join(" ")}</p>
       ) : null}
 
-      <div ref={listRef} data-tour="builder-canvas" onDragOver={onDragOver} onDrop={onDrop} onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setToolboxTarget(null);
-      }} className="flex flex-col gap-3">
+      <div ref={listRef} data-tour="builder-canvas" className="relative flex flex-col gap-3">
+        {target ? <DropIndicator target={target} /> : null}
         {doc.blocks.length === 0 && doc.sections.length === 0 ? (
           <div
             data-drop-empty=""
             data-section=""
             data-index={0}
             data-number={1}
-            className={`flex flex-col items-center rounded-[20px] border-2 border-dashed bg-surface px-6 pt-10 pb-10 text-center ${
-              toolboxDragging ? "border-primary bg-tone-green-tint" : "border-line-strong"
+            className={`flex flex-col items-center rounded-[20px] border-2 border-dashed bg-surface px-6 pt-10 pb-10 text-center transition-colors ${
+              paletteDragging ? "border-primary bg-tone-green-tint" : "border-line-strong"
             }`}
           >
             <span className="flex size-14 items-center justify-center rounded-[16px] bg-tone-green-bg text-primary">
@@ -214,10 +192,7 @@ export function Canvas({ editor, formId, toolboxDragging, onToolboxDrop }: Canva
             </p>
           </div>
         ) : doc.sections.length === 0 ? (
-          <>
-            {doc.blocks.map((block, i) => renderCard(block, null, i))}
-            {endIndicator(null)}
-          </>
+          doc.blocks.map((block, i) => renderCard(block, null, i))
         ) : (
           doc.sections.map((section, sectionIndex) => {
             const isCollapsed = collapsed.has(section.id);
@@ -225,7 +200,7 @@ export function Canvas({ editor, formId, toolboxDragging, onToolboxDrop }: Canva
             const firstNumber = doc.sections.slice(0, sectionIndex).reduce((n, s) => n + s.blockIds.length, 0) + 1;
             return (
               <section key={section.id} aria-labelledby={`section-${section.id}`} className="flex flex-col gap-3">
-                <div className="mt-2 flex items-center gap-2.5 pl-1">
+                <div data-flip={`section:${section.id}`} className="mt-2 flex items-center gap-2.5 pl-1">
                   <SectionPill number={sectionIndex + 1} />
                   <label className="sr-only" htmlFor={`section-${section.id}`}>
                     Tên phần {sectionIndex + 1}
@@ -267,20 +242,17 @@ export function Canvas({ editor, formId, toolboxDragging, onToolboxDrop }: Canva
                 </div>
                 {isCollapsed ? null : sectionBlocks.length === 0 ? (
                   <div
+                    data-flip={`empty:${section.id}`}
                     data-drop-empty=""
                     data-section={section.id}
                     data-index={0}
                     data-number={firstNumber}
                     className="rounded-[16px] border border-dashed border-line-strong bg-surface px-4 py-5 text-center text-caption text-ink-muted"
                   >
-                    {endIndicator(section.id)}
                     Phần này chưa có câu hỏi. Kéo một khối vào đây hoặc bấm “Thêm câu hỏi”.
                   </div>
                 ) : (
-                  <>
-                    {sectionBlocks.map((block, i) => renderCard(block, section, i))}
-                    {endIndicator(section.id)}
-                  </>
+                  sectionBlocks.map((block, i) => renderCard(block, section, i))
                 )}
               </section>
             );
@@ -313,7 +285,7 @@ export function Canvas({ editor, formId, toolboxDragging, onToolboxDrop }: Canva
         </>
       ) : !readOnly ? (
         <>
-          <div className="flex gap-2.5">
+          <div data-flip="actions" className="flex gap-2.5">
             <button
               type="button"
               onClick={() => addQuestion(selectedSectionId ?? doc.sections.at(-1)?.id ?? null)}
@@ -333,7 +305,7 @@ export function Canvas({ editor, formId, toolboxDragging, onToolboxDrop }: Canva
               Thêm phần
             </button>
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[14px] border border-line bg-surface px-4 py-3 text-caption">
+          <div data-flip="summary" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[14px] border border-line bg-surface px-4 py-3 text-caption">
             <span className="font-bold text-ink">
               {summary.questionCount} câu{summary.sectionCount > 0 ? ` · ${summary.sectionCount} phần` : ""} · khoảng {summary.minutes} phút
             </span>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { PublisherFormSummary } from "@/lib/forms/manage-service";
 import {
+  canDelete,
   canWithdraw,
   continueDraftHref,
   listOffersReopen,
@@ -8,6 +9,7 @@ import {
   resultsHref,
   type PublisherStatusView,
 } from "@/lib/forms/manage-status";
+import { DeleteDraftAction } from "./DeleteDraftAction";
 import { WithdrawAction } from "./WithdrawAction";
 
 type Layout = "row" | "card";
@@ -21,6 +23,7 @@ const SIZE: Record<Layout, string> = {
 const VARIANT = {
   outline: "border-primary bg-surface text-primary hover:bg-primary/5",
   secondary: "border-line-strong bg-surface text-ink hover:bg-surface-subtle",
+  danger: "border-line-strong bg-surface text-danger hover:border-danger hover:bg-danger-soft",
 };
 
 function Action({ href, variant, layout, children }: { href: string; variant: keyof typeof VARIANT; layout: Layout; children: string }) {
@@ -36,6 +39,7 @@ function Action({ href, variant, layout, children }: { href: string; variant: ke
  * Kết quả + Mở lại · Sửa & gửi lại. Returns null when a status has no action.
  * "Rút lại" (Phase 5 M7, ASSUMED placement) withdraws a queued survey or a
  * re-versioned draft; "Mở lại" follows `listOffersReopen` (Phase 5 M2).
+ * "Xoá" (ASSUMED placement) deletes a never-published draft.
  */
 export function FormRowActions({
   form,
@@ -103,6 +107,9 @@ export function FormRowActions({
             Tiếp tục soạn
           </Action>
           {withdraw}
+          {canDelete(form, form.latestVersionNumber) ? (
+            <DeleteDraftAction form={form} className={`${BASE} ${SIZE[layout]} ${VARIANT.danger}`} onDeleted={onChanged} />
+          ) : null}
         </>
       );
   }
