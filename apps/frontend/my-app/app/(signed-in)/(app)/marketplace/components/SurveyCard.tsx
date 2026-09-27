@@ -100,7 +100,7 @@ export function SurveyCard({ survey, featured, starting, disabled, onStart }: Su
       {!completed ? (
         <>
           <ProgressBar
-            value={survey.completedCompletions}
+            value={remainingSlots(survey)}
             max={survey.expectedCompletions}
             height={6}
             tone="brand"
