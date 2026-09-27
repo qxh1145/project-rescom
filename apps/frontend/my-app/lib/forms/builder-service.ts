@@ -112,10 +112,11 @@ export function draftPayloadOf(doc: BuilderDoc): DraftPayload {
   };
 }
 
-export function createBuilderDraft(signal?: AbortSignal): Promise<BuilderForm> {
+/** `title` names the draft (e.g. from the first AI prompt); blank → "Khảo sát chưa có tên". */
+export function createBuilderDraft({ title, signal }: { title?: string; signal?: AbortSignal } = {}): Promise<BuilderForm> {
   return apiRequest("/forms", {
     method: "POST",
-    body: { title: UNTITLED_FORM, type: "INTERNAL" },
+    body: { title: title?.trim() || UNTITLED_FORM, type: "INTERNAL" },
     schema: builderFormSchema,
     signal,
   });

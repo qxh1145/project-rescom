@@ -5,8 +5,7 @@ export const metadata: Metadata = {
   title: "Soạn bằng AI — Rescom",
 };
 
-/** Figma 13b / 13b' / 13g / 13h "Soạn bằng AI" for an existing draft. */
-export default async function FormBuilderAiPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  return <AiChatScreen formId={id} />;
+/** Figma 13b / 13b' / 13g / 13h "Soạn bằng AI" for an existing draft (the screen reads the id from the URL). */
+export default function FormBuilderAiPage() {
+  return <AiChatScreen />;
 }

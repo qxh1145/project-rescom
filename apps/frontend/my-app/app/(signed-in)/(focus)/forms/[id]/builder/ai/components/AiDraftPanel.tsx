@@ -8,12 +8,26 @@ import { estimateMinutes } from "@/lib/forms/builder-blocks";
 import { internalPriceHint } from "@/lib/forms/builder-publish";
 import { AttentionChip, SectionPill, TypeChip } from "../../components/BuilderBits";
 
+/** Gap between two questions appearing in a fresh draft. */
+const STAGGER_STEP_MS = 80;
+
 /**
  * 13b' "Bản nháp khảo sát" aside (62:2430): the assistant's current draft,
  * suggested attention checks shown as "chờ xác nhận"; "Mở trong Form
- * Builder" applies it for review (13c).
+ * Builder" applies it for review (13c). With `stagger` (a draft that just
+ * came back) the questions appear one after another.
  */
-export function AiDraftPanel({ formId, draft, onClose }: { formId: string; draft: AiDraft; onClose: () => void }) {
+export function AiDraftPanel({
+  formId,
+  draft,
+  stagger = false,
+  onClose,
+}: {
+  formId: string;
+  draft: AiDraft;
+  stagger?: boolean;
+  onClose: () => void;
+}) {
   const minutes = estimateMinutes(draft.blocks);
   const pending = new Set(draft.attentionSuggestions.map((s) => s.blockId));
   const numberOf = new Map(draft.blocks.map((block, i) => [block.id, i + 1]));
@@ -60,10 +74,12 @@ export function AiDraftPanel({ formId, draft, onClose }: { formId: string; draft
                 const block = draft.blocks.find((b) => b.id === id);
                 if (!block) return null;
                 const isPending = pending.has(id);
+                const order = (numberOf.get(id) ?? 1) - 1;
                 return (
                   <li
                     key={id}
-                    className={`rounded-[14px] px-3.5 py-3 ${
+                    style={stagger ? { animationDelay: `${Math.min(order, 24) * STAGGER_STEP_MS}ms` } : undefined}
+                    className={`rounded-[14px] px-3.5 py-3 ${stagger ? "ai-block-in " : ""}${
                       isPending ? "border border-dashed border-tone-amber-strong bg-tone-amber-tint" : "border border-line bg-surface"
                     }`}
                   >

@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"git show \\\"HEAD:apps/frontend/my-app/app/(signed-in)/(focus)/forms/[id]/builder/ai/components/AiChatScreen.tsx\\\" | npx prettier --check --stdin-filepath \\\"x.tsx\\\" >/dev/null 2>&1 && echo O...",
+  "error": "Exit code 1\nORIG_NOT_CLEAN\n(eval):1: no matches found: .prettierrc*",
+  "timestamp": "2026-09-27T14:34:07.214Z",
+  "retry_count": 1
+}
