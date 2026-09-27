@@ -256,3 +256,127 @@ html.reorder-dragging * {
     scale: 1;
   }
 }
+
+/* AI thought line (canvas 13b₁ / 13b₂): "Trợ lý đang suy nghĩ". The global
+   reduced-motion rule stops the loops; the shimmer also falls back to plain ink. */
+.thought-shimmer {
+  background: linear-gradient(100deg, #1e2446 0%, #1e2446 38%, #8c95ab 50%, #1e2446 62%, #1e2446 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: thought-shimmer 2s linear infinite;
+}
+.thought-ring::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  border-top-color: #2b7a33;
+  border-right-color: #9fd39a;
+  animation: thought-spin 1s linear infinite;
+}
+.thought-box,
+.thought-fade {
+  animation: thought-rise 300ms ease-out both;
+}
+.thought-item {
+  animation: thought-rise 320ms ease-out both;
+}
+.thought-item::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 28px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: #e1e6ef;
+}
+.thought-item:last-child::before {
+  display: none;
+}
+.thought-item[data-state="done"]::before {
+  background: #9fd39a;
+  transform-origin: top;
+  animation: thought-grow 450ms ease-out both;
+}
+.thought-item[data-state="done"] .thought-node {
+  background: #eaf6e8;
+  color: #1f6b2a;
+}
+.thought-item[data-state="active"] .thought-node {
+  border: 2px solid #2b7a33;
+  background: #ffffff;
+}
+.thought-item[data-state="active"] .thought-node::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: #2b7a33;
+  animation: thought-pulse 1.4s ease-in-out infinite;
+}
+.thought-item[data-state="pending"] .thought-node {
+  border: 2px solid #c9d0dc;
+  background: #ffffff;
+}
+.thought-caret {
+  display: inline-block;
+  width: 2px;
+  height: 15px;
+  margin-left: 3px;
+  vertical-align: -2px;
+  background: #2b7a33;
+  animation: thought-blink 1s steps(2) infinite;
+}
+.thought-skeleton {
+  background: linear-gradient(90deg, #eef1f6 0%, #f7f9fc 50%, #eef1f6 100%);
+  background-size: 200% 100%;
+  animation: thought-skeleton 1.4s linear infinite;
+}
+.thought-progress {
+  animation: thought-progress 1.6s ease-in-out infinite;
+}
+@keyframes thought-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -150% 0; }
+}
+@keyframes thought-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes thought-rise {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes thought-grow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+@keyframes thought-pulse {
+  0%, 100% { transform: scale(0.7); opacity: 0.55; }
+  50% { transform: scale(1); opacity: 1; }
+}
+@keyframes thought-blink {
+  to { opacity: 0; }
+}
+@keyframes thought-skeleton {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@keyframes thought-progress {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .thought-shimmer {
+    background: none;
+    color: #1e2446;
+  }
+  .thought-ring::before,
+  .thought-caret,
+  .thought-progress {
+    display: none;
+  }
+}

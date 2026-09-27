@@ -16,6 +16,8 @@ interface AiComposerProps {
   /** Entry screen (13b) uses the long "Gợi ý câu kiểm tra chú ý" label. */
   variant: "entry" | "chat";
   rows?: number;
+  /** While `busy`, the send button becomes "Dừng trợ lý" (canvas 13b₁). */
+  onStop?: () => void;
 }
 
 /**
@@ -23,7 +25,7 @@ interface AiComposerProps {
  * attention-check chip (toggle) and the round send button. Enter sends,
  * Shift+Enter adds a line.
  */
-export function AiComposer({ value, onChange, options, onOptionsChange, onSubmit, busy, placeholder, variant, rows = 3 }: AiComposerProps) {
+export function AiComposer({ value, onChange, options, onOptionsChange, onSubmit, busy, placeholder, variant, rows = 3, onStop }: AiComposerProps) {
   const id = useId();
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
@@ -82,7 +84,21 @@ export function AiComposer({ value, onChange, options, onOptionsChange, onSubmit
           <Icon name="shield-check" size={16} />
           {variant === "entry" ? "Gợi ý câu kiểm tra chú ý" : "Kiểm tra chú ý"}
         </button>
+        {/* Distinct keys: React must not reuse the Stop node as the submit button
+            mid-click, or the click that stops would also re-send the prompt. */}
+        {busy && onStop ? (
+          <button
+            key="stop"
+            type="button"
+            onClick={onStop}
+            aria-label="Dừng trợ lý"
+            className="ml-auto flex size-10 shrink-0 items-center justify-center rounded-full bg-ink text-surface hover:bg-ink-strong"
+          >
+            <span className="size-3.5 rounded-[3px] bg-current" aria-hidden="true" />
+          </button>
+        ) : (
         <button
+          key="send"
           type="submit"
           aria-label="Gửi"
           disabled={busy || !value.trim()}
@@ -91,6 +107,7 @@ export function AiComposer({ value, onChange, options, onOptionsChange, onSubmit
         >
           {busy ? <Spinner className="size-5" /> : <Icon name="arrow-up" size={20} />}
         </button>
+        )}
       </div>
     </form>
   );

@@ -10,6 +10,7 @@ import { Avatar, initialsOf } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
 import { IconLink } from "@/components/ui/IconButton";
 import { Spinner } from "@/components/ui/Spinner";
+import { completeThinking, loadThought, planThinking, saveThought } from "@/lib/forms/ai-thinking";
 import { boldRuns, type AiChatMessage, type AiConversation, type AiMessageOptions } from "@/lib/forms/builder-ai";
 import { aiConversationLoadOutcome, aiErrorMessage, createDraftErrorMessage } from "@/lib/forms/builder-messages";
 import { createBuilderDraft, getAiConversation, listRecentForms, sendAiMessage } from "@/lib/forms/builder-service";
@@ -17,6 +18,9 @@ import { useSession } from "@/lib/session/SessionProvider";
 import { useSessionLossRedirect } from "@/lib/session/use-session-loss";
 import { AiComposer } from "./AiComposer";
 import { AiDraftPanel } from "./AiDraftPanel";
+import { AiDraftSkeleton, IndeterminateBar } from "./AiDraftSkeleton";
+import { ThoughtLine } from "./ThoughtLine";
+import { useAiThinking } from "../hooks/use-ai-thinking";
 
 /** Entry suggestions (Figma 13b 62:3271…62:3286). */
 const TOPIC_SUGGESTIONS = [
@@ -33,6 +37,20 @@ function Rich({ text }: { text: string }) {
     <>
       {boldRuns(text).map((run, i) => (run.bold ? <b key={i}>{run.text}</b> : <span key={i}>{run.text}</span>))}
     </>
+  );
+}
+
+function UserBubble({ text, muted = false }: { text: string; muted?: boolean }) {
+  return (
+    <div className="flex justify-end">
+      <p
+        className={`max-w-[492px] rounded-[18px] rounded-br-[4px] bg-chat-bubble px-4 py-3 text-body leading-[24px] text-ink ${
+          muted ? "opacity-70" : ""
+        }`}
+      >
+        {text}
+      </p>
+    </div>
   );
 }
 
@@ -90,6 +108,13 @@ export function AiChatScreen({ formId }: { formId: string | null }) {
   /** C5: the draft created by the first prompt, reused by every retry (never a second draft). */
   const [createdId, setCreatedId] = useState<string | null>(null);
   const [draftOpen, setDraftOpen] = useState(true);
+  /** The prompt the assistant is working on (shown before the server echoes it). */
+  const [pendingText, setPendingText] = useState<string | null>(null);
+  /** A prompt the publisher stopped waiting for (13b₂ "Người dùng bấm Dừng"). */
+  const [stoppedText, setStoppedText] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const thinking = useAiThinking();
+  const { restore: restoreThought } = thinking;
   const endRef = useRef<HTMLDivElement>(null);
   const sessionLost = useSessionLossRedirect(loadError, sendError);
   const firstName = displayName.trim().split(/\s+/).at(-1) || "Bạn";
@@ -101,6 +126,10 @@ export function AiChatScreen({ formId }: { formId: string | null }) {
       .then((loaded) => {
         setConversation(loaded);
         setOptions(loaded.options);
+        // The first prompt of a new survey finished on /forms/new: show its thought collapsed.
+        const saved = loadThought(formId);
+        const last = [...loaded.messages].reverse().find((m) => m.role === "ASSISTANT");
+        if (saved && last && saved.messageId === last.id) restoreThought(saved);
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
@@ -114,17 +143,35 @@ export function AiChatScreen({ formId }: { formId: string | null }) {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [formId]);
+  }, [formId, restoreThought]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: "end" });
-  }, [conversation?.messages.length]);
+  }, [conversation?.messages.length, pendingText, stoppedText]);
+
+  // Leaving the screen cancels a request still in flight.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const send = async (text: string) => {
     const message = text.trim();
     if (!message || busy) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const previous = conversation?.draft ?? null;
+    const plan = planThinking(message, options, (conversation?.messages.length ?? 0) > 0);
     setBusy(true);
     setSendError(null);
+    setStoppedText(null);
+    setPendingText(message);
+    setPrompt("");
+    thinking.start(plan);
+    /** Fills the steps from the answer and returns them for the navigation hand-off. */
+    const finishWith = (next: AiConversation) => {
+      const last = [...next.messages].reverse().find((m) => m.role === "ASSISTANT");
+      const steps = completeThinking(plan, next.draft, previous);
+      const seconds = thinking.finish(steps, last?.id ?? null);
+      return { steps, seconds, lastId: last?.id ?? null };
+    };
     try {
       if (!formId) {
         let targetId = createdId;
@@ -133,21 +180,38 @@ export function AiChatScreen({ formId }: { formId: string | null }) {
           targetId = (await createBuilderDraft()).id;
           setCreatedId(targetId);
         }
+        if (controller.signal.aborted) return;
         setSendErrorStage("ai");
-        await sendAiMessage(targetId, { message, options });
+        const next = await sendAiMessage(targetId, { message, options }, controller.signal);
+        const { steps, seconds, lastId } = finishWith(next);
+        if (lastId) saveThought(targetId, { messageId: lastId, status: "done", seconds, steps });
         router.replace(`/forms/${targetId}/builder/ai`);
         return;
       }
       setSendErrorStage("ai");
-      const next = await sendAiMessage(formId, { message, options });
+      const next = await sendAiMessage(formId, { message, options }, controller.signal);
+      finishWith(next);
       setConversation(next);
-      setPrompt("");
       setDraftOpen(true);
     } catch (error) {
+      if (controller.signal.aborted) return; // `stop` already showed the stopped state.
+      thinking.clear();
+      setPrompt((current) => current || message);
       setSendError(error);
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      setPendingText(null);
       setBusy(false);
     }
+  };
+
+  /** "Dừng": stop waiting. The prompt goes back to the composer; the draft is untouched here. */
+  const stop = () => {
+    if (!abortRef.current || !pendingText) return;
+    abortRef.current.abort();
+    thinking.stop();
+    setStoppedText(pendingText);
+    setPrompt((current) => current || pendingText);
   };
 
   // After a failed AI call the created draft is where manual editing continues.
@@ -212,8 +276,8 @@ export function AiChatScreen({ formId }: { formId: string | null }) {
     );
   }
 
-  // --- Entry (13b / 13g) ---
-  if (messages.length === 0) {
+  // --- Entry (13b / 13g) --- (until the first prompt is on its way)
+  if (messages.length === 0 && !pendingText && !stoppedText) {
     return (
       <div className="flex min-h-dvh bg-surface-muted">
         {sidebar}
@@ -288,12 +352,11 @@ export function AiChatScreen({ formId }: { formId: string | null }) {
     );
   }
 
-  // --- Chat (13b' / 13h) ---
+  // --- Chat (13b' / 13h), with the thought line of 13b₁ ---
+  const thought = thinking.view;
   const renderMessage = (message: AiChatMessage) =>
     message.role === "USER" ? (
-      <div key={message.id} className="flex justify-end">
-        <p className="max-w-[492px] rounded-[18px] rounded-br-[4px] bg-chat-bubble px-4 py-3 text-body leading-[24px] text-ink">{message.text}</p>
-      </div>
+      <UserBubble key={message.id} text={message.text} />
     ) : (
       <div key={message.id} className="flex gap-3">
         <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-tone-green-bg" aria-hidden="true">
@@ -301,6 +364,11 @@ export function AiChatScreen({ formId }: { formId: string | null }) {
         </span>
         <div className="min-w-0 flex-1 text-body leading-[24.8px] text-ink">
           <p className="text-caption font-bold text-ink-muted">Trợ lý Rescom</p>
+          {thought && thought.status === "done" && message.id === thought.messageId ? (
+            <div className="mt-0.5">
+              <ThoughtLine bare steps={thought.steps} status="done" activeIndex={thought.activeIndex} seconds={thought.seconds} />
+            </div>
+          ) : null}
           <p className="mt-1">
             <Rich text={message.text} />
           </p>
@@ -381,17 +449,60 @@ export function AiChatScreen({ formId }: { formId: string | null }) {
           <div className="min-w-0 lg:flex lg:items-baseline lg:gap-3.5">
             <h1 className="truncate text-body font-extrabold text-ink lg:text-lead">{draft?.title ?? "Soạn bằng AI"}</h1>
             <p className="text-[12px] text-ink-muted">
-              <span className="hidden lg:inline">· </span>bản nháp, chưa gửi duyệt
+              <span className="hidden lg:inline">· </span>
+              {busy ? "trợ lý đang soạn" : "bản nháp, chưa gửi duyệt"}
             </p>
           </div>
         </header>
         <div className="mx-auto flex w-full max-w-[640px] flex-1 flex-col gap-5 px-4 py-6 lg:px-8" aria-live="polite">
           {messages.map(renderMessage)}
-          {busy ? (
-            <p className="flex items-center gap-2 text-caption text-ink-muted" role="status">
-              <Spinner className="size-4" />
-              Trợ lý đang soạn…
-            </p>
+          {pendingText ? <UserBubble text={pendingText} /> : null}
+          {stoppedText ? <UserBubble text={stoppedText} muted /> : null}
+          {thought && thought.status !== "done" ? (
+            <div className="flex flex-col gap-3">
+              <ThoughtLine
+                steps={thought.steps}
+                status={thought.status}
+                activeIndex={thought.activeIndex}
+                seconds={thought.seconds}
+                slow={thought.slow}
+                compact
+              />
+              {thought.status === "running" ? (
+                <div className="overflow-hidden rounded-[14px] border border-line bg-surface xl:hidden">
+                  <div className="flex items-center gap-3 px-3.5 py-3">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-tone-green-bg text-primary">
+                      <Icon name="file-text" size={20} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-body font-extrabold text-ink">Bản nháp khảo sát</span>
+                      <span className="block text-caption text-ink-muted">{draft ? "Đang cập nhật…" : "Đang dựng…"}</span>
+                    </span>
+                  </div>
+                  <IndeterminateBar />
+                </div>
+              ) : null}
+              {thought.status === "stopped" && stoppedText ? (
+                <div className="thought-fade pl-11 text-body leading-[24.8px] text-ink">
+                  <p>Bạn đã dừng trợ lý. Yêu cầu vẫn nằm trong ô soạn để bạn sửa hoặc gửi lại.</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void send(stoppedText)}
+                      className="h-11 rounded-field bg-primary px-4.5 text-body-sm font-bold text-surface hover:bg-primary-hover"
+                    >
+                      Gửi lại
+                    </button>
+                    <Link
+                      href={manualHref}
+                      className="inline-flex h-11 items-center rounded-field border border-line-strong bg-surface px-4 text-body-sm font-bold text-ink hover:bg-surface-subtle"
+                    >
+                      Tự soạn trong Form Builder
+                    </Link>
+                  </div>
+                </div>
+              ) : null}
+            </div>
           ) : null}
           {sendErrorText ? <Alert tone="danger">{sendErrorText}</Alert> : null}
           <div ref={endRef} />
@@ -405,6 +516,7 @@ export function AiChatScreen({ formId }: { formId: string | null }) {
             options={options}
             onOptionsChange={setOptions}
             onSubmit={() => void send(prompt)}
+            onStop={stop}
             busy={busy}
             placeholder="Yêu cầu chỉnh sửa, ví dụ: thêm câu về thời gian tự học"
           />
@@ -414,6 +526,10 @@ export function AiChatScreen({ formId }: { formId: string | null }) {
       {draft && draftOpen && formId ? (
         <div className="sticky top-0 hidden h-dvh w-[521px] shrink-0 border-l border-line xl:block">
           <AiDraftPanel formId={formId} draft={draft} onClose={() => setDraftOpen(false)} />
+        </div>
+      ) : !draft && thought?.status === "running" ? (
+        <div className="sticky top-0 hidden h-dvh w-[521px] shrink-0 border-l border-line xl:block">
+          <AiDraftSkeleton />
         </div>
       ) : null}
     </div>
