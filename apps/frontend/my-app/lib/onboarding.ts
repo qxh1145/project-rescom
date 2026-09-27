@@ -29,7 +29,8 @@ const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F]/;
  * otherwise pass the prefix checks and resolve to `https://evil.example/`
  * because URL parsing strips tab/CR/LF. The value is then resolved against a
  * placeholder origin and must stay on it; the normalized
- * `pathname + search + hash` is returned.
+ * `pathname + search + hash` is returned unless it became protocol-relative
+ * (`//host`) or holds a backslash.
  */
 export function sanitizeReturnTo(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;
@@ -48,7 +49,11 @@ export function sanitizeReturnTo(value: string | null | undefined): string | nul
   if (url.pathname === ONBOARDING_PATH || url.pathname.startsWith(`${ONBOARDING_PATH}/`)) {
     return null;
   }
-  return `${url.pathname}${url.search}${url.hash}`;
+  const normalized = `${url.pathname}${url.search}${url.hash}`;
+  // Dot segments can collapse into a protocol-relative path after resolution:
+  // `/.//evil.com`, `/a/..//evil.com`, `/%2e%2e//evil.com` → `//evil.com`.
+  if (normalized.startsWith("//") || normalized.includes("\\")) return null;
+  return normalized;
 }
 
 /** `/onboarding?required=1[&returnTo=…]` — the onboarding page explains why the user is there. */
@@ -65,13 +70,17 @@ export function buildOnboardingRedirect(returnTo?: string | null): string {
  * the page that sent them to onboarding.
  */
 export function resolvePostOnboardingPath(
-  result: { nextStep: DemographicOnboardingNextStep; redirectUrl: string },
+  result: { nextStep: DemographicOnboardingNextStep; redirectUrl?: string },
   returnTo?: string | null,
 ): string {
+  // The backend (`POST /demographics/survey`) only returns `nextStep`; the legacy mock also sent a URL.
+  const fallback =
+    result.nextStep === "COMPLETED" ? POST_ONBOARDING_DEFAULT_PATH : MARKETPLACE_ACTIVATION_PATH;
+  const redirectUrl = result.redirectUrl ?? fallback;
   if (result.nextStep === "COMPLETED") {
-    return sanitizeReturnTo(returnTo) ?? result.redirectUrl;
+    return sanitizeReturnTo(returnTo) ?? redirectUrl;
   }
-  return result.redirectUrl;
+  return redirectUrl;
 }
 
 /** True for the backend/mock `DEMOGRAPHIC_PROFILE_REQUIRED` domain error. */

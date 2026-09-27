@@ -234,6 +234,8 @@ New users must complete the system onboarding survey as their first action. Coll
 **Consequences (testable):**
 - User cannot access Marketplace until demographic survey is completed
 - All demographic fields are required
+- *Amendment 2026-09-26 (UX decisions):* the income bracket stays required but offers a "Không chia sẻ" (prefer not to say) option, like gender; the onboarding submit button is always enabled and missing fields are reported after submit with an error summary linking to each field (design: Onboarding-Error). Brand green #4DB848 is decorative only; actions use #2B7A33 for contrast.
+- *Amendment 2026-09-26 (onboarding flow, UX decision):* onboarding is a wizard with **one question per screen**, grouped into 4 parts. (1) *About you:* display name (prefilled from the Google account, editable, not a matching field), birth year (age is derived from it), gender, region/province. (2) *Study & work:* occupation; then university and academic year, asked only when occupation is "Sinh viên đại học" or "Học viên sau đại học"; academic major; household income. (3) *Interests:* at least 3 of the interest categories. (4) *Goal:* take surveys / run a study / both. The goal is stored as intent only; it never grants or limits a role or permission. A Welcome screen before and a Completion screen after are not counted in the progress indicator (4 parts). University and academic year join the profile (FR profile below) and back FR-10 university targeting; they are required whenever shown. Validation is per screen: Continue stays enabled, and tapping it with a missing or invalid answer shows an inline error on that screen. This **supersedes** the error-summary part of the previous amendment (design Onboarding-Error is retired). The Completion screen always leads with FR-7 (complete 1 Marketplace survey to unlock the starter Points) before the goal-specific next step. Design: canvas section 12 (Ob-* screens).
 - Data is stored in the user's profile for Targeted Matching
 
 #### FR-7: Second Onboarding Survey
@@ -261,6 +263,8 @@ After completing both onboarding surveys, 100 Frozen Points transfer to Availabl
 
 #### FR-9: Demographic Profile
 Each user has a profile containing: major, academic year, age, gender, region, occupation, income bracket, and interests.
+
+> *Amendment 2026-09-26 (onboarding flow):* the profile also stores university and birth year (age is derived), and the onboarding goal intent (take surveys / run a study / both) as a non-permission preference. See the FR-6 amendment.
 
 **Consequences (testable):**
 - Profile is populated from onboarding survey

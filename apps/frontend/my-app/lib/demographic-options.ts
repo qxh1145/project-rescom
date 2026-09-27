@@ -8,6 +8,10 @@ import type { Gender } from "@rescom/schemas";
  * is still valid and must stay visible in the wizard (code review P9).
  */
 
+/**
+ * Onboarding 12.4 searches every province. ASSUMED: the 63 pre-2025 provinces,
+ * the naming Figma uses ("Thừa Thiên Huế", "Quảng Nam"); stored as free text.
+ */
 export const VIETNAM_LOCATIONS = [
   "Đà Nẵng",
   "Hà Nội",
@@ -18,6 +22,70 @@ export const VIETNAM_LOCATIONS = [
   "Quảng Nam",
   "Bình Dương",
   "Đồng Nai",
+  "An Giang",
+  "Bà Rịa – Vũng Tàu",
+  "Bạc Liêu",
+  "Bắc Giang",
+  "Bắc Kạn",
+  "Bắc Ninh",
+  "Bến Tre",
+  "Bình Định",
+  "Bình Phước",
+  "Bình Thuận",
+  "Cà Mau",
+  "Cao Bằng",
+  "Đắk Lắk",
+  "Đắk Nông",
+  "Điện Biên",
+  "Đồng Tháp",
+  "Gia Lai",
+  "Hà Giang",
+  "Hà Nam",
+  "Hà Tĩnh",
+  "Hải Dương",
+  "Hậu Giang",
+  "Hòa Bình",
+  "Hưng Yên",
+  "Khánh Hòa",
+  "Kiên Giang",
+  "Kon Tum",
+  "Lai Châu",
+  "Lâm Đồng",
+  "Lạng Sơn",
+  "Lào Cai",
+  "Long An",
+  "Nam Định",
+  "Nghệ An",
+  "Ninh Bình",
+  "Ninh Thuận",
+  "Phú Thọ",
+  "Phú Yên",
+  "Quảng Bình",
+  "Quảng Ngãi",
+  "Quảng Ninh",
+  "Quảng Trị",
+  "Sóc Trăng",
+  "Sơn La",
+  "Tây Ninh",
+  "Thái Bình",
+  "Thái Nguyên",
+  "Thanh Hóa",
+  "Tiền Giang",
+  "Trà Vinh",
+  "Tuyên Quang",
+  "Vĩnh Long",
+  "Vĩnh Phúc",
+  "Yên Bái",
+  "Khác",
+] as const;
+
+/** Figma 12.4: shown before the user types a search. */
+export const POPULAR_LOCATIONS = [
+  "Đà Nẵng",
+  "Hà Nội",
+  "TP. Hồ Chí Minh",
+  "Thừa Thiên Huế",
+  "Quảng Nam",
   "Khác",
 ] as const;
 
@@ -46,6 +114,10 @@ export const INCOME_RANGES = [
   "5 - 10 triệu VNĐ/tháng",
   "10 - 20 triệu VNĐ/tháng",
   "Trên 20 triệu VNĐ/tháng",
+  // Decision 2026-09-26: income stays required (FR-6) but is sensitive, so the
+  // user may decline. Same wording as the gender opt-out. If income targeting is
+  // ever approved (PRD Open Question 13), this value must never match a bracket.
+  "Không chia sẻ",
 ] as const;
 
 /** FR-6: interests are a multi-select from 17+ categories. */
@@ -69,6 +141,48 @@ export const INTEREST_OPTIONS = [
   "Tình nguyện & Hoạt động cộng đồng",
   "Nghiên cứu khoa học",
 ] as const;
+
+/** Figma 12.5: these occupations also answer 12.6 (school) and 12.7 (school year). */
+export const STUDENT_OCCUPATIONS: readonly string[] = ["Sinh viên đại học", "Học viên sau đại học"];
+
+/**
+ * Figma 12.6 draws the four FPT campuses for the query "FPT". ASSUMED: the
+ * rest of the catalog (no backend list yet); any other school is typed in.
+ */
+export const SCHOOL_OPTIONS = [
+  "Trường Đại học FPT – Đà Nẵng",
+  "Trường Đại học FPT – Hà Nội",
+  "Trường Đại học FPT – TP. Hồ Chí Minh",
+  "Trường Đại học FPT – Cần Thơ",
+  "Trường Đại học FPT – Quy Nhơn",
+  "Trường Đại học Bách khoa – Đại học Đà Nẵng",
+  "Trường Đại học Kinh tế – Đại học Đà Nẵng",
+  "Trường Đại học Sư phạm – Đại học Đà Nẵng",
+  "Trường Đại học Duy Tân",
+  "Đại học Quốc gia Hà Nội",
+  "Đại học Bách khoa Hà Nội",
+  "Trường Đại học Kinh tế Quốc dân",
+  "Trường Đại học Ngoại thương",
+  "Học viện Công nghệ Bưu chính Viễn thông",
+  "Đại học Quốc gia TP. Hồ Chí Minh",
+  "Trường Đại học Bách khoa – ĐHQG TP. Hồ Chí Minh",
+  "Đại học Kinh tế TP. Hồ Chí Minh",
+  "Trường Đại học RMIT Việt Nam",
+  "Trường Đại học Cần Thơ",
+  "Đại học Huế",
+] as const;
+
+/**
+ * Figma 12.7. `value` is what `/users/me/profile.schoolYear` stores (ASSUMED);
+ * mobile spells out the last option ("Năm 5 trở lên").
+ */
+export const SCHOOL_YEAR_OPTIONS: readonly { value: string; label: string; longLabel: string }[] = [
+  { value: "Năm 1", label: "Năm 1", longLabel: "Năm 1" },
+  { value: "Năm 2", label: "Năm 2", longLabel: "Năm 2" },
+  { value: "Năm 3", label: "Năm 3", longLabel: "Năm 3" },
+  { value: "Năm 4", label: "Năm 4", longLabel: "Năm 4" },
+  { value: "Năm 5+", label: "Năm 5+", longLabel: "Năm 5 trở lên" },
+];
 
 export const GENDER_OPTIONS: readonly { value: Gender; label: string }[] = [
   { value: "MALE", label: "Nam" },

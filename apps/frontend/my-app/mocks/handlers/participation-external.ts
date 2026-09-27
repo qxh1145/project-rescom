@@ -1,0 +1,251 @@
+import { http } from "msw";
+import {
+  COMPLETION_CODE_LIMIT_REACHED_CODE,
+  COMPLETION_CODE_POLICY,
+  COMPLETION_CODE_POLICY_VERSION,
+  RESERVATION_EXPIRY_MS,
+  SUBMISSION_TOO_FAST_CODE,
+  TIME_BARRIER_POLICY_VERSION,
+  evaluateTimeBarrier,
+  remainingCompletionCodeTries,
+  reportMissingCompletionCodeInputSchema,
+  verifyExternalCompletionCodeInputSchema,
+} from "@rescom/schemas";
+import { apiUrl } from "@/lib/api/config";
+import { attempts, externalBarrierSecondsOf, findAttempt, updateAttempt, type MockAttempt } from "../data/attempts";
+import { creditSurveyReward } from "../data/economy";
+import { updateNotifications } from "../data/notifications";
+import { findSurvey, markSurveyCompleted, updateSurvey } from "../data/surveys";
+import { mockId, nowIso } from "../db/store";
+import { getMockSessionUser, type MockSessionUser } from "../db/session";
+import { fail, missingCsrf, ok, unauthorized } from "../envelope";
+import { applyScenario } from "../scenarios";
+
+/**
+ * Google Forms completion code (Figma page 5). Mirrors the attempt-scoped
+ * routes of `participation.controller.ts` and the order of checks in
+ * `ParticipationService.verifyExternalCompletionCode`:
+ * replay → locked → expired → time barrier → account limit → code.
+ */
+
+async function readJson(request: Request): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch {
+    return undefined;
+  }
+}
+
+type Guarded = { user: MockSessionUser; attempt: MockAttempt } | { response: Response };
+
+/** Session, CSRF, ownership and EXTERNAL type — the backend answers 404/403/400 like this. */
+async function guard(request: Request, attemptId: string): Promise<Guarded> {
+  const user = await getMockSessionUser();
+  if (!user) return { response: unauthorized() };
+  const csrf = missingCsrf(request);
+  if (csrf) return { response: csrf };
+  const attempt = findAttempt(attemptId);
+  if (!attempt) return { response: fail(404, "SURVEY_NOT_AVAILABLE", "Survey attempt not found.") };
+  if (attempt.userId !== user.id) {
+    return { response: fail(403, "PARTICIPANT_NOT_ELIGIBLE", "Unauthorized attempt access.") };
+  }
+  if (attempt.type !== "EXTERNAL") {
+    return { response: fail(400, "ATTEMPT_NOT_EXTERNAL", "This attempt is not an external survey attempt.") };
+  }
+  return { user, attempt };
+}
+
+function isExpired(attempt: MockAttempt): boolean {
+  return Date.now() > Date.parse(attempt.startedAt) + RESERVATION_EXPIRY_MS;
+}
+
+/** Wrong codes of this user on the attempt's FormVersion (decision E5-D1). */
+function accountFailuresOf(attempt: MockAttempt): number {
+  return attempts
+    .get()
+    .filter((item) => item.userId === attempt.userId && item.formVersionId === attempt.formVersionId)
+    .reduce((sum, item) => sum + item.wrongCodeCount, 0);
+}
+
+function completionDto(attempt: MockAttempt, amount: number) {
+  const completedAt = attempt.submittedAt ?? nowIso();
+  return {
+    attemptId: attempt.attemptId,
+    formId: attempt.surveyId,
+    formVersionId: attempt.formVersionId,
+    status: "COMPLETED" as const,
+    completedAt,
+    reward: {
+      status: "PENDING" as const,
+      journalId: mockId(),
+      amount,
+      targetAccountClass: "PENDING" as const,
+      settledAt: completedAt,
+    },
+    message: `Completion code verified successfully! +${amount} points credited to Pending balance (48-hour dispute window).`,
+  };
+}
+
+export const externalParticipationHandlers = [
+  // VERIFIED: POST /attempts/:attemptId/verify-code
+  http.post(apiUrl("/attempts/:attemptId/verify-code"), async ({ request, params }) => {
+    const forced = await applyScenario("participation");
+    if (forced) return forced;
+    const guarded = await guard(request, String(params.attemptId));
+    if ("response" in guarded) return guarded.response;
+    const { user, attempt } = guarded;
+
+    const body = verifyExternalCompletionCodeInputSchema.safeParse(await readJson(request));
+    if (!body.success) {
+      return fail(400, "VALIDATION_ERROR", body.error.errors[0]?.message ?? "Validation failed", {
+        details: body.error.format(),
+      });
+    }
+
+    const survey = findSurvey(attempt.surveyId);
+    if (attempt.status === "PENDING_REVIEW" || attempt.status === "SUBMITTED") {
+      return ok(completionDto(attempt, survey?.rewardPerResponse ?? 0)); // idempotent replay
+    }
+    if (attempt.status === "LOCKED") {
+      return fail(409, "ATTEMPT_LOCKED", "This survey attempt is locked due to too many failed completion code attempts.");
+    }
+    if (attempt.status === "CANCELLED") {
+      return fail(409, "ATTEMPT_EXPIRED", "Survey attempt was abandoned and can no longer be completed.");
+    }
+    if (attempt.status === "EXPIRED" || isExpired(attempt)) {
+      return fail(409, "ATTEMPT_EXPIRED", "Survey attempt reservation has expired. Please start a new attempt.");
+    }
+    if (!survey || survey.status !== "PUBLISHED") {
+      return fail(404, "SURVEY_NOT_AVAILABLE", "Survey is not published or active for completions.");
+    }
+
+    const requiredSeconds = externalBarrierSecondsOf(attempt);
+    const timing = evaluateTimeBarrier({ startedAt: attempt.startedAt, requiredSeconds });
+    if (!timing.passed) {
+      return fail(422, SUBMISSION_TOO_FAST_CODE, "Submission is too fast.", {
+        details: {
+          requiredSeconds,
+          elapsedSeconds: timing.elapsedSeconds,
+          remainingSeconds: timing.remainingSeconds,
+          retryAfterSeconds: timing.remainingSeconds,
+          earliestSubmitAt: timing.earliestSubmitAt,
+          questionCount: null,
+          secondsPerQuestion: null,
+          publisherMinimumSeconds: requiredSeconds,
+          policyVersion: TIME_BARRIER_POLICY_VERSION,
+        },
+        headers: { "Retry-After": String(timing.remainingSeconds) },
+      });
+    }
+
+    const accountFailures = accountFailuresOf(attempt);
+    if (accountFailures >= COMPLETION_CODE_POLICY.maxFailuresPerAccountVersion) {
+      return fail(409, COMPLETION_CODE_LIMIT_REACHED_CODE, "You have used every completion-code try for this survey version.", {
+        details: {
+          formVersionId: attempt.formVersionId,
+          failedVerifications: accountFailures,
+          limit: COMPLETION_CODE_POLICY.maxFailuresPerAccountVersion,
+          policyVersion: COMPLETION_CODE_POLICY_VERSION,
+        },
+      });
+    }
+
+    if (body.data.completionCode !== attempt.completionCode) {
+      const updated = updateAttempt(attempt.attemptId, (target) => {
+        target.wrongCodeCount += 1;
+        if (target.wrongCodeCount >= COMPLETION_CODE_POLICY.maxFailuresPerAttempt) target.status = "LOCKED";
+      });
+      if (!updated || updated.status === "LOCKED") {
+        return fail(409, "ATTEMPT_LOCKED", "This survey attempt is locked due to too many failed completion code attempts.");
+      }
+      const remainingAttempts = remainingCompletionCodeTries({
+        attemptFailures: updated.wrongCodeCount,
+        accountFailures: accountFailures + 1,
+      });
+      return fail(
+        400,
+        "INVALID_COMPLETION_CODE",
+        `Invalid completion code. ${remainingAttempts} attempts remaining before attempt is locked.`,
+        { details: { remainingAttempts } },
+      );
+    }
+
+    const completed = updateAttempt(attempt.attemptId, (target) => {
+      target.status = "PENDING_REVIEW";
+      target.submittedAt = nowIso();
+    });
+    markSurveyCompleted(user.id, user.email, survey.id);
+    updateSurvey(survey.id, (target) => {
+      target.completedCompletions = Math.min(target.expectedCompletions, target.completedCompletions + 1);
+    });
+    creditSurveyReward(user, {
+      amount: survey.rewardPerResponse,
+      pending: true,
+      surveyId: survey.id,
+      attemptId: attempt.attemptId,
+      title: survey.title,
+    });
+    updateNotifications(user.id, (items) => {
+      items.unshift({
+        id: mockId(),
+        type: "REWARD_PENDING",
+        message: `+${survey.rewardPerResponse} điểm đang chờ 48 giờ — Từ “${survey.title}”. Còn 48 giờ trước khi vào Khả dụng.`,
+        isRead: false,
+        createdAt: nowIso(),
+        readAt: null,
+      });
+    });
+    return ok(completionDto(completed ?? attempt, survey.rewardPerResponse));
+  }),
+
+  // VERIFIED: POST /attempts/:attemptId/report-missing-code
+  http.post(apiUrl("/attempts/:attemptId/report-missing-code"), async ({ request, params }) => {
+    const forced = await applyScenario("participation");
+    if (forced) return forced;
+    const guarded = await guard(request, String(params.attemptId));
+    if ("response" in guarded) return guarded.response;
+    const { attempt } = guarded;
+
+    const body = reportMissingCompletionCodeInputSchema.safeParse(await readJson(request));
+    if (!body.success) {
+      return fail(400, "VALIDATION_ERROR", body.error.errors[0]?.message ?? "Validation failed", {
+        details: body.error.format(),
+      });
+    }
+    // The backend answers 409 ATTEMPT_LOCKED here. ASSUMED: Figma 5c ("Báo Admin
+    // kiểm tra" on a locked attempt) needs the report accepted, so the mock
+    // accepts it — the UI still maps ATTEMPT_LOCKED if the backend keeps refusing.
+    if (attempt.status === "PENDING_REVIEW" || attempt.status === "SUBMITTED") {
+      return fail(409, "SURVEY_ALREADY_COMPLETED", "This survey attempt is already completed.");
+    }
+    if (attempt.status === "CANCELLED") {
+      return fail(409, "ATTEMPT_EXPIRED", "This survey attempt was abandoned.");
+    }
+    return ok({
+      attemptId: attempt.attemptId,
+      reportedAt: nowIso(),
+      status: "REPORTED" as const,
+      message:
+        "Your report has been submitted to RESCOM admin for review. Admins will investigate and compensate missing points within 24 working hours.",
+    });
+  }),
+
+  // ASSUMED API CONTRACT: POST /attempts/:attemptId/cancel ("Huỷ lượt làm").
+  // INTERNAL attempts fall through (`undefined`) to any handler registered later.
+  http.post(apiUrl("/attempts/:attemptId/cancel"), async ({ request, params }) => {
+    const existing = findAttempt(String(params.attemptId));
+    if (existing && existing.type !== "EXTERNAL") return undefined;
+    const forced = await applyScenario("participation");
+    if (forced) return forced;
+    const guarded = await guard(request, String(params.attemptId));
+    if ("response" in guarded) return guarded.response;
+    const { attempt } = guarded;
+    if (attempt.status !== "IN_PROGRESS" || isExpired(attempt)) {
+      return fail(409, "ATTEMPT_NOT_IN_PROGRESS", "Only an in-progress attempt can be cancelled.");
+    }
+    updateAttempt(attempt.attemptId, (target) => {
+      target.status = "CANCELLED";
+    });
+    return ok({ attemptId: attempt.attemptId, status: "CANCELLED" as const });
+  }),
+];

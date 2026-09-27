@@ -15,7 +15,9 @@ import type {
   WalletTransactionItemDto,
 } from "@rescom/schemas";
 
-const STORAGE_KEY = "rescom_demo_v1_store";
+/** localStorage key of the legacy demo store (also cleared by MSW `?msw-reset=1`). */
+export const LEGACY_STORE_KEY = "rescom_demo_v1_store";
+const STORAGE_KEY = LEGACY_STORE_KEY;
 
 export interface StorageLike {
   getItem(key: string): string | null;

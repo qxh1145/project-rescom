@@ -5,6 +5,7 @@ function jsonResponse(status, body) {
   return {
     ok: status >= 200 && status < 300,
     status,
+    headers: new Headers(),
     json: async () => body,
     clone() {
       return jsonResponse(status, body);
@@ -27,8 +28,8 @@ const PROFILE = {
   updatedAt: "2026-09-26T10:00:00.000Z",
 };
 
-test("Story 7.1: demographics live API client", async (t) => {
-  const api = await import("../app/onboarding/demographics-api.ts");
+test("Story 7.1: demographics service (VERIFIED /demographics routes)", async (t) => {
+  const api = await import("../lib/demographics/demographics-service.ts");
   const originalFetch = globalThis.fetch;
   const calls = [];
 
@@ -51,7 +52,7 @@ test("Story 7.1: demographics live API client", async (t) => {
         }),
       );
 
-      const status = await api.fetchDemographicProfile();
+      const status = await api.getDemographics();
 
       assert.equal(status.isComplete, true);
       assert.equal(calls[0].url, "/api/demographics");
@@ -100,7 +101,7 @@ test("Story 7.1: demographics live API client", async (t) => {
         }),
       );
 
-      const status = await api.updateDemographicProfile({ householdIncome: null });
+      const status = await api.updateDemographics({ householdIncome: null });
 
       assert.deepEqual(status.missingFields, ["householdIncome"]);
       const call = calls.find((c) => c.url === "/api/demographics");
@@ -122,6 +123,8 @@ test("Story 7.1: demographics live API client", async (t) => {
       await assert.rejects(
         () => api.submitDemographicSurvey({}),
         (error) => {
+          assert.equal(error.kind, "http");
+          assert.equal(error.status, 400);
           assert.equal(error.code, "VALIDATION_ERROR");
           assert.equal(error.message, "Select at least one interest");
           assert.ok(error.details);
@@ -134,13 +137,13 @@ test("Story 7.1: demographics live API client", async (t) => {
       installFetch(() =>
         jsonResponse(200, { data: { profile: PROFILE, isComplete: "yes" } }),
       );
-      await assert.rejects(() => api.fetchDemographicProfile(), /malformed/i);
+      await assert.rejects(() => api.getDemographics(), /malformed/i);
     });
 
     await t.test("maps 401 to an authentication error code", async () => {
       installFetch(() => jsonResponse(401, { error: { code: "AUTH_UNAUTHORIZED", message: "Unauthorized" } }));
       await assert.rejects(
-        () => api.fetchDemographicProfile(),
+        () => api.getDemographics(),
         (error) => error.code === "AUTH_UNAUTHORIZED",
       );
     });

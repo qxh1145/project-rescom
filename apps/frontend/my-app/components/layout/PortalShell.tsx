@@ -11,6 +11,7 @@ import { MobileNav } from "./MobileNav";
 import { ResetDemoModal } from "./ResetDemoModal";
 import { BrandLogo } from "./BrandLogo";
 import { NotificationBell } from "./NotificationBell";
+import { browserSessionStorage, clearAllOnboardingDrafts } from "@/lib/onboarding/onboarding-draft";
 
 interface PortalShellProps {
   children: React.ReactNode;
@@ -94,6 +95,7 @@ export function PortalShell({ children }: PortalShellProps) {
 
   async function handleLogout() {
     await mockRepository.logout();
+    clearAllOnboardingDrafts(browserSessionStorage());
     router.push("/login");
   }
 

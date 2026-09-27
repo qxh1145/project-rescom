@@ -1,29 +1,8 @@
 import type { FormInProgressAttemptsDto } from "@rescom/schemas";
+import { csrfTokenRequest, discardCsrfToken } from "../../lib/api/client.ts";
 
-let csrfTokenPromise: Promise<string> | null = null;
-
-async function loadCsrfToken(): Promise<string> {
-  const response = await fetch("/api/auth/csrf", {
-    credentials: "same-origin",
-    cache: "no-store",
-  });
-  const payload = await response.json().catch(() => ({}));
-  const token = payload?.data?.csrfToken;
-  if (!response.ok || typeof token !== "string") {
-    throw new Error(
-      payload?.error?.message || "Unable to establish a secure form session",
-    );
-  }
-  return token;
-}
-
-function getCsrfToken(): Promise<string> {
-  csrfTokenPromise ??= loadCsrfToken().catch((error) => {
-    csrfTokenPromise = null;
-    throw error;
-  });
-  return csrfTokenPromise;
-}
+// CSRF tokens come from the single cache in `lib/api/client.ts`, so these
+// helpers and `apiRequest` never hold two different tokens for one session.
 
 export async function formMutationFetch(
   input: RequestInfo | URL,
@@ -39,13 +18,13 @@ export async function formMutationFetch(
     });
   }
 
-  const tokenRequest = getCsrfToken();
+  const tokenRequest = csrfTokenRequest();
   let response = await send(await tokenRequest);
   if (response.status === 403) {
     const payload = await response.clone().json().catch(() => ({}));
     if (payload?.error?.code === "AUTH_INVALID_CSRF_TOKEN") {
-      if (csrfTokenPromise === tokenRequest) csrfTokenPromise = null;
-      response = await send(await getCsrfToken());
+      discardCsrfToken(tokenRequest);
+      response = await send(await csrfTokenRequest());
     }
   }
   return response;
@@ -74,13 +53,13 @@ export async function optionalCsrfMutationFetch(
     });
   }
 
-  const tokenRequest = getCsrfToken();
+  const tokenRequest = csrfTokenRequest();
   let response = await send(await tokenRequest.catch(() => null));
   if (response.status === 403) {
     const payload = await response.clone().json().catch(() => ({}));
     if (payload?.error?.code === "AUTH_INVALID_CSRF_TOKEN") {
-      if (csrfTokenPromise === tokenRequest) csrfTokenPromise = null;
-      const freshToken = await getCsrfToken().catch(() => null);
+      discardCsrfToken(tokenRequest);
+      const freshToken = await csrfTokenRequest().catch(() => null);
       if (freshToken) response = await send(freshToken);
     }
   }

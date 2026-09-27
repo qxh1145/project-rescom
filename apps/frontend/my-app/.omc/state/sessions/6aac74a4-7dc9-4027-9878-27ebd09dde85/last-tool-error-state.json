@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd /Users/quan/HocTap/Vibecode/project-rescom; grep -n \\\"^export\\\" apps/frontend/my-app/app/forms/forms-api.ts | head -40; grep -n \\\"csrf\\\\|CSRF\\\" apps/frontend/my-app/app/forms/forms-api....",
+  "error": "Exit code 1\n28:export async function formMutationFetch(\n63:export async function optionalCsrfMutationFetch(\n95:export async function fetchInProgressAttempts(\n3:let csrfTokenPromise: Promise<string> | null = null;\n6:  const response = await fetch(\"/api/auth/csrf\", {\n11:  const token = payload?.data?.csrfToken;\n21:  csrfTokenPromise ??= loadCsrfToken().catch((error) => {\n22:    csrfTokenPromise = null;\n25:  return csrfTokenPromise;\n34:    headers.set(\"X-CSRF-Token\", token);\n46:    if (payload?.err...",
+  "timestamp": "2026-09-26T17:19:08.652Z",
+  "retry_count": 1
+}

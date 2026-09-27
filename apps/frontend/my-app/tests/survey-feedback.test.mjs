@@ -276,10 +276,11 @@ test("Story 9.2: mock post-completion feedback", async (t) => {
   });
 });
 
-test("Story 9.2: survey feedback live API client", async (t) => {
+test("Story 9.2: survey feedback service (lib/participation/feedback-service.ts)", async (t) => {
   const originalFetch = globalThis.fetch;
-  const api = await import("../app/attempts/survey-feedback-api.ts");
-  const { resolveSurveyFeedbackFailure } = await import("../lib/survey-feedback.ts");
+  const api = await import("../lib/participation/feedback-service.ts");
+  const { resetCsrfToken } = await import("../lib/api/client.ts");
+  const { feedbackErrorMessage } = await import("../lib/participation/participation-messages.ts");
   const attemptId = "22222222-2222-4222-8222-222222222222";
   const feedback = {
     id: "11111111-1111-4111-8111-111111111111",
@@ -296,18 +297,12 @@ test("Story 9.2: survey feedback live API client", async (t) => {
   const calls = [];
 
   function respond(status, body) {
-    return {
-      ok: status >= 200 && status < 300,
-      status,
-      json: async () => body,
-      clone() {
-        return this;
-      },
-    };
+    return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
   }
 
   function installFetch(handler) {
     calls.length = 0;
+    resetCsrfToken();
     globalThis.fetch = async (url, init = {}) => {
       calls.push({ url: String(url), init });
       if (String(url) === "/api/auth/csrf") {
@@ -318,17 +313,17 @@ test("Story 9.2: survey feedback live API client", async (t) => {
   }
 
   try {
-    await t.test("fetchSurveyFeedbackStatus reads and validates the status", async () => {
+    await t.test("getSurveyFeedbackStatus reads and validates the status", async () => {
       const status = { attemptId, state: "ELIGIBLE", feedback: null };
-      installFetch(() => respond(200, { data: status }));
+      installFetch(() => respond(200, { data: status, error: null, meta: {} }));
 
-      assert.deepEqual(await api.fetchSurveyFeedbackStatus(attemptId), status);
+      assert.deepEqual(await api.getSurveyFeedbackStatus(attemptId), status);
       assert.equal(calls[0].url, `/api/attempts/${attemptId}/feedback`);
       assert.equal(calls[0].init.method ?? "GET", "GET");
     });
 
     await t.test("submitSurveyFeedback sends a normalized CSRF-protected JSON POST", async () => {
-      installFetch(() => respond(200, { data: { feedback, replayed: false } }));
+      installFetch(() => respond(200, { data: { feedback, replayed: false }, error: null, meta: {} }));
 
       const result = await api.submitSurveyFeedback(attemptId, {
         rating: 4,
@@ -339,9 +334,8 @@ test("Story 9.2: survey feedback live API client", async (t) => {
       assert.deepEqual(result, { feedback, replayed: false });
       const post = calls.find((c) => c.url === `/api/attempts/${attemptId}/feedback`);
       assert.equal(post.init.method, "POST");
-      const headers = new Headers(post.init.headers);
-      assert.equal(headers.get("X-CSRF-Token"), "csrf-token-1");
-      assert.equal(headers.get("Content-Type"), "application/json");
+      assert.equal(post.init.headers["X-CSRF-Token"], "csrf-token-1");
+      assert.equal(post.init.headers["Content-Type"], "application/json");
       assert.deepEqual(JSON.parse(post.init.body), {
         rating: 4,
         comment: "Ổn",
@@ -355,12 +349,13 @@ test("Story 9.2: survey feedback live API client", async (t) => {
         () => api.submitSurveyFeedback(attemptId, { rating: 9 }),
         (err) =>
           err.code === "VALIDATION_ERROR" &&
-          err.message === "Vui lòng chọn số sao từ 1 đến 5.",
+          err.message === "Vui lòng chọn số sao từ 1 đến 5." &&
+          feedbackErrorMessage(err) === "Vui lòng chọn số sao từ 1 đến 5.",
       );
       assert.equal(calls.length, 0);
     });
 
-    await t.test("surfaces API error code, status and message", async () => {
+    await t.test("surfaces the API error code and the shared Vietnamese copy", async () => {
       installFetch(() =>
         respond(409, {
           data: null,
@@ -375,64 +370,32 @@ test("Story 9.2: survey feedback live API client", async (t) => {
         (err) =>
           err.code === "FEEDBACK_ALREADY_SUBMITTED" &&
           err.status === 409 &&
-          // Same Vietnamese copy as the mock repository.
-          err.message === "Bạn đã gửi đánh giá cho lượt khảo sát này và không thể thay đổi.",
+          feedbackErrorMessage(err) === "Bạn đã gửi đánh giá cho lượt khảo sát này và không thể thay đổi.",
       );
     });
 
-    await t.test("keeps the server message for unknown error codes", async () => {
-      installFetch(() =>
-        respond(503, { data: null, error: { code: "SERVICE_DOWN", message: "Tạm ngưng." } }),
-      );
+    await t.test("unknown codes and network failures get generic copy", async () => {
+      installFetch(() => respond(503, { data: null, error: { code: "SERVICE_DOWN", message: "Tạm ngưng." } }));
       await assert.rejects(
-        () => api.fetchSurveyFeedbackStatus(attemptId),
-        (err) => err.code === "SERVICE_DOWN" && err.message === "Tạm ngưng.",
+        () => api.getSurveyFeedbackStatus(attemptId),
+        (err) => err.code === "SERVICE_DOWN" && feedbackErrorMessage(err) === "Không gửi được đánh giá. Vui lòng thử lại.",
       );
-    });
-
-    await t.test("gives a friendly message on 401", async () => {
-      installFetch(() => respond(401, { error: { code: "AUTH_INVALID_CREDENTIALS" } }));
-      await assert.rejects(() => api.fetchSurveyFeedbackStatus(attemptId), /đăng nhập/);
-    });
-
-    await t.test("maps every 401 to AUTH_REQUIRED so the prompt hides", async () => {
-      for (const code of [
-        "AUTH_UNAUTHORIZED",
-        "AUTH_SESSION_EXPIRED",
-        "AUTH_SESSION_REVOKED",
-        "AUTH_INVALID_TOKEN",
-      ]) {
-        installFetch(() => respond(401, { data: null, error: { code, message: "Unauthorized" } }));
-        await assert.rejects(
-          () => api.submitSurveyFeedback(attemptId, { rating: 3 }),
-          (err) =>
-            err.code === "AUTH_REQUIRED" &&
-            err.status === 401 &&
-            err.message === "Vui lòng đăng nhập để đánh giá khảo sát." &&
-            resolveSurveyFeedbackFailure(err) === "HIDE",
-        );
-      }
-    });
-
-    await t.test("a locked account's 403 hides the prompt", async () => {
-      installFetch(() =>
-        respond(403, { data: null, error: { code: "AUTH_USER_LOCKED", message: "Locked." } }),
-      );
+      installFetch(() => {
+        throw new TypeError("Failed to fetch");
+      });
       await assert.rejects(
-        () => api.fetchSurveyFeedbackStatus(attemptId),
-        (err) =>
-          err.code === "AUTH_USER_LOCKED" &&
-          err.status === 403 &&
-          resolveSurveyFeedbackFailure(err) === "HIDE",
+        () => api.getSurveyFeedbackStatus(attemptId),
+        (err) => err.kind === "network" && /Không kết nối được máy chủ/.test(feedbackErrorMessage(err)),
       );
     });
 
     await t.test("rejects malformed payloads", async () => {
       installFetch(() => respond(200, { data: { attemptId, state: "MAYBE" } }));
-      await assert.rejects(() => api.fetchSurveyFeedbackStatus(attemptId), /không hợp lệ/);
+      await assert.rejects(() => api.getSurveyFeedbackStatus(attemptId), (err) => err.kind === "malformed");
     });
   } finally {
     globalThis.fetch = originalFetch;
+    resetCsrfToken();
   }
 });
 

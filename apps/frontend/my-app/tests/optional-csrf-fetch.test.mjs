@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+const { resetCsrfToken } = await import("../lib/api/client.ts");
+
 // Epic 5 review P12: survey-attachment mutations send X-CSRF-Token when the
 // visitor has a session and fall back to a token-less request for guests.
 
@@ -25,7 +27,8 @@ async function withFetch(handler, run) {
     return handler(String(url), init, calls);
   };
   try {
-    // A fresh module instance per scenario resets the cached CSRF token.
+    // The CSRF token cache lives in lib/api/client.ts (shared with apiRequest).
+    resetCsrfToken();
     moduleInstance += 1;
     const api = await import(`../app/forms/forms-api.ts?case=${moduleInstance}`);
     await run(api, calls);

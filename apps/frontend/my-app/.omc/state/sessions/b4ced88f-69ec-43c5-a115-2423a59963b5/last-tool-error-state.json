@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"find \\\"app/(signed-in)/(app)/marketplace\\\" \\\"app/(signed-in)/(focus)/surveys\\\" \\\"app/(signed-in)/(focus)/attempts\\\" \\\"app/(signed-in)/(focus)/_participation\\\" \\\"app/(signed-in)/(app)/accou...",
+  "error": "Exit code 1\n      16 app/(signed-in)/(app)/marketplace/page.tsx\n      58 app/(signed-in)/(focus)/_participation/FocusPageState.tsx\n      11 app/(signed-in)/(app)/account/trust/page.tsx\n       6 app/dashboard/page.tsx\n      12 lib/marketplace/marketplace-messages.ts\n     191 lib/marketplace/marketplace-query.ts\n      50 lib/marketplace/marketplace-service.ts\n      67 lib/economy/starter-points-service.ts\n      51 lib/participation/consent-service.ts\n     252 lib/participation/external-code.ts\n   ...",
+  "timestamp": "2026-09-27T02:41:26.496Z",
+  "retry_count": 1
+}

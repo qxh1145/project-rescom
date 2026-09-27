@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd /Users/quan/HocTap/Vibecode/project-rescom/apps/backend && echo \\\"--tsc\\\"; npx tsc --noEmit 2>&1 | rtk grep -c \\\"error TS\\\"; npx tsc --noEmit 2>&1 | grep \\\"error TS\\\" | grep -v \\\"src/mo...",
+  "error": "Exit code 1\n--tsc\n0\n--eslint\nESLint: No issues found\nOK\n--jest economy\nTest Suites: 12 passed, 12 total\nTests:       315 passed, 315 total\n--e2e\nTest Suites: 4 passed, 4 total\nTests:       3 skipped, 47 passed, 50 total",
+  "timestamp": "2026-09-26T12:10:26.045Z",
+  "retry_count": 1
+}
