@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"lsof -iTCP -sTCP:LISTEN -P 2>/dev/null | rtk grep -E \\\":300[0-9]\\\"; rtk read /Users/quan/HocTap/Vibecode/project-rescom/apps/frontend/my-app/.claude/launch.json /Users/quan/HocTap/Vibecode...",
+  "error": "Exit code 1\nnode       2053 quan   17u  IPv6 0xd89df789ff5770fa      0t0  TCP *:3000 (LISTEN)\n{\n  \"version\": \"0.0.1\",\n  \"configurations\": [\n    {\n      \"name\": \"frontend-mock\",\n      \"runtimeExecutable\": \"npm\",\n      \"runtimeArgs\": [\n        \"--prefix\",\n        \"apps/frontend/my-app\",\n        \"run\",\n        \"dev\"\n      ],\n      \"port\": 3000,\n      \"autoPort\": true\n    }\n  ]\n}",
+  "timestamp": "2026-09-27T16:00:31.286Z",
+  "retry_count": 2
+}

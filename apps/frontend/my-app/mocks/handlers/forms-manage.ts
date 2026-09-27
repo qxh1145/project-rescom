@@ -13,6 +13,7 @@ import { reopenRefusalOf } from "@/lib/forms/manage-status";
 import { activeReservationCount } from "../data/attempts";
 import { refundSurveyEscrow, reserveSurveyEscrow } from "../data/economy";
 import { ensureDemoRunningForm, findFormDraft, formDrafts, nextUpdatedAt, saveFormDraft } from "../data/form-drafts";
+import { ensureFormActivity } from "../data/form-activity";
 import { versionsOf } from "../data/form-versions";
 import { findPublisherForm, publisherForms, updatePublisherForm, type MockPublisherForm } from "../data/forms";
 import { trackingOf, updateTracking, type OpensRange } from "../data/forms-manage";
@@ -171,6 +172,16 @@ export const formsManageHandlers: RequestHandler[] = [
     if (!user) return unauthorized();
     // MOCK-ONLY: a running Form Builder survey to try "Chỉnh sửa" on.
     ensureDemoRunningForm(user.email);
+    // MOCK-ONLY: charts, ratings and responses for the caller's Form Builder surveys.
+    for (const form of publisherForms.get()) {
+      if (form.ownerEmail !== user.email) continue;
+      try {
+        ensureFormActivity(form.id, user);
+      } catch (error) {
+        // One malformed survey must not take the whole list down.
+        console.warn("[msw] form activity skipped", form.id, error);
+      }
+    }
     const query = listFormsQuerySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
     if (!query.success) return fail(400, "VALIDATION_ERROR", "Invalid query.", { details: query.error.format() });
     const { page, limit, status, type } = query.data;
@@ -191,7 +202,8 @@ export const formsManageHandlers: RequestHandler[] = [
   http.get(apiUrl("/forms/:id"), async ({ request, params }) => {
     const guarded = await guard(request, String(params.id), { mutate: false });
     if ("response" in guarded) return guarded.response;
-    return ok(toDetail(guarded.form, guarded.user.id));
+    ensureFormActivity(guarded.form.id, guarded.user);
+    return ok(toDetail(findPublisherForm(guarded.form.id) ?? guarded.form, guarded.user.id));
   }),
 
   // ASSUMED API CONTRACT: GET /forms/:id/progress?range=hour|day|week|month (Figma 10a).
@@ -200,7 +212,8 @@ export const formsManageHandlers: RequestHandler[] = [
     if ("response" in guarded) return guarded.response;
     const range = (new URL(request.url).searchParams.get("range") ?? "day") as OpensRange;
     if (!RANGES.includes(range)) return fail(400, "VALIDATION_ERROR", "range must be hour, day, week or month.");
-    const { form } = guarded;
+    ensureFormActivity(guarded.form.id, guarded.user);
+    const form = findPublisherForm(guarded.form.id) ?? guarded.form;
     const tracking = trackingOf(form.id);
     const now = Date.now();
     const buckets = tracking.opens[range];

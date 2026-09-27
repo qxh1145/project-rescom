@@ -130,3 +130,13 @@ backend route to complain about one answer of an in-Rescom (`INTERNAL`) response
 "Khiếu nại về câu trả lời này" link was removed from the responses screen
 (`ResponseAnswers.tsx`, `ResponsesScreen.tsx`, `ResponsesMobile.tsx`) rather than pointing
 at a 404. Restore it once a backend complaint route for in-Rescom responses exists.
+
+## Publisher results endpoints in use (Phase 5C — Câu trả lời)
+
+Services: `lib/forms/results-service.ts`, `lib/forms/results-analytics-service.ts`.
+Mocks: `mocks/handlers/forms-results.ts`, `mocks/handlers/forms-analytics.ts`.
+
+| Endpoint | Label | Notes |
+|---|---|---|
+| `GET /forms/:id/responses[?versionNumber=]` | ASSUMED API CONTRACT | Questions + anonymous rows of one version (Từng câu trả lời) |
+| `GET /forms/:id/analytics[?versionNumber=]` | ASSUMED API CONTRACT | Per-question aggregation of one version (Tóm tắt / Theo câu hỏi): totals, `startedCount`, and per question `answeredCount`/`skippedCount` + a `choice` / `scale` / `number` / `text` / `file` summary. `percentage` = count / answeredCount × 100 (1 decimal, server-side; multiple choice may exceed 100). Owner or ADMIN; 404 `FORM_NOT_FOUND` / `FORM_VERSION_NOT_FOUND`, 403 `FORM_FORBIDDEN`. Reference aggregation: `mocks/data/form-analytics.ts` |

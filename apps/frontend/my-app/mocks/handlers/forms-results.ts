@@ -1,12 +1,8 @@
 import type { FormBlock } from "@rescom/schemas";
 import { http, type RequestHandler } from "msw";
 import { apiUrl } from "@/lib/api/config";
-import {
-  QUALITY_MINIMUM_RESPONSES,
-  QUALITY_SNAPSHOTS,
-  responsesOf,
-  versionsWithResponses,
-} from "../data/form-responses";
+import { ensureFormActivity, qualitySnapshotOf } from "../data/form-activity";
+import { QUALITY_MINIMUM_RESPONSES, responsesOf, versionsWithResponses } from "../data/form-responses";
 import { findVersion, versionsOf, type MockFormVersion } from "../data/form-versions";
 import { findPublisherForm, type MockPublisherForm } from "../data/forms";
 import { getMockSessionUser } from "../db/session";
@@ -26,7 +22,7 @@ const SHORT_LABELS: Record<string, string> = {
   "house-q5": "Hài lòng",
 };
 
-async function ownedForm(id: string): Promise<{ form: MockPublisherForm } | { error: Response }> {
+export async function ownedForm(id: string): Promise<{ form: MockPublisherForm } | { error: Response }> {
   const user = await getMockSessionUser();
   if (!user) return { error: unauthorized() };
   const form = findPublisherForm(id);
@@ -34,10 +30,12 @@ async function ownedForm(id: string): Promise<{ form: MockPublisherForm } | { er
   if (form.ownerEmail !== user.email && user.role !== "ADMIN") {
     return { error: fail(403, "FORM_FORBIDDEN", "You do not have access to this form.") };
   }
-  return { form };
+  // MOCK-ONLY: Form Builder surveys get their version, responses and quality snapshot.
+  ensureFormActivity(form.id, user);
+  return { form: findPublisherForm(id) ?? form };
 }
 
-function questionsOf(blocks: FormBlock[]) {
+export function questionsOf(blocks: FormBlock[]) {
   return [...blocks]
     .sort((a, b) => a.order - b.order)
     .map((block, index) => ({
@@ -62,7 +60,7 @@ function questionsOf(blocks: FormBlock[]) {
 }
 
 /** `?versionNumber=` or the newest version with responses (else the newest published one). */
-function pickVersion(form: MockPublisherForm, raw: string | null): MockFormVersion | undefined {
+export function pickVersion(form: MockPublisherForm, raw: string | null): MockFormVersion | undefined {
   const versions = versionsOf(form.id);
   const requested = Number(raw);
   if (raw && Number.isInteger(requested)) return versions.find((version) => version.versionNumber === requested);
@@ -121,9 +119,7 @@ export const formsResultsHandlers: RequestHandler[] = [
     const version = pickVersion(form, new URL(request.url).searchParams.get("versionNumber"));
     if (!version) return versionNotFound();
     const rows = responsesOf(form.id, version.versionNumber);
-    const snapshot = QUALITY_SNAPSHOTS.find(
-      (item) => item.formId === form.id && item.versionNumber === version.versionNumber,
-    );
+    const snapshot = qualitySnapshotOf(form.id, version.versionNumber);
     const questions = form.type === "INTERNAL" ? questionsOf(version.blocks) : [];
     const needsReview = rows.filter((row) => row.quality === "NEEDS_REVIEW").length;
     const enough = rows.length >= QUALITY_MINIMUM_RESPONSES;

@@ -11,6 +11,7 @@ import { authHandlers } from "./auth";
 import { demographicsHandlers } from "./demographics";
 import { economyHandlers } from "./economy";
 import { engagementHandlers } from "./engagement";
+import { formsAnalyticsHandlers } from "./forms-analytics";
 import { formsBuilderHandlers } from "./forms-builder";
 import { formsCreateHandlers } from "./forms-create";
 import { formsManageHandlers } from "./forms-manage";
@@ -43,6 +44,7 @@ export const handlers = [
   ...formsCreateHandlers,
   ...formsManageHandlers,
   ...formsResultsHandlers,
+  ...formsAnalyticsHandlers,
   ...marketplaceHandlers,
   ...notificationHandlers,
   ...participationHandlers,

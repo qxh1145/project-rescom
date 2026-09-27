@@ -20,6 +20,11 @@ function loadError(error: unknown, what: string): string {
 export const responsesLoadErrorMessage = (error: unknown) => loadError(error, "câu trả lời");
 export const qualityLoadErrorMessage = (error: unknown) => loadError(error, "đánh giá chất lượng");
 export const versionsLoadErrorMessage = (error: unknown) => loadError(error, "lịch sử phiên bản");
+export const analyticsLoadErrorMessage = (error: unknown) => loadError(error, "thống kê câu trả lời");
+
+/** Empty Tóm tắt: "Sao chép liên kết khảo sát". */
+export const SURVEY_LINK_COPIED = "Đã sao chép liên kết khảo sát.";
+export const SURVEY_LINK_COPY_FAILED = "Không sao chép tự động được — hãy chọn và sao chép liên kết bên dưới.";
 
 export const VERSION_CHANGES_LOAD_FAILED = "Không tải được các thay đổi của bản nháp.";
 export const EXPORT_FAILED = "Chưa tạo được file. Vui lòng thử lại.";

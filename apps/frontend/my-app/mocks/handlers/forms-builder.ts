@@ -17,6 +17,7 @@ import {
 import { apiUrl } from "@/lib/api/config";
 import { aiMessageInputSchema } from "@/lib/forms/builder-ai";
 import { reserveSurveyEscrow } from "../data/economy";
+import { ensureFormActivity } from "../data/form-activity";
 import { cannedAssistantTurn, cannedSuggestedBlock } from "../data/form-ai-canned";
 import {
   createFormDraft,
@@ -180,6 +181,8 @@ export const formsBuilderHandlers: RequestHandler[] = [
   http.get(apiUrl("/forms/:id"), async ({ params, request }) => {
     const result = await access(String(params.id), request);
     if (!result || result instanceof Response) return result;
+    // MOCK-ONLY: completions/responses of a published builder survey (form-activity.ts).
+    ensureFormActivity(result.draft.id, result.user);
     return ok(detailOf(result.draft, result.user));
   }),
 

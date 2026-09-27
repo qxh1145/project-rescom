@@ -1,5 +1,6 @@
 import type { FormBlock } from "@rescom/schemas";
 import { createCollection } from "../db/store";
+import { analyticsFormVersions } from "./form-analytics-seed";
 import { findPublisherForm, PUBLISHER_FORM_IDS } from "./forms";
 import { surveyContentOf } from "./survey-content";
 
@@ -112,6 +113,8 @@ function seed(): MockFormVersion[] {
       blocks: [],
     });
   });
+  // Survey response analytics: one published version each, blocks in `form-analytics-seed.ts`.
+  versions.push(...analyticsFormVersions());
   return versions;
 }
 
