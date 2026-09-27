@@ -1,0 +1,176 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --primary-mint: #10b981;
+  --primary-mint-dark: #059669;
+  --primary-mint-light: #ecfdf5;
+  --primary-blue: #3b82f6;
+  --primary-blue-dark: #2563eb;
+  --primary-blue-light: #eff6ff;
+  --card-bg: #ffffff;
+  --card-border: #e2e8f0;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-be-vietnam-pro), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+  /* Rescom design tokens — Figma "Rescom – Design System & Screens" (see docs/frontend/design-system.md).
+     ASSUMED = not defined in Figma yet; reconcile once the Foundations page is available. */
+  /* Page 8 "Trạng thái component & token" (62:1477) is the source for primary states,
+     danger, rating and disabled. */
+  --color-primary: #2b7a33;
+  --color-primary-hover: #1f6b2a;
+  --color-primary-pressed: #1b5a24;
+  --color-primary-strong: #1f6b2a;
+  --color-primary-foreground: #ffffff;
+  --color-brand: #4db848;
+  --color-ink: #1e2446;
+  --color-ink-strong: #3a4460;
+  --color-ink-muted: #596078;
+  --color-ink-placeholder: #757575;
+  --color-line: #e1e6ef;
+  --color-line-strong: #7c869c;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f7f9fc;
+  --color-surface-hero: #f9fafd;
+  --color-surface-subtle: #f1f4f9;
+  --color-disabled: #eef1f6;
+  --color-disabled-foreground: #3a4460;
+  --color-tone-green-bg: #eaf6e8;
+  --color-tone-green-fg: #1f6b2a;
+  --color-tone-teal-bg: #e3f5f1;
+  --color-tone-teal-fg: #1b7466;
+  --color-tone-amber-bg: #fff6d8;
+  --color-tone-amber-fg: #7a5200;
+  --color-danger: #b42318;
+  --color-danger-soft: #fef3f2;
+  /* Page 15 (63:3990) form alert: text + icon on danger-soft, and the links in field errors. */
+  --color-danger-strong: #912018;
+  /* Page 15 starter-points note (63:3459): icon tile and body copy on tone-amber-bg. */
+  --color-tone-amber-accent: #fadc7a;
+  --color-tone-amber-ink: #5c4a12;
+  /* Page 15 link-Google icon tile (63:2198). */
+  --color-tone-blue-bg: #e7f0fb;
+  --color-tone-blue-fg: #1d5694;
+  --color-info-soft: #eef4fb; /* ASSUMED */
+  /* Page 3 activation banner (62:619): progress track on primary; fill = tone-amber-accent. */
+  --color-activation-track: #5e9d64;
+  /* Page 15f starter points expiring (63:1889): section border, progress fill and track. */
+  --color-tone-amber-strong: #9a6700;
+  --color-tone-amber-track: #f2e3b0;
+  --color-rating: #f2b705;
+  --color-rating-border: #9a6700;
+  /* Page 5 Google Forms (62:2): finished step circle, and the code panel background. */
+  --color-step-done: #56c2b0;
+  --color-surface-panel: #fbfcfe;
+  /* Page 6 "Tài khoản đã kích hoạt" card (62:1798): icon tile, card border, body copy. */
+  --color-tone-teal-accent: #56c2b0;
+  --color-tone-teal-line: #bfe6de;
+  --color-tone-teal-ink: #1b4f47;
+  /* Page 14 consent footer divider (62:1011), page 17d list separators (63:5137). */
+  --color-line-subtle: #eef1f6;
+  /* Page 14d notifications (62:2132): unread row background. */
+  --color-tone-green-tint: #f4faf3;
+  /* Page 16b leaderboard (63:3146–63:3162): rank 2 / rank 3 badges (rank 1 = rating). */
+  --color-medal-silver: #c9cfda;
+  --color-medal-bronze: #e3b58a;
+  /* Page 13 Form Builder (63:690, 62:2359): pending AI attention check card, amber chip border, user chat bubble. */
+  --color-tone-amber-tint: #fffcf2;
+  --color-tone-amber-line: #e9c766;
+  --color-chat-bubble: #e9edf3;
+
+  --radius-field: 12px;
+  --radius-control: 14px;
+  --radius-card: 24px;
+
+  --text-display: 50px;
+  --text-display--line-height: 56px;
+  --text-display--letter-spacing: -1.5px;
+  --text-title: 26px;
+  --text-title--line-height: 31.2px;
+  --text-title--letter-spacing: -0.5px;
+  --text-body-lg: 18px;
+  --text-body-lg--line-height: 28.8px;
+  --text-body: 15px;
+  --text-body--line-height: normal;
+  --text-body-sm: 14px;
+  --text-body-sm--line-height: 21px;
+  --text-label: 14px;
+  --text-label--line-height: normal;
+  --text-button: 16px;
+  --text-button--line-height: normal;
+  /* Page 15 (63:2089, 63:3001): centered 22px heading, 15/23.3 body, 13/19.5 note. */
+  --text-title-sm: 22px;
+  --text-title-sm--line-height: normal;
+  --text-body-relaxed: 15px;
+  --text-body-relaxed--line-height: 23.3px;
+  --text-caption-relaxed: 13px;
+  --text-caption-relaxed--line-height: 19.5px;
+  /* 56px form CTAs on page 15 (Tạo tài khoản, Gửi link đặt lại…). */
+  --text-button-lg: 17px;
+  --text-button-lg--line-height: normal;
+  --text-caption: 13px;
+  --text-caption--line-height: normal;
+  /* Page 12 onboarding (63:2366 / 63:2449): question title desktop / mobile, helper text, 56px inputs. */
+  --text-question: 32px;
+  --text-question--line-height: 38.4px;
+  --text-question--letter-spacing: -0.6px;
+  --text-question-sm: 26px;
+  --text-question-sm--line-height: 32.5px;
+  --text-question-sm--letter-spacing: -0.5px;
+  --text-lead: 16px;
+  --text-lead--line-height: 24px;
+  --text-lead-sm: 15px;
+  --text-lead-sm--line-height: 22.5px;
+  --text-field-lg: 17px;
+  --text-field-lg--line-height: normal;
+}
+
+/* The Figma design is light-only. Force light for the whole app: native controls
+   and scrollbars stay light, and `dark:` utilities (still present in legacy pages)
+   only apply under a `.dark` class, which nothing sets — so a dark OS no longer
+   mixes a light Figma screen with dark legacy cards. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+}
+
+/* Accessibility: Keyboard-visible focus. Unlayered on purpose: it must win over
+   legacy `focus:outline-none` utilities. New screens recolor it via --focus-ring-color. */
+*:focus-visible {
+  outline: 2px solid var(--focus-ring-color, #2b7a33);
+  outline-offset: 2px;
+}
+
+/* Accessibility: Safe reduced-motion transitions */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Card hover and interactive styling */
+.rescom-card {
+  border-radius: 1.25rem;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+}

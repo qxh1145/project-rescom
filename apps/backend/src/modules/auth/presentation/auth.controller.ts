@@ -33,6 +33,7 @@ import {
   getRefreshCookieOptions,
   getOAuthIntentClearCookieOptions,
   clearAuthCookies,
+  clearLegacyAuthCookies,
 } from './cookie-options.helper';
 import {
   InvalidCsrfTokenException,
@@ -46,7 +47,7 @@ import { SessionAuthGuard } from './guards/session-auth.guard';
 import { CurrentUser } from './decorators';
 import { AuthenticatedUser } from './types/authenticated-request.type';
 
-@Controller('auth')
+@Controller(['auth', 'api/auth'])
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
@@ -79,6 +80,7 @@ export class AuthController {
         result.refreshToken,
         getRefreshCookieOptions(this.envService),
       );
+      clearLegacyAuthCookies(res, this.envService);
     }
 
     return createSuccessEnvelope({ user: result.user });
@@ -107,6 +109,7 @@ export class AuthController {
         result.refreshToken,
         getRefreshCookieOptions(this.envService),
       );
+      clearLegacyAuthCookies(res, this.envService);
     }
 
     return createSuccessEnvelope({ user: result.user });
@@ -115,7 +118,10 @@ export class AuthController {
   @Get('csrf')
   @HttpCode(HttpStatus.OK)
   @Header('Cache-Control', 'no-store')
-  async getCsrf(@Req() req: Request) {
+  async getCsrf(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     validateRequestOrigin(req, this.envService);
 
     const accessToken = req.cookies?.[AUTH_COOKIE_NAME];
@@ -131,10 +137,23 @@ export class AuthController {
       throw new UnauthorizedSessionException('Session service unavailable');
     }
 
-    const { csrfToken } = await this.sessionService.rotateCsrf({
-      accessToken,
-      refreshToken,
-    });
+    let csrfToken: string;
+    try {
+      ({ csrfToken } = await this.sessionService.rotateCsrf({
+        accessToken,
+        refreshToken,
+      }));
+    } catch (err) {
+      if (
+        err instanceof SessionRevokedException ||
+        err instanceof InvalidRefreshTokenException ||
+        err instanceof SessionExpiredException ||
+        err instanceof UserLockedException
+      ) {
+        clearAuthCookies(res, this.envService);
+      }
+      throw err;
+    }
 
     return createSuccessEnvelope({ csrfToken });
   }
@@ -191,6 +210,7 @@ export class AuthController {
       rotated.refreshToken,
       getRefreshCookieOptions(this.envService),
     );
+    clearLegacyAuthCookies(res, this.envService);
 
     return createSuccessEnvelope({ csrfToken: rotated.csrfToken });
   }

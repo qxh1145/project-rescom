@@ -25,6 +25,7 @@ import {
 import { JsonOnlyGuard } from '../../../common/http/json-only.guard';
 import { ZodValidationPipe } from '../../../common/http/zod-validation.pipe';
 import { validateRequestOrigin } from '../../../common/http/origin-check.helper';
+import { createSuccessEnvelope } from '../../../common/http/response.envelope';
 import {
   googleCallbackQuerySchema,
   googleLinkStartSchema,
@@ -40,6 +41,7 @@ import {
   getRefreshCookieOptions,
   getOAuthIntentCookieOptions,
   getOAuthIntentClearCookieOptions,
+  clearLegacyAuthCookies,
 } from './cookie-options.helper';
 import { InvalidCsrfTokenException } from '../application/exceptions/auth.exceptions';
 import { SessionAuthGuard } from './guards/session-auth.guard';
@@ -47,7 +49,7 @@ import { CurrentUser, CurrentSession } from './decorators';
 import { AuthenticatedUser } from './types/authenticated-request.type';
 import { Session } from '../domain/session.entity';
 
-@Controller('auth/google')
+@Controller(['auth/google', 'api/auth/google'])
 export class GoogleOAuthController {
   constructor(
     private readonly googleOAuthService: GoogleOAuthService,
@@ -69,6 +71,7 @@ export class GoogleOAuthController {
       intentCookie,
       getOAuthIntentCookieOptions(this.envService),
     );
+    clearLegacyAuthCookies(res, this.envService);
 
     res.setHeader('Cache-Control', 'no-store');
     return res.redirect(HttpStatus.FOUND, authorizationUrl);
@@ -115,6 +118,7 @@ export class GoogleOAuthController {
         getRefreshCookieOptions(this.envService),
       );
     }
+    clearLegacyAuthCookies(res, this.envService);
 
     return res.redirect(HttpStatus.SEE_OTHER, result.redirectUrl);
   }
@@ -149,8 +153,18 @@ export class GoogleOAuthController {
       intentCookie,
       getOAuthIntentCookieOptions(this.envService),
     );
+    clearLegacyAuthCookies(res, this.envService);
 
     res.setHeader('Cache-Control', 'no-store');
+
+    // link/start is called via fetch, which cannot follow a cross-origin
+    // redirect to Google; JSON clients receive the URL and navigate to it.
+    if (req.headers.accept?.includes('application/json')) {
+      return res
+        .status(HttpStatus.OK)
+        .json(createSuccessEnvelope({ authorizationUrl }));
+    }
+
     return res.redirect(HttpStatus.SEE_OTHER, authorizationUrl);
   }
 

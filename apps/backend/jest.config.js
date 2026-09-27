@@ -1,7 +1,7 @@
 module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: '.',
-  testRegex: '(src/.*|test/architecture)\\.spec\\.ts$',
+  testRegex: '(src/.*|test/(architecture|migration-chain))\\.spec\\.ts$',
   transform: {
     '^.+\\.(t|j)s$': 'ts-jest',
   },
@@ -12,4 +12,5 @@ module.exports = {
     '^@rescom/schemas/(.*)$': '<rootDir>/../../packages/schemas/src/$1',
     '^@rescom/schemas$': '<rootDir>/../../packages/schemas/src',
   },
+  testTimeout: 15000,
 };

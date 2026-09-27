@@ -7,6 +7,7 @@ import { AuthController } from './presentation/auth.controller';
 import { GoogleOAuthController } from './presentation/google-oauth.controller';
 import { SessionAuthGuard } from './presentation/guards/session-auth.guard';
 import { RolesGuard } from './presentation/guards/roles.guard';
+import { CsrfGuard } from './presentation/guards/csrf.guard';
 import {
   PASSWORD_HASHER_PORT,
   PasswordHasherPort,
@@ -53,6 +54,7 @@ import {
   UserRepositoryPort,
 } from '../users/application/ports/user.repository.port';
 import { EnvService } from '../../common/config/env.service';
+import { StarterPointsCoordinator } from '../economy/application/starter-points.coordinator';
 
 @Module({
   imports: [UsersModule, JwtModule.register({})],
@@ -134,6 +136,7 @@ import { EnvService } from '../../common/config/env.service';
         identityAudit: IdentityAuditPort,
         sessionService: SessionService,
         envService: EnvService,
+        starterPointsCoordinator?: StarterPointsCoordinator,
       ) =>
         new GoogleOAuthService(
           oauthProvider,
@@ -149,6 +152,9 @@ import { EnvService } from '../../common/config/env.service';
             frontendSuccessUrl: envService.authFrontendSuccessUrl,
             frontendErrorUrl: envService.authFrontendErrorUrl,
           },
+          undefined,
+          undefined,
+          starterPointsCoordinator,
         ),
       inject: [
         OAUTH_PROVIDER_PORT,
@@ -160,6 +166,7 @@ import { EnvService } from '../../common/config/env.service';
         IDENTITY_AUDIT_PORT,
         SessionService,
         EnvService,
+        { token: StarterPointsCoordinator, optional: true },
       ],
     },
     {
@@ -169,6 +176,7 @@ import { EnvService } from '../../common/config/env.service';
         passwordHasher: PasswordHasherPort,
         tokenService: TokenServicePort,
         sessionService: SessionService,
+        starterPointsCoordinator?: StarterPointsCoordinator,
       ) =>
         new AuthService(
           userRepository,
@@ -176,22 +184,26 @@ import { EnvService } from '../../common/config/env.service';
           tokenService,
           undefined,
           sessionService,
+          starterPointsCoordinator,
         ),
       inject: [
         USER_REPOSITORY_PORT,
         PASSWORD_HASHER_PORT,
         TOKEN_SERVICE_PORT,
         SessionService,
+        { token: StarterPointsCoordinator, optional: true },
       ],
     },
     SessionAuthGuard,
     RolesGuard,
+    CsrfGuard,
   ],
   exports: [
     AuthService,
     SessionService,
     SessionAuthGuard,
     RolesGuard,
+    CsrfGuard,
     GoogleOAuthService,
     TOKEN_SERVICE_PORT,
     SECRET_PROTECTION_PORT,

@@ -1,8 +1,15 @@
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  Optional,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { Request, Response } from 'express';
 import { SessionService } from '../../application/session.service';
 import { EnvService } from '../../../../common/config/env.service';
 import { AUTH_COOKIE_NAME, clearAuthCookies } from '../cookie-options.helper';
+import { IS_PUBLIC_KEY } from '../../../../common/security/public.decorator';
 import {
   UnauthorizedSessionException,
   InvalidTokenException,
@@ -20,6 +27,7 @@ export class SessionAuthGuard implements CanActivate {
   constructor(
     private readonly sessionService: SessionService,
     private readonly envService: EnvService,
+    @Optional() private readonly reflector?: Reflector,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -28,6 +36,37 @@ export class SessionAuthGuard implements CanActivate {
     const res = http.getResponse<Response>();
 
     const accessToken = req.cookies?.[AUTH_COOKIE_NAME];
+
+    if (
+      this.reflector &&
+      typeof context.getHandler === 'function' &&
+      typeof context.getClass === 'function'
+    ) {
+      const isPublic = this.reflector.getAllAndOverride<boolean>(
+        IS_PUBLIC_KEY,
+        [context.getHandler(), context.getClass()],
+      );
+      if (isPublic) {
+        if (accessToken) {
+          try {
+            const { user, session } =
+              await this.sessionService.validateSession(accessToken);
+            const authenticatedUser: AuthenticatedUser = {
+              id: user.id,
+              email: user.email,
+              role: user.role,
+              status: user.status,
+            };
+            const authReq = req as AuthenticatedRequest;
+            authReq.user = authenticatedUser;
+            authReq.session = session;
+          } catch {
+            // Public endpoint continues without authenticated session
+          }
+        }
+        return true;
+      }
+    }
 
     if (!accessToken) {
       clearAuthCookies(res, this.envService);

@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import {
+  DEFAULT_PARTICIPATION_RATE_LIMIT_POLICY,
+  PARTICIPATION_RATE_LIMIT_POLICY_VERSION,
+  PARTICIPATION_RATE_LIMIT_POLICY_VERSION_PATTERN,
+  hasDefaultParticipationRateLimitValues,
+} from '@rescom/schemas';
 
 function isValidUrl(value: string): boolean {
   try {
@@ -20,6 +26,41 @@ function checkNoCredentialsOrFragmentOrWildcard(value: string): boolean {
     return false;
   }
 }
+
+// BE-9: z.coerce.boolean() treats ANY non-empty string (including "false"
+// and "0") as truthy, so env values meant to disable a flag silently enable
+// it instead. This accepts real booleans plus the common textual forms and
+// rejects anything else, so misconfigured env values fail validation loudly
+// rather than flipping the flag on.
+const BOOLEAN_ENV_TRUE_VALUES = new Set(['true', '1', 'yes', 'on']);
+const BOOLEAN_ENV_FALSE_VALUES = new Set(['false', '0', 'no', 'off']);
+
+function booleanEnv(defaultValue: boolean) {
+  return z
+    .union([z.boolean(), z.string()])
+    .default(defaultValue)
+    .transform((value, ctx) => {
+      if (typeof value === 'boolean') {
+        return value;
+      }
+      const normalized = value.trim().toLowerCase();
+      if (BOOLEAN_ENV_TRUE_VALUES.has(normalized)) {
+        return true;
+      }
+      if (BOOLEAN_ENV_FALSE_VALUES.has(normalized)) {
+        return false;
+      }
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'must be a boolean-like value: true/false, 1/0, yes/no, or on/off (case-insensitive)',
+      });
+      return z.NEVER;
+    });
+}
+
+const TOPUP_PLACEHOLDER_ACCOUNT_NUMBER = '0000000000';
+const TOPUP_PLACEHOLDER_ACCOUNT_NAME = 'RESCOM DEMO';
 
 export const envSchema = z
   .object({
@@ -49,7 +90,7 @@ export const envSchema = z
       .transform((val) =>
         val
           .split(',')
-          .map((origin) => origin.trim())
+          .map((origin) => origin.trim().replace(/\/+$/, ''))
           .filter((origin) => origin.length > 0),
       )
       .refine(
@@ -60,6 +101,70 @@ export const envSchema = z
         (origins) => !origins.includes('*'),
         'Wildcard origin (*) is strictly forbidden when credentials are enabled',
       ),
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(3).default(0),
+
+    // Rate Limiting & Throttling
+    RATE_LIMIT_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(86400)
+      .default(60),
+    RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().min(1).default(100),
+    AUTH_RATE_LIMIT_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(86400)
+      .default(60),
+    AUTH_RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().min(1).default(10),
+
+    // Story 8.2: bot protection (FR-46, NFR-4, AD-6). Centrally versioned
+    // policy (decision E8-D4): the values below run under
+    // PARTICIPATION_RATE_LIMIT_POLICY_VERSION (default
+    // `participation-rate-limit-v1` = the provisional defaults, dev/test only;
+    // required in production). Launch values await PRD OQ-16.
+    // REDIS_DISABLED_SINGLE_REPLICA = PostgreSQL durable completion counts +
+    // per-process request counters (one API replica only). REDIS_SHARED needs
+    // the Redis counter store, which is not installed in this build yet.
+    ABUSE_CONTROL_PROFILE: z
+      .enum(['REDIS_DISABLED_SINGLE_REPLICA', 'REDIS_SHARED'])
+      .default('REDIS_DISABLED_SINGLE_REPLICA'),
+    PARTICIPATION_COMPLETION_LIMIT: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(1000)
+      .default(DEFAULT_PARTICIPATION_RATE_LIMIT_POLICY.completionLimit),
+    PARTICIPATION_COMPLETION_WINDOW_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(60)
+      .max(604800)
+      .default(DEFAULT_PARTICIPATION_RATE_LIMIT_POLICY.completionWindowSeconds),
+    PARTICIPATION_BURST_LIMIT: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(1000)
+      .default(DEFAULT_PARTICIPATION_RATE_LIMIT_POLICY.burstLimit),
+    PARTICIPATION_BURST_WINDOW_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(3600)
+      .default(DEFAULT_PARTICIPATION_RATE_LIMIT_POLICY.burstWindowSeconds),
+    // Decision E8-D4 (option B): the name stamped on every participation 429
+    // and RATE_LIMIT FraudLog entry. Unset -> `participation-rate-limit-v1`
+    // outside production; production must set it explicitly.
+    PARTICIPATION_RATE_LIMIT_POLICY_VERSION: z
+      .string()
+      .trim()
+      .regex(
+        PARTICIPATION_RATE_LIMIT_POLICY_VERSION_PATTERN,
+        'PARTICIPATION_RATE_LIMIT_POLICY_VERSION must be 1-64 characters: letters or digits first, then letters, digits, ".", "_", ":" or "-"',
+      )
+      .optional(),
 
     // System Monitoring & Metrics Logging
     SYSTEM_METRICS_LOG_INTERVAL_SECONDS: z.coerce
@@ -89,6 +194,22 @@ export const envSchema = z
       .min(32, 'AUTH_SECRET_PROTECTION_KEY must be at least 32 characters long')
       .optional(),
     AUTH_SECRET_KEY_VERSION: z.coerce.number().int().min(1).default(1),
+    // Story 4.5 AC2.3: dedicated HMAC key for External completion-code
+    // verifiers. Falls back to JWT_SECRET when unset; set it so rotating
+    // JWT_SECRET does not invalidate every live completion code.
+    COMPLETION_CODE_HMAC_SECRET: z
+      .string()
+      .min(
+        32,
+        'COMPLETION_CODE_HMAC_SECRET must be at least 32 characters long',
+      )
+      .optional(),
+    // Epic 5 review P22: HMAC key of the guest storage capability bound to a
+    // survey attempt. Falls back to JWT_SECRET when unset.
+    STORAGE_CAPABILITY_SECRET: z
+      .string()
+      .min(32, 'STORAGE_CAPABILITY_SECRET must be at least 32 characters long')
+      .optional(),
 
     // Story 1.2: Google OAuth Configuration
     GOOGLE_CLIENT_ID: z.string().min(1).default('rescom-google-client-id'),
@@ -120,12 +241,97 @@ export const envSchema = z
         'AUTH_FRONTEND_ERROR_URL must not contain credentials, fragments, or wildcard hosts',
       )
       .default('http://localhost:3000/auth/error'),
+
+    // Story 5.3: private S3-compatible storage and malware scanning
+    STORAGE_ENDPOINT: z.string().url().default('http://localhost:9000'),
+    STORAGE_REGION: z.string().min(1).default('us-east-1'),
+    STORAGE_BUCKET: z.string().min(3).default('rescom-private-storage'),
+    STORAGE_ACCESS_KEY_ID: z.string().min(1).default('minioadmin'),
+    STORAGE_SECRET_ACCESS_KEY: z.string().min(8).default('minioadmin'),
+    STORAGE_FORCE_PATH_STYLE: booleanEnv(true),
+    MALWARE_SCANNER_HOST: z.string().min(1).default('127.0.0.1'),
+    MALWARE_SCANNER_PORT: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(65535)
+      .default(3310),
+    MALWARE_SCANNER_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(1000)
+      .max(120000)
+      .default(30000),
+
+    // Story 6.6: platform bank account shown on manual top-up instructions (FR-34)
+    TOPUP_BANK_NAME: z.string().trim().min(1).max(100).default('Vietcombank'),
+    TOPUP_BANK_BIN: z
+      .string()
+      .regex(/^\d{6}$/, 'TOPUP_BANK_BIN must be a 6-digit NAPAS bank BIN')
+      .default('970436'),
+    TOPUP_BANK_ACCOUNT_NUMBER: z
+      .string()
+      .regex(/^\d{6,19}$/, 'TOPUP_BANK_ACCOUNT_NUMBER must contain 6-19 digits')
+      .default(TOPUP_PLACEHOLDER_ACCOUNT_NUMBER),
+    TOPUP_BANK_ACCOUNT_NAME: z
+      .string()
+      .trim()
+      .min(1)
+      .max(100)
+      .default(TOPUP_PLACEHOLDER_ACCOUNT_NAME),
   })
   .superRefine((data, ctx) => {
     const isProduction = data.NODE_ENV === 'production';
 
+    if (data.ABUSE_CONTROL_PROFILE === 'REDIS_SHARED') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ABUSE_CONTROL_PROFILE'],
+        message:
+          'REDIS_SHARED requires the Redis rate-limit counter store, which is not installed in this build; run one API replica with REDIS_DISABLED_SINGLE_REPLICA',
+      });
+    }
+
+    // Decision E8-D4: `participation-rate-limit-v1` names the provisional
+    // default values only — custom values need their own version name, so
+    // rate-limit evidence is never mislabelled.
+    if (
+      data.PARTICIPATION_RATE_LIMIT_POLICY_VERSION ===
+        PARTICIPATION_RATE_LIMIT_POLICY_VERSION &&
+      !hasDefaultParticipationRateLimitValues({
+        completionLimit: data.PARTICIPATION_COMPLETION_LIMIT,
+        completionWindowSeconds: data.PARTICIPATION_COMPLETION_WINDOW_SECONDS,
+        burstLimit: data.PARTICIPATION_BURST_LIMIT,
+        burstWindowSeconds: data.PARTICIPATION_BURST_WINDOW_SECONDS,
+      })
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PARTICIPATION_RATE_LIMIT_POLICY_VERSION'],
+        message: `PARTICIPATION_RATE_LIMIT_POLICY_VERSION "${PARTICIPATION_RATE_LIMIT_POLICY_VERSION}" names the default participation limits; name a new policy version for custom PARTICIPATION_* values`,
+      });
+    }
+
     // Production secret check
     if (isProduction) {
+      if (!data.PARTICIPATION_RATE_LIMIT_POLICY_VERSION) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PARTICIPATION_RATE_LIMIT_POLICY_VERSION'],
+          message:
+            'PARTICIPATION_RATE_LIMIT_POLICY_VERSION is required in production: name the approved participation rate-limit policy (PRD Open Question 16)',
+        });
+      }
+
+      if (data.TRUST_PROXY_HOPS < 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['TRUST_PROXY_HOPS'],
+          message:
+            'TRUST_PROXY_HOPS must explicitly trust the production reverse proxy',
+        });
+      }
+
       if (!data.AUTH_SECRET_PROTECTION_KEY) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -143,6 +349,29 @@ export const envSchema = z
           path: ['GOOGLE_CLIENT_ID'],
           message:
             'Production requires explicit, non-default GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET',
+        });
+      }
+
+      if (
+        data.STORAGE_ACCESS_KEY_ID === 'minioadmin' ||
+        data.STORAGE_SECRET_ACCESS_KEY === 'minioadmin'
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['STORAGE_ACCESS_KEY_ID'],
+          message: 'Production requires explicit object-storage credentials',
+        });
+      }
+
+      if (
+        data.TOPUP_BANK_ACCOUNT_NUMBER === TOPUP_PLACEHOLDER_ACCOUNT_NUMBER ||
+        data.TOPUP_BANK_ACCOUNT_NAME === TOPUP_PLACEHOLDER_ACCOUNT_NAME
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['TOPUP_BANK_ACCOUNT_NUMBER'],
+          message:
+            'Production requires the real top-up bank account (TOPUP_BANK_ACCOUNT_NUMBER and TOPUP_BANK_ACCOUNT_NAME)',
         });
       }
 

@@ -10,7 +10,7 @@ context:
 
 # Story 1.4: Role-Based Access Control (RBAC) & User Management
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -509,6 +509,23 @@ so that I can manage privileged authorization assignments, lock malicious or com
   - [x] 8.2 Run `npm run test` and `npm run test:e2e` to verify 100% test pass.
   - [x] 8.3 Run `npm run test -- test/architecture.spec.ts` to verify 0 boundary violations.
 
+### Review Findings
+
+- [x] [Review][Patch] [High] Enforce Origin/Fetch-Metadata and per-session CSRF validation on both cookie-authenticated Admin PATCH routes [apps/backend/src/modules/admin/presentation/admin-users.controller.ts:87]
+- [x] [Review][Patch] [High] Acquire/revalidate the active-admin lock before deciding whether a role or status mutation can bypass last-admin protection [apps/backend/src/modules/users/application/user-admin.service.ts:83]
+- [x] [Review][Patch] [High] Replace the failing in-memory concurrency case with PostgreSQL-backed lock/lock, demote/demote, and mixed-operation integration coverage [apps/backend/test/admin-users.e2e-spec.ts:41]
+- [x] [Review][Patch] [High] Remove the unrelated SystemModule activation from this story or protect and sanitize its unauthenticated operational-metrics endpoints [apps/backend/src/app.module.ts:4]
+- [x] [Review][Patch] [Medium] Clear authentication cookies when locked-account rejection occurs through the CSRF bootstrap path [apps/backend/src/modules/auth/presentation/auth.controller.ts:118]
+- [x] [Review][Patch] [Medium] Append required changed:false audit records when post-lock revalidation discovers a concurrent no-op [apps/backend/src/modules/users/application/user-admin.service.ts:89]
+- [x] [Review][Patch] [Medium] Lock or otherwise isolate the target row before ordinary no-op evaluation to avoid stale responses and audit records [apps/backend/src/modules/users/application/user-admin.service.ts:60]
+- [x] [Review][Patch] [Medium] Give the in-memory transaction adapter rollback semantics so failure-path tests model the atomic production contract [apps/backend/src/modules/users/infrastructure/in-memory-user-admin-transaction.adapter.ts:53]
+- [x] [Review][Patch] [Medium] Exercise last-admin failures through HTTP and assert required success/failure audit persistence in E2E tests [apps/backend/test/admin-users.e2e-spec.ts:487]
+- [x] [Review][Patch] [Medium] Parse controller response envelopes with the exported strict Zod response schemas in contract tests [apps/backend/src/modules/admin/presentation/admin-users.controller.spec.ts:61]
+- [x] [Review][Patch] [Medium] Add coverage for Prisma findMany/countByRoleAndStatus and PrismaUserAdminTransactionAdapter behavior [apps/backend/src/modules/users/infrastructure/user.repository.spec.ts:79]
+- [x] [Review][Patch] [Medium] Configure a narrowly trusted reverse-proxy hop before persisting req.ip as administrator audit evidence [apps/backend/src/main.ts:11]
+- [x] [Review][Patch] [Medium] Add a deterministic secondary key to createdAt pagination ordering to prevent duplicate or omitted users across pages [apps/backend/src/modules/users/infrastructure/prisma-user.repository.ts:98]
+- [x] [Review][Patch] [Low] Return the specified Invalid UUID parameter validation message and assert it in E2E coverage [apps/backend/src/common/http/parse-uuid.pipe.ts:14]
+
 ---
 
 ## Dev Notes
@@ -665,4 +682,3 @@ so that I can manage privileged authorization assignments, lock malicious or com
 - `apps/backend/src/modules/admin/admin.module.ts`
 - `apps/backend/src/app.module.ts`
 - `apps/backend/test/admin-users.e2e-spec.ts`
-

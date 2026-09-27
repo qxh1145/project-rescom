@@ -25,6 +25,10 @@ import { InMemoryOAuthIntentRepository } from '../src/modules/auth/infrastructur
 import { OAUTH_PERSISTENCE_PORT } from '../src/modules/auth/application/ports/oauth-persistence.port';
 import { InMemoryOAuthRepository } from '../src/modules/auth/infrastructure/in-memory-oauth.repository';
 import { PrismaService } from '../src/common/database/prisma.service';
+import { LEDGER_REPOSITORY_PORT } from '../src/modules/economy/application/ports/ledger-repository.port';
+import { InMemoryLedgerRepository } from '../src/modules/economy/infrastructure/in-memory-ledger.repository';
+import { STARTER_POINTS_DATA_PROVIDER } from '../src/modules/economy/economy.module';
+import { InMemoryStarterPointsDataProvider } from '../src/modules/economy/infrastructure/in-memory-starter-points-data-provider';
 import { GoogleProviderUnavailableException } from '../src/modules/auth/application/exceptions/auth.exceptions';
 
 function getCookies(res: request.Response): string[] {
@@ -95,6 +99,10 @@ describe('Google OAuth E2E Tests (AC1 - AC7, AC11 - AC13)', () => {
     })
       .overrideProvider(PrismaService)
       .useValue(mockPrisma)
+      .overrideProvider(LEDGER_REPOSITORY_PORT)
+      .useValue(new InMemoryLedgerRepository())
+      .overrideProvider(STARTER_POINTS_DATA_PROVIDER)
+      .useValue(new InMemoryStarterPointsDataProvider())
       .overrideProvider(USER_REPOSITORY_PORT)
       .useValue(userRepo)
       .overrideProvider(SESSION_REPOSITORY_PORT)
@@ -163,7 +171,16 @@ describe('Google OAuth E2E Tests (AC1 - AC7, AC11 - AC13)', () => {
       );
       expect(intentCookie).toBeDefined();
       expect(intentCookie).toContain('HttpOnly');
-      expect(intentCookie).toContain('Path=/auth/google/callback');
+      // Root-scoped so GET /auth/google can invalidate a prior intent and the
+      // /api/auth/google/* aliases receive it too
+      expect(intentCookie).toMatch(/Path=\/(;|$)/);
+      expect(cookies).toContainEqual(
+        expect.stringMatching(
+          new RegExp(
+            `^${OAUTH_INTENT_COOKIE_NAME}=;.*Path=/auth/google/callback(;|$)`,
+          ),
+        ),
+      );
       expect(intentCookie).toContain('SameSite=Lax');
 
       // Intent must be persisted
@@ -601,6 +618,7 @@ describe('Google OAuth E2E Tests (AC1 - AC7, AC11 - AC13)', () => {
         .send({ currentPassword: 'ValidPassword123!' })
         .expect(303);
 
+      expect(linkStartRes.headers['cache-control']).toBe('no-store');
       expect(linkStartRes.headers.location).toContain(
         'https://accounts.google.com/o/oauth2/v2/auth',
       );
@@ -651,6 +669,53 @@ describe('Google OAuth E2E Tests (AC1 - AC7, AC11 - AC13)', () => {
         .expect(409);
 
       expect(conflictRes.body.error.code).toBe('AUTH_GOOGLE_IDENTITY_CONFLICT');
+    });
+
+    it('should return the authorization URL as JSON when link/start is called by fetch', async () => {
+      const linkStartRes = await request(app.getHttpServer())
+        .post('/api/auth/google/link/start')
+        .set('Origin', 'http://localhost:3000')
+        .set('Accept', 'application/json')
+        .set('Cookie', [accessCookieVal])
+        .set('X-CSRF-Token', csrfToken)
+        .send({ currentPassword: 'ValidPassword123!' })
+        .expect(200);
+
+      expect(linkStartRes.headers['cache-control']).toBe('no-store');
+      expect(linkStartRes.headers.location).toBeUndefined();
+      expect(linkStartRes.body.error).toBeNull();
+      const { authorizationUrl } = linkStartRes.body.data;
+      expect(authorizationUrl).toContain(
+        'https://accounts.google.com/o/oauth2/v2/auth',
+      );
+
+      const intentCookie = getCookies(linkStartRes).find((c) =>
+        c.startsWith(`${OAUTH_INTENT_COOKIE_NAME}=`),
+      )!;
+      expect(intentCookie).toMatch(/Path=\/(;|$)/);
+      const rawIntentCookieVal = intentCookie.split(';')[0];
+      const state = decodeURIComponent(
+        authorizationUrl.match(/state=([^&]+)/)![1],
+      );
+
+      mockOAuthProvider.exchangeAndVerify.mockResolvedValueOnce({
+        sub: 'google-sub-linked-json',
+        email: 'linkable@example.com',
+        emailVerified: true,
+      });
+
+      const callbackRes = await request(app.getHttpServer())
+        .get(`/auth/google/callback?code=link_code&state=${state}`)
+        .set('Cookie', [rawIntentCookieVal])
+        .expect(303);
+
+      expect(callbackRes.headers.location).toBe(
+        'http://localhost:3000/auth/success',
+      );
+      const { identityCount } = await oauthRepo.countUserLoginMethods(
+        passwordUser.id,
+      );
+      expect(identityCount).toBe(1);
     });
 
     it('should successfully unlink Google identity when password remains', async () => {

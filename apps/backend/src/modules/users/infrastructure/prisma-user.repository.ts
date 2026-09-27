@@ -95,7 +95,7 @@ export class PrismaUserRepository implements UserRepositoryPort {
         where,
         skip,
         take,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       }),
       this.prisma.user.count({ where }),
     ]);

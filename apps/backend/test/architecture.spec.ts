@@ -58,6 +58,42 @@ describe('Clean Architecture Boundary Validation (AC8)', () => {
     expect(violations).toEqual([]);
   });
 
+  it('only the Notifications context imports its repository port, read-side service and adapters (Epic 9 review P11)', () => {
+    const notificationsDir = path.join(modulesDir, 'notifications');
+    // Static `from '…'`, dynamic `import('…')` and `require('…')`.
+    const privateNotificationImport =
+      /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"][^'"]*notifications\/(?:application\/(?:ports\/notification-repository\.port|notifications\.service)|infrastructure\/)[^'"]*['"]/;
+    const offenders = getFiles(srcDir)
+      .filter(
+        (filePath) =>
+          !filePath.startsWith(notificationsDir + path.sep) &&
+          privateNotificationImport.test(fs.readFileSync(filePath, 'utf-8')),
+      )
+      .map((filePath) => path.relative(srcDir, filePath));
+
+    expect(offenders).toEqual([]);
+    expect(
+      privateNotificationImport.test(
+        "import { NotificationsService } from '../../notifications/application/notifications.service';",
+      ),
+    ).toBe(true);
+    expect(
+      privateNotificationImport.test(
+        "const { PrismaNotificationRepository } = require('../notifications/infrastructure/prisma-notification.repository');",
+      ),
+    ).toBe(true);
+    expect(
+      privateNotificationImport.test(
+        "await import('../../notifications/application/ports/notification-repository.port');",
+      ),
+    ).toBe(true);
+    expect(
+      privateNotificationImport.test(
+        "import { NOTIFICATION_PUBLISHER_PORT } from '../../notifications/application/ports/notification-publisher.port';",
+      ),
+    ).toBe(false);
+  });
+
   it('reports NestJS imports from application service files', () => {
     const applicationService = path.join(
       modulesDir,
@@ -96,5 +132,48 @@ describe('Clean Architecture Boundary Validation (AC8)', () => {
 
     expect(findViolations(moduleFile, nestImport)).toEqual([]);
     expect(findViolations(infrastructureFile, nestImport)).toEqual([]);
+  });
+
+  it('every controller registers both a plain route prefix and its api/ twin (Bug 1.3)', () => {
+    const controllerFiles = getFiles(srcDir).filter((filePath) =>
+      filePath.endsWith('.controller.ts'),
+    );
+    expect(controllerFiles.length).toBeGreaterThan(0);
+
+    const violations = controllerFiles.flatMap((filePath) => {
+      const relFile = path.relative(srcDir, filePath);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const match = content.match(/@Controller\(\s*(\[[\s\S]*?\])\s*\)/);
+
+      if (!match) {
+        return [
+          `${relFile}: @Controller must register an array of ['prefix', 'api/prefix']`,
+        ];
+      }
+
+      const prefixes = Array.from(
+        match[1].matchAll(/'([^']*)'|"([^"]*)"/g),
+      ).map((literal) => literal[1] ?? literal[2] ?? '');
+
+      if (prefixes.length !== 2) {
+        return [
+          `${relFile}: expected exactly 2 route prefixes, found ${JSON.stringify(prefixes)}`,
+        ];
+      }
+
+      const [plainPrefix, apiPrefix] = prefixes;
+      const expectedApiPrefix =
+        plainPrefix === '' ? 'api' : `api/${plainPrefix}`;
+
+      if (apiPrefix !== expectedApiPrefix) {
+        return [
+          `${relFile}: expected ['${plainPrefix}', '${expectedApiPrefix}'], found ${JSON.stringify(prefixes)}`,
+        ];
+      }
+
+      return [];
+    });
+
+    expect(violations).toEqual([]);
   });
 });

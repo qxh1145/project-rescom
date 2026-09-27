@@ -17,6 +17,10 @@ import { InMemorySessionRepository } from '../src/modules/auth/infrastructure/in
 import { InMemoryIdentityAuditRepository } from '../src/modules/auth/infrastructure/in-memory-identity-audit.repository';
 
 import { PrismaService } from '../src/common/database/prisma.service';
+import { LEDGER_REPOSITORY_PORT } from '../src/modules/economy/application/ports/ledger-repository.port';
+import { InMemoryLedgerRepository } from '../src/modules/economy/infrastructure/in-memory-ledger.repository';
+import { STARTER_POINTS_DATA_PROVIDER } from '../src/modules/economy/economy.module';
+import { InMemoryStarterPointsDataProvider } from '../src/modules/economy/infrastructure/in-memory-starter-points-data-provider';
 
 describe('Authentication E2E Tests (AC1 - AC8)', () => {
   let app: INestApplication;
@@ -57,6 +61,10 @@ describe('Authentication E2E Tests (AC1 - AC8)', () => {
     })
       .overrideProvider(PrismaService)
       .useValue(mockPrisma)
+      .overrideProvider(LEDGER_REPOSITORY_PORT)
+      .useValue(new InMemoryLedgerRepository())
+      .overrideProvider(STARTER_POINTS_DATA_PROVIDER)
+      .useValue(new InMemoryStarterPointsDataProvider())
       .overrideProvider(USER_REPOSITORY_PORT)
       .useValue(userRepo)
       .overrideProvider(SESSION_REPOSITORY_PORT)
@@ -409,7 +417,13 @@ describe('Authentication E2E Tests (AC1 - AC8)', () => {
 
       expect(regAccess).toBeDefined();
       expect(regRefresh).toBeDefined();
-      expect(regRefresh).toContain('Path=/auth');
+      // Root-scoped so the refresh cookie reaches both /auth/* and /api/auth/*
+      expect(regRefresh).toMatch(/Path=\/(;|$)/);
+      expect(regCookies).toContainEqual(
+        expect.stringMatching(
+          new RegExp(`^${REFRESH_COOKIE_NAME}=;.*Path=/auth(;|$)`),
+        ),
+      );
 
       // Extract raw cookie values
       const accessVal = regAccess!.split(';')[0];
@@ -451,16 +465,35 @@ describe('Authentication E2E Tests (AC1 - AC8)', () => {
       expect(rotatedAccess).toBeDefined();
       expect(rotatedRefresh).toBeDefined();
 
-      // 4. Replay old consumed refresh credential -> must fail with 401 and revoke session
+      // 4. A consumed credential id with a forged secret must be rejected
+      //    without revoking the session (no reuse-revocation DoS)
+      const consumedCredentialId = refreshVal.split('=')[1].split('.')[0];
+      const forgedRes = await request(app.getHttpServer())
+        .post('/api/auth/refresh')
+        .set('Origin', 'http://localhost:3000')
+        .set('Cookie', [
+          `${REFRESH_COOKIE_NAME}=${consumedCredentialId}.forged-secret`,
+        ])
+        .set('X-CSRF-Token', refreshRes.body.data.csrfToken)
+        .expect(401);
+      expect(forgedRes.body.error.code).toBe('AUTH_INVALID_REFRESH_TOKEN');
+
+      const rotatedAccessVal = rotatedAccess.split(';')[0];
       await request(app.getHttpServer())
+        .get('/auth/me')
+        .set('Cookie', [rotatedAccessVal])
+        .expect(200);
+
+      // 5. Replay old consumed refresh credential -> must fail with 401 and revoke session
+      const replayRes = await request(app.getHttpServer())
         .post('/auth/refresh')
         .set('Origin', 'http://localhost:3000')
         .set('Cookie', [refreshVal])
         .set('X-CSRF-Token', refreshRes.body.data.csrfToken)
         .expect(401);
+      expect(replayRes.body.error.code).toBe('AUTH_SESSION_REVOKED');
 
       // Rotated access token should now be revoked due to replay
-      const rotatedAccessVal = rotatedAccess.split(';')[0];
       await request(app.getHttpServer())
         .get('/auth/csrf')
         .set('Origin', 'http://localhost:3000')

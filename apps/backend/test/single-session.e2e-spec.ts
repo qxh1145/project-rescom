@@ -17,6 +17,10 @@ import { IDENTITY_AUDIT_PORT } from '../src/modules/auth/application/ports/ident
 import { InMemorySessionRepository } from '../src/modules/auth/infrastructure/in-memory-session.repository';
 import { InMemoryIdentityAuditRepository } from '../src/modules/auth/infrastructure/in-memory-identity-audit.repository';
 import { PrismaService } from '../src/common/database/prisma.service';
+import { LEDGER_REPOSITORY_PORT } from '../src/modules/economy/application/ports/ledger-repository.port';
+import { InMemoryLedgerRepository } from '../src/modules/economy/infrastructure/in-memory-ledger.repository';
+import { STARTER_POINTS_DATA_PROVIDER } from '../src/modules/economy/economy.module';
+import { InMemoryStarterPointsDataProvider } from '../src/modules/economy/infrastructure/in-memory-starter-points-data-provider';
 
 describe('Single-Session Enforcement E2E Tests (Story 1.3)', () => {
   let app: INestApplication;
@@ -58,6 +62,10 @@ describe('Single-Session Enforcement E2E Tests (Story 1.3)', () => {
     })
       .overrideProvider(PrismaService)
       .useValue(mockPrisma)
+      .overrideProvider(LEDGER_REPOSITORY_PORT)
+      .useValue(new InMemoryLedgerRepository())
+      .overrideProvider(STARTER_POINTS_DATA_PROVIDER)
+      .useValue(new InMemoryStarterPointsDataProvider())
       .overrideProvider(USER_REPOSITORY_PORT)
       .useValue(userRepo)
       .overrideProvider(SESSION_REPOSITORY_PORT)

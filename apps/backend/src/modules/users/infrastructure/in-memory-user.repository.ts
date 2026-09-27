@@ -63,7 +63,10 @@ export class InMemoryUserRepository implements UserRepositoryPort {
       list = list.filter((u) => u.status === status);
     }
 
-    list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    list.sort((a, b) => {
+      const createdAtOrder = b.createdAt.getTime() - a.createdAt.getTime();
+      return createdAtOrder !== 0 ? createdAtOrder : b.id.localeCompare(a.id);
+    });
     const total = list.length;
     const skip = (page - 1) * limit;
     const users = list.slice(skip, skip + limit);
@@ -86,6 +89,14 @@ export class InMemoryUserRepository implements UserRepositoryPort {
 
   save(user: User): void {
     this.users.set(user.id, user);
+  }
+
+  snapshot(): User[] {
+    return Array.from(this.users.values());
+  }
+
+  restore(snapshot: readonly User[]): void {
+    this.users = new Map(snapshot.map((user) => [user.id, user]));
   }
 
   clear() {

@@ -47,6 +47,8 @@ project-rescom/                 # Monorepo root
 
 ## 3. Tech Stack
 
+> Hosting updated 2026-09-26 per `_bmad-output/planning-artifacts/sprint-change-proposal-2026-09-26.md` (Architecture Spine AD-23). The pilot runs on Google Cloud trial credit and stays portable to FPT Cloud. Other sections of this summary still describe 2026-08-16; `sprint-status.yaml` is the source of truth for progress.
+
 | Layer              | Technology                                                                   |
 | :----------------- | :--------------------------------------------------------------------------- |
 | **Frontend**       | Next.js, TypeScript, App Router, Tailwind CSS, shadcn/ui, Redux Toolkit + RTK Query, Framer Motion |
@@ -55,12 +57,14 @@ project-rescom/                 # Monorepo root
 | **Validation**     | Zod (shared between FE & BE via `packages/schemas`)                          |
 | **Auth**           | Stateless JWT in HTTP-Only Cookies + Google OAuth                            |
 | **Security**       | CORS, Helmet, express-rate-limit                                             |
-| **Database**       | PostgreSQL (Docker Compose locally, Neon/Supabase in production)             |
-| **AI Inference**   | Ollama + Qwen model on dedicated GPU machine via Tailscale VPN               |
-| **File Storage**   | S3-compatible Object Storage (presigned URL uploads)                         |
-| **Frontend Host**  | Vercel                                                                       |
-| **Backend Host**   | VPS (4 vCPU / 16GB RAM / 200GB NVMe) with Docker + Nginx                    |
+| **Database** | PostgreSQL (Docker Compose locally, Cloud SQL `asia-southeast1` in production) |
+| **AI Inference** | Ollama + Qwen — deferred to Phase 2 (Epic 3); no AI host in the pilot |
+| **File Storage** | Google Cloud Storage via S3 API (presigned URL uploads) + ClamAV scanning; MinIO locally |
+| **Frontend Host** | Vercel (function region `sin1`) |
+| **Backend Host** | One Google Compute Engine VM (`asia-southeast1`), Docker Compose + Caddy |
 | **CDN/DNS/SSL**    | Cloudflare                                                                   |
+| **Observability** | Sentry + external uptime monitor |
+| **CI/CD** | GitHub Actions → GHCR → SSH deploy |
 
 ---
 

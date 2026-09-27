@@ -1,4 +1,4 @@
-import { SessionService } from './session.service';
+import { SessionService, REFRESH_REUSE_GRACE_MS } from './session.service';
 import {
   SessionRepositoryPort,
   ReplaceUserSessionInput,
@@ -449,12 +449,169 @@ describe('SessionService (Task 1: Identity Session Foundation)', () => {
       // Old refresh token is now consumed
       await expect(
         sessionService.refreshSession(original.refreshToken, rotated.csrfToken),
-      ).rejects.toThrow(InvalidRefreshTokenException);
+      ).rejects.toThrow(SessionRevokedException);
 
       // Replay must revoke the entire session!
       await expect(
         sessionService.validateSession(rotated.accessToken),
       ).rejects.toThrow(SessionRevokedException);
+      expect(auditPort.records).toContainEqual(
+        expect.objectContaining({
+          action: 'REFRESH_REUSE_REVOKED',
+          errorCode: 'AUTH_SESSION_REVOKED',
+        }),
+      );
+      expect(auditPort.records.map((r) => r.action)).not.toContain(
+        'REFRESH_REUSE_SUSPECTED',
+      );
+    });
+
+    it('should not revoke the session when a used credential is presented with a wrong secret', async () => {
+      const user = await userRepo.create({
+        id: 'user-reuse-wrong-secret',
+        email: 'reuse-wrong-secret@example.com',
+        role: 'RESPONDENT',
+        status: 'ACTIVE',
+      });
+
+      const original = await sessionService.createSession(user.id);
+      const rotated = await sessionService.refreshSession(
+        original.refreshToken,
+        original.csrfToken,
+      );
+      const [usedCredentialId] = original.refreshToken.split('.');
+
+      await expect(
+        sessionService.refreshSession(
+          `${usedCredentialId}.garbage-secret`,
+          rotated.csrfToken,
+        ),
+      ).rejects.toThrow(InvalidRefreshTokenException);
+
+      const validated = await sessionService.validateSession(
+        rotated.accessToken,
+      );
+      expect(validated.session.revoked).toBe(false);
+      expect(auditPort.records.map((r) => r.action)).not.toContain(
+        'REFRESH_REUSE_REVOKED',
+      );
+    });
+
+    it('should not revoke but audit suspected reuse when a used credential with a stale CSRF token is replayed inside the grace window', async () => {
+      const user = await userRepo.create({
+        id: 'user-reuse-stale-csrf',
+        email: 'reuse-stale-csrf@example.com',
+        role: 'RESPONDENT',
+        status: 'ACTIVE',
+      });
+
+      const original = await sessionService.createSession(user.id);
+      const rotated = await sessionService.refreshSession(
+        original.refreshToken,
+        original.csrfToken,
+      );
+
+      await expect(
+        sessionService.refreshSession(
+          original.refreshToken,
+          original.csrfToken,
+        ),
+      ).rejects.toThrow(InvalidCsrfTokenException);
+
+      const validated = await sessionService.validateSession(
+        rotated.accessToken,
+      );
+      expect(validated.session.revoked).toBe(false);
+      expect(auditPort.records.map((r) => r.action)).not.toContain(
+        'REFRESH_REUSE_REVOKED',
+      );
+      const [credentialId] = original.refreshToken.split('.');
+      expect(auditPort.records).toContainEqual(
+        expect.objectContaining({
+          action: 'REFRESH_REUSE_SUSPECTED',
+          userId: user.id,
+          outcome: 'FAILURE',
+          errorCode: 'AUTH_INVALID_CSRF_TOKEN',
+          metadata: { sessionId: validated.session.id, credentialId },
+        }),
+      );
+    });
+
+    describe('after the reuse grace window', () => {
+      beforeEach(() => {
+        jest.useFakeTimers({ now: new Date('2026-09-26T10:00:00Z') });
+      });
+
+      afterEach(() => {
+        jest.useRealTimers();
+      });
+
+      it('should revoke the session when a used credential with a stale CSRF token is replayed', async () => {
+        const user = await userRepo.create({
+          id: 'user-reuse-stale-csrf-late',
+          email: 'reuse-stale-csrf-late@example.com',
+          role: 'RESPONDENT',
+          status: 'ACTIVE',
+        });
+
+        const original = await sessionService.createSession(user.id);
+        const rotated = await sessionService.refreshSession(
+          original.refreshToken,
+          original.csrfToken,
+        );
+
+        jest.setSystemTime(Date.now() + REFRESH_REUSE_GRACE_MS + 1_000);
+
+        await expect(
+          sessionService.refreshSession(
+            original.refreshToken,
+            original.csrfToken,
+          ),
+        ).rejects.toThrow(SessionRevokedException);
+
+        await expect(
+          sessionService.validateSession(rotated.accessToken),
+        ).rejects.toThrow(SessionRevokedException);
+        expect(auditPort.records.map((r) => r.action)).toEqual(
+          expect.arrayContaining([
+            'REFRESH_REUSE_SUSPECTED',
+            'REFRESH_REUSE_REVOKED',
+          ]),
+        );
+      });
+
+      it('should still reject a used credential with a wrong secret without revoking or auditing', async () => {
+        const user = await userRepo.create({
+          id: 'user-reuse-wrong-secret-late',
+          email: 'reuse-wrong-secret-late@example.com',
+          role: 'RESPONDENT',
+          status: 'ACTIVE',
+        });
+
+        const original = await sessionService.createSession(user.id);
+        const rotated = await sessionService.refreshSession(
+          original.refreshToken,
+          original.csrfToken,
+        );
+        const [usedCredentialId] = original.refreshToken.split('.');
+
+        jest.setSystemTime(Date.now() + REFRESH_REUSE_GRACE_MS + 1_000);
+
+        await expect(
+          sessionService.refreshSession(
+            `${usedCredentialId}.garbage-secret`,
+            original.csrfToken,
+          ),
+        ).rejects.toThrow(InvalidRefreshTokenException);
+
+        const validated = await sessionService.validateSession(
+          rotated.accessToken,
+        );
+        expect(validated.session.revoked).toBe(false);
+        const actions = auditPort.records.map((r) => r.action);
+        expect(actions).not.toContain('REFRESH_REUSE_SUSPECTED');
+        expect(actions).not.toContain('REFRESH_REUSE_REVOKED');
+      });
     });
 
     it('should reject refresh if CSRF token is stale or invalid', async () => {
@@ -511,6 +668,62 @@ describe('SessionService (Task 1: Identity Session Foundation)', () => {
         res2.csrfToken,
       );
       expect(refreshed.accessToken).toBeDefined();
+    });
+
+    it('should not revoke the session when a used credential with a wrong secret bootstraps CSRF', async () => {
+      const user = await userRepo.create({
+        id: 'user-csrf-reuse-wrong-secret',
+        email: 'csrf-reuse-wrong-secret@example.com',
+        role: 'RESPONDENT',
+        status: 'ACTIVE',
+      });
+
+      const original = await sessionService.createSession(user.id);
+      const rotated = await sessionService.refreshSession(
+        original.refreshToken,
+        original.csrfToken,
+      );
+      const [usedCredentialId] = original.refreshToken.split('.');
+
+      await expect(
+        sessionService.rotateCsrf({
+          refreshToken: `${usedCredentialId}.garbage-secret`,
+        }),
+      ).rejects.toThrow(InvalidRefreshTokenException);
+
+      const validated = await sessionService.validateSession(
+        rotated.accessToken,
+      );
+      expect(validated.session.revoked).toBe(false);
+      expect(auditPort.records.map((r) => r.action)).not.toContain(
+        'REFRESH_REUSE_REVOKED',
+      );
+    });
+
+    it('should revoke the session when a used credential with the correct secret bootstraps CSRF', async () => {
+      const user = await userRepo.create({
+        id: 'user-csrf-reuse-correct-secret',
+        email: 'csrf-reuse-correct-secret@example.com',
+        role: 'RESPONDENT',
+        status: 'ACTIVE',
+      });
+
+      const original = await sessionService.createSession(user.id);
+      const rotated = await sessionService.refreshSession(
+        original.refreshToken,
+        original.csrfToken,
+      );
+
+      await expect(
+        sessionService.rotateCsrf({ refreshToken: original.refreshToken }),
+      ).rejects.toThrow(SessionRevokedException);
+
+      await expect(
+        sessionService.validateSession(rotated.accessToken),
+      ).rejects.toThrow(SessionRevokedException);
+      expect(auditPort.records.map((r) => r.action)).toContain(
+        'REFRESH_REUSE_REVOKED',
+      );
     });
   });
 

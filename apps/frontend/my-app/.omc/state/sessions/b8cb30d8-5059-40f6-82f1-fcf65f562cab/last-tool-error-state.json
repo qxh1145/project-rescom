@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"for loc in components/layout/BrandLogo.tsx:55 app/forms/components/renderer/blocks/RespondentSingleChoiceBlock.tsx:98 app/wallet/page.tsx:342 app/attempts/[id]/page.tsx:606 app/admin/moder...",
+  "error": "Exit code 1\n(eval):1: no matches found: app/attempts/[id]/page.tsx:606",
+  "timestamp": "2026-09-26T18:15:57.765Z",
+  "retry_count": 1
+}

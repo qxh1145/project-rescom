@@ -22,6 +22,13 @@ import {
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * How long after rotation a consumed refresh credential presented with a
+ * stale CSRF token is still treated as a concurrent-tab race (403, session
+ * kept) rather than a replay (session revoked).
+ */
+export const REFRESH_REUSE_GRACE_MS = 60_000;
+
 export interface SessionTokens {
   accessToken: string;
   refreshToken: string;
@@ -204,22 +211,18 @@ export class SessionService {
         throw new SessionExpiredException();
       }
 
-      if (found.credential.isUsed) {
-        await this.sessionRepository.revokeSession(found.session.id, {
-          action: 'REFRESH_REUSE_REVOKED',
-          userId: found.session.userId,
-          outcome: 'FAILURE',
-          errorCode: 'AUTH_INVALID_REFRESH_TOKEN',
-        });
-        throw new InvalidRefreshTokenException();
-      }
-
+      // Prove possession of the refresh secret before treating a consumed
+      // credential as reuse; otherwise a guessed credentialId could revoke it.
       const isValid = this.secretProtection.verifyRefreshSecret(
         rawSecret,
         found.credential.secretDigest,
       );
       if (!isValid) {
         throw new InvalidRefreshTokenException();
+      }
+
+      if (found.credential.isUsed) {
+        return this.revokeForRefreshReuse(found.session);
       }
 
       if (!user) {
@@ -270,16 +273,8 @@ export class SessionService {
       throw new SessionExpiredException();
     }
 
-    if (credential.isUsed) {
-      await this.sessionRepository.revokeSession(session.id, {
-        action: 'REFRESH_REUSE_REVOKED',
-        userId: session.userId,
-        outcome: 'FAILURE',
-        errorCode: 'AUTH_INVALID_REFRESH_TOKEN',
-      });
-      throw new InvalidRefreshTokenException();
-    }
-
+    // Verify the refresh secret and CSRF token before reuse detection so a
+    // forged secret or stale CSRF token cannot revoke the session.
     const isSecretValid = this.secretProtection.verifyRefreshSecret(
       rawSecret,
       credential.secretDigest,
@@ -288,11 +283,36 @@ export class SessionService {
       throw new InvalidRefreshTokenException();
     }
 
-    if (
-      !csrfToken ||
-      !this.secretProtection.verifyCsrfToken(csrfToken, session.csrfDigest)
-    ) {
+    const isCsrfValid =
+      !!csrfToken &&
+      this.secretProtection.verifyCsrfToken(csrfToken, session.csrfDigest);
+
+    if (credential.isUsed && !isCsrfValid) {
+      // Every rotation replaces the CSRF digest, so a replayed refresh token
+      // usually arrives with its matching (now stale) CSRF token. Only a
+      // replay shortly after rotation is tolerated as a two-tab race.
+      await this.identityAudit.append({
+        action: 'REFRESH_REUSE_SUSPECTED',
+        userId: session.userId,
+        outcome: 'FAILURE',
+        errorCode: 'AUTH_INVALID_CSRF_TOKEN',
+        metadata: { sessionId: session.id, credentialId: credential.id },
+      });
+      const usedAt = credential.usedAt?.getTime();
+      if (
+        usedAt === undefined ||
+        Date.now() - usedAt > REFRESH_REUSE_GRACE_MS
+      ) {
+        return this.revokeForRefreshReuse(session);
+      }
+    }
+
+    if (!isCsrfValid) {
       throw new InvalidCsrfTokenException();
+    }
+
+    if (credential.isUsed) {
+      return this.revokeForRefreshReuse(session);
     }
 
     if (!user) {
@@ -341,6 +361,16 @@ export class SessionService {
       refreshToken: newRefreshToken,
       csrfToken: newRawCsrfToken,
     };
+  }
+
+  private async revokeForRefreshReuse(session: Session): Promise<never> {
+    await this.sessionRepository.revokeSession(session.id, {
+      action: 'REFRESH_REUSE_REVOKED',
+      userId: session.userId,
+      outcome: 'FAILURE',
+      errorCode: 'AUTH_SESSION_REVOKED',
+    });
+    throw new SessionRevokedException();
   }
 
   async logout(params: {
