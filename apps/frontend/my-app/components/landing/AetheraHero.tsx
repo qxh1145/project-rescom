@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { RescomLogo } from "@/components/brand/RescomLogo";
+import GlassSurface from "@/components/ui/GlassSurface";
 import { FadingLoopVideo } from "./FadingLoopVideo";
 
 const VIDEO_SRC =
@@ -22,11 +23,10 @@ export function AetheraHero({ fontClassName }: { fontClassName?: string }) {
         <Link href="/" aria-label="Rescom">
           <RescomLogo size="md" highPriority />
         </Link>
-        <Link
-          href="/login"
-          className="rounded-full px-6 py-2.5 text-sm bg-[#000000] text-[#FFFFFF] hover:scale-[1.03] transition-transform"
-        >
-          Bắt đầu ngay
+        <Link href="/login" className="rounded-full text-sm text-[#000000] hover:scale-[1.03] transition-transform">
+          <GlassSurface width={150} height={44} borderRadius={22}>
+            Bắt đầu ngay
+          </GlassSurface>
         </Link>
       </nav>
 
@@ -47,9 +47,11 @@ export function AetheraHero({ fontClassName }: { fontClassName?: string }) {
         </p>
         <Link
           href="/login"
-          className="rounded-full px-14 py-5 text-base mt-12 bg-[#000000] text-[#FFFFFF] hover:scale-[1.03] transition-transform animate-fade-rise-delay-2"
+          className="rounded-full text-base mt-12 text-[#000000] hover:scale-[1.03] transition-transform animate-fade-rise-delay-2"
         >
-          Bắt đầu ngay
+          <GlassSurface width={240} height={64} borderRadius={32}>
+            Bắt đầu ngay
+          </GlassSurface>
         </Link>
       </section>
     </div>

@@ -1,0 +1,7 @@
+{
+  "tool_name": "mcp__Claude_Browser__preview_start",
+  "tool_input_preview": "{\"name\":\"frontend-mock\"}",
+  "error": "The dev server exited during startup (code 1). Fix the error in the output below, then start the server again.\n\nOutput:\n> my-app@0.1.0 dev\n> next dev\n\n\u001b[1m\u001b[38;2;173;127;168m▲ Next.js 16.3.0\u001b[39m\u001b[22m (Turbopack)\n- Local:         http://localhost:65209\n- Network:       http://192.168.1.117:65209\n- Environments: .env.local\n\u001b[32m\u001b[1m✓\u001b[22m\u001b[39m Ready in 236ms\n\u001b[32m\u001b[1m✓\u001b[22m\u001b[39m Running next.config.ts took 25ms\n\u001b[31m\u001b[1m⨯\u001b[22m\u001b[39m Another \u001b[36mnext dev\u001b[39m server is already running.\n\n- Local:  ...",
+  "timestamp": "2026-09-27T13:35:44.521Z",
+  "retry_count": 1
+}
