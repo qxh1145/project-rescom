@@ -29,6 +29,16 @@ import { disputeReasonSchema } from "../forms/manage-service.ts";
  *   with `note`. Errors: 404 `DISPUTE_CASE_NOT_FOUND`, 409
  *   `DISPUTE_CASE_ALREADY_RESOLVED`, 400 `DISPUTE_OUTCOME_NOT_ALLOWED` /
  *   `VALIDATION_ERROR`, plus the ledger codes of `resolveDisputeHold`.
+ *   `CREDIT_RESPONDENT` pays the reward from the survey escrow (form lock and
+ *   the owner's Ký quỹ, journal `internal-reward:{attemptId}`) and is refused
+ *   with 409 `DISPUTE_ATTEMPT_ALREADY_REWARDED` (the attempt is COMPLETED or
+ *   already has a reward), 409 `DISPUTE_SURVEY_CLOSED` (survey closed or its
+ *   quota full) or 409 `INSUFFICIENT_BALANCE` (escrow below the reward).
+ *   `attempt.status` is the attempt's CURRENT status, not a snapshot.
+ *   `REFUND_TO_PUBLISHER` is refused with 409 `INSUFFICIENT_BALANCE` (the
+ *   respondent's Integrity Hold exists but falls short of the amount) or 409
+ *   `DISPUTE_NO_HELD_POINTS` (ASSUMED, mock-only refinement: the respondent
+ *   has no held points at all — nothing to refund, `disputeHoldRefusal`).
  *
  * VERIFIED: `POST /admin/completion-code-limits/reset`
  * (`admin-completion-code-limit.controller.ts`, `completionCodeLimitResetRequestSchema`)

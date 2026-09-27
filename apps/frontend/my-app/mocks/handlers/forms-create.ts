@@ -12,6 +12,7 @@ import {
 import { apiUrl } from "@/lib/api/config";
 import { reserveSurveyEscrow, walletOf } from "../data/economy";
 import { addPublisherForm } from "../data/forms";
+import { decideIdempotentRequest, idempotencyRecordKey, type IdempotencyRecord } from "../data/idempotency";
 import { createCollection, mockId, nowIso } from "../db/store";
 import { getMockSessionUser } from "../db/session";
 import { fail, missingCsrf, ok, unauthorized } from "../envelope";
@@ -38,6 +39,16 @@ export interface CreatedFormExtras {
   /** Plaintext only in the mock; the backend stores a verifier. */
   completionCode: string;
 }
+
+/**
+ * Decision C6 (a): `Idempotency-Key` of `POST /forms/external`, keyed by
+ * `<userId>:<key>` — the same key and body replay the first 201; another body
+ * is a 409 (ASSUMED code `IDEMPOTENCY_KEY_CONFLICT`, backend in progress).
+ */
+export const createIdempotencyRecords = createCollection<Record<string, IdempotencyRecord<unknown>>>(
+  "publisher-form-create-idempotency",
+  () => ({}),
+);
 
 export const createdFormExtras = createCollection<Record<string, CreatedFormExtras>>(
   "publisher-form-create-extras",
@@ -81,7 +92,15 @@ export const formsCreateHandlers: RequestHandler[] = [
     if (!user) return unauthorized();
     const csrf = missingCsrf(request);
     if (csrf) return csrf;
-    const parsed = createBodySchema.safeParse(await readJson(request));
+    const raw = await readJson(request);
+    const recordKey = idempotencyRecordKey(user.id, request.headers.get("Idempotency-Key"));
+    const fingerprint = JSON.stringify(raw);
+    const replay = decideIdempotentRequest(recordKey ? createIdempotencyRecords.get()[recordKey] : undefined, fingerprint);
+    if (replay.kind === "replay") return ok(replay.response, 201);
+    if (replay.kind === "conflict") {
+      return fail(409, "IDEMPOTENCY_KEY_CONFLICT", "This Idempotency-Key was already used with a different request body.");
+    }
+    const parsed = createBodySchema.safeParse(raw);
     if (!parsed.success) {
       return fail(400, "VALIDATION_ERROR", "Validation failed", { details: parsed.error.format() });
     }
@@ -173,27 +192,30 @@ export const formsCreateHandlers: RequestHandler[] = [
       };
     });
 
-    return ok(
-      {
-        id,
-        publisherId: user.id,
-        type: "EXTERNAL",
-        status,
-        title: dto.title,
-        description: dto.description ?? null,
-        rewardPerResponse: dto.rewardPerResponse,
-        expectedCompletions: dto.expectedCompletions,
-        estimatedDurationMinutes,
-        closeKind: null,
-        createdAt: now,
-        updatedAt: now,
-        plaintextCompletionCode: completionCode,
-        hasCompletionCode: true,
-        externalUrl: dto.externalUrl,
-        currentVersionNumber: 1,
-      },
-      201,
-    );
+    const response = {
+      id,
+      publisherId: user.id,
+      type: "EXTERNAL",
+      status,
+      title: dto.title,
+      description: dto.description ?? null,
+      rewardPerResponse: dto.rewardPerResponse,
+      expectedCompletions: dto.expectedCompletions,
+      estimatedDurationMinutes,
+      closeKind: null,
+      createdAt: now,
+      updatedAt: now,
+      plaintextCompletionCode: completionCode,
+      hasCompletionCode: true,
+      externalUrl: dto.externalUrl,
+      currentVersionNumber: 1,
+    };
+    if (recordKey) {
+      createIdempotencyRecords.update((all) => {
+        all[recordKey] = { fingerprint, response };
+      });
+    }
+    return ok(response, 201);
   }),
 
   // ASSUMED API CONTRACT: POST /forms/audience-estimate { targeting } → { estimatedRespondents }

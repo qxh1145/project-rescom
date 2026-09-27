@@ -80,7 +80,8 @@ test("Google Forms wizard · step 1 (Figma 9a)", async (t) => {
 });
 
 test("Google Forms wizard · step 2 targeting (Figma 9b)", async (t) => {
-  await t.test("maps the choices onto surveyTargetingSchema (+ ASSUMED schools)", () => {
+  await t.test("maps the choices onto surveyTargetingSchema (school hidden, never sent)", () => {
+    assert.equal(wizard.SCHOOL_TARGETING_SUPPORTED, false);
     const targeting = wizard.toTargetingJson(
       draft({ gender: "FEMALE", school: "Trường Đại học FPT – Đà Nẵng", location: "Đà Nẵng" }),
     );
@@ -89,11 +90,16 @@ test("Google Forms wizard · step 2 targeting (Figma 9b)", async (t) => {
       genders: ["FEMALE"],
       fieldOfStudy: ["Marketing & Truyền thông", "Kinh tế & Quản trị kinh doanh"],
       locations: ["Đà Nẵng"],
-      schools: ["Trường Đại học FPT – Đà Nẵng"],
     });
-    const { schools, ...backend } = targeting;
-    assert.ok(schools);
-    assert.equal(surveyTargetingSchema.safeParse(backend).success, true);
+    assert.equal(surveyTargetingSchema.safeParse(targeting).success, true);
+  });
+
+  await t.test("a school alone is no criterion: the survey would reach everyone", () => {
+    const schoolOnly = draft({ ageMin: "", ageMax: "", fieldsOfStudy: [], school: "Trường Đại học FPT – Đà Nẵng" });
+    assert.equal(wizard.criteriaCount(wizard.toTargetingJson(schoolOnly)), 0);
+    assert.deepEqual(wizard.validateAudienceStep(schoolOnly), { criteria: messages.CREATE_MESSAGES.criteriaRequired });
+    assert.equal(wizard.audienceSummaryLine(schoolOnly), "Mọi người dùng");
+    assert.equal(wizard.criteriaSummary(schoolOnly).at(-1).value, "Tất cả");
   });
 
   await t.test("'Tất cả' and empty fields add no criterion", () => {
@@ -110,15 +116,15 @@ test("Google Forms wizard · step 2 targeting (Figma 9b)", async (t) => {
     assert.equal(wizard.validateAudienceStep(draft({ ageMin: "30" })).age, messages.CREATE_MESSAGES.ageOrder);
   });
 
-  await t.test("summaries", () => {
+  await t.test("summaries leave the hidden school out", () => {
     const withSchool = draft({ school: "Trường Đại học FPT – Đà Nẵng", location: "Đà Nẵng" });
-    assert.deepEqual(wizard.criteriaSummary(withSchool).map((row) => row.value), [
-      "Tất cả",
-      "18 – 25",
-      "2 ngành",
-      "FPT – Đà Nẵng · Đà Nẵng",
+    assert.deepEqual(wizard.criteriaSummary(withSchool), [
+      { label: "Giới tính", value: "Tất cả" },
+      { label: "Tuổi", value: "18 – 25" },
+      { label: "Ngành", value: "2 ngành" },
+      { label: "Khu vực", value: "Đà Nẵng" },
     ]);
-    assert.equal(wizard.audienceSummaryLine(withSchool), "18–25 tuổi · 2 ngành · FPT – Đà Nẵng · Đà Nẵng");
+    assert.equal(wizard.audienceSummaryLine(withSchool), "18–25 tuổi · 2 ngành · Đà Nẵng");
   });
 });
 
@@ -177,6 +183,12 @@ test("Google Forms wizard · request and storage", async (t) => {
     assert.equal(wizard.toCreateRequest(draft({ rewardPerResponse: "99" })), null);
   });
 
+  await t.test("a school saved before the field was hidden is dropped on load", () => {
+    const local = memoryStorage();
+    storage.saveWizardDraft(local, "u1", draft({ school: "Trường Đại học FPT – Đà Nẵng" }));
+    assert.equal(storage.loadWizardDraft(local, "u1").school, "");
+  });
+
   await t.test("draft round-trips per user and ignores stale shapes", () => {
     const local = memoryStorage();
     storage.saveWizardDraft(local, "u1", draft());
@@ -214,5 +226,148 @@ test("Google Forms wizard · request and storage", async (t) => {
       /từ 10 đến 20/,
     );
     assert.match(messages.createSurveyErrorMessage(new ApiError({ kind: "network", message: "x" })), /kết nối/);
+  });
+});
+
+test("Google Forms wizard · Idempotency-Key per draft (decision C6 a)", async (t) => {
+  const http = (code, status) => new ApiError({ kind: "http", message: code ?? "x", status, code });
+
+  await t.test("one key per draft: generated once, reused by retries, cleared with the draft", () => {
+    const local = memoryStorage();
+    let generated = 0;
+    const generate = () => `00000000-0000-4000-8000-00000000000${++generated}`;
+    const first = storage.wizardIdempotencyKey(local, "u1", generate);
+    assert.equal(first, "00000000-0000-4000-8000-000000000001");
+    assert.equal(storage.wizardIdempotencyKey(local, "u1", generate), first);
+    assert.notEqual(storage.wizardIdempotencyKey(local, "u2", generate), first, "per user");
+    storage.clearWizardDraft(local, "u1");
+    assert.equal(storage.wizardIdempotencyKey(local, "u1", generate), "00000000-0000-4000-8000-000000000003");
+    storage.clearWizardIdempotencyKey(local, "u1");
+    assert.equal(storage.wizardIdempotencyKey(local, "u1", generate), "00000000-0000-4000-8000-000000000004");
+    // The default generator is a UUID; blocked storage still yields a key.
+    assert.match(storage.wizardIdempotencyKey(null, "u9"), /^[0-9a-f-]{36}$/);
+  });
+
+  await t.test("the key survives only outcomes that are unknown", () => {
+    assert.equal(messages.keepsIdempotencyKey(new ApiError({ kind: "network", message: "x" })), true);
+    assert.equal(messages.keepsIdempotencyKey(new ApiError({ kind: "malformed", status: 201, message: "x" })), true);
+    assert.equal(messages.keepsIdempotencyKey(http(null, 502)), true);
+    assert.equal(messages.keepsIdempotencyKey(http("RATE_LIMITED", 429)), true);
+    for (const [code, status] of [["VALIDATION_ERROR", 400], ["INSUFFICIENT_ESCROW_BALANCE", 409], ["IDEMPOTENCY_KEY_CONFLICT", 409], ["SURVEY_DURATION_EXCEEDS_RESERVATION", 422]]) {
+      assert.equal(messages.keepsIdempotencyKey(http(code, status)), false, code);
+    }
+  });
+
+  await t.test("a key reused with another body reads as a possible duplicate", () => {
+    for (const code of ["IDEMPOTENCY_KEY_CONFLICT", "IDEMPOTENCY_KEY_REUSED"]) {
+      assert.match(messages.createSurveyErrorMessage(http(code, 409)), /Khảo sát của tôi/);
+    }
+  });
+
+  await t.test("createGoogleFormSurvey sends the key header", async () => {
+    const { createGoogleFormSurvey } = await import("../lib/forms/create-service.ts");
+    const { setCsrfToken } = await import("../lib/api/client.ts");
+    setCsrfToken("tok");
+    const originalFetch = globalThis.fetch;
+    let sent = null;
+    globalThis.fetch = async (_url, init) => {
+      sent = init;
+      return new Response(JSON.stringify({ data: null, error: { code: "VALIDATION_ERROR", message: "x" }, meta: {} }), { status: 400 });
+    };
+    try {
+      await assert.rejects(createGoogleFormSurvey(wizard.toCreateRequest(draft()), "key-abc-123"));
+      assert.equal(sent.headers["Idempotency-Key"], "key-abc-123");
+      await assert.rejects(createGoogleFormSurvey(wizard.toCreateRequest(draft())));
+      assert.equal(sent.headers["Idempotency-Key"], undefined);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  await t.test("mock: same key + same body replays, another body conflicts", async () => {
+    const { decideIdempotentRequest, idempotencyRecordKey } = await import("../mocks/data/idempotency.ts");
+    assert.equal(idempotencyRecordKey("u1", null), null);
+    assert.equal(idempotencyRecordKey("u1", "k"), "u1:k");
+    assert.deepEqual(decideIdempotentRequest(undefined, "{}"), { kind: "new" });
+    const record = { fingerprint: '{"a":1}', response: { id: "f1" } };
+    assert.deepEqual(decideIdempotentRequest(record, '{"a":1}'), { kind: "replay", response: { id: "f1" } });
+    assert.deepEqual(decideIdempotentRequest(record, '{"a":2}'), { kind: "conflict" });
+  });
+});
+
+test("Google Forms wizard · Sửa & gửi lại prefill (?from=<id>)", async (t) => {
+  const rejected = {
+    id: "7c2e3f40-5a6b-4c7d-8e9f-0a1b2c3d4f04",
+    type: "EXTERNAL",
+    title: "Trải nghiệm dùng app giao đồ ăn",
+    description: "Đồ án môn Hành vi người tiêu dùng.",
+    rewardPerResponse: 12,
+    expectedCompletions: 10,
+    estimatedDurationMinutes: 5,
+    currentVersion: {
+      externalUrl: "https://docs.google.com/forms/d/e/mock-food-delivery/viewform",
+      targetingJson: {
+        ageRange: { min: 18, max: 22 },
+        genders: ["FEMALE"],
+        fieldOfStudy: ["Marketing & Truyền thông", "Ngành không có trong danh mục"],
+        locations: ["Đà Nẵng"],
+      },
+    },
+  };
+
+  await t.test("maps the rejected survey onto a fresh, submittable draft", () => {
+    const filled = wizard.wizardDraftFromSurvey(rejected);
+    assert.deepEqual(filled, {
+      ...wizard.emptyWizardDraft(),
+      externalUrl: "https://docs.google.com/forms/d/e/mock-food-delivery/viewform",
+      title: "Trải nghiệm dùng app giao đồ ăn",
+      description: "Đồ án môn Hành vi người tiêu dùng.",
+      durationBand: "FROM_5_TO_10",
+      gender: "FEMALE",
+      ageMin: "18",
+      ageMax: "22",
+      fieldsOfStudy: ["Marketing & Truyền thông"],
+      location: "Đà Nẵng",
+      sampleSize: "10",
+      rewardPerResponse: "12",
+    });
+    const body = wizard.toCreateRequest(filled);
+    assert.ok(body, "every step is valid");
+    assert.equal(createExternalSurveySchema.safeParse(body).success, true);
+  });
+
+  await t.test("no targeting or an unknown gender mix falls back to the neutral choices", () => {
+    const filled = wizard.wizardDraftFromSurvey({
+      ...rejected,
+      description: null,
+      estimatedDurationMinutes: null,
+      currentVersion: { externalUrl: null, targetingJson: { genders: ["MALE", "FEMALE"] } },
+    });
+    assert.equal(filled.gender, "ALL");
+    assert.equal(filled.externalUrl, "");
+    assert.equal(filled.description, "");
+    assert.equal(filled.durationBand, null);
+    assert.equal(filled.ageMin, "");
+    assert.deepEqual(filled.fieldsOfStudy, []);
+  });
+
+  await t.test("duration minutes → wizard band; in-Rescom surveys are not prefilled", () => {
+    assert.deepEqual(
+      [3, 5, 10, 11, 15, 16, 0, null].map((minutes) => wizard.durationBandForMinutes(minutes)),
+      ["UNDER_5", "FROM_5_TO_10", "FROM_5_TO_10", "FROM_10_TO_15", "FROM_10_TO_15", "OVER_15", null, null],
+    );
+    assert.equal(wizard.wizardDraftFromSurvey({ ...rejected, type: "INTERNAL" }), null);
+  });
+
+  await t.test("an untouched wizard is not an in-progress draft", () => {
+    assert.equal(wizard.isWizardDraftStarted(wizard.emptyWizardDraft()), false);
+    assert.equal(wizard.isWizardDraftStarted({ ...wizard.emptyWizardDraft(), title: "x" }), true);
+  });
+
+  await t.test("prefill failures read in Vietnamese", () => {
+    const http = (code, status) => new ApiError({ kind: "http", message: code, status, code });
+    assert.match(messages.prefillErrorMessage(http("FORM_FORBIDDEN", 403)), /tài khoản khác/);
+    assert.match(messages.prefillErrorMessage(http("FORM_NOT_FOUND", 404)), /Không tìm thấy/);
+    assert.match(messages.PREFILL_MESSAGES.filled("A"), /“A”/);
   });
 });

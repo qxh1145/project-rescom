@@ -7,13 +7,23 @@ import {
 } from "@/lib/admin/disputes-service";
 import { createCollection, hoursAgo, mockId, nowIso } from "../db/store";
 import { findMockUserByEmail, type MockSessionUser } from "../db/session";
-import { attempts, updateAttempt } from "./attempts";
+import { attempts, findAttempt, updateAttempt, type MockAttempt } from "./attempts";
 import { toMockUuid } from "./auth";
-import { creditSurveyReward, recordTransaction, updateWallet, walletOf } from "./economy";
+import { addMissingCodeCase, creditRespondentRefusal, disputeHoldRefusal, type ResolveRefusal } from "./dispute-rules";
+import {
+  creditSurveyReward,
+  holdSurveyReward,
+  payRewardFromSurveyEscrow,
+  recordTransaction,
+  rewardOutcomeOf,
+  updateWallet,
+  walletOf,
+} from "./economy";
 import { findPublisherForm, PUBLISHER_FORM_IDS, updatePublisherForm } from "./forms";
 import { formTracking, trackingOf, updateTracking } from "./forms-manage";
 import { updateNotifications } from "./notifications";
 import { findSurvey, markSurveyCompleted, SURVEY_IDS, updateSurvey } from "./surveys";
+import { FRAUD_SEED_USER_IDS, recordMockFraudLog } from "./admin-fraud-log";
 
 /**
  * Admin "Khiếu nại & báo lỗi" queue (Figma 11c, 62:1609). A case is the
@@ -72,7 +82,7 @@ function figmaDispute(): MockDisputeCase {
       wrongCodeCount: 0,
     },
     respondent: {
-      id: "3f7a0c1d-2e3f-4a5b-8c6d-7e8f9a0b7f3a",
+      id: FRAUD_SEED_USER_IDS.khang,
       code: "#7F3A",
       joinedAt: "2026-09-20T09:00:00+07:00",
       attemptCount: 14,
@@ -149,10 +159,105 @@ function figmaMissingCode(): MockDisputeCase {
   };
 }
 
-export const disputeCases = createCollection<MockDisputeCase[]>("admin-dispute-cases", () => [
-  figmaDispute(),
-  figmaMissingCode(),
-]);
+const STUDENT_DISPUTE_ATTEMPT_ID = "8d1e4b20-9c1d-4b1d-9e2f-0a1b2c3d5a09";
+const STUDENT_DISPUTE_CASE_ID = "9e3c1a70-1d2b-4c3d-8e4f-0a1b2c3d6a03";
+
+/**
+ * Demo gap fix: `figmaDispute()` above uses the Figma sample respondent
+ * `#7F3A`, who is not a mock account (`respondentEmail: null`), so admin
+ * "Chấp nhận" on it always hits `disputeHoldRefusal` — there is no wallet to
+ * refund the hold from. Seeds one real respondent (`student@fpt.edu.vn`) with
+ * a completed Google Forms attempt on minh's "Thói quen đọc sách của sinh
+ * viên" survey, still inside its 48h review. The mock has no `placeDisputeHold`
+ * equivalent that moves a Chờ 48h reward into Integrity Hold when a dispute
+ * opens (unlike the backend's `external-dispute:` journal) — `holdSurveyReward`
+ * (used for the in-Rescom ENFORCED policy) reaches the same end state, so it
+ * is reused here instead of inventing new economy rules.
+ */
+function ensureStudentDisputeAttempt(): MockAttempt | null {
+  const student = findMockUserByEmail("student@fpt.edu.vn");
+  if (!student) return null;
+  const existing = findAttempt(STUDENT_DISPUTE_ATTEMPT_ID);
+  if (existing) return existing;
+  const codeVerifiedAt = hoursAgo(20);
+  const startedAt = new Date(Date.parse(codeVerifiedAt) - 185_000).toISOString();
+  const attempt: MockAttempt = {
+    attemptId: STUDENT_DISPUTE_ATTEMPT_ID,
+    responseId: null,
+    userId: student.id,
+    surveyId: PUBLISHER_FORM_IDS.readingHabits,
+    formVersionId: "6b1d2e3f-4a5b-4c6d-9e7f-0000000000f2",
+    type: "EXTERNAL",
+    status: "COMPLETED",
+    closedReason: null,
+    versionNumber: 1,
+    startedAt,
+    expiresAt: new Date(Date.parse(startedAt) + 3_600_000).toISOString(),
+    submittedAt: codeVerifiedAt,
+    answers: {},
+    wrongCodeCount: 0,
+    completionCode: "482917",
+    submission: null,
+  };
+  attempts.update((all) => {
+    all.push(attempt);
+  });
+  holdSurveyReward(student, {
+    amount: 10,
+    surveyId: PUBLISHER_FORM_IDS.readingHabits,
+    attemptId: STUDENT_DISPUTE_ATTEMPT_ID,
+    title: "Thói quen đọc sách của sinh viên",
+  });
+  return attempt;
+}
+
+function studentReadingHabitsDispute(): MockDisputeCase | null {
+  const attempt = ensureStudentDisputeAttempt();
+  if (!attempt) return null;
+  const form = findPublisherForm(PUBLISHER_FORM_IDS.readingHabits);
+  const { respondent, email } = respondentOfUser(attempt.userId);
+  const verifiedMs = Date.parse(attempt.submittedAt ?? attempt.startedAt);
+  return {
+    id: STUDENT_DISPUTE_CASE_ID,
+    kind: "ATTEMPT_DISPUTE",
+    status: "OPEN",
+    createdAt: new Date(verifiedMs + 1_800_000).toISOString(),
+    reporter: { role: "PUBLISHER", name: "Linh N." },
+    survey: {
+      id: PUBLISHER_FORM_IDS.readingHabits,
+      title: form?.title ?? "Thói quen đọc sách của sinh viên",
+      type: "EXTERNAL",
+      rewardPerResponse: 10,
+    },
+    attempt: {
+      id: attempt.attemptId,
+      formVersionId: attempt.formVersionId,
+      status: attempt.status,
+      startedAt: attempt.startedAt,
+      codeVerifiedAt: attempt.submittedAt,
+      declaredEffortSeconds: 8 * 60,
+      wrongCodeCount: attempt.wrongCodeCount,
+    },
+    respondent,
+    amount: 10,
+    reviewEndsAt: new Date(verifiedMs + REVIEW_MS).toISOString(),
+    reason: "LOW_EFFORT",
+    description:
+      "Demo: lượt làm của tài khoản demo student@fpt.edu.vn, dùng để kiểm thử chấp nhận khiếu nại và hoàn điểm cho người đăng.",
+    evidence: [],
+    resolution: null,
+    publisherFormId: PUBLISHER_FORM_IDS.readingHabits,
+    publisherEmail: form?.ownerEmail ?? "minh.le@fpt.edu.vn",
+    respondentEmail: email,
+  };
+}
+
+export const disputeCases = createCollection<MockDisputeCase[]>("admin-dispute-cases", () => {
+  const seeded = [figmaDispute(), figmaMissingCode()];
+  const studentCase = studentReadingHabitsDispute();
+  if (studentCase) seeded.push(studentCase);
+  return seeded;
+});
 
 interface LegacyUser {
   id: string;
@@ -295,10 +400,19 @@ function syncCases(): MockDisputeCase[] {
   });
 }
 
-/** Strips the mock-only links: the `DisputeCase` the API returns. */
+/**
+ * Strips the mock-only links: the `DisputeCase` the API returns. The attempt
+ * status and wrong-code count are read live from `attempts.ts` (the case keeps
+ * a snapshot from when it was filed): a respondent who reports a missing code
+ * and then enters it has a COMPLETED attempt the Admin must see.
+ */
 export function toDisputeCaseDto(item: MockDisputeCase): DisputeCase {
+  const live = findAttempt(item.attempt.id);
+  const attempt = live
+    ? { ...item.attempt, status: live.status, wrongCodeCount: live.wrongCodeCount }
+    : item.attempt;
   // zod drops the unknown (mock-only) keys and checks the contract shape.
-  return disputeCaseSchema.parse(item);
+  return disputeCaseSchema.parse({ ...item, attempt });
 }
 
 export function openDisputeCases(): MockDisputeCase[] {
@@ -323,15 +437,17 @@ export function disputeQueueCount(): number {
 /**
  * For the respondent handler (`POST /attempts/:attemptId/report-missing-code`),
  * which answers REPORTED but stores nothing yet: one call there makes the
- * report show up in the admin queue. Idempotent per attempt.
+ * report show up in the admin queue. One OPEN case per attempt
+ * (`addMissingCodeCase`): a repeated report is ignored and an open
+ * locked-attempt case of the same attempt becomes the report.
  */
 export function addMissingCodeReport(input: { attemptId: string; reason: string }): void {
-  const attempt = attempts.get().find((item) => item.attemptId === input.attemptId);
-  if (!attempt || disputeCases.get().some((item) => item.attempt.id === attempt.attemptId)) return;
+  const attempt = findAttempt(input.attemptId);
+  if (!attempt) return;
   const survey = findSurvey(attempt.surveyId);
   const { respondent, email } = respondentOfUser(attempt.userId);
   disputeCases.update((all) => {
-    all.push({
+    addMissingCodeCase(all, {
       id: mockId(),
       kind: "MISSING_CODE",
       status: "OPEN",
@@ -383,11 +499,13 @@ function notify(user: MockSessionUser | null, type: "ESCROW_RELEASED" | "REWARD_
 const userOf = (email: string | null) => (email ? findMockUserByEmail(email) : null);
 
 /**
- * `resolveDisputeHold` for a dispute: the respondent's held points go back to
- * the publisher (`refund`) or to the respondent's Khả dụng (`release`), with
- * the backend journal key `dispute-resolution:{caseId}:refund|release`.
- * The respondent's side is only posted when their Integrity Hold covers it
- * (the Figma respondents #7F3A / #C21D are not mock accounts).
+ * `resolveDisputeHold` for a dispute: the respondent's held points go to the
+ * publisher's Khả dụng (`refund`, like backend `ledger.service.ts`) or to the
+ * respondent's Khả dụng (`release`), with the backend journal key
+ * `dispute-resolution:{caseId}:refund|release`. A refund is refused up front
+ * when the hold does not cover it (`disputeHoldRefusal`); a release only posts
+ * the respondent's side when it does (the Figma respondents #7F3A / #C21D are
+ * not mock accounts). The survey's escrow and completions are not touched.
  */
 function settleDispute(item: MockDisputeCase, outcome: DisputeCaseOutcome, note: string) {
   const publisher = userOf(item.publisherEmail);
@@ -398,23 +516,22 @@ function settleDispute(item: MockDisputeCase, outcome: DisputeCaseOutcome, note:
   const base = { note: title, surveyId: item.survey.id, attemptId: item.attempt.id, releasesAt: null };
 
   if (outcome === "REFUND_TO_PUBLISHER") {
+    recordMockFraudLog({
+      userId: item.respondent.id,
+      type: "COMPLAINT_UPHELD",
+      survey: { id: item.survey.id, title },
+      details: { caseId: item.id, refundedPoints: item.amount, note },
+    });
     if (publisher) {
       updateWallet(publisher, (wallet) => {
-        wallet.escrow += item.amount;
+        wallet.available += item.amount;
       });
       recordTransaction(publisher, {
         ...base,
         kind: "DISPUTE_RESOLUTION",
         amount: item.amount,
-        status: "ESCROW",
+        status: "AVAILABLE",
         dispute: { caseId: item.id, action: "refund" },
-      });
-    }
-    if (item.publisherFormId) {
-      // The invalid completion no longer counts: its slot reopens with the refunded escrow.
-      updatePublisherForm(item.publisherFormId, (form) => {
-        form.escrowLocked += item.amount;
-        form.completedCompletions = Math.max(0, form.completedCompletions - 1);
       });
     }
     if (respondent && heldByRespondent) {
@@ -429,11 +546,11 @@ function settleDispute(item: MockDisputeCase, outcome: DisputeCaseOutcome, note:
         dispute: { caseId: item.id, action: "refund" },
       });
     }
-    // Figma 14d (62:2117) copy of the publisher notification.
+    // Figma 14d (62:2117) publisher notification; the points land in Khả dụng like the backend.
     notify(
       publisher,
       "ESCROW_RELEASED",
-      `Khiếu nại được chấp nhận — Lượt làm của ${code} không hợp lệ. ${item.amount} điểm đã trả về ký quỹ của “${title}”.`,
+      `Khiếu nại được chấp nhận — Lượt làm của ${code} trong “${title}” không hợp lệ. ${item.amount} điểm đã hoàn vào Khả dụng của bạn.`,
     );
     notify(respondent, "WARNING", `Lượt làm bị thu hồi điểm — Khiếu nại về “${title}” được chấp nhận. Lý do: ${note}`);
   } else {
@@ -471,12 +588,56 @@ function settleDispute(item: MockDisputeCase, outcome: DisputeCaseOutcome, note:
   }
 }
 
+/** Publisher form a missing-code reward is paid from (it shares the Khám phá survey id). */
+function payingFormOf(item: MockDisputeCase) {
+  return findPublisherForm(item.publisherFormId ?? item.survey.id);
+}
+
+/** `creditRespondentRefusal` on the live attempt, reward history, survey and escrow. */
+function creditRefusal(item: MockDisputeCase): ResolveRefusal | null {
+  const respondent = userOf(item.respondentEmail);
+  const form = payingFormOf(item);
+  const survey = findSurvey(item.survey.id);
+  const publisher = form ? userOf(form.ownerEmail) : null;
+  return creditRespondentRefusal({
+    amount: item.amount,
+    attemptStatus: findAttempt(item.attempt.id)?.status ?? item.attempt.status,
+    alreadyRewarded: respondent !== null && rewardOutcomeOf(respondent, item.attempt.id) !== null,
+    survey: form
+      ? {
+          closed: form.status !== "PUBLISHED",
+          completedCompletions: form.completedCompletions,
+          expectedCompletions: form.expectedCompletions,
+        }
+      : survey
+        ? {
+            closed: survey.status === "CLOSED",
+            completedCompletions: survey.completedCompletions,
+            expectedCompletions: survey.expectedCompletions,
+          }
+        : null,
+    escrow: form ? { form: form.escrowLocked, wallet: publisher ? walletOf(publisher).escrow : null } : null,
+  });
+}
+
 /** Missing code / locked attempt decisions (ASSUMED effects). */
 function settleReport(item: MockDisputeCase, outcome: DisputeCaseOutcome, note: string) {
   const respondent = userOf(item.respondentEmail);
   const title = item.survey.title;
   if (outcome === "CREDIT_RESPONDENT") {
     if (respondent) {
+      // The reward comes out of the survey escrow (checked by `creditRefusal`):
+      // the form's lock and its owner's Ký quỹ ("Trả thưởng khảo sát").
+      const form = payingFormOf(item);
+      const publisher = form ? userOf(form.ownerEmail) : null;
+      const reward = { amount: item.amount, surveyId: item.survey.id, attemptId: item.attempt.id, title };
+      if (publisher) payRewardFromSurveyEscrow(publisher, reward);
+      if (form) {
+        updatePublisherForm(form.id, (draft) => {
+          draft.escrowLocked -= item.amount;
+          draft.completedCompletions += 1;
+        });
+      }
       updateAttempt(item.attempt.id, (attempt) => {
         attempt.status = "COMPLETED";
         attempt.submittedAt = nowIso();
@@ -486,13 +647,7 @@ function settleReport(item: MockDisputeCase, outcome: DisputeCaseOutcome, note: 
         survey.completedCompletions = Math.min(survey.expectedCompletions, survey.completedCompletions + 1);
       });
       // Checked by an Admin: straight to Khả dụng (no second 48h review).
-      creditSurveyReward(respondent, {
-        amount: item.amount,
-        pending: false,
-        surveyId: item.survey.id,
-        attemptId: item.attempt.id,
-        title,
-      });
+      creditSurveyReward(respondent, { ...reward, pending: false });
     }
     notify(respondent, "REWARD_RELEASED", `+${item.amount} điểm vào Khả dụng — Admin đã xác nhận lượt làm “${title}”.`);
   } else if (outcome === "CODE_LIMIT_RESET") {
@@ -506,9 +661,7 @@ function settleReport(item: MockDisputeCase, outcome: DisputeCaseOutcome, note: 
   }
 }
 
-export type ResolveCaseResult =
-  | { ok: true; item: MockDisputeCase }
-  | { ok: false; status: number; code: string; message: string };
+export type ResolveCaseResult = { ok: true; item: MockDisputeCase } | ({ ok: false } & ResolveRefusal);
 
 export function resolveMockDisputeCase(
   caseId: string,
@@ -522,6 +675,15 @@ export function resolveMockDisputeCase(
   }
   if (!OUTCOMES_BY_KIND[item.kind].includes(input.outcome)) {
     return { ok: false, status: 400, code: "DISPUTE_OUTCOME_NOT_ALLOWED", message: "Outcome not allowed for this case." };
+  }
+  if (input.outcome === "CREDIT_RESPONDENT") {
+    const refusal = creditRefusal(item);
+    if (refusal) return { ok: false, ...refusal };
+  }
+  if (item.kind === "ATTEMPT_DISPUTE" && input.outcome === "REFUND_TO_PUBLISHER") {
+    const respondent = userOf(item.respondentEmail);
+    const refusal = disputeHoldRefusal(respondent ? walletOf(respondent).integrityHold : null, item.amount);
+    if (refusal) return { ok: false, ...refusal };
   }
   if (item.kind === "ATTEMPT_DISPUTE") settleDispute(item, input.outcome, input.note);
   else settleReport(item, input.outcome, input.note);

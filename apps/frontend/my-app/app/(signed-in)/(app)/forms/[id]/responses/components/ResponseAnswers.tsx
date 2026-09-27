@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Icon } from "@/components/ui/Icon";
 import { reviewReasonText } from "@/lib/forms/results-messages";
 import type { FormResponse, FormResponses, ResultQuestion } from "@/lib/forms/results-service";
@@ -125,18 +124,5 @@ export function ResponseAnswers({
         </li>
       ))}
     </ol>
-  );
-}
-
-/** ASSUMED entry (not drawn): complaint about one response → 5B's complaints page. */
-export function ComplaintLink({ formId, response }: { formId: string; response: FormResponse }) {
-  return (
-    <Link
-      href={`/forms/${formId}/complaints?responseId=${encodeURIComponent(response.id)}`}
-      className="inline-flex min-h-11 items-center gap-2 self-start text-label font-bold text-primary hover:underline"
-    >
-      <Icon name="flag" size={16} />
-      Khiếu nại về câu trả lời này
-    </Link>
   );
 }

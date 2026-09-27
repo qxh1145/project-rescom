@@ -133,7 +133,11 @@ export function MyFormsScreen() {
               <div className="hidden lg:block">
                 <StatCard label="Chờ Admin duyệt" value={String(stats.pendingReview)} />
               </div>
-              <StatCard label="Đang khoá ký quỹ" value={`${stats.escrowLocked} điểm`} accent />
+              <StatCard
+                label="Đang khoá ký quỹ"
+                value={stats.escrowLocked === null ? "—" : `${stats.escrowLocked} điểm`}
+                accent
+              />
               <StatCard label="Tổng lượt hoàn thành" value={String(stats.completed)} />
             </section>
 
@@ -159,10 +163,10 @@ export function MyFormsScreen() {
               ) : (
                 <>
                   <div className="hidden lg:block">
-                    <FormsTable rows={visible} now={now} />
+                    <FormsTable rows={visible} now={now} onChanged={reload} />
                   </div>
                   <div className="lg:hidden">
-                    <FormCards rows={visible} now={now} />
+                    <FormCards rows={visible} now={now} onChanged={reload} />
                   </div>
                 </>
               )}

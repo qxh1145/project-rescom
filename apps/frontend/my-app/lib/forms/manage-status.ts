@@ -8,7 +8,7 @@ import { isOwnerReopenableClose, type FormCloseKind, type FormStatusEnum, type F
 
 /** What the Publisher sees; several backend states share one pill. */
 export type PublisherStatusView =
-  | "REJECTED" // DRAFT + Admin rejection — "Bị từ chối"
+  | "REJECTED" // CLOSED by moderation (legacy: DRAFT + rejection) — "Bị từ chối"
   | "DRAFT" // never submitted — ASSUMED "Bản nháp" (not drawn)
   | "PENDING_REVIEW" // MODERATION_QUEUE / legacy ESCROW_LOCKED — "Chờ duyệt"
   | "PAUSED" // PUBLISHED + pausedAt — ASSUMED "Tạm dừng"
@@ -18,12 +18,20 @@ export type PublisherStatusView =
 
 export interface StatusFacts {
   status: FormStatusEnum;
+  /** VERIFIED on `GET /forms/:id` and (Phase 5 M2) `GET /forms` items; absent = unknown. */
+  closeKind?: FormCloseKind | null;
+  /** ASSUMED: the Admin's reason and the refunded Escrow. */
   rejection: { reason: string; refundedPoints: number } | null;
   pausedAt: string | null;
   completedCompletions: number;
   expectedCompletions: number;
 }
 
+/**
+ * Backend `rejectPublication` closes the survey with `closeKind`
+ * `MODERATION` (final, never reopenable), so CLOSED + MODERATION is "Bị từ
+ * chối". DRAFT + `rejection` is kept for data written before that.
+ */
 export function statusViewOf(form: StatusFacts): PublisherStatusView {
   switch (form.status) {
     case "DRAFT":
@@ -34,6 +42,7 @@ export function statusViewOf(form: StatusFacts): PublisherStatusView {
     case "PUBLISHED":
       return form.pausedAt ? "PAUSED" : "RUNNING";
     case "CLOSED":
+      if (form.closeKind === "MODERATION") return "REJECTED";
       return form.expectedCompletions > 0 && form.completedCompletions >= form.expectedCompletions ? "FULL" : "ENDED";
   }
 }
@@ -87,36 +96,98 @@ export interface ManageStats {
   running: number;
   /** "Chờ Admin duyệt". */
   pendingReview: number;
-  /** "Đang khoá ký quỹ" — points still locked across every survey. */
-  escrowLocked: number;
+  /**
+   * "Đang khoá ký quỹ" — unused points still locked across every survey;
+   * `null` when no survey reports it (unknown, shown as "—").
+   */
+  escrowLocked: number | null;
   /** "Tổng lượt hoàn thành". */
   completed: number;
 }
 
 export function aggregateStats(
-  forms: readonly (StatusFacts & { escrowLocked: number })[],
+  forms: readonly (StatusFacts & { escrowLocked: number | null })[],
 ): ManageStats {
   const stats: ManageStats = { running: 0, pendingReview: 0, escrowLocked: 0, completed: 0 };
+  let escrowKnown = forms.length === 0;
   for (const form of forms) {
     const view = statusViewOf(form);
     if (view === "RUNNING" || view === "PAUSED") stats.running += 1;
     if (view === "PENDING_REVIEW") stats.pendingReview += 1;
-    stats.escrowLocked += form.escrowLocked;
+    if (form.escrowLocked !== null) {
+      escrowKnown = true;
+      stats.escrowLocked = (stats.escrowLocked ?? 0) + form.escrowLocked;
+    }
     stats.completed += form.completedCompletions;
   }
+  if (!escrowKnown) stats.escrowLocked = null;
   return stats;
 }
 
-/** Decision E8-D1 (backend `isReopenableByOwner`): only a survey its owner closed reopens. */
-export function canReopen(form: { status: FormStatusEnum; closeKind: FormCloseKind | null }): boolean {
-  return form.status === "CLOSED" && isOwnerReopenableClose(form.closeKind);
+/** Why `POST /forms/:id/reopen` refuses (backend `FormNotReopenableException.reason`, + not closed). */
+export type ReopenRefusal = "NOT_CLOSED" | "CLOSED_BY_ADMIN_OR_MODERATION" | "VERSION_NOT_APPROVED";
+
+/**
+ * Backend `reopenForm` order: only CLOSED; decision E8-D1 — only a survey its
+ * owner closed (`isReopenableByOwner`); Story 8.1 — the current version must
+ * have been approved (a withdrawn or re-versioned submission never went
+ * live). `currentVersion` is only known on `GET /forms/:id`; without it the
+ * version check is left to the server.
+ */
+export function reopenRefusalOf(form: {
+  status: FormStatusEnum;
+  closeKind?: FormCloseKind | null;
+  currentVersion?: Readonly<Record<string, unknown>> | null;
+}): ReopenRefusal | null {
+  if (form.status !== "CLOSED") return "NOT_CLOSED";
+  if (!isOwnerReopenableClose(form.closeKind ?? null)) return "CLOSED_BY_ADMIN_OR_MODERATION";
+  if (form.currentVersion?.isPublished === false) return "VERSION_NOT_APPROVED";
+  return null;
+}
+
+/** Decision E8-D1 (backend `isReopenableByOwner`) + an approved current version when known. */
+export function canReopen(form: Parameters<typeof reopenRefusalOf>[0]): boolean {
+  return reopenRefusalOf(form) === null;
 }
 
 /**
- * "Sửa & gửi lại" of a rejected survey: the Google Forms wizard (5A) prefilled
- * from this survey, or the Form Builder (5D) for an in-Rescom form.
+ * "Mở lại" on a list row (Phase 5 M2). Stopgap: a CLOSED survey whose close
+ * kind is not known (`null`/absent — an older backend, or a close recorded
+ * before the column existed) still offers the link, and `/forms/:id/reopen`
+ * decides from `GET /forms/:id` (it explains a refusal). A known ADMIN or
+ * MODERATION close never offers it.
+ */
+export function listOffersReopen(form: { status: FormStatusEnum; closeKind?: FormCloseKind | null }): boolean {
+  if (form.status !== "CLOSED") return false;
+  return form.closeKind == null || canReopen(form);
+}
+
+/**
+ * "Rút lại & hoàn điểm" (Phase 5 M7, decision Q4 option a): backend
+ * `closeForm` lets the owner withdraw a survey waiting for review and close a
+ * re-versioned draft (one with a published version, whose Escrow is still
+ * held). A draft past v1 is taken as re-versioned; a never-published one is
+ * refused by the server (400 `INVALID_STATUS_TRANSITION`).
+ */
+export function canWithdraw(form: StatusFacts, versionNumber: number): boolean {
+  const view = statusViewOf(form);
+  return view === "PENDING_REVIEW" || (view === "DRAFT" && versionNumber > 1);
+}
+
+/**
+ * "Sửa & gửi lại" of a rejected survey. The backend never edits a CLOSED
+ * survey, so both paths create a new one: the Google Forms wizard (5A)
+ * prefilled from this survey, or `/forms/:id/resubmit` — a confirmation over
+ * the Tiến độ tab that copies an in-Rescom form into a new Form Builder draft.
  */
 export function resubmitHref(form: { id: string; type: FormTypeEnum }): string {
+  return form.type === "EXTERNAL"
+    ? `/forms/new/google-form?from=${encodeURIComponent(form.id)}`
+    : `/forms/${encodeURIComponent(form.id)}/resubmit`;
+}
+
+/** "Tiếp tục soạn" of a never-submitted draft (ASSUMED, not drawn): its own editor. */
+export function continueDraftHref(form: { id: string; type: FormTypeEnum }): string {
   return form.type === "EXTERNAL"
     ? `/forms/new/google-form?from=${encodeURIComponent(form.id)}`
     : `/forms/${encodeURIComponent(form.id)}/builder`;

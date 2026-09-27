@@ -18,6 +18,8 @@ export type MockTransactionKind =
   | "STARTER_GRANT" // "Điểm khởi đầu" · Đóng băng
   | "STARTER_UNLOCK" // "Mở khoá điểm khởi đầu" · Đóng băng → Khả dụng
   | "SURVEY_REWARD" // "Thưởng khảo sát"
+  // Publisher side of a reward drawn from the survey escrow ("Trả thưởng khảo sát", `payRewardFromEscrow`).
+  | "SURVEY_PAYOUT"
   | "REWARD_RELEASE" // "Điểm chờ duyệt đã mở" · Chờ duyệt → Khả dụng (`release-pending:` journal)
   | "TOP_UP" // "Nạp điểm"
   | "SURVEY_ESCROW" // "Ký quỹ khảo sát" (publisher spend)
@@ -48,7 +50,7 @@ export interface MockTransaction {
   /**
    * DISPUTE_RESOLUTION rows (Phase 6, `mocks/data/admin-disputes.ts`): the case
    * and the backend action. `refund` + positive amount = the publisher's side
-   * (back to Ký quỹ), negative = the respondent's held points taken back;
+   * (credited to Khả dụng), negative = the respondent's held points taken back;
    * `release` = Đang giữ → Khả dụng for the respondent.
    */
   dispute?: { caseId: string; action: "refund" | "release" };
@@ -125,6 +127,32 @@ export function creditReward(
   }
   state.wallet.available += input.amount;
   return { activated: unlockStarterPoints(state, ctx, input.attemptId) };
+}
+
+/**
+ * Publisher side of a confirmed reward paid from a survey's escrow (Phase 6
+ * admin "Cộng điểm" on a missing-code report, `mocks/data/admin-disputes.ts`):
+ * Ký quỹ −N, posted under the respondent credit's `internal-reward:{attemptId}`
+ * journal, so `/wallet` shows "Trả thưởng khảo sát". Throws
+ * `INSUFFICIENT_BALANCE` when the escrow is short (nothing changes then).
+ */
+export function payRewardFromEscrow(
+  state: EconomyState,
+  ctx: RuleContext,
+  input: { amount: number; surveyId: string; attemptId: string; title: string },
+): MockTransaction {
+  if (input.amount <= 0) throw new Error("Payout amount must be positive");
+  if (state.wallet.escrow < input.amount) throw new Error("INSUFFICIENT_BALANCE");
+  state.wallet.escrow -= input.amount;
+  return addRow(state, ctx, {
+    kind: "SURVEY_PAYOUT",
+    amount: -input.amount,
+    status: "ESCROW",
+    note: input.title,
+    surveyId: input.surveyId,
+    attemptId: input.attemptId,
+    releasesAt: null,
+  });
 }
 
 /**
@@ -209,6 +237,8 @@ function entriesOf(row: MockTransaction, postedAsPending: boolean): Array<[Ledge
         ["PENDING", -amount],
         ["USER_AVAILABLE", amount],
       ];
+    case "SURVEY_PAYOUT":
+      return [["ESCROW", -amount]];
     case "TOP_UP":
       return [["USER_AVAILABLE", amount]];
     case "SURVEY_ESCROW":
@@ -228,9 +258,9 @@ function entriesOf(row: MockTransaction, postedAsPending: boolean): Array<[Ledge
           ["USER_AVAILABLE", amount],
         ];
       }
-      // ASSUMED (PRD UJ-3, Figma 11c "trả 10 điểm về ký quỹ"): the refund lands in the
-      // publisher's Ký quỹ; backend `resolveDisputeHold` currently credits USER_AVAILABLE.
-      return row.amount < 0 ? [["INTEGRITY_HOLD", -amount]] : [["ESCROW", amount]];
+      // Backend `resolveDisputeHold` (refund): respondent INTEGRITY_HOLD −N → publisher
+      // USER_AVAILABLE +N, one journal; each user's rows carry their own side.
+      return row.amount < 0 ? [["INTEGRITY_HOLD", -amount]] : [["USER_AVAILABLE", amount]];
     case "INTEGRITY_RELEASE":
       return [
         ["INTEGRITY_HOLD", -amount],
@@ -258,6 +288,9 @@ function journalOf(userId: string, row: MockTransaction, postedAsPending: boolea
       return { key: `internal-reward:${ref}`, description: `Internal survey reward: ${ref}` };
     case "REWARD_RELEASE":
       return { key: `release-pending:${ref}`, description: `Matured pending survey reward release: ${ref}` };
+    case "SURVEY_PAYOUT":
+      // Same journal as the respondent's confirmed credit (`creditReward` with `pending: false`).
+      return { key: `internal-reward:${ref}`, description: `Internal survey reward: ${ref}` };
     case "TOP_UP":
       return {
         key: `topup-approval:${row.id}`,
@@ -297,6 +330,7 @@ function entryId(journalId: string, index: number): string {
 
 const SURVEY_KINDS = new Set<MockTransactionKind>([
   "SURVEY_REWARD",
+  "SURVEY_PAYOUT",
   "REWARD_RELEASE",
   "SURVEY_ESCROW",
   "ESCROW_REFUND",

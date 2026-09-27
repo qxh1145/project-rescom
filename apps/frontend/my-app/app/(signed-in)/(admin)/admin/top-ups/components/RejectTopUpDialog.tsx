@@ -36,6 +36,11 @@ export function RejectTopUpDialog({ item, busy, error, onClose, onConfirm }: Rej
   const [touched, setTouched] = useState(false);
   const validation = touched ? rejectReasonError(reason) : null;
 
+  function close() {
+    if (busy) return;
+    onClose();
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setTouched(true);
@@ -44,7 +49,7 @@ export function RejectTopUpDialog({ item, busy, error, onClose, onConfirm }: Rej
   }
 
   return (
-    <Dialog open onClose={onClose} labelledBy="reject-top-up-title" width={520}>
+    <Dialog open onClose={close} labelledBy="reject-top-up-title" width={520} dismissible={!busy}>
       <form className="p-5 lg:p-7" onSubmit={(event) => void submit(event)} noValidate>
         <div className="flex items-start gap-3">
           <div className="mr-auto">
@@ -56,7 +61,7 @@ export function RejectTopUpDialog({ item, busy, error, onClose, onConfirm }: Rej
               <span className="font-mono">{formatTransferReference(item.transferReference)}</span>
             </p>
           </div>
-          <IconButton icon="x" label="Đóng" onClick={onClose} />
+          <IconButton icon="x" label="Đóng" onClick={close} disabled={busy} />
         </div>
         <p className="mt-4 text-body-sm text-ink-strong">
           Không cộng điểm. Người dùng nhận thông báo kèm lý do dưới đây.
@@ -80,7 +85,7 @@ export function RejectTopUpDialog({ item, busy, error, onClose, onConfirm }: Rej
           </Alert>
         ) : null}
         <div className="mt-6 flex gap-3 lg:justify-end">
-          <Button variant="secondary" size="xl" onClick={onClose} disabled={busy}>
+          <Button variant="secondary" size="xl" onClick={close} disabled={busy}>
             Huỷ
           </Button>
           <Button

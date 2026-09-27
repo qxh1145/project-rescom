@@ -4,6 +4,7 @@ import { findMockUserByEmail, type MockSessionUser } from "../db/session";
 import { createdFormExtras } from "../handlers/forms-create";
 import { toMockUuid } from "./auth";
 import { refundSurveyEscrow } from "./economy";
+import { findFormDraft, nextUpdatedAt, saveFormDraft, type MockFormDraft } from "./form-drafts";
 import {
   PUBLISHER_FORM_IDS,
   addPublisherForm,
@@ -14,6 +15,7 @@ import {
 } from "./forms";
 import { updateNotifications } from "./notifications";
 import { surveys, type MockSurvey } from "./surveys";
+import { FRAUD_SEED_USER_IDS, fraudSummaryOf } from "./admin-fraud-log";
 
 /**
  * Phase 6 · Duyệt khảo sát (Figma 11a 62:3406, 11a' 62:2868). The queue is
@@ -190,6 +192,9 @@ function deadlineOf(form: MockPublisherForm, extras: ReviewExtras): string | nul
 export function toModerationQueueItem(form: MockPublisherForm) {
   const extras = extrasOf(form);
   const owner = ownerOf(form);
+  const publisherId =
+    owner?.id ??
+    (form.ownerEmail === "quan.pham@fpt.edu.vn" ? FRAUD_SEED_USER_IDS.quan : toMockUuid(form.ownerEmail));
   const cost = calculateEscrowCost({
     type: form.type,
     expectedCompletions: form.expectedCompletions,
@@ -204,7 +209,7 @@ export function toModerationQueueItem(form: MockPublisherForm) {
     description: extras.description ?? null,
     type: form.type,
     status: form.status,
-    publisherId: owner?.id ?? toMockUuid(form.ownerEmail),
+    publisherId,
     publisherEmail: form.ownerEmail,
     rewardPerResponse: form.rewardPerResponse,
     expectedCompletions: form.expectedCompletions,
@@ -218,8 +223,8 @@ export function toModerationQueueItem(form: MockPublisherForm) {
     isResubmission: form.versionNumber > 1 && form.publishedAt !== null,
     submittedAt: form.submittedAt ?? form.createdAt,
     publisherName: owner?.name ?? extras.publisherName ?? null,
-    // ASSUMED: FraudLog entries of the publisher; the demo publishers have none.
-    publisherFraudLogCount: 0,
+    // ASSUMED response extension, composed from the same append-only FraudLog store.
+    publisherFraudLogCount: fraudSummaryOf(publisherId).count14d,
     deadlineAt: deadlineOf(form, extras),
   };
 }
@@ -303,6 +308,15 @@ function saveDecision(
   return decision;
 }
 
+/**
+ * A Form Builder survey also lives in `formDrafts`, whose handler answers
+ * `GET /forms/:id` first: keep its status in step with the decision.
+ */
+function syncBuilderDraft(formId: string, patch: Pick<MockFormDraft, "status"> & Partial<MockFormDraft>): void {
+  const draft = findFormDraft(formId);
+  if (draft) saveFormDraft({ ...draft, ...patch, updatedAt: nextUpdatedAt(draft.updatedAt) });
+}
+
 /** `MODERATION_QUEUE → PUBLISHED`, catalog entry, SURVEY_APPROVED to the owner. */
 export function approveModeration(form: MockPublisherForm, admin: MockSessionUser) {
   const extras = extrasOf(form);
@@ -313,6 +327,7 @@ export function approveModeration(form: MockPublisherForm, admin: MockSessionUse
       draft.hiddenFromMarketplace = false;
       draft.deadlineAt = deadlineOf(draft, extras);
     }) ?? form;
+  syncBuilderDraft(form.id, { status: "PUBLISHED" });
   publishPublisherFormToCatalog(published);
   const decision = saveDecision(published, admin, {
     outcome: "APPROVED",
@@ -329,22 +344,31 @@ export function approveModeration(form: MockPublisherForm, admin: MockSessionUse
 }
 
 /**
- * Rejection (peer convention: DRAFT + `rejection`, where the backend closes
- * the form): escrow back to the owner's Khả dụng, SURVEY_REJECTED with reason.
+ * Backend `rejectPublication`: `MODERATION_QUEUE → CLOSED` with `closeKind`
+ * MODERATION (final, never reopenable), the escrow back to the owner's Khả
+ * dụng, SURVEY_REJECTED with the reason. `rejection` keeps the reason and the
+ * points actually refunded (the wallet helper caps at the wallet's escrow and
+ * refunds nothing without an account) for the ASSUMED publisher fields.
  */
 export function rejectModeration(form: MockPublisherForm, admin: MockSessionUser, reason: string) {
   const owner = ownerOf(form);
-  const refundedPoints = form.escrowLocked;
   const refundRow =
-    owner && refundedPoints > 0
-      ? refundSurveyEscrow(owner, { amount: refundedPoints, surveyId: form.id, title: form.title })
+    owner && form.escrowLocked > 0
+      ? refundSurveyEscrow(owner, { amount: form.escrowLocked, surveyId: form.id, title: form.title })
       : null;
+  const refundedPoints = refundRow ? Math.abs(refundRow.amount) : 0;
+  const rejectedAt = nowIso();
   const rejected =
     updatePublisherForm(form.id, (draft) => {
-      draft.status = "DRAFT";
-      draft.rejection = { reason, refundedPoints, rejectedAt: nowIso() };
+      draft.status = "CLOSED";
+      draft.closeKind = "MODERATION";
+      draft.closedAt = rejectedAt;
+      draft.rejection = { reason, refundedPoints, rejectedAt };
       draft.escrowLocked = 0;
+      draft.hiddenFromMarketplace = true;
+      draft.pausedAt = null;
     }) ?? form;
+  syncBuilderDraft(form.id, { status: "CLOSED", escrowLocked: 0 });
   const decision = saveDecision(rejected, admin, {
     outcome: "REJECTED",
     reason,

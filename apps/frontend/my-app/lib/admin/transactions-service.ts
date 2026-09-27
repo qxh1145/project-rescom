@@ -12,14 +12,17 @@ import type { TransactionFilter } from "./admin-transactions.ts";
  * `admin-audit-logs.controller.ts` lists admin actions, not journals.
  *
  * ASSUMED API CONTRACT:
- * - `GET /admin/ledger/journals?type&from&limit&offset` → page of
- *   `ledgerJournalSchema` journals (newest first) with ASSUMED extras:
+ * - `GET /admin/ledger/journals?type&from&to&before&limit` → page of
+ *   `ledgerJournalSchema` journals (newest first, ties by id descending) with ASSUMED extras:
  *   `entries[].accountClass` / `entries[].ownerName` (the account's tier and
  *   owner, for "Từ → Đến · Linh N."), `related` (survey title) and
  *   `attemptId` (anonymous "#7F3A" code of reward journals).
  *   `type` = `top-up | escrow | reward | refund` (omitted = all), grouped by
- *   idempotency-key prefix like `matchesTransactionFilter`; `from` = ISO lower
- *   bound on `createdAt` (omitted = all time).
+ *   idempotency-key prefix like `matchesTransactionFilter`; `from` / `to` =
+ *   ISO bounds on `createdAt` (`from` omitted = all time), frozen by the client
+ *   at the first page; `before` = keyset cursor `<createdAt>:<id>` of the last
+ *   row already shown (`journalCursorOf`), so a journal posted between pages
+ *   cannot shift or repeat rows.
  * - `GET /admin/ledger/summary` → the four cards: pending top-ups (count,
  *   points, VND), total Ký quỹ, total Chờ 48h, escrow refunded today.
  */
@@ -38,9 +41,7 @@ export type AdminJournal = z.infer<typeof adminJournalSchema>;
 
 export const adminJournalListSchema = z.object({
   items: z.array(adminJournalSchema),
-  total: z.number().int().min(0),
   limit: z.number().int().min(1),
-  offset: z.number().int().min(0),
   hasMore: z.boolean(),
 });
 export type AdminJournalList = z.infer<typeof adminJournalListSchema>;
@@ -66,13 +67,14 @@ export type AdminLedgerSummary = z.infer<typeof adminLedgerSummarySchema>;
 export const ADMIN_JOURNAL_PAGE_SIZE = 50;
 
 export function listAdminJournals(
-  query: { type: TransactionFilter; from: string | null; offset?: number },
+  query: { type: TransactionFilter; from: string | null; to: string; before?: string },
   signal?: AbortSignal,
 ): Promise<AdminJournalList> {
   const params = new URLSearchParams({ limit: String(ADMIN_JOURNAL_PAGE_SIZE) });
   if (query.type !== "all") params.set("type", query.type);
   if (query.from) params.set("from", query.from);
-  if (query.offset) params.set("offset", String(query.offset));
+  params.set("to", query.to);
+  if (query.before) params.set("before", query.before);
   return apiRequest(`/admin/ledger/journals?${params.toString()}`, { schema: adminJournalListSchema, signal });
 }
 

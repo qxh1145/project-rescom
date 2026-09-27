@@ -127,7 +127,8 @@ export function PreviewScreen() {
             </button>
           ))}
         </div>
-        <Link href={`/forms/${formId}/builder/publish`} className={buttonClassName({ variant: "primary", size: "md", radius: "field", className: "gap-2 text-label" })}>
+        {/* C4: back through the builder's continue flow (publish rules + save) before publishing. */}
+        <Link href={`/forms/${formId}/builder?continue=1`} className={buttonClassName({ variant: "primary", size: "md", radius: "field", className: "gap-2 text-label" })}>
           Tiếp tục
           <Icon name="arrow-right" size={18} />
         </Link>

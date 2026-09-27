@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Alert } from "@/components/ui/Alert";
 import { Button, buttonClassName } from "@/components/ui/Button";
+import { Spinner } from "@/components/ui/Spinner";
 import { useGoogleFormWizard } from "../hooks/use-google-form-wizard";
 import { AudienceAside, AudienceStep } from "./AudienceStep";
 import { InfoAside, InfoStep } from "./InfoStep";
@@ -29,7 +30,13 @@ export function GoogleFormWizard() {
   function primaryButton(fullWidth: boolean) {
     if (step < 3) {
       return (
-        <Button size="lg" fullWidth={fullWidth} className={fullWidth ? "" : "px-7"} onClick={wizard.next}>
+        <Button
+          size="lg"
+          fullWidth={fullWidth}
+          className={fullWidth ? "" : "px-7"}
+          disabled={wizard.prefillLoading}
+          onClick={wizard.next}
+        >
           <ArrowLabel>{step === 1 ? "Tiếp tục: chọn đối tượng" : "Tiếp tục"}</ArrowLabel>
         </Button>
       );
@@ -92,11 +99,25 @@ export function GoogleFormWizard() {
         )
       }
     >
-      {step === 1 ? <InfoStep draft={draft} errors={errors} update={update} /> : null}
-      {step === 2 ? <AudienceStep draft={draft} errors={errors} update={update} estimate={wizard.estimate} /> : null}
-      {step === 3 ? (
-        <RewardStep draft={draft} errors={errors} update={update} quote={quote} insufficient={insufficient} />
+      {wizard.prefillNotice ? (
+        <Alert tone={wizard.prefillNotice.tone} className="mb-6">
+          {wizard.prefillNotice.message}
+        </Alert>
       ) : null}
+      {wizard.prefillLoading ? (
+        <div role="status" className="flex items-center gap-3 py-10 text-body-sm text-ink-muted">
+          <Spinner className="size-6 text-primary" />
+          Đang điền sẵn thông tin khảo sát cũ…
+        </div>
+      ) : (
+        <>
+          {step === 1 ? <InfoStep draft={draft} errors={errors} update={update} /> : null}
+          {step === 2 ? <AudienceStep draft={draft} errors={errors} update={update} estimate={wizard.estimate} /> : null}
+          {step === 3 ? (
+            <RewardStep draft={draft} errors={errors} update={update} quote={quote} insufficient={insufficient} />
+          ) : null}
+        </>
+      )}
       {wizard.submitErrorMessage ? (
         <Alert tone="danger" className="mt-6">
           {wizard.submitErrorMessage}

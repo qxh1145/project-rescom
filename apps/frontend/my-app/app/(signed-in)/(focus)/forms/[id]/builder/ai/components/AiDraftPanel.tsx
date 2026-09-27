@@ -83,7 +83,7 @@ export function AiDraftPanel({ formId, draft, onClose }: { formId: string; draft
           </div>
         ))}
         <p className="mt-4 text-caption leading-[18px] text-ink-muted">
-          Giá gợi ý {hint.label} (rẻ hơn 20% so với Google Forms). Bạn đặt đối tượng và số mẫu ở bước sau.
+          Giá gợi ý {hint.label} cho người làm; {hint.paidLabel} (rẻ hơn 20% so với Google Forms). Bạn đặt đối tượng và số mẫu ở bước sau.
         </p>
       </div>
     </section>

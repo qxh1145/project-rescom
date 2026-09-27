@@ -10,9 +10,8 @@ import { Avatar, initialsOf } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
 import { IconLink } from "@/components/ui/IconButton";
 import { Spinner } from "@/components/ui/Spinner";
-import { isApiError } from "@/lib/api/api-error";
 import { boldRuns, type AiChatMessage, type AiConversation, type AiMessageOptions } from "@/lib/forms/builder-ai";
-import { aiErrorMessage, createDraftErrorMessage, loadFormErrorMessage } from "@/lib/forms/builder-messages";
+import { aiConversationLoadOutcome, aiErrorMessage, createDraftErrorMessage } from "@/lib/forms/builder-messages";
 import { createBuilderDraft, getAiConversation, listRecentForms, sendAiMessage } from "@/lib/forms/builder-service";
 import { useSession } from "@/lib/session/SessionProvider";
 import { useSessionLossRedirect } from "@/lib/session/use-session-loss";
@@ -81,10 +80,15 @@ export function AiChatScreen({ formId }: { formId: string | null }) {
   const [conversation, setConversation] = useState<AiConversation | null>(null);
   const [loading, setLoading] = useState(formId !== null);
   const [loadError, setLoadError] = useState<unknown>(null);
+  const [loadMessage, setLoadMessage] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [options, setOptions] = useState<AiMessageOptions>(DEFAULT_OPTIONS);
   const [busy, setBusy] = useState(false);
   const [sendError, setSendError] = useState<unknown>(null);
+  /** Which call failed: creating the draft (`POST /forms`) or the AI message. */
+  const [sendErrorStage, setSendErrorStage] = useState<"create" | "ai">("ai");
+  /** C5: the draft created by the first prompt, reused by every retry (never a second draft). */
+  const [createdId, setCreatedId] = useState<string | null>(null);
   const [draftOpen, setDraftOpen] = useState(true);
   const endRef = useRef<HTMLDivElement>(null);
   const sessionLost = useSessionLossRedirect(loadError, sendError);
@@ -100,9 +104,11 @@ export function AiChatScreen({ formId }: { formId: string | null }) {
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        // No conversation yet: the entry screen.
-        if (isApiError(error) && error.status === 404 && error.code === "AI_CONVERSATION_NOT_FOUND") return;
+        // No conversation yet → the entry screen; a missing AI route → "AI chưa sẵn sàng".
+        const outcome = aiConversationLoadOutcome(error);
+        if (outcome.kind === "empty") return;
         setLoadError(error);
+        setLoadMessage(outcome.message);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -121,11 +127,18 @@ export function AiChatScreen({ formId }: { formId: string | null }) {
     setSendError(null);
     try {
       if (!formId) {
-        const created = await createBuilderDraft();
-        await sendAiMessage(created.id, { message, options });
-        router.replace(`/forms/${created.id}/builder/ai`);
+        let targetId = createdId;
+        if (!targetId) {
+          setSendErrorStage("create");
+          targetId = (await createBuilderDraft()).id;
+          setCreatedId(targetId);
+        }
+        setSendErrorStage("ai");
+        await sendAiMessage(targetId, { message, options });
+        router.replace(`/forms/${targetId}/builder/ai`);
         return;
       }
+      setSendErrorStage("ai");
       const next = await sendAiMessage(formId, { message, options });
       setConversation(next);
       setPrompt("");
@@ -137,11 +150,17 @@ export function AiChatScreen({ formId }: { formId: string | null }) {
     }
   };
 
-  const manualHref = formId ? `/forms/${formId}/builder` : "/forms/new/builder";
+  // After a failed AI call the created draft is where manual editing continues.
+  const ownId = formId ?? createdId;
+  const manualHref = ownId ? `/forms/${ownId}/builder` : "/forms/new/builder";
   const messages = conversation?.messages ?? [];
   const draft = conversation?.draft ?? null;
   const lastAssistant = [...messages].reverse().find((m) => m.role === "ASSISTANT");
-  const sendErrorText = sendError ? (formId ? aiErrorMessage(sendError) : createDraftErrorMessage(sendError)) : null;
+  const sendErrorText = sendError
+    ? sendErrorStage === "create"
+      ? createDraftErrorMessage(sendError)
+      : aiErrorMessage(sendError)
+    : null;
 
   const sidebar = (
     <aside className="sticky top-0 hidden h-dvh w-66 shrink-0 flex-col border-r border-line bg-surface px-3 lg:flex" aria-label="Lịch sử soạn bằng AI">
@@ -185,7 +204,7 @@ export function AiChatScreen({ formId }: { formId: string | null }) {
   if (loadError) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-[480px] flex-col justify-center gap-4 px-4">
-        <Alert tone="danger">{loadFormErrorMessage(loadError)}</Alert>
+        <Alert tone="danger">{loadMessage ?? aiErrorMessage(loadError)}</Alert>
         <Link href={manualHref} className="text-label font-bold text-primary">
           Soạn tay trong Form Builder
         </Link>

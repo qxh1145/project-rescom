@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { DECISION_NOTE_MAX, type DisputeCase, type DisputeCaseOutcome } from "@/lib/admin/disputes-service";
 import {
   actionsOf,
+  ATTEMPT_STATUS_LABELS,
   caseSubtitle,
   caseTitle,
   descriptionHeading,
@@ -30,6 +31,8 @@ interface CaseDetailProps {
  */
 export function CaseDetail({ item, now, onResolved, onStale }: CaseDetailProps) {
   const decision = useCaseDecision(item, { onResolved, onStale });
+  const actions = actionsOf(item);
+  const blocked = actions.flatMap((action) => (action.disabledReason ? [action.disabledReason] : []));
   const noteRef = useRef<HTMLTextAreaElement>(null);
   const titleId = `case-title-${item.id}`;
   const noteId = `case-note-${item.id}`;
@@ -93,6 +96,12 @@ export function CaseDetail({ item, now, onResolved, onStale }: CaseDetailProps) 
       ) : null}
 
       <h3 className="mt-4.5 text-[14px] font-bold text-ink">Dòng thời gian lượt làm</h3>
+      <p className="mt-2 flex items-center gap-2 text-[14px] text-ink-muted">
+        Trạng thái hiện tại:
+        <Tag tone={item.attempt.status === "COMPLETED" ? "green" : item.attempt.status === "LOCKED" ? "danger" : "neutral"}>
+          {ATTEMPT_STATUS_LABELS[item.attempt.status]}
+        </Tag>
+      </p>
       <ol className="mt-2 flex flex-col gap-2 text-[14px]">
         {timelineOf(item).map((row, index) => (
           <li key={`${row.at}-${index}`} className="grid grid-cols-[84px_minmax(0,1fr)]">
@@ -128,14 +137,20 @@ export function CaseDetail({ item, now, onResolved, onStale }: CaseDetailProps) 
         disabled={decision.busy}
       />
 
+      {blocked.map((reason) => (
+        <p key={reason} className="mt-4.5 text-right text-[14px] text-ink-muted">
+          {reason}
+        </p>
+      ))}
+
       <div className="mt-4.5 flex flex-wrap justify-end gap-3">
-        {actionsOf(item).map((action) => (
+        {actions.map((action) => (
           <Button
             key={action.outcome}
             variant={action.primary ? "primary" : "secondary"}
             size="lg"
             className={action.primary ? "px-9" : "min-w-45.5"}
-            disabled={decision.busy}
+            disabled={decision.busy || Boolean(action.disabledReason)}
             onClick={() => {
               if (!decision.request(action)) noteRef.current?.focus();
             }}

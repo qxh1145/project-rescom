@@ -152,6 +152,33 @@ test("export table: passed only, split choices, quality column", () => {
   assert.equal(table.rows[0].at(-1), "Đạt");
 });
 
+test("Phase 5 M4: split choices keep a \"Khác\" answer in its own column when the question allows it", () => {
+  const withOther = QUESTIONS.map((question) => (question.id === "q4" ? { ...question, allowOther: true } : question));
+  const data = {
+    ...DATA,
+    questions: withOther,
+    responses: [response("0A01", { answers: { q4: ["Giá thuê", "Có chỗ để xe"] } }), response("0A02", { answers: { q4: ["An ninh"] } })],
+  };
+  const table = exporter.buildExportTable(data, {
+    ...exporter.DEFAULT_EXPORT_OPTIONS,
+    multipleChoice: "split",
+    includeSubmittedAt: false,
+    includeDuration: false,
+  });
+  const other = table.headers.indexOf("C3. Yếu tố quan trọng khi chọn chỗ ở? [Khác]");
+  assert.ok(other > 0);
+  assert.equal(table.headers[other - 1], "C3. Yếu tố quan trọng khi chọn chỗ ở? [Gần trường]");
+  assert.deepEqual(table.rows[0].slice(other - 3, other + 1), [1, 0, 0, "Có chỗ để xe"]);
+  assert.equal(table.rows[1][other], "");
+  // Without allowOther there is no extra column; the joined layout already keeps the text.
+  const plain = exporter.buildExportTable({ ...data, questions: QUESTIONS }, { ...exporter.DEFAULT_EXPORT_OPTIONS, multipleChoice: "split" });
+  assert.equal(plain.headers.some((header) => header.endsWith("[Khác]")), false);
+  const joined = exporter.buildExportTable(data, { ...exporter.DEFAULT_EXPORT_OPTIONS, includeSubmittedAt: false, includeDuration: false });
+  assert.ok(joined.rows[0].includes("Giá thuê; Có chỗ để xe"));
+  // The results DTO defaults allowOther to false.
+  assert.equal(formResponsesSchema.parse({ ...DATA, questions: QUESTIONS }).questions[0].allowOther, false);
+});
+
 test("CSV: UTF-8 BOM, CRLF, quoting and formula neutralizing", () => {
   const csv = exporter.toCsv({
     headers: ["Mã", "Ghi chú"],

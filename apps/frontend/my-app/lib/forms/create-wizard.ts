@@ -207,6 +207,16 @@ export const FIELDS_SHOWN_COLLAPSED = 3;
 export const SCHOOL_CHOICES: readonly string[] = SCHOOL_OPTIONS;
 export const LOCATION_CHOICES: readonly string[] = VIETNAM_LOCATIONS;
 
+/**
+ * Figma 9b "Trường". Hidden while the backend targeting has no schools
+ * (`surveyTargetingSchema` is strict and `toBackendTargetingJson` would drop
+ * it, publishing a "school-only" survey to everyone). While false, the school
+ * select is not rendered and a `school` in a saved draft is ignored by the
+ * targeting, the validation and the summaries. Flip it once the backend
+ * matches on schools.
+ */
+export const SCHOOL_TARGETING_SUPPORTED: boolean = false;
+
 const AGE_MIN = 13;
 const AGE_MAX = 100;
 
@@ -227,9 +237,10 @@ function checkAgeRange(draft: GoogleFormWizardDraft): AgeCheck {
 
 /**
  * Wizard targeting used by the summary and the ASSUMED audience estimate.
- * `schools` is a Figma 9b UI extension; the strict backend create contract
- * does not support it yet. Omitted criteria mean "everyone"; an invalid age
- * range is dropped here and reported by `validateAudienceStep`.
+ * `schools` is a Figma 9b UI extension, only set while
+ * `SCHOOL_TARGETING_SUPPORTED`; the strict backend create contract does not
+ * support it. Omitted criteria mean "everyone"; an invalid age range is
+ * dropped here and reported by `validateAudienceStep`.
  */
 export type WizardTargeting = SurveyTargetingCriteria & { schools?: string[] };
 
@@ -240,11 +251,11 @@ export function toTargetingJson(draft: GoogleFormWizardDraft): WizardTargeting {
   if (draft.gender !== "ALL") targeting.genders = [draft.gender];
   if (draft.fieldsOfStudy.length > 0) targeting.fieldOfStudy = [...draft.fieldsOfStudy];
   if (draft.location) targeting.locations = [draft.location];
-  if (draft.school) targeting.schools = [draft.school];
+  if (SCHOOL_TARGETING_SUPPORTED && draft.school) targeting.schools = [draft.school];
   return targeting;
 }
 
-/** Strict backend targeting contract; the UI-only school filter is omitted. */
+/** Strict backend targeting contract; the UI-only school filter is always omitted. */
 export function toBackendTargetingJson(draft: GoogleFormWizardDraft): SurveyTargetingCriteria {
   const targeting = { ...toTargetingJson(draft) };
   delete targeting.schools;
@@ -271,12 +282,13 @@ export function shortSchoolName(school: string): string {
 /** Rows of Figma 9b "Tiêu chí đã chọn". */
 export function criteriaSummary(draft: GoogleFormWizardDraft): { label: string; value: string }[] {
   const age = checkAgeRange(draft);
-  const place = [draft.school ? shortSchoolName(draft.school) : "", draft.location].filter(Boolean).join(" · ");
+  const school = SCHOOL_TARGETING_SUPPORTED && draft.school ? shortSchoolName(draft.school) : "";
+  const place = [school, draft.location].filter(Boolean).join(" · ");
   return [
     { label: "Giới tính", value: GENDER_CHOICES.find((choice) => choice.value === draft.gender)?.label ?? "Tất cả" },
     { label: "Tuổi", value: age.ok && age.range ? `${age.range.min} – ${age.range.max}` : "Tất cả" },
     { label: "Ngành", value: draft.fieldsOfStudy.length > 0 ? `${draft.fieldsOfStudy.length} ngành` : "Tất cả" },
-    { label: "Trường · Khu vực", value: place || "Tất cả" },
+    { label: SCHOOL_TARGETING_SUPPORTED ? "Trường · Khu vực" : "Khu vực", value: place || "Tất cả" },
   ];
 }
 
@@ -433,4 +445,82 @@ export function toCreateRequest(draft: GoogleFormWizardDraft): CreateGoogleFormS
     targetingJson: toBackendTargetingJson(draft),
     autoPublish: true,
   };
+}
+
+// ---------------------------------------------------------------------------
+// "Sửa & gửi lại" of a rejected Google Forms survey (`?from=<id>`)
+// ---------------------------------------------------------------------------
+
+/** The band whose FR-14 range covers `minutes` (dưới 5 · 5–10 · 10–15 · trên 15). */
+export function durationBandForMinutes(minutes: number | null | undefined): DurationBandId | null {
+  if (typeof minutes !== "number" || !Number.isFinite(minutes) || minutes <= 0) return null;
+  if (minutes < 5) return "UNDER_5";
+  if (minutes <= 10) return "FROM_5_TO_10";
+  if (minutes <= 15) return "FROM_10_TO_15";
+  return "OVER_15";
+}
+
+/** The fields of `GET /forms/:id` (VERIFIED `FormDetailDto`) the wizard reuses. */
+export interface WizardPrefillSource {
+  type: string;
+  title: string;
+  description?: string | null;
+  rewardPerResponse: number;
+  expectedCompletions: number;
+  estimatedDurationMinutes?: number | null;
+  currentVersion: { externalUrl?: string | null; targetingJson?: unknown };
+}
+
+type LooseTargeting = {
+  ageRange?: { min?: unknown; max?: unknown };
+  genders?: unknown;
+  fieldOfStudy?: unknown;
+  locations?: unknown;
+};
+
+const strings = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
+/**
+ * A fresh wizard draft from a rejected Google Forms survey: link, title,
+ * description, duration band, targeting, sample and reward. Only values the
+ * wizard can show are kept (a gender list other than exactly Nam or Nữ is
+ * "Tất cả"; unknown fields of study / regions are dropped). Topic, deadline and
+ * school are not stored by the backend, so they start empty. Null for an
+ * in-Rescom survey.
+ */
+export function wizardDraftFromSurvey(source: WizardPrefillSource): GoogleFormWizardDraft | null {
+  if (source.type !== "EXTERNAL") return null;
+  const draft = emptyWizardDraft();
+  const targeting = (
+    source.currentVersion.targetingJson && typeof source.currentVersion.targetingJson === "object"
+      ? source.currentVersion.targetingJson
+      : {}
+  ) as LooseTargeting;
+  const min = targeting.ageRange?.min;
+  const max = targeting.ageRange?.max;
+  const genders = strings(targeting.genders);
+  const location = strings(targeting.locations).find((item) => LOCATION_CHOICES.includes(item));
+  return {
+    ...draft,
+    externalUrl: source.currentVersion.externalUrl ?? "",
+    title: source.title,
+    description: source.description ?? "",
+    durationBand: durationBandForMinutes(source.estimatedDurationMinutes),
+    gender: genders.length === 1 && (genders[0] === "MALE" || genders[0] === "FEMALE") ? genders[0] : "ALL",
+    ageMin: typeof min === "number" && typeof max === "number" ? String(min) : "",
+    ageMax: typeof min === "number" && typeof max === "number" ? String(max) : "",
+    fieldsOfStudy: strings(targeting.fieldOfStudy).filter((field) => FIELD_OF_STUDY_CHOICES.includes(field)),
+    location: location ?? "",
+    sampleSize: source.expectedCompletions > 0 ? String(source.expectedCompletions) : draft.sampleSize,
+    rewardPerResponse: source.rewardPerResponse > 0 ? String(source.rewardPerResponse) : "",
+  };
+}
+
+/** True when the draft holds anything the Publisher typed (an untouched wizard is not "in progress"). */
+export function isWizardDraftStarted(draft: GoogleFormWizardDraft): boolean {
+  const empty = emptyWizardDraft();
+  return (Object.keys(empty) as (keyof GoogleFormWizardDraft)[]).some(
+    (key) => JSON.stringify(draft[key]) !== JSON.stringify(empty[key]),
+  );
 }

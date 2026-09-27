@@ -17,8 +17,18 @@ export type CreatedExternalSurvey = z.infer<typeof externalSurveyResponseSchema>
  * (`{ availableBalance, requiredAmount }`). The body is validated against the
  * strict shared `createExternalSurveySchema` before it reaches this service.
  */
-export function createGoogleFormSurvey(body: CreateGoogleFormSurveyBody): Promise<CreatedExternalSurvey> {
-  return apiRequest("/forms/external", { method: "POST", body, schema: externalSurveyResponseSchema });
+export function createGoogleFormSurvey(
+  body: CreateGoogleFormSurveyBody,
+  idempotencyKey?: string,
+): Promise<CreatedExternalSurvey> {
+  return apiRequest("/forms/external", {
+    method: "POST",
+    body,
+    schema: externalSurveyResponseSchema,
+    // Decision C6 (a): a retry after a lost response replays the first creation
+    // instead of locking the escrow twice (same key + same user → same response).
+    ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}),
+  });
 }
 
 export const audienceEstimateSchema = z.object({

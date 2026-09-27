@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { buttonClassName } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Tag } from "@/components/ui/Tag";
+import { useFormHeader } from "@/lib/forms/manage-header-context";
 import { VERSION_CHANGES_LOAD_FAILED, versionsLoadErrorMessage } from "@/lib/forms/results-messages";
 import type { FormVersionSummary } from "@/lib/forms/results-service";
 import {
@@ -116,6 +117,9 @@ export function VersionsScreen() {
   const { id } = useParams<{ id: string }>();
   const { versions, error, reload, draft, base, changes, changesLoading, changesFailed, reloadChanges } =
     useFormVersions(id);
+  // `POST /forms/:id/publish` accepts a DRAFT survey only (a withdrawn CLOSED one cannot be resubmitted).
+  const { form } = useFormHeader();
+  const draftSubmittable = form?.status === "DRAFT";
 
   return (
     <div className="mx-auto w-full max-w-[1440px] px-5 pt-4 pb-8 lg:px-12 lg:pt-5 lg:pb-12">
@@ -172,9 +176,11 @@ export function VersionsScreen() {
                         <Link href={`/forms/${id}/builder`} className={ACTION}>
                           Tiếp tục sửa
                         </Link>
-                        {base ? (
-                          <Link href={`/forms/${id}/reopen?version=${version.versionNumber}`} className={PRIMARY_ACTION}>
-                            Mở lại với v{version.versionNumber}
+                        {/* A new version goes live only through moderation: `POST /forms/:id/publish` from
+                            the builder's publish step (reopen refuses it: FORM_NOT_REOPENABLE / VERSION_NOT_APPROVED). */}
+                        {base && draftSubmittable && version.id === draft?.id ? (
+                          <Link href={`/forms/${id}/builder/publish`} className={PRIMARY_ACTION}>
+                            Gửi duyệt v{version.versionNumber}
                           </Link>
                         ) : null}
                       </>
@@ -213,7 +219,7 @@ export function VersionsScreen() {
                 Mỗi câu trả lời luôn gắn với đúng phiên bản mà người trả lời đã làm, nên dữ liệu v1 không bị lẫn câu hỏi
                 mới.
               </p>
-              <p>Người đã làm v1 không làm lại được trên v2. Khi mở lại với v2, bản nháp cũng qua Admin duyệt.</p>
+              <p>Người đã làm v1 không làm lại được trên v2. Bản nháp mới chỉ chạy sau khi bạn gửi duyệt và Admin duyệt.</p>
             </div>
           </aside>
         </div>

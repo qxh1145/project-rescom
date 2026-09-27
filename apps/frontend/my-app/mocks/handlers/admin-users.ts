@@ -6,7 +6,7 @@ import {
   activeAdminCount,
   findMockAdminUser,
   listMockAdminUsers,
-  matchesUserSearch,
+  matchesUserEmail,
   setMockAdminUserRole,
   setMockAdminUserStatus,
 } from "../data/admin-users";
@@ -16,14 +16,10 @@ import { requireMockAdmin } from "./admin";
 
 /**
  * Mirrors `admin-users.controller.ts` + `user-admin.service.ts` (VERIFIED routes).
- * The extra row fields and the lock `reason` are the ASSUMED extensions of
- * `lib/admin/users-service.ts`.
+ * The extra row fields are ASSUMED extensions of `lib/admin/users-service.ts`.
  */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** ASSUMED: `reason` (logged + e-mailed) on top of the VERIFIED strict `{ status }`. */
-const statusBodySchema = updateUserStatusSchema.extend({ reason: z.string().trim().max(500).optional() });
 
 async function readJson(request: Request): Promise<unknown> {
   try {
@@ -63,7 +59,7 @@ export const adminUserHandlers = [
       (user) =>
         (!role || user.role === role) &&
         (!status || user.status === status) &&
-        (!search || matchesUserSearch(user, search)),
+        (!search || matchesUserEmail(user, search)),
     );
     const total = matching.length;
     return ok({
@@ -83,7 +79,7 @@ export const adminUserHandlers = [
     return user ? ok({ user }) : notFound();
   }),
 
-  // VERIFIED: PATCH /admin/users/:id/status { status } (+ ASSUMED reason) → { user }.
+  // VERIFIED: PATCH /admin/users/:id/status { status, reason? } → { user }.
   http.patch(apiUrl("/admin/users/:id/status"), async ({ params, request }) => {
     const admin = await guard();
     if (admin instanceof Response) return admin;
@@ -92,7 +88,7 @@ export const adminUserHandlers = [
 
     const id = String(params.id);
     if (!UUID.test(id)) return invalidUuid();
-    const parsed = statusBodySchema.safeParse(await readJson(request));
+    const parsed = updateUserStatusSchema.safeParse(await readJson(request));
     if (!parsed.success) return validationFailed(parsed.error);
     const { status, reason } = parsed.data;
 

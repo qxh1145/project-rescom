@@ -87,7 +87,7 @@ export function GoogleLinkDialog({ open, onClose }: GoogleLinkDialogProps) {
   }
 
   return (
-    <Dialog open={open} onClose={close} labelledBy={TITLE_ID} width={480}>
+    <Dialog open={open} onClose={close} labelledBy={TITLE_ID} width={480} dismissible={!busy}>
       <form noValidate onSubmit={submit} className="flex flex-col gap-4 px-6 pt-7 pb-6">
         <div>
           <h2 id={TITLE_ID} className="text-[20px] font-extrabold text-ink">

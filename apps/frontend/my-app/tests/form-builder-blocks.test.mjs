@@ -168,11 +168,61 @@ test("validateDraft reports block problems in Vietnamese by block id", () => {
   assert.deepEqual(issues.blocks[ids[1]], ["Đáp án của câu kiểm tra chú ý không khớp lựa chọn nào."]);
 });
 
+function titled(doc, title = "Thói quen học nhóm") {
+  return {
+    ...doc,
+    title,
+    blocks: doc.blocks.map((block, i) => ({ ...block, title: `Câu hỏi số ${i + 1}?` })),
+  };
+}
+
 test("validateForPublish requires a question; drafts may be empty", () => {
   assert.equal(validateDraft(emptyDoc()).form.length, 0);
-  assert.deepEqual(validateForPublish(emptyDoc()).form, ["Form cần ít nhất 1 câu hỏi."]);
+  assert.deepEqual(validateForPublish({ ...emptyDoc(), title: "Khảo sát A" }).form, ["Form cần ít nhất 1 câu hỏi."]);
   const { doc } = docWith("rating");
-  assert.equal(blocks.hasIssues(validateForPublish(doc)), false);
+  assert.equal(blocks.hasIssues(validateForPublish(titled(doc))), false);
+});
+
+test("P2: publishing refuses the default / empty question title and an untitled form, naming the question", () => {
+  const { doc, ids } = docWith("rating", "text", "single_choice");
+  const named = titled(doc);
+  // Question 2 keeps the default title, question 3 is emptied.
+  const draft = {
+    ...named,
+    blocks: named.blocks.map((block, i) =>
+      i === 1 ? { ...block, title: catalog.DEFAULT_BLOCK_TITLE } : i === 2 ? { ...block, title: "   " } : block,
+    ),
+  };
+  assert.equal(catalog.DEFAULT_BLOCK_TITLE, "Câu hỏi chưa có tiêu đề");
+  // Drafts still save with the default title.
+  assert.equal(blocks.hasIssues(validateDraft({ ...draft, blocks: draft.blocks.slice(0, 2) })), false);
+  const issues = validateForPublish(draft);
+  assert.equal(issues.blocks[ids[0]], undefined);
+  assert.deepEqual(issues.blocks[ids[1]], [blocks.DEFAULT_TITLE_ISSUE]);
+  assert.equal(issues.blocks[ids[2]].length, 1);
+  assert.deepEqual(issues.form, []);
+  assert.equal(blocks.publishIssueSummary(draft, issues), `Câu 2: ${blocks.DEFAULT_TITLE_ISSUE} Các câu khác cần sửa: 3.`);
+
+  for (const title of ["", "   ", blocks.UNTITLED_FORM]) {
+    const untitled = validateForPublish({ ...named, title });
+    assert.deepEqual(untitled.form, [blocks.UNTITLED_FORM_ISSUE], JSON.stringify(title));
+    assert.equal(blocks.publishIssueSummary(named, untitled), blocks.UNTITLED_FORM_ISSUE);
+  }
+  assert.equal(blocks.publishIssueSummary(named, validateForPublish(named)), null);
+});
+
+test("C1: validateForPublish applies the 30-minute reservation window", async () => {
+  const { MAX_PUBLISHABLE_DURATION_MINUTES } = await import("@rescom/schemas");
+  const { doc } = docWith("rating");
+  const ok = titled(doc);
+  assert.equal(blocks.hasIssues(validateForPublish(ok, { estimatedDurationMinutes: MAX_PUBLISHABLE_DURATION_MINUTES })), false);
+  assert.deepEqual(validateForPublish(ok, { estimatedDurationMinutes: MAX_PUBLISHABLE_DURATION_MINUTES + 1 }).form, [
+    blocks.RESERVATION_WINDOW_ISSUE,
+  ]);
+  // 21 paragraphs ≈ 32 minutes of expected effort: too long even without a duration.
+  const long = titled(docWith(...Array.from({ length: 21 }, () => "textarea")).doc);
+  assert.ok(toDraftDefinition(long).metadata.expectedEffortSeconds > MAX_PUBLISHABLE_DURATION_MINUTES * 60);
+  assert.deepEqual(validateForPublish(long).form, [blocks.RESERVATION_WINDOW_ISSUE]);
 });
 
 test("toDraftDefinition keeps effort above the FR-14 time barrier and names untitled forms", () => {

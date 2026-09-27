@@ -1,7 +1,7 @@
 {
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"grep -ln \\\"mocks/\\\" tests/*.mjs | head; grep -n \\\"import(\\\\\\\"../mocks\\\" tests/*.mjs | head -5; ls tests/*.mjs | head -0; cat package.json | rtk grep -n \\\"imports\\\\|\\\\\\\"#\\\"\",\"description\":\"...",
-  "error": "Exit code 1\ntests/admin-disputes.test.mjs\ntests/admin-top-ups.test.mjs\ntests/admin-quality.test.mjs\ntests/admin-transactions.test.mjs\ntests/participation-review.test.mjs\ntests/wallet-history.test.mjs\ntests/admin-disputes.test.mjs:8:const rules = await import(\"../mocks/data/economy-rules.ts\");\ntests/admin-quality.test.mjs:7:const rules = await import(\"../mocks/data/economy-rules.ts\");\ntests/admin-top-ups.test.mjs:8:const rules = await import(\"../mocks/data/economy-rules.ts\");\ntests/admin-transact...",
-  "timestamp": "2026-09-27T03:58:14.994Z",
+  "tool_name": "mcp__Claude_Browser__javascript_tool",
+  "tool_input_preview": "{\"action\":\"javascript_exec\",\"text\":\"const wait=ms=>new Promise(r=>setTimeout(r,ms)); await wait(4500); const m=document.querySelector('main'); const head=m.innerText.replace(/\\\\s+/g,' ').match(/khiếu ...",
+  "error": "javascript_tool failed: TypeError: Illegal invocation\n    at <anonymous>:1:319",
+  "timestamp": "2026-09-27T07:24:47.707Z",
   "retry_count": 1
 }

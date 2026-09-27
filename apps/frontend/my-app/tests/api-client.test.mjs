@@ -158,6 +158,27 @@ test("apiRequest", async (t) => {
     assert.equal(mutation.init.headers["X-CSRF-Token"], "tok-1");
   });
 
+  await t.test("custom headers (Idempotency-Key) are sent, without overriding Accept or the CSRF token", async () => {
+    const { resetCsrfToken } = await import("../lib/api/client.ts");
+    resetCsrfToken();
+    const calls = [];
+    globalThis.fetch = async (url, init = {}) => {
+      calls.push({ url, init });
+      if (url === "/api/auth/csrf") return jsonResponse({ data: { csrfToken: "tok-h" }, error: null, meta: {} });
+      return new Response(null, { status: 204 });
+    };
+    await apiRequest("/forms/external", {
+      method: "POST",
+      body: { a: 1 },
+      headers: { "Idempotency-Key": "key-123", Accept: "text/html", "X-CSRF-Token": "forged" },
+    });
+    const mutation = calls.find((call) => call.url === "/api/forms/external");
+    assert.equal(mutation.init.headers["Idempotency-Key"], "key-123");
+    assert.equal(mutation.init.headers.Accept, "application/json");
+    assert.equal(mutation.init.headers["X-CSRF-Token"], "tok-h");
+    assert.equal(mutation.init.headers["Content-Type"], "application/json");
+  });
+
   await t.test("AUTH_INVALID_CSRF_TOKEN refreshes the token and retries once", async () => {
     const { resetCsrfToken } = await import("../lib/api/client.ts");
     resetCsrfToken();

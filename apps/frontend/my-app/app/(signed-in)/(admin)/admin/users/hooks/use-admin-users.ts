@@ -46,18 +46,23 @@ export function useAdminUsers() {
   );
 
   const { setData: setList } = list;
-  const { setData: setDetail } = detail;
-  /** Merge a PATCH result (the VERIFIED payload has no ASSUMED fields, so keep the ones we have). */
+  const { setData: setDetail, reload: reloadDetail } = detail;
+  /**
+   * Merge a PATCH result (the VERIFIED payload has no ASSUMED fields, so keep the ones we have).
+   * The detail holds whoever is selected now: it only takes the result when it is the same
+   * user (the admin may have switched rows mid-request), then refetches the full profile.
+   */
   const applyUpdate = useCallback(
     (user: AdminUserView) => {
-      setDetail((current) => ({ ...current, ...user }));
+      setDetail((current) => (current?.id === user.id ? { ...current, ...user } : current));
       setList((current) =>
         current
           ? { ...current, items: current.items.map((item) => (item.id === user.id ? { ...item, ...user } : item)) }
           : current,
       );
+      if (user.id === selectedId) reloadDetail();
     },
-    [setDetail, setList],
+    [setDetail, setList, reloadDetail, selectedId],
   );
 
   return {

@@ -15,7 +15,7 @@ function CardBody({ row, now }: { row: MyFormRow; now: number }) {
         <>
           <p className="mt-2 text-caption text-ink-muted">
             Gửi {formatShortDateTime(form.submittedAt ?? form.createdAt)} · {form.expectedCompletions} người ·{" "}
-            {form.rewardPerResponse} điểm/lượt · ký quỹ {form.escrowLocked}
+            {form.rewardPerResponse} điểm/lượt{form.escrowLocked !== null ? ` · ký quỹ ${form.escrowLocked}` : ""}
           </p>
           <p className="mt-4 text-caption leading-[18.9px] text-ink-strong">
             Admin sẽ duyệt trước khi khảo sát hiện trên Khám phá.
@@ -30,7 +30,9 @@ function CardBody({ row, now }: { row: MyFormRow; now: number }) {
             <span className="font-bold text-ink">
               {form.completedCompletions}/{form.expectedCompletions} người
             </span>
-            <span className="text-ink-muted">ký quỹ còn {form.escrowLocked} điểm</span>
+            {form.escrowLocked !== null ? (
+              <span className="text-ink-muted">ký quỹ còn {form.escrowLocked} điểm</span>
+            ) : null}
           </div>
           <ProgressBar
             className="mt-1.5"
@@ -43,12 +45,17 @@ function CardBody({ row, now }: { row: MyFormRow; now: number }) {
     case "REJECTED":
       return (
         <>
-          <div className="mt-2.5 rounded-field bg-danger-soft px-3 py-2.5 text-caption leading-[18.9px]">
-            <p className="font-bold text-danger-strong">Lý do từ Admin</p>
-            <p className="mt-1 text-ink">{form.rejection?.reason}</p>
-          </div>
+          {form.rejection?.reason ? (
+            <div className="mt-2.5 rounded-field bg-danger-soft px-3 py-2.5 text-caption leading-[18.9px]">
+              <p className="font-bold text-danger-strong">Lý do từ Admin</p>
+              <p className="mt-1 text-ink">{form.rejection.reason}</p>
+            </div>
+          ) : null}
           <p className="mt-2.5 text-caption font-semibold text-tone-teal-fg">
-            Đã hoàn {form.rejection?.refundedPoints ?? 0} điểm ký quỹ vào số dư
+            {/* ASSUMED `rejection` may be absent (backend list DTO): the escrow is refunded either way. */}
+            {form.rejection
+              ? `Đã hoàn ${form.rejection.refundedPoints} điểm ký quỹ vào số dư`
+              : "Ký quỹ đã được hoàn vào số dư"}
           </p>
         </>
       );
@@ -77,12 +84,12 @@ function cornerNote(row: MyFormRow, now: number): string | null {
 }
 
 /** Mobile list of "Khảo sát của tôi" (Figma 63:1324 …). */
-export function FormCards({ rows, now }: { rows: readonly MyFormRow[]; now: number }) {
+export function FormCards({ rows, now, onChanged }: { rows: readonly MyFormRow[]; now: number; onChanged: () => void }) {
   return (
     <ul className="flex flex-col gap-4">
       {rows.map((row) => {
         const corner = cornerNote(row, now);
-        const actions = <FormRowActions form={row.form} view={row.view} layout="card" />;
+        const actions = <FormRowActions form={row.form} view={row.view} layout="card" onChanged={onChanged} />;
         return (
           <li key={row.form.id} className="rounded-[18px] border border-line bg-surface p-4">
             <div className="flex items-center gap-2">
@@ -94,7 +101,7 @@ export function FormCards({ rows, now }: { rows: readonly MyFormRow[]; now: numb
             </div>
             <h2 className="mt-2.5 text-[16px] leading-[21.6px] font-bold text-ink">{row.form.title}</h2>
             <CardBody row={row} now={now} />
-            {row.view !== "PENDING_REVIEW" ? <div className="mt-3.5 flex gap-2">{actions}</div> : null}
+            <div className="mt-3.5 flex gap-2 empty:hidden">{actions}</div>
           </li>
         );
       })}

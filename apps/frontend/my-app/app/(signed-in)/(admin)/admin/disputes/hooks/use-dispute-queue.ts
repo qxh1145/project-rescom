@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { useAdminCounts } from "@/components/layout/admin/AdminShell";
 import { listOpenDisputeCases, type DisputeCase, type DisputeCaseKind } from "@/lib/admin/disputes-service";
@@ -10,17 +11,22 @@ import { useSessionLossRedirect } from "@/lib/session/use-session-loss";
 /**
  * Open cases (ASSUMED `GET /admin/disputes?status=OPEN`), the active header
  * tab and the case shown in the detail card. A decision drops the case
- * locally and refreshes the sidebar badge.
+ * locally and refreshes the sidebar badge. `?id=<caseId>` (links from the
+ * overview) opens that case on its own tab.
  */
 export function useDisputeQueue() {
   const query = useApiQuery("admin:disputes", (signal) => listOpenDisputeCases(signal));
   const sessionLost = useSessionLossRedirect(query.error);
   const { refreshCounts } = useAdminCounts();
   const [chosenTab, setChosenTab] = useState<DisputeCaseKind | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get("id"));
   const [now] = useState(() => Date.now());
 
-  const tab = chosenTab ?? defaultTab(query.data?.counts);
+  // Until a tab is picked, the selected (linked) case decides which tab shows.
+  const linkedKind =
+    chosenTab === null && selectedId ? query.data?.items.find((item) => item.id === selectedId)?.kind : undefined;
+  const tab = chosenTab ?? linkedKind ?? defaultTab(query.data?.counts);
   const cases = useMemo(() => casesOfKind(query.data?.items ?? [], tab), [query.data, tab]);
   const selected = cases.find((item) => item.id === selectedId) ?? cases[0] ?? null;
 

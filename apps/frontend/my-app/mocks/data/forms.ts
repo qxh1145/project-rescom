@@ -7,7 +7,8 @@ import { SURVEY_IDS } from "./surveys";
  * Phase 5 flows: Google Forms wizard, my-surveys/tracking/results, Form Builder.
  * Statuses are the backend `formStatusEnum`; the Figma pills map as
  * MODERATION_QUEUE → "Chờ duyệt", PUBLISHED → "Đang chạy", CLOSED → "Đủ mẫu /
- * Đã kết thúc", DRAFT + `rejection` → "Bị từ chối".
+ * Đã kết thúc", CLOSED + `closeKind` MODERATION (backend `rejectPublication`)
+ * → "Bị từ chối" with the ASSUMED `rejection` details.
  *
  * A PUBLISHED/CLOSED form that respondents can see also exists in
  * `surveys.ts` under the same id (e.g. "Nhu cầu nhà trọ gần trường").
@@ -137,7 +138,8 @@ function seed(): MockPublisherForm[] {
       ownerEmail: DEMO_PUBLISHER,
       title: "Trải nghiệm dùng app giao đồ ăn",
       type: "EXTERNAL",
-      status: "DRAFT",
+      // Rejected by moderation: the backend closes it for good (decision E8-D1).
+      status: "CLOSED",
       rewardPerResponse: 12,
       expectedCompletions: 10,
       completedCompletions: 0,
@@ -148,7 +150,7 @@ function seed(): MockPublisherForm[] {
       submittedAt: hoursAgo(24 * 7),
       publishedAt: null,
       deadlineAt: null,
-      closedAt: null,
+      closedAt: hoursAgo(24 * 6),
       hiddenFromMarketplace: true,
       rejection: {
         reason: "Form yêu cầu đăng nhập tài khoản trường nên người ngoài không mở được.",
@@ -156,6 +158,7 @@ function seed(): MockPublisherForm[] {
         rejectedAt: hoursAgo(24 * 6),
       },
       versionNumber: 1,
+      closeKind: "MODERATION",
     },
   ];
 }

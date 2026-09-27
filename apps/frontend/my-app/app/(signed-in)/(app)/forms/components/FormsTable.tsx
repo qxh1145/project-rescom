@@ -13,7 +13,8 @@ function ProgressCell({ row }: { row: MyFormRow }) {
     case "PENDING_REVIEW":
       return (
         <p className="text-body-sm text-ink-muted">
-          {form.completedCompletions}/{form.expectedCompletions} · ký quỹ {form.escrowLocked}
+          {form.completedCompletions}/{form.expectedCompletions}
+          {form.escrowLocked !== null ? ` · ký quỹ ${form.escrowLocked}` : ""}
         </p>
       );
     case "RUNNING":
@@ -34,7 +35,8 @@ function ProgressCell({ row }: { row: MyFormRow }) {
     case "REJECTED":
       return (
         <p className="text-body-sm font-semibold text-tone-teal-fg">
-          Đã hoàn {form.rejection?.refundedPoints ?? 0} điểm
+          {/* ASSUMED `rejection` may be absent (backend list DTO): the escrow is refunded either way. */}
+          {form.rejection ? `Đã hoàn ${form.rejection.refundedPoints} điểm` : "Đã hoàn ký quỹ"}
         </p>
       );
     default:
@@ -52,7 +54,7 @@ function lowerFirst(text: string): string {
 }
 
 /** Desktop table of "Khảo sát của tôi" (Figma 63:162). */
-export function FormsTable({ rows, now }: { rows: readonly MyFormRow[]; now: number }) {
+export function FormsTable({ rows, now, onChanged }: { rows: readonly MyFormRow[]; now: number; onChanged: () => void }) {
   return (
     <div role="table" aria-label="Khảo sát của tôi" className="mt-4">
       <div role="row" className={`${GRID} border-b border-line pb-2 text-caption font-semibold text-ink-muted`}>
@@ -68,9 +70,9 @@ export function FormsTable({ rows, now }: { rows: readonly MyFormRow[]; now: num
         <div role="row" key={row.form.id} className={`${GRID} min-h-17.5 gap-y-1 border-b border-line-subtle py-3 last:border-b-0`}>
           <div role="cell" className="min-w-0 pr-4">
             <p className="truncate text-body font-bold text-ink">{row.form.title}</p>
-            {row.view === "REJECTED" ? (
+            {row.view === "REJECTED" && row.form.rejection?.reason ? (
               <p className="mt-1 text-caption leading-[18.9px] text-danger-strong">
-                Lý do: {lowerFirst(row.form.rejection?.reason ?? "")}
+                Lý do: {lowerFirst(row.form.rejection.reason)}
               </p>
             ) : (
               <p className="mt-1 truncate text-caption text-ink-muted">{listRowMeta(row.form, now)}</p>
@@ -86,7 +88,7 @@ export function FormsTable({ rows, now }: { rows: readonly MyFormRow[]; now: num
             {row.form.rewardPerResponse}
           </div>
           <div role="cell" className="flex justify-end gap-2">
-            <FormRowActions form={row.form} view={row.view} layout="row" />
+            <FormRowActions form={row.form} view={row.view} layout="row" onChanged={onChanged} />
           </div>
         </div>
       ))}

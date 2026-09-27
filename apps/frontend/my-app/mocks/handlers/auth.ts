@@ -105,6 +105,9 @@ export const authHandlers = [
     const forced = await applyScenario("google");
     if (forced) return forced;
 
+    if (isMockAccountLocked("student@fpt.edu.vn")) {
+      return fail(403, "AUTH_USER_LOCKED", "User account is locked.");
+    }
     const user = await mockRepository.switchDemoUser("user-new-001");
     return ok({ user: toSanitizedUser(user) });
   }),

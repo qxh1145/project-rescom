@@ -51,6 +51,7 @@ function questionsOf(blocks: FormBlock[]) {
         block.type === "single_choice" || block.type === "multiple_choice"
           ? block.options.map((option) => ({ value: option.value, label: option.label }))
           : [],
+      allowOther: (block.type === "single_choice" || block.type === "multiple_choice") && block.allowOther === true,
       scale:
         block.type === "linear_scale"
           ? { min: block.min, max: block.max, minLabel: block.minLabel ?? null, maxLabel: block.maxLabel ?? null }
@@ -135,8 +136,8 @@ export const formsResultsHandlers: RequestHandler[] = [
     const suggestions = [];
     if (enough) {
       const peak = [...dropOff].sort((a, b) => b.count - a.count)[0];
-      // A newer draft that already fixes it ("Sửa ở v2").
-      const draft = versionsOf(form.id).find((item) => !item.isPublished && item.versionNumber > version.versionNumber);
+      // A newer version (draft or approved) that already fixes it ("Sửa ở v2").
+      const draft = versionsOf(form.id).find((item) => item.versionNumber > version.versionNumber);
       if (peak && peak.count > 1) {
         suggestions.push({
           code: "DROP_OFF_QUESTION",

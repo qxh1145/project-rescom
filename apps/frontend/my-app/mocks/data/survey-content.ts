@@ -1,4 +1,5 @@
 import { formBlockSchema, type FormBlock, type FormBlockInput } from "@rescom/schemas";
+import { findFormDraft } from "./form-drafts";
 import { SURVEY_IDS, type MockSurvey } from "./surveys";
 
 /**
@@ -354,15 +355,140 @@ const housingNearCampus = define(
   { expectedEffortSeconds: 6 * 60, minTimeBarrierSeconds: 15 },
 );
 
+/**
+ * Phase 6 moderation seed. Once the admin approves this INTERNAL survey it is
+ * published into the marketplace, so it needs the same respondent-facing
+ * content as the Phase 3 catalog seeds. The id mirrors
+ * `MODERATION_SEED_FORM_IDS.canteenSatisfaction` without importing the admin
+ * module into the participation data layer.
+ */
+const canteenSatisfactionId = "7c2e3f40-5a6b-4c7d-8e9f-0a1b2c3d4f11";
+const canteenSatisfaction = define(
+  [
+    {
+      id: "canteen-q1",
+      order: 0,
+      type: "single_choice",
+      title: "Bạn sử dụng căng tin trường bao lâu một lần?",
+      required: true,
+      options: options("canteen-q1", ["Hầu như mỗi ngày", "Vài lần mỗi tuần", "Vài lần mỗi tháng", "Hiếm khi"]),
+      integrity: { semanticCategory: "BEHAVIORAL" },
+    },
+    {
+      id: "canteen-q2",
+      order: 1,
+      type: "multiple_choice",
+      title: "Bạn thường mua gì tại căng tin?",
+      required: true,
+      options: options("canteen-q2", ["Bữa chính", "Đồ ăn nhẹ", "Nước uống", "Đồ dùng học tập"]),
+      integrity: { semanticCategory: "BEHAVIORAL" },
+    },
+    {
+      id: "canteen-q3",
+      order: 2,
+      type: "linear_scale",
+      title: "Bạn hài lòng với chất lượng món ăn ở mức nào?",
+      required: true,
+      min: 1,
+      max: 5,
+      minLabel: "Rất không hài lòng",
+      maxLabel: "Rất hài lòng",
+      integrity: { semanticCategory: "FEEDBACK" },
+    },
+    {
+      id: "canteen-q4",
+      order: 3,
+      type: "linear_scale",
+      title: "Mức giá tại căng tin phù hợp với sinh viên đến đâu?",
+      required: true,
+      min: 1,
+      max: 5,
+      minLabel: "Hoàn toàn không phù hợp",
+      maxLabel: "Rất phù hợp",
+      integrity: { semanticCategory: "FEEDBACK" },
+    },
+    {
+      id: "canteen-q5",
+      order: 4,
+      type: "rating",
+      title: "Bạn đánh giá mức độ sạch sẽ của căng tin bao nhiêu sao?",
+      required: true,
+      maxRating: 5,
+      ratingShape: "STAR",
+      integrity: { semanticCategory: "FEEDBACK" },
+    },
+    {
+      id: "canteen-q6",
+      order: 5,
+      type: "single_choice",
+      title: "Bạn thường phải chờ bao lâu để nhận món?",
+      required: true,
+      options: options("canteen-q6", ["Dưới 5 phút", "5 – 10 phút", "11 – 20 phút", "Trên 20 phút"]),
+      integrity: { semanticCategory: "BEHAVIORAL" },
+    },
+    {
+      id: "canteen-q7",
+      order: 6,
+      type: "multiple_choice",
+      title: "Căng tin nên ưu tiên cải thiện điều gì?",
+      required: true,
+      maxSelections: 2,
+      options: options("canteen-q7", ["Thực đơn đa dạng hơn", "Giá bán", "Vệ sinh", "Thời gian phục vụ", "Chỗ ngồi"]),
+      integrity: { semanticCategory: "FEEDBACK" },
+    },
+    {
+      id: "canteen-q8",
+      order: 7,
+      type: "textarea",
+      title: "Bạn có đề xuất cụ thể nào cho căng tin?",
+      required: false,
+      maxLength: 500,
+      placeholder: "Chia sẻ góp ý của bạn (không bắt buộc)",
+      integrity: { semanticCategory: "FEEDBACK" },
+    },
+  ],
+  [
+    { id: "canteen-s1", title: "Thói quen sử dụng", blockIds: ["canteen-q1", "canteen-q2"] },
+    {
+      id: "canteen-s2",
+      title: "Mức độ hài lòng",
+      blockIds: ["canteen-q3", "canteen-q4", "canteen-q5", "canteen-q6"],
+    },
+    { id: "canteen-s3", title: "Góp ý cải thiện", blockIds: ["canteen-q7", "canteen-q8"] },
+  ],
+  { expectedEffortSeconds: 4 * 60, minTimeBarrierSeconds: 15 },
+);
+
 const CONTENT: Record<string, MockSurveyContent> = {
   [SURVEY_IDS.onlineShopping]: onlineShopping,
   [SURVEY_IDS.librarySatisfaction]: librarySatisfaction,
   [SURVEY_IDS.studyStressSleep]: studyStressSleep,
   [SURVEY_IDS.housingNearCampus]: housingNearCampus,
+  [canteenSatisfactionId]: canteenSatisfaction,
 };
 
+/**
+ * Seeded content, else the definition of a survey made in the Form Builder
+ * (`formDrafts`): once the Admin approves it, respondents open it through
+ * `GET /public/forms/:id` like any seeded survey.
+ */
 export function surveyContentOf(surveyId: string): MockSurveyContent | undefined {
-  return CONTENT[surveyId];
+  const seeded = CONTENT[surveyId];
+  if (seeded) return seeded;
+  const schema = findFormDraft(surveyId)?.schema;
+  if (!schema) return undefined;
+  return {
+    blocks: [...schema.blocks].sort((a, b) => a.order - b.order),
+    sections: (schema.sections ?? []).map((section) => ({
+      id: section.id,
+      title: section.title,
+      blockIds: [...section.blockIds],
+    })),
+    metadata: {
+      expectedEffortSeconds: schema.metadata.expectedEffortSeconds,
+      minTimeBarrierSeconds: schema.metadata.minTimeBarrierSeconds ?? 15,
+    },
+  };
 }
 
 /** `GET /public/forms/:id` payload (`publicFormDetailsSchema` + ASSUMED `sections`). */

@@ -19,9 +19,10 @@ import {
   insertBlock,
   insertPreparedBlock,
   moveBlockBy,
+  publishIssueSummary,
   removeBlock,
   summarizeDoc,
-  validateForPublish,
+  toDraftDefinition,
 } from "@/lib/forms/builder-blocks";
 import { blockTypeInfo } from "@/lib/forms/builder-catalog";
 import {
@@ -81,6 +82,45 @@ export function BuilderScreen() {
       .finally(() => router.replace(pathname));
   }, [wantsReview, form, editor, router, pathname]);
 
+  // "Tiếp tục" in the builder, and `?continue=1` (preview "Tiếp tục", or the publish
+  // step refusing unsaved / invalid work): publish rules → save → publish step.
+  const onContinue = async () => {
+    setContinueError(null);
+    if (editor.pending.length > 0) {
+      setContinueError(PENDING_ATTENTION_BLOCKER);
+      editor.select(editor.pending[0].blockId);
+      return;
+    }
+    const issues = editor.checkForPublish();
+    if (hasIssues(issues)) {
+      const firstBlock = editor.doc.blocks.find((block) => issues.blocks[block.id]?.length)?.id;
+      setContinueError(publishIssueSummary(editor.doc, issues) ?? "Một số câu hỏi chưa hoàn chỉnh. Hãy sửa các câu được đánh dấu đỏ.");
+      if (firstBlock) editor.select(firstBlock);
+      return;
+    }
+    setContinuing(true);
+    try {
+      const saved = await editor.saveNow();
+      if (saved.status === "conflict" || saved.status === "error" || saved.status === "offline") {
+        setContinueError(saveDraftErrorMessage(saved.error));
+        return;
+      }
+      router.push(`/forms/${formId}/builder/publish?checked=1`);
+    } finally {
+      setContinuing(false);
+    }
+  };
+
+  const continueApplied = useRef(false);
+  const wantsContinue = searchParams.get("continue") === "1";
+  useEffect(() => {
+    if (!wantsContinue || !form || continueApplied.current || editor.readOnly) return;
+    continueApplied.current = true;
+    router.replace(pathname);
+    if (editor.restoreOffer) return; // The publisher picks a version first (banner).
+    void Promise.resolve().then(onContinue);
+  });
+
   if (editor.loading || sessionLost) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-surface-muted" role="status">
@@ -105,8 +145,8 @@ export function BuilderScreen() {
   }
 
   const summary = summarizeDoc(doc);
-  const hint = internalPriceHint(summary.minutes);
-  const invalid = hasIssues(editor.issues);
+  const hint = internalPriceHint(summary.minutes, toDraftDefinition(doc));
+  const invalid = editor.draftInvalid;
   const statusLine = `Bản nháp v${form.currentVersion.versionNumber} · ${autosaveLabel(editor.autosave, invalid, (iso) => timeFormat.format(new Date(iso)))}`;
   const selectedSection = editor.selectedId ? doc.sections.find((s) => s.blockIds.includes(editor.selectedId as string)) : undefined;
   const targetSection = selectedSection ?? doc.sections.at(-1);
@@ -125,31 +165,10 @@ export function BuilderScreen() {
 
   const addSectionAtEnd = () => editor.change((current) => addSection(current).doc, "Đã thêm phần mới ở cuối form.");
 
-  const onContinue = async () => {
-    setContinueError(null);
-    if (editor.pending.length > 0) {
-      setContinueError(PENDING_ATTENTION_BLOCKER);
-      editor.select(editor.pending[0].blockId);
-      return;
-    }
-    const issues = validateForPublish(doc);
-    if (hasIssues(issues)) {
-      const firstBlock = Object.keys(issues.blocks)[0];
-      setContinueError(issues.form[0] ?? "Một số câu hỏi chưa hoàn chỉnh. Hãy sửa các câu được đánh dấu đỏ.");
-      if (firstBlock) editor.select(firstBlock);
-      return;
-    }
-    setContinuing(true);
-    try {
-      const saved = await editor.saveNow();
-      if (saved.status === "conflict" || saved.status === "error" || saved.status === "offline") {
-        setContinueError(saveDraftErrorMessage(saved.error));
-        return;
-      }
-      router.push(`/forms/${formId}/builder/publish`);
-    } finally {
-      setContinuing(false);
-    }
+  // C4: flush the autosave so the preview (and its "Tiếp tục") starts from saved work.
+  const openPreview = async () => {
+    if (!editor.readOnly) await editor.saveNow();
+    router.push(`/forms/${formId}/builder/preview`);
   };
 
   const regenerate = async () => {
@@ -271,9 +290,13 @@ export function BuilderScreen() {
         statusLine={statusLine}
         saving={editor.autosave.status === "saving"}
         onContinue={() => void onContinue()}
+        onPreview={() => void openPreview()}
         continueBusy={continuing}
         readOnly={editor.readOnly}
       />
+
+      {/* Rendered once (not per breakpoint): keeps a single announced alert per message. */}
+      <div className="mx-auto flex w-full max-w-[680px] flex-col gap-3 px-4 pt-3.5 lg:px-0 lg:pt-4">{banners}</div>
 
       {/* Desktop: toolbox · canvas · properties (lg+). */}
       <div className="hidden lg:flex">
@@ -293,7 +316,6 @@ export function BuilderScreen() {
             formId={formId}
             toolboxDragging={draggingType !== null}
             onToolboxDrop={() => setDraggingType(null)}
-            aiBanner={banners}
           />
         </main>
         <aside
@@ -306,7 +328,6 @@ export function BuilderScreen() {
 
       {/* Mobile (13e / 13f). */}
       <main className="flex flex-col gap-3 px-4 pt-3.5 pb-40 lg:hidden">
-        {banners}
         {doc.blocks.length > 0 ? (
           <p className="flex items-start gap-2 rounded-[12px] bg-surface-subtle px-3 py-2.5 text-caption leading-[18.9px] text-ink-strong">
             <Icon name="grip-dots" size={16} className="mt-0.5 text-ink-muted" />
@@ -344,7 +365,7 @@ export function BuilderScreen() {
       </main>
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface px-4 pt-3 pb-[max(16px,env(safe-area-inset-bottom))] lg:hidden">
         <p className="text-center text-[12px] text-ink-muted">
-          {summary.questionCount} câu · khoảng {summary.minutes} phút · {hint.label} (rẻ hơn 20%)
+          {summary.questionCount} câu · khoảng {summary.minutes} phút · Giá gợi ý {hint.label} · {hint.paidLabel}
         </p>
         <Button fullWidth size="xl" radius="field" className="mt-2 gap-2" loading={continuing} onClick={() => void onContinue()}>
           Tiếp tục: chọn đối tượng

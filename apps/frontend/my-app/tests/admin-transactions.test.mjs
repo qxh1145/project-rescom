@@ -120,9 +120,7 @@ test("service schemas accept the verified journal shape and the ASSUMED extras",
       { ...base, entries: [entry] },
       { ...base, entries: [{ ...entry, accountClass: "ESCROW", ownerName: "Linh" }], related: "Khảo sát", attemptId: null },
     ],
-    total: 2,
     limit: 50,
-    offset: 0,
     hasMore: false,
   };
   assert.equal(adminJournalListSchema.safeParse(list).success, true);
@@ -133,4 +131,34 @@ test("service schemas accept the verified journal shape and the ASSUMED extras",
     refundedToday: { points: 120, surveys: 1 },
   };
   assert.equal(adminLedgerSummarySchema.safeParse(summary).success, true);
+});
+
+test("journal cursor: keyset order, parse, and no repeated rows across pages", () => {
+  const a = { id: "00000000-0000-4000-8000-00000000000b", createdAt: "2026-09-26T13:40:00.000Z" };
+  const b = { id: "00000000-0000-4000-8000-00000000000a", createdAt: "2026-09-26T13:40:00.000Z" };
+  const c = { id: "00000000-0000-4000-8000-00000000000f", createdAt: "2026-09-26T12:00:00.000Z" };
+  assert.deepEqual([c, b, a].sort(tx.compareJournalsNewestFirst), [a, b, c]);
+
+  const cursor = tx.journalCursorOf(a);
+  assert.equal(cursor, "2026-09-26T13:40:00.000Z:00000000-0000-4000-8000-00000000000b");
+  assert.deepEqual(tx.parseJournalCursor(cursor), { createdAt: a.createdAt, id: a.id });
+  assert.equal(tx.parseJournalCursor("nope"), null);
+  assert.equal(tx.parseJournalCursor("not-a-date:abc"), null);
+  assert.equal(tx.parseJournalCursor("2026-09-26T13:40:00.000Z:"), null);
+
+  // After a: same instant with a smaller id, then older rows — never a itself or anything newer.
+  const parsed = tx.parseJournalCursor(cursor);
+  assert.equal(tx.isAfterJournalCursor(a, parsed), false);
+  assert.equal(tx.isAfterJournalCursor(b, parsed), true);
+  assert.equal(tx.isAfterJournalCursor(c, parsed), true);
+  const newer = { id: "00000000-0000-4000-8000-000000000001", createdAt: "2026-09-26T14:00:00.000Z" };
+  assert.equal(tx.isAfterJournalCursor(newer, parsed), false);
+
+  // "Tải thêm" drops rows already on screen.
+  assert.deepEqual(tx.newJournalRows([a, b], [b, c]), [c]);
+});
+
+test("dispute refund journal of one side: implied Đang giữ source", () => {
+  const publisherSide = tx.toTransactionRow(journal("dispute-resolution:case:refund", [["USER_AVAILABLE", 10, "Trần Minh"]]));
+  assert.equal(publisherSide.route, "Đang giữ → Khả dụng · Minh T.");
 });

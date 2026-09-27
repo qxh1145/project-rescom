@@ -19,6 +19,7 @@ import {
   updateAttempt,
   type MockAttempt,
 } from "../data/attempts";
+import { addMissingCodeReport } from "../data/admin-disputes";
 import { creditSurveyReward } from "../data/economy";
 import { updateNotifications } from "../data/notifications";
 import { findSurvey, markSurveyCompleted, updateSurvey } from "../data/surveys";
@@ -224,6 +225,7 @@ export const externalParticipationHandlers = [
     if (attempt.status === "ABANDONED") {
       return fail(409, "ATTEMPT_EXPIRED", "This survey attempt was abandoned.");
     }
+    addMissingCodeReport({ attemptId: attempt.attemptId, reason: body.data.reason });
     return ok({
       attemptId: attempt.attemptId,
       reportedAt: nowIso(),

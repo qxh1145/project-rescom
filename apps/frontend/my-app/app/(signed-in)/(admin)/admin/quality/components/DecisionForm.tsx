@@ -124,7 +124,13 @@ export function DecisionForm({ review, onDecide }: DecisionFormProps) {
         </Button>
       </div>
 
-      <Dialog open={confirming} onClose={() => !busy && setConfirming(false)} labelledBy="quality-reject-title" width={480}>
+      <Dialog
+        open={confirming}
+        onClose={() => !busy && setConfirming(false)}
+        labelledBy="quality-reject-title"
+        width={480}
+        dismissible={!busy}
+      >
         <div className="p-6">
           <h2 id="quality-reject-title" className="text-title-sm font-extrabold text-ink">
             Từ chối câu trả lời #{review.reference}?

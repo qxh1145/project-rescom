@@ -107,7 +107,7 @@ export function resolvedMessage(item: DisputeCase, outcome: DisputeCaseOutcome):
   const points = `${item.amount} điểm`;
   switch (outcome) {
     case "REFUND_TO_PUBLISHER":
-      return `Đã chấp nhận khiếu nại về ${code}: ${points} trả về ký quỹ của “${item.survey.title}”. Hai bên đã được thông báo.`;
+      return `Đã chấp nhận khiếu nại về ${code}: ${points} hoàn vào Khả dụng của người đăng “${item.survey.title}”. Hai bên đã được thông báo.`;
     case "RELEASE_TO_RESPONDENT":
       return `Đã bác bỏ khiếu nại: ${points} chuyển vào Khả dụng của ${code}. Hai bên đã được thông báo.`;
     case "CREDIT_RESPONDENT":
@@ -206,6 +206,14 @@ export function timelineOf(item: DisputeCase): TimelineRow[] {
   return rows.map((row) => ({ ...row, time: formatClock(row.at) }));
 }
 
+/** CURRENT attempt status shown on the case (backend `AttemptStatus`, ASSUMED copy). */
+export const ATTEMPT_STATUS_LABELS: Record<DisputeCase["attempt"]["status"], string> = {
+  IN_PROGRESS: "Đang làm",
+  COMPLETED: "Đã hoàn thành",
+  ABANDONED: "Đã huỷ hoặc hết hạn",
+  LOCKED: "Bị khoá",
+};
+
 /** ASSUMED: the only FraudLog written by participation as SECURITY_VIOLATION is a wrong completion code. */
 export const FRAUD_LOG_LABELS: Record<FraudLogType, string> = {
   TIME_BARRIER: "Nộp quá nhanh",
@@ -238,6 +246,8 @@ export interface CaseAction {
   confirmTitle: string;
   confirmBody: string;
   confirmLabel: string;
+  /** Why the button is disabled (shown next to it); absent = enabled. */
+  disabledReason?: string;
 }
 
 /** Decision buttons, secondary first (Figma: "Bác bỏ khiếu nại" left of the green button). */
@@ -258,10 +268,10 @@ export function actionsOf(item: DisputeCase): CaseAction[] {
         },
         {
           outcome: "REFUND_TO_PUBLISHER",
-          label: `Chấp nhận · trả ${points} về ký quỹ`,
+          label: `Chấp nhận · hoàn ${points} cho người đăng`,
           primary: true,
           confirmTitle: "Chấp nhận khiếu nại?",
-          confirmBody: `Lượt làm của ${code} bị đánh dấu không hợp lệ. ${points} trả về ký quỹ của ${survey}. Tài khoản ${code} không bị khoá. Cả hai bên nhận email kèm lý do.`,
+          confirmBody: `Lượt làm của ${code} bị đánh dấu không hợp lệ. ${points} hoàn vào Khả dụng của người đăng ${survey}. Tài khoản ${code} không bị khoá. Cả hai bên nhận email kèm lý do.`,
           confirmLabel: "Chấp nhận khiếu nại",
         },
       ];
@@ -284,6 +294,10 @@ export function actionsOf(item: DisputeCase): CaseAction[] {
         confirmTitle: `Cộng ${points} thủ công?`,
         confirmBody: `Lượt làm của ${code} được xác nhận hoàn thành. ${points} lấy từ ký quỹ của ${survey} vào Khả dụng của người trả lời. Người đăng và người trả lời nhận thông báo kèm lý do.`,
         confirmLabel: `Cộng ${points}`,
+        // The respondent entered the code after reporting: the attempt already earned its reward.
+        ...(item.attempt.status === "COMPLETED"
+          ? { disabledReason: "Lượt làm đã hoàn thành (người trả lời đã nhập đúng mã) nên không cộng điểm thêm." }
+          : {}),
       });
       return actions;
     }

@@ -48,16 +48,32 @@ export function exportDateTime(value: string): string {
 /** Joined multiple-choice cell separator (a comma would clash with option labels like "1,5–2,5 triệu"). */
 export const CHOICE_SEPARATOR = "; ";
 
+/** Header suffix of the free-text column of a choice question with `allowOther` (Phase 5 M4). */
+export const OTHER_COLUMN_LABEL = "Khác";
+
+function chosenValues(value: AnswerValue | undefined): string[] {
+  return Array.isArray(value) ? value : value === null || value === undefined || value === "" ? [] : [String(value)];
+}
+
 function questionColumns(question: ResultQuestion, layout: MultipleChoiceLayout) {
   const title = `C${question.number}. ${question.title}`;
   if (question.type === "multiple_choice" && layout === "split") {
-    return question.options.map((option) => ({
+    const optionValues = new Set(question.options.map((option) => option.value));
+    const columns = question.options.map((option) => ({
       header: `${title} [${option.label}]`,
-      cell: (value: AnswerValue | undefined): ExportCell => {
-        const chosen = Array.isArray(value) ? value : value === null || value === undefined ? [] : [String(value)];
-        return chosen.includes(option.value) ? 1 : 0;
-      },
+      cell: (value: AnswerValue | undefined): ExportCell => (chosenValues(value).includes(option.value) ? 1 : 0),
     }));
+    // A "Khác" answer is its own text: without this column the split layout would drop it.
+    if (question.allowOther) {
+      columns.push({
+        header: `${title} [${OTHER_COLUMN_LABEL}]`,
+        cell: (value: AnswerValue | undefined): ExportCell =>
+          chosenValues(value)
+            .filter((item) => !optionValues.has(item))
+            .join(CHOICE_SEPARATOR),
+      });
+    }
+    return columns;
   }
   return [
     {

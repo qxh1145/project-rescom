@@ -7,17 +7,25 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { useFormHeader } from "@/lib/forms/manage-header-context";
-import { formActionErrorMessage } from "@/lib/forms/manage-messages";
+import { formActionErrorMessage, reopenRefusalMessage } from "@/lib/forms/manage-messages";
 import { clampAdditional, REOPEN_DEFAULT_COMPLETIONS, reopenCost } from "@/lib/forms/manage-reopen";
 import { reopenPublisherForm, type PublisherForm } from "@/lib/forms/manage-service";
-import { canReopen } from "@/lib/forms/manage-status";
+import { reopenRefusalOf } from "@/lib/forms/manage-status";
 import { useSession } from "@/lib/session/SessionProvider";
 import { SheetDialog } from "../../components/SheetDialog";
 
 const STEPPER =
   "inline-flex size-12 shrink-0 items-center justify-center rounded-field border border-line-strong bg-surface text-[22px] font-semibold text-ink hover:bg-surface-subtle disabled:cursor-not-allowed disabled:opacity-50";
 
-function ReopenForm({ form, onDone }: { form: PublisherForm; onDone: () => void }) {
+function ReopenForm({
+  form,
+  onDone,
+  onBusyChange,
+}: {
+  form: PublisherForm;
+  onDone: () => void;
+  onBusyChange: (busy: boolean) => void;
+}) {
   const router = useRouter();
   const { applyForm } = useFormHeader();
   const { balance, refresh } = useSession();
@@ -38,6 +46,7 @@ function ReopenForm({ form, onDone }: { form: PublisherForm; onDone: () => void 
   async function submit() {
     if (!cost.validQuantity || !cost.affordable) return;
     setBusy(true);
+    onBusyChange(true);
     setError(null);
     try {
       const updated = await reopenPublisherForm(form.id, quantity);
@@ -48,6 +57,7 @@ function ReopenForm({ form, onDone }: { form: PublisherForm; onDone: () => void 
     } catch (cause) {
       setError(formActionErrorMessage(cause, "Chưa mở lại được khảo sát. Vui lòng thử lại."));
       setBusy(false);
+      onBusyChange(false);
     }
   }
 
@@ -176,8 +186,12 @@ function ReopenForm({ form, onDone }: { form: PublisherForm; onDone: () => void 
 function ReopenSheet({ form }: { form: PublisherForm }) {
   const router = useRouter();
   // Decided once: after a successful reopen the survey is PUBLISHED while the page navigates away.
-  const [reopenable] = useState(() => canReopen(form));
-  const close = () => router.replace(`/forms/${encodeURIComponent(form.id)}`, { scroll: false });
+  const [refusal] = useState(() => reopenRefusalOf(form));
+  const [busy, setBusy] = useState(false);
+  const close = () => {
+    if (busy) return;
+    router.replace(`/forms/${encodeURIComponent(form.id)}`, { scroll: false });
+  };
 
   return (
     <SheetDialog
@@ -185,15 +199,14 @@ function ReopenSheet({ form }: { form: PublisherForm }) {
       title="Mở lại khảo sát"
       subtitle={`${form.title} · đã đủ ${form.completedCompletions}/${form.expectedCompletions}`}
       onClose={close}
+      dismissible={!busy}
     >
-      {reopenable ? (
-        <ReopenForm form={form} onDone={close} />
+      {refusal === null ? (
+        <ReopenForm form={form} onDone={close} onBusyChange={setBusy} />
       ) : (
         <>
           <Alert tone="info" className="mt-4">
-            {form.status === "CLOSED"
-              ? "Khảo sát bị Admin gỡ hoặc từ chối nên không mở lại được."
-              : "Chỉ khảo sát đã kết thúc mới mở lại thêm mẫu được."}
+            {reopenRefusalMessage(refusal)}
           </Alert>
           <Button variant="secondary" size="xl" fullWidth className="mt-5" onClick={close}>
             Đóng

@@ -67,6 +67,39 @@ export function periodStartIso(period: TransactionPeriod, now: Date): string | n
   return new Date(startOfToday - days * DAY_MS).toISOString();
 }
 
+type JournalKey = { createdAt: string; id: string };
+
+/** Journal list order (ASSUMED contract): newest first, ties by id descending. */
+export function compareJournalsNewestFirst(a: JournalKey, b: JournalKey): number {
+  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? 1 : -1;
+  return a.id === b.id ? 0 : a.id < b.id ? 1 : -1;
+}
+
+/** "Tải thêm" cursor (`before=`): `<createdAt>:<id>` of the last row shown. */
+export function journalCursorOf(journal: JournalKey): string {
+  return `${journal.createdAt}:${journal.id}`;
+}
+
+/** Splits `<createdAt>:<id>` at the last colon (ISO times contain colons, ids do not); null when malformed. */
+export function parseJournalCursor(cursor: string): JournalKey | null {
+  const at = cursor.lastIndexOf(":");
+  if (at <= 0 || at === cursor.length - 1) return null;
+  const createdAt = cursor.slice(0, at);
+  const id = cursor.slice(at + 1);
+  return Number.isNaN(Date.parse(createdAt)) ? null : { createdAt, id };
+}
+
+/** True when `journal` comes after the cursor row in list order (older, or same instant with a smaller id). */
+export function isAfterJournalCursor(journal: JournalKey, cursor: JournalKey): boolean {
+  return compareJournalsNewestFirst(cursor, journal) < 0;
+}
+
+/** The rows of a "Tải thêm" page not already shown (by id), in page order. */
+export function newJournalRows<T extends { id: string }>(shown: readonly T[], page: readonly T[]): T[] {
+  const seen = new Set(shown.map((journal) => journal.id));
+  return page.filter((journal) => !seen.has(journal.id));
+}
+
 /** Balance tier names used in "Từ → Đến" (Figma: Khả dụng, Ký quỹ, Chờ 48h, Đóng băng). */
 const ACCOUNT_LABELS: Record<LedgerAccountClass, string> = {
   USER_AVAILABLE: "Khả dụng",
@@ -94,6 +127,8 @@ const IMPLIED_SOURCE: Partial<Record<HistoryKind, LedgerAccountClass>> = {
   SURVEY_REWARD: "ESCROW",
   STARTER_GRANT: "SYSTEM_ISSUANCE",
   ESCROW_REFUND: "ESCROW",
+  // `resolveDisputeHold`: the publisher's refund / respondent's release comes out of the Integrity Hold.
+  DISPUTE_RESOLUTION: "INTEGRITY_HOLD",
 };
 const IMPLIED_DESTINATION: Partial<Record<HistoryKind, LedgerAccountClass>> = {
   STARTER_EXPIRY: "SYSTEM_SINK",
