@@ -131,6 +131,24 @@
   --text-field-lg--line-height: normal;
 }
 
+/* Landing hero entrance animations (animate-fade-rise, -delay, -delay-2). */
+@theme {
+  --animate-fade-rise: fade-rise 0.8s ease-out both;
+  --animate-fade-rise-delay: fade-rise 0.8s ease-out 0.2s both;
+  --animate-fade-rise-delay-2: fade-rise 0.8s ease-out 0.4s both;
+
+  @keyframes fade-rise {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
 /* The Figma design is light-only. Force light for the whole app: native controls
    and scrollbars stay light, and `dark:` utilities (still present in legacy pages)
    only apply under a `.dark` class, which nothing sets — so a dark OS no longer

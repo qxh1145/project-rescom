@@ -9,7 +9,7 @@ import { SUPPORT_MAILTO } from "@/lib/feedback/error-pages";
 import { ACCOUNT_MESSAGES } from "@/lib/profile/account-messages";
 import { profileFieldGroups } from "@/lib/profile/account-view";
 import type { AccountData } from "../hooks/use-account-data";
-import { useLogout } from "../hooks/use-logout";
+import { useLogout } from "@/lib/auth/use-logout";
 import { ProfileFieldGrid, ProfileFieldsState } from "./AccountParts";
 import { GoogleLinkDialog } from "./GoogleLinkDialog";
 import { ProfileCard } from "./ProfileCard";

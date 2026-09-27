@@ -34,6 +34,7 @@ import {
   type QuestionStep,
 } from "@/lib/onboarding/onboarding-steps";
 import { getUserProfile, updateUserProfile } from "@/lib/profile/profile-service";
+import { onboardingEntryRedirect, onboardingStatusOf } from "@/lib/session/onboarding-gate";
 import { useSession } from "@/lib/session/SessionProvider";
 import { sessionStatusFromError } from "@/lib/session/session-status";
 
@@ -60,7 +61,7 @@ export function useOnboardingFlow() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const query = searchParams.toString();
-  const { user, displayName, refresh } = useSession();
+  const { user, onboarding, displayName, refresh, markOnboardingComplete } = useSession();
   const currentYear = useMemo(() => new Date().getFullYear(), []);
 
   // Reading sessionStorage in a useState initializer is safe only because this
@@ -69,6 +70,14 @@ export function useOnboardingFlow() {
   // once, with the signed-in user's id. The draft stays bound to that user.
   const [ownerId] = useState(() => user?.id ?? "anonymous");
   const [draft, setDraftState] = useState<OnboardingDraft>(() => readDraft(browserSessionStorage(), ownerId));
+  // What the visitor asked for when the page opened (see `onboardingEntryRedirect`).
+  const [entry] = useState(() => ({
+    requestedStep: parseStep(searchParams.get("step")),
+    submittedInThisTab: draft.submitted !== null,
+    editing: searchParams.get("edit") === "1",
+  }));
+  /** `undefined` until decided; then fixed for this visit (`null` = stay). */
+  const [entryRedirect, setEntryRedirect] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState<StepError | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -82,8 +91,24 @@ export function useOnboardingFlow() {
     return {
       answers: answersFromServer(demographics.profile, profile, currentYear),
       updatedAt: demographics.profile.updatedAt ?? null,
+      isComplete: demographics.isComplete,
     };
   });
+
+  // Decide entry from this fresh `GET /demographics`, not the session snapshot: after an account
+  // switch in another tab the snapshot is stale and would bounce `/onboarding` ↔ `/marketplace`.
+  // If the read fails, the session value stands in. Set during render (derived state), once.
+  const entryStatus =
+    user?.role === "ADMIN"
+      ? "unknown"
+      : prefill.data
+        ? onboardingStatusOf(user?.role, prefill.data)
+        : prefill.error
+          ? onboarding
+          : undefined;
+  if (entryRedirect === undefined && entryStatus !== undefined) {
+    setEntryRedirect(onboardingEntryRedirect({ role: user?.role, onboarding: entryStatus, ...entry }));
+  }
 
   const answers = chooseAnswers(draft, prefill.data) ?? EMPTY_ANSWERS;
   const ready = draft.answers !== null || prefill.data !== undefined;
@@ -91,8 +116,9 @@ export function useOnboardingFlow() {
   const step = ready ? resolveStep(requested, answers, draft.submitted !== null, currentYear) : requested;
 
   useEffect(() => {
-    if (ready && step !== requested) router.replace(buildStepHref(step, query));
-  }, [ready, step, requested, router, query]);
+    if (entryRedirect) router.replace(entryRedirect);
+    else if (entryRedirect === null && ready && step !== requested) router.replace(buildStepHref(step, query));
+  }, [entryRedirect, ready, step, requested, router, query]);
 
   // A prefill 401/locked: let SessionProvider re-check so SessionGate redirects (the draft survives).
   useEffect(() => {
@@ -148,6 +174,8 @@ export function useOnboardingFlow() {
         console.warn("Onboarding: PATCH /users/me/profile failed", result.profileError);
       }
       saveDraft({ answers, submitted: { nextStep: result.nextStep }, updatedAt: new Date().toISOString() });
+      // `SessionGate` must not send "Tiếp tục" back here before `refresh()` returns.
+      markOnboardingComplete();
       // Header name, points and badge pick up the new profile.
       refresh();
       // push (not replace): Back from the done screen returns to the last question.
@@ -168,7 +196,7 @@ export function useOnboardingFlow() {
     } finally {
       setSubmitting(false);
     }
-  }, [user, ownerId, answers, currentYear, saveDraft, refresh, router, query]);
+  }, [user, ownerId, answers, currentYear, saveDraft, markOnboardingComplete, refresh, router, query]);
 
   const next = useCallback(() => {
     if (step === "welcome" || step === "done" || submitting) return;
@@ -202,6 +230,8 @@ export function useOnboardingFlow() {
 
   return {
     step,
+    /** Entry not decided yet, or leaving (finished respondent, admin): render only a spinner. */
+    redirecting: entryRedirect !== null,
     ready,
     loadError: draft.answers === null ? prefill.error : null,
     reload: prefill.reload,

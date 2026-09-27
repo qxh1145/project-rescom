@@ -60,7 +60,7 @@ test("15h field groups follow Figma, school fields only for students", () => {
 });
 
 test("15h 'Sửa' reopens the onboarding question and returns to the profile", () => {
-  assert.equal(view.profileEditHref("birth-year"), "/onboarding?step=birth-year&returnTo=%2Faccount%2Fprofile");
+  assert.equal(view.profileEditHref("birth-year"), "/onboarding?step=birth-year&edit=1&returnTo=%2Faccount%2Fprofile");
 });
 
 test("15g row values: consent, weekly rank, unread", () => {

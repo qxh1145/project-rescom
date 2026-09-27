@@ -14,6 +14,7 @@ import { AuthCard } from "../../login/components/AuthCard";
 import { AuthFormAlert } from "../../login/components/AuthFormAlert";
 import { GoogleSignInButton } from "../../login/components/GoogleSignInButton";
 import { useEmailAuth, type AuthFocusTarget } from "../../login/hooks/use-email-auth";
+import { useRedirectIfSignedIn } from "../../login/hooks/use-redirect-if-signed-in";
 import { PasswordStrengthMeter } from "./PasswordStrengthMeter";
 import { StarterPointsNote } from "./StarterPointsNote";
 
@@ -37,6 +38,7 @@ export function RegisterPanel() {
   const searchParams = useSearchParams();
   const returnTo = sanitizeReturnTo(searchParams.get("returnTo"));
   const auth = useEmailAuth({ mode: "register", returnTo });
+  useRedirectIfSignedIn(returnTo);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsError, setTermsError] = useState<string | null>(null);
   // A new object per failed submit, so the same target is refocused on repeat failures.

@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { Spinner } from "@/components/ui/Spinner";
+import { onboardingGateRedirect } from "@/lib/session/onboarding-gate";
 import { useSession } from "@/lib/session/SessionProvider";
 import { sessionGateRedirect } from "@/lib/session/session-status";
 
@@ -17,26 +18,36 @@ interface SessionGateProps {
  * cause (`sessionGateRedirect`): 401 → `/login?returnTo=…`, locked account →
  * `/login?error=AUTH_USER_LOCKED`, no connection → `/offline?from=…`, anything
  * else → `/server-error?from=…`. Non-admins on admin pages go to `/forbidden`.
+ * Outside the admin console, a respondent who has not finished onboarding is
+ * sent to `/onboarding?required=1&returnTo=…` (`onboardingGateRedirect`).
  * The backend still enforces access; this only avoids rendering a shell
  * that can load nothing.
  */
 export function SessionGate({ children, requireAdmin = false }: SessionGateProps) {
-  const { status, user } = useSession();
+  const { status, user, onboarding } = useSession();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const query = searchParams.toString();
+  const currentPath = `${pathname}${query ? `?${query}` : ""}`;
+
+  const authenticated = status === "authenticated";
+  const forbidden = authenticated && requireAdmin && user?.role !== "ADMIN";
+  const onboardingTarget =
+    authenticated && !requireAdmin
+      ? onboardingGateRedirect({ role: user?.role, onboarding, pathname, currentPath })
+      : null;
 
   useEffect(() => {
-    if (status === "authenticated") {
-      if (requireAdmin && user?.role !== "ADMIN") router.replace("/forbidden");
-      return;
+    if (forbidden) router.replace("/forbidden");
+    else if (onboardingTarget) router.replace(onboardingTarget);
+    else if (!authenticated) {
+      const target = sessionGateRedirect(status, currentPath);
+      if (target) router.replace(target);
     }
-    const query = searchParams.toString();
-    const target = sessionGateRedirect(status, `${pathname}${query ? `?${query}` : ""}`);
-    if (target) router.replace(target);
-  }, [status, user, requireAdmin, router, pathname, searchParams]);
+  }, [authenticated, forbidden, onboardingTarget, status, currentPath, router]);
 
-  if (status === "authenticated" && (!requireAdmin || user?.role === "ADMIN")) return <>{children}</>;
+  if (authenticated && !forbidden && !onboardingTarget) return <>{children}</>;
   return (
     <div role="status" className="flex min-h-dvh items-center justify-center text-primary">
       <Spinner className="size-6" />
