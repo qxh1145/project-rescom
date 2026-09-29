@@ -108,6 +108,8 @@ export function ResponsesScreen({ selectedId }: { selectedId: string | null }) {
 
   const queryString = search.toString() ? `?${search.toString()}` : "";
   const base = `/forms/${formId}/responses`;
+  // The list lives under "Từng câu trả lời"; a row keeps its `/responses/:responseId` URL.
+  const listHref = `${base}/individual${queryString}`;
   const hrefFor = useCallback((response: FormResponse) => `${base}/${response.id}${queryString}`, [base, queryString]);
 
   const updateUrl = useCallback(
@@ -181,7 +183,7 @@ export function ResponsesScreen({ selectedId }: { selectedId: string | null }) {
             data={data}
             response={selected}
             position={position}
-            listHref={`${base}${queryString}`}
+            listHref={listHref}
             hrefFor={hrefFor}
           />
         ) : (
@@ -189,7 +191,7 @@ export function ResponsesScreen({ selectedId }: { selectedId: string | null }) {
             <ResultsEmpty
               title="Không tìm thấy câu trả lời này"
               action={
-                <Link href={`${base}${queryString}`} className="font-bold text-primary hover:underline">
+                <Link href={listHref} className="font-bold text-primary hover:underline">
                   Về danh sách câu trả lời
                 </Link>
               }

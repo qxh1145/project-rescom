@@ -1,5 +1,6 @@
 import type { FormStatusEnum } from "@rescom/schemas";
 import { createCollection, hoursAgo } from "../db/store";
+import { ANALYTICS_FORM_IDS, analyticsPublisherForms } from "./form-analytics-seed";
 import { SURVEY_IDS } from "./surveys";
 
 /**
@@ -19,6 +20,9 @@ export const PUBLISHER_FORM_IDS = {
   readingHabits: "7c2e3f40-5a6b-4c7d-8e9f-0a1b2c3d4f02",
   housingNearCampus: SURVEY_IDS.housingNearCampus,
   foodDeliveryApp: "7c2e3f40-5a6b-4c7d-8e9f-0a1b2c3d4f04",
+  /** Survey response analytics (`form-analytics-seed.ts`): 321 responses / no responses yet. */
+  rescomExperience: ANALYTICS_FORM_IDS.rescomExperience,
+  groupStudy: ANALYTICS_FORM_IDS.groupStudy,
 } as const;
 
 export type PublisherFormKind = "INTERNAL" | "EXTERNAL";
@@ -160,6 +164,7 @@ function seed(): MockPublisherForm[] {
       versionNumber: 1,
       closeKind: "MODERATION",
     },
+    ...analyticsPublisherForms(),
   ];
 }
 
