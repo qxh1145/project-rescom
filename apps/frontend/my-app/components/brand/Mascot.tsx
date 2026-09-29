@@ -9,9 +9,8 @@ import {
 /**
  * Figma page 19 "Bộ mascot" (70:446) — 21 expressions, all drawn on the same
  * 210 × 230 canvas, so width is always derived from the height.
- * Files come from `public/brand/mascots/<name>.svg`. `think`, `confused` and
- * `sleep` carry text glyphs ("?", "z") that Figma cannot flatten, so they are
- * assembled from their vector layers (see `mascot-layers.ts`).
+ * Files come from `public/brand/mascots/`. Drive-provided expressions use PNG;
+ * remaining expressions keep their original SVG or composed vector layers.
  *
  * Figma notes: decorative (alt=""), minimum 96px high, one mascot per screen.
  */
@@ -37,6 +36,25 @@ export type MascotName =
   | ComposedMascotName;
 
 const ASPECT_RATIO = 210 / 230;
+
+const PNG_MASCOTS = new Set<MascotName>([
+  "wave",
+  "cheer",
+  "points",
+  "streak",
+  "trophy",
+  "create",
+  "laptop",
+  "search",
+  "wait",
+  "confused",
+  "sad",
+  "offline",
+  "fix",
+  "shield",
+  "love",
+  "sleep",
+]);
 
 interface MascotProps {
   name: MascotName;
@@ -99,19 +117,21 @@ function ComposedMascot({ name, height, width, className }: MascotProps & { name
 export function Mascot({ name, height, className = "" }: MascotProps) {
   const width = Math.round(height * ASPECT_RATIO * 100) / 100;
 
-  if (isComposed(name)) {
+  if (!PNG_MASCOTS.has(name) && isComposed(name)) {
     return <ComposedMascot name={name} height={height} width={width} className={className} />;
   }
 
+  const extension = PNG_MASCOTS.has(name) ? "png" : "svg";
+
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- vector art; next/image adds nothing for SVG
+    // eslint-disable-next-line @next/next/no-img-element -- static brand artwork with explicit dimensions
     <img
-      src={`/brand/mascots/${name}.svg`}
+      src={`/brand/mascots/${name}.${extension}`}
       alt=""
       width={width}
       height={height}
       className={`shrink-0 ${className}`}
-      style={{ width, height }}
+      style={{ width, height, objectFit: "contain" }}
     />
   );
 }
