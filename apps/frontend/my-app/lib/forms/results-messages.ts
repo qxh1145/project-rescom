@@ -26,6 +26,10 @@ export const analyticsLoadErrorMessage = (error: unknown) => loadError(error, "t
 export const SURVEY_LINK_COPIED = "Đã sao chép liên kết khảo sát.";
 export const SURVEY_LINK_COPY_FAILED = "Không sao chép tự động được — hãy chọn và sao chép liên kết bên dưới.";
 
+/** Google Forms surveys: only the verified completion codes live in Rescom (Từng câu trả lời, Tóm tắt). */
+export const GOOGLE_FORMS_ANSWERS_NOTE =
+  "Câu trả lời Google Forms nằm trong Google Forms của bạn; Rescom lưu mã hoàn thành đã xác minh.";
+
 export const VERSION_CHANGES_LOAD_FAILED = "Không tải được các thay đổi của bản nháp.";
 export const EXPORT_FAILED = "Chưa tạo được file. Vui lòng thử lại.";
 

@@ -49,10 +49,11 @@ export function AnalyticsHeader({ analytics }: { analytics: FormAnalytics }) {
       {tiles.length ? (
         <ul className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
           {tiles.map((tile) => (
+            // Fixed line boxes (18 · 26 · 18 px), mirrored by `AnalyticsSkeleton`, so loading does not shift the page.
             <li key={tile.label} className="flex flex-col gap-1.5 rounded-[18px] border border-line bg-surface p-4 lg:p-4.5">
-              <span className="text-caption font-semibold text-ink-muted">{tile.label}</span>
+              <span className="text-caption leading-[18px] font-semibold text-ink-muted">{tile.label}</span>
               <span className="text-[20px] leading-[26px] font-extrabold text-ink lg:text-[24px]">{tile.value}</span>
-              <span className="text-[12px] text-ink-muted">{tile.caption}</span>
+              <span className="text-[12px] leading-[18px] text-ink-muted">{tile.caption}</span>
             </li>
           ))}
         </ul>

@@ -1,4 +1,5 @@
 import { createCollection, hoursAgo } from "../db/store";
+import { ANALYTICS_FORM_IDS, analyticsRespondentSurveys } from "./form-analytics-seed";
 
 /**
  * Shared survey catalog for every respondent/publisher mock (marketplace,
@@ -16,6 +17,8 @@ export const SURVEY_IDS = {
   studyStressSleep: "5a0c1f7e-2b4d-4c6a-8e1f-0a1b2c3d4e04",
   eScooterIntent: "5a0c1f7e-2b4d-4c6a-8e1f-0a1b2c3d4e05",
   housingNearCampus: "5a0c1f7e-2b4d-4c6a-8e1f-0a1b2c3d4e06",
+  /** Running survey of the demo publisher, seeded in `form-analytics-seed.ts` (no responses yet). */
+  groupStudy: ANALYTICS_FORM_IDS.groupStudy,
 } as const;
 
 export type SurveyType = "INTERNAL" | "EXTERNAL";
@@ -150,6 +153,7 @@ function seed(): MockSurvey[] {
       externalUrl: null,
       publishedAt: hoursAgo(24 * 12),
     },
+    ...analyticsRespondentSurveys(),
   ];
 }
 

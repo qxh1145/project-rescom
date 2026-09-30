@@ -2,6 +2,7 @@ import { escrowDrawPerCompletion, formBlockSchema, type FormBlock, type FormBloc
 import type { MockAnswer, MockFormResponse, MockQualitySnapshot } from "./form-responses";
 import type { MockFormVersion } from "./form-versions";
 import type { MockPublisherForm } from "./forms";
+import type { MockSurvey } from "./surveys";
 
 /**
  * Seed of the survey response analytics (Câu trả lời → Tóm tắt / Theo câu
@@ -13,7 +14,7 @@ import type { MockPublisherForm } from "./forms";
  *   counts are exact (see `COUNTS`); which row gets which answer comes from a
  *   seeded shuffle, so the data is the same on every reset.
  * - "Hiệu quả của việc học nhóm" — INTERNAL, published 3 hours ago,
- *   no responses yet (empty state).
+ *   no responses yet (empty state); respondents see it too (`surveys.ts`).
  *
  * Pure (no storage/MSW): times are relative to `now`, so tests can import it.
  * Choice answers are stored as the option text (value = label), like the
@@ -25,7 +26,14 @@ export const ANALYTICS_FORM_IDS = {
   groupStudy: "7c2e3f40-5a6b-4c7d-8e9f-0a1b2c3d4f06",
 } as const;
 
+/** Published version rows (`form-versions.ts`); the group-study one is also the respondent `formVersionId`. */
+const ANALYTICS_VERSION_IDS = {
+  rescomExperience: "8d2e4f60-1a2b-4c3d-9e4f-5a6b7c8d9f05",
+  groupStudy: "8d2e4f60-1a2b-4c3d-9e4f-5a6b7c8d9f06",
+} as const;
+
 const DEMO_PUBLISHER = "minh.le@fpt.edu.vn";
+const DEMO_PUBLISHER_NAME = "Lê Nhật Minh";
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 /** Asia/Ho_Chi_Minh (no DST). */
@@ -261,6 +269,7 @@ function groupStudyTimes(now: number) {
 
 const GROUP_STUDY_EXPECTED = 50;
 const GROUP_STUDY_REWARD = 10;
+export const GROUP_STUDY_EFFORT_SECONDS = 4 * 60;
 
 export function analyticsPublisherForms(now = Date.now()): MockPublisherForm[] {
   const rx = rescomTimes(now);
@@ -301,7 +310,7 @@ export function analyticsPublisherForms(now = Date.now()): MockPublisherForm[] {
       completedCompletions: 0,
       // MOCK-ONLY like the demo running survey (`form-drafts.ts`): not mirrored in the seeded wallet escrow.
       escrowLocked: GROUP_STUDY_EXPECTED * escrowDrawPerCompletion({ type: "INTERNAL", rewardPerResponse: GROUP_STUDY_REWARD }),
-      estimatedEffortSeconds: 4 * 60,
+      estimatedEffortSeconds: GROUP_STUDY_EFFORT_SECONDS,
       externalUrl: null,
       createdAt: new Date(gs.createdAt).toISOString(),
       submittedAt: new Date(gs.submittedAt).toISOString(),
@@ -318,12 +327,41 @@ export function analyticsPublisherForms(now = Date.now()): MockPublisherForm[] {
   ];
 }
 
+/**
+ * Respondent-side mirror of the running "Hiệu quả của việc học nhóm"
+ * (`surveys.ts`, same id — like "Nhu cầu nhà trọ gần trường"), so the link
+ * copied from its empty Tóm tắt opens the survey in Khám phá / `/surveys/:id/start`.
+ * Its questions are `GROUP_STUDY_BLOCKS` (`survey-content.ts`).
+ */
+export function analyticsRespondentSurveys(now = Date.now()): MockSurvey[] {
+  const gs = groupStudyTimes(now);
+  return [
+    {
+      id: ANALYTICS_FORM_IDS.groupStudy,
+      formVersionId: ANALYTICS_VERSION_IDS.groupStudy,
+      versionNumber: 1,
+      title: "Hiệu quả của việc học nhóm",
+      description: null,
+      type: "INTERNAL",
+      status: "PUBLISHED",
+      rewardPerResponse: GROUP_STUDY_REWARD,
+      expectedCompletions: GROUP_STUDY_EXPECTED,
+      completedCompletions: 0,
+      estimatedEffortSeconds: GROUP_STUDY_EFFORT_SECONDS,
+      topic: "Giáo dục",
+      publisherName: DEMO_PUBLISHER_NAME,
+      externalUrl: null,
+      publishedAt: new Date(gs.publishedAt).toISOString(),
+    },
+  ];
+}
+
 export function analyticsFormVersions(now = Date.now()): MockFormVersion[] {
   const rx = rescomTimes(now);
   const gs = groupStudyTimes(now);
   return [
     {
-      id: "8d2e4f60-1a2b-4c3d-9e4f-5a6b7c8d9f05",
+      id: ANALYTICS_VERSION_IDS.rescomExperience,
       formId: ANALYTICS_FORM_IDS.rescomExperience,
       versionNumber: 1,
       isPublished: true,
@@ -336,7 +374,7 @@ export function analyticsFormVersions(now = Date.now()): MockFormVersion[] {
       blocks: structuredClone(RESCOM_EXPERIENCE_BLOCKS),
     },
     {
-      id: "8d2e4f60-1a2b-4c3d-9e4f-5a6b7c8d9f06",
+      id: ANALYTICS_VERSION_IDS.groupStudy,
       formId: ANALYTICS_FORM_IDS.groupStudy,
       versionNumber: 1,
       isPublished: true,
@@ -428,6 +466,32 @@ function hexCodes(count: number): string[] {
   return [...codes];
 }
 
+interface RescomRowTraits {
+  flagged: boolean;
+  durationSeconds: number;
+}
+
+let rescomTraitsCache: RescomRowTraits[] | null = null;
+
+/**
+ * Review flag and duration of each row (newest first). Independent of `now`,
+ * so it is generated once and shared by the responses and the quality snapshot.
+ */
+function rescomRowTraits(): RescomRowTraits[] {
+  if (rescomTraitsCache) return rescomTraitsCache;
+  const review = new Set(shuffled([...Array(RESCOM_TOTAL).keys()], "rx-review").slice(0, RESCOM_REVIEW_COUNT));
+  const rng = rngOf("rx-durations");
+  rescomTraitsCache = [...Array(RESCOM_TOTAL).keys()].map((index) => {
+    const flagged = review.has(index);
+    // 150–175 s for the too-fast ones, otherwise 190–700 s centred around 6 minutes.
+    const durationSeconds = flagged
+      ? 150 + Math.floor(rng() * 26)
+      : Math.round(190 + 510 * ((rng() + rng() + rng()) / 3) ** 1.15);
+    return { flagged, durationSeconds };
+  });
+  return rescomTraitsCache;
+}
+
 export function analyticsResponses(now = Date.now()): MockFormResponse[] {
   const columns: Record<string, MockAnswer[]> = {
     "rx-gender": exact(pairs(RX.gender, COUNTS.gender), RESCOM_TOTAL, "rx-gender"),
@@ -444,14 +508,9 @@ export function analyticsResponses(now = Date.now()): MockFormResponse[] {
   };
   const times = rescomSubmissionTimes(now);
   const codes = hexCodes(RESCOM_TOTAL);
-  const review = new Set(shuffled([...Array(RESCOM_TOTAL).keys()], "rx-review").slice(0, RESCOM_REVIEW_COUNT));
-  const rng = rngOf("rx-durations");
+  const traits = rescomRowTraits();
   return times.map((time, index) => {
-    const flagged = review.has(index);
-    // 150–175 s for the too-fast ones, otherwise 190–700 s centred around 6 minutes.
-    const durationSeconds = flagged
-      ? 150 + Math.floor(rng() * 26)
-      : Math.round(190 + 510 * ((rng() + rng() + rng()) / 3) ** 1.15);
+    const { flagged, durationSeconds } = traits[index];
     const answers: Record<string, MockAnswer> = {};
     for (const [questionId, values] of Object.entries(columns)) {
       const value = values[index];
@@ -475,7 +534,9 @@ export function analyticsResponses(now = Date.now()): MockFormResponse[] {
 /** 356 started − 321 completed = 35 abandoned, mostly at the optional open questions. */
 export function analyticsQualitySnapshots(now = Date.now()): MockQualitySnapshot[] {
   const rx = rescomTimes(now);
-  const durations = analyticsResponses(now).map((row) => row.durationSeconds).sort((a, b) => a - b);
+  const durations = rescomRowTraits()
+    .map((row) => row.durationSeconds)
+    .sort((a, b) => a - b);
   const middle = Math.floor(durations.length / 2);
   return [
     {

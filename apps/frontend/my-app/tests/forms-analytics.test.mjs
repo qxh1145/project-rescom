@@ -154,10 +154,66 @@ test("number: > 8 distinct values → ≤ 8 nice integer bins, ascending, empty 
   assert.deepEqual(buckets.map((bucket) => bucket.label), ["0–499", "500–999", "1.000–1.499", "1.500–1.999", "2.000–2.499", "2.500–2.999", "3.000–3.499", "3.500–3.999"]);
   assert.deepEqual(buckets.map((bucket) => bucket.count), [6, 1, 1, 0, 0, 0, 0, 2]);
   assert.equal(buckets.reduce((sum, bucket) => sum + bucket.count, 0), values.length);
-  // Non-integer answers: bins read "low–high".
+  // Non-integer answers on an integer width: half-open bins.
   const decimals = numberBuckets([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5], 9);
   assert.ok(decimals.length <= 8);
-  assert.equal(decimals[0].label, "0–2");
+  assert.equal(decimals[0].label, "0–<2");
+});
+
+test("number: decimals in a narrow range spread over decimal-width bins (0,3 lands in 0,3–<0,4)", () => {
+  const values = [0.05, 0.11, 0.18, 0.2, 0.27, 0.3, 0.41, 0.5, 0.58, 0.62];
+  const buckets = numberBuckets(values, values.length);
+  assert.deepEqual(buckets.map((bucket) => bucket.label), ["0–<0,1", "0,1–<0,2", "0,2–<0,3", "0,3–<0,4", "0,4–<0,5", "0,5–<0,6", "0,6–<0,7"]);
+  assert.deepEqual(buckets.map((bucket) => bucket.count), [1, 2, 2, 1, 1, 2, 1]);
+
+  const tiny = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008, 0.009];
+  const tinyBuckets = numberBuckets(tiny, tiny.length);
+  assert.ok(tinyBuckets.length > 1 && tinyBuckets.length <= 8);
+  assert.equal(tinyBuckets[0].label, "0–<0,002");
+  assert.equal(tinyBuckets.reduce((sum, bucket) => sum + bucket.count, 0), tiny.length);
+});
+
+test("number: negative answers get aligned bins with a spaced dash", () => {
+  const values = [-15, -12, -7, -3, 0, 2, 5, 9, 12, 20];
+  const buckets = numberBuckets(values, values.length);
+  assert.deepEqual(buckets.map((bucket) => bucket.label), ["-15 – -11", "-10 – -6", "-5 – -1", "0–4", "5–9", "10–14", "15–19", "20–24"]);
+  assert.deepEqual(buckets.map((bucket) => bucket.count), [2, 1, 1, 2, 2, 1, 0, 1]);
+});
+
+test("number: all-equal answers and a single answer → one bucket", () => {
+  assert.deepEqual(numberBuckets([7, 7, 7], 3), [{ label: "7", count: 3, percentage: 100 }]);
+  assert.deepEqual(numberBuckets([0.25], 1), [{ label: "0,25", count: 1, percentage: 100 }]);
+});
+
+test("invalid numeric answers are skipped: scale needs an integer in range, number a finite number", () => {
+  const questions = [
+    { id: "stars", number: 1, title: "Sao", type: "rating", required: false, options: [], allowOther: false, scale: { min: 1, max: 5, minLabel: null, maxLabel: null } },
+    { id: "count", number: 2, title: "Số", type: "number", required: false, options: [], allowOther: false, scale: null },
+  ];
+  const answers = [
+    { stars: 4, count: 3 },
+    { stars: 6, count: "12" },
+    { stars: 0, count: Number.NaN },
+    { stars: 2.5, count: Number.POSITIVE_INFINITY },
+    { stars: "5", count: -1.5 },
+    { stars: 2 },
+  ];
+  const rows = answers.map((row, index) => ({ ...ROWS[0], id: `x${index}`, answers: row }));
+  const result = buildFormAnalytics({ form: FORM, questions, rows, startedCount: null });
+  const stars = byId(result, "stars");
+  assert.equal(stars.answeredCount, 2);
+  assert.equal(stars.skippedCount, 4);
+  assert.deepEqual(stars.summary.buckets.map((bucket) => bucket.count), [0, 1, 0, 1, 0]);
+  assert.equal(stars.summary.buckets[1].percentage, 50);
+  assert.equal(stars.summary.average, 3);
+  assert.equal(stars.summary.median, 3);
+  const count = byId(result, "count");
+  assert.equal(count.answeredCount, 2);
+  assert.equal(count.skippedCount, 4);
+  assert.equal(count.summary.average, 0.75);
+  assert.equal(count.summary.min, -1.5);
+  assert.equal(count.summary.max, 3);
+  formAnalyticsSchema.parse(result);
 });
 
 test("text: newest 5 non-empty answers; file: count only", () => {
@@ -288,6 +344,29 @@ test("seed: the new survey has one version and no responses", () => {
   assert.equal(formAnalyticsSchema.parse(empty).totalResponses, 0);
 });
 
+test("seed: the new survey is mirrored for respondents (same id, version, reward, effort)", () => {
+  const [, groupStudy] = seed.analyticsPublisherForms(NOW);
+  const [survey] = seed.analyticsRespondentSurveys(NOW);
+  const [version] = seed.analyticsFormVersions(NOW).filter((item) => item.formId === groupStudy.id);
+  assert.equal(survey.id, groupStudy.id);
+  assert.equal(survey.formVersionId, version.id);
+  assert.equal(survey.status, "PUBLISHED");
+  assert.equal(survey.type, "INTERNAL");
+  assert.equal(survey.title, groupStudy.title);
+  assert.equal(survey.rewardPerResponse, groupStudy.rewardPerResponse);
+  assert.equal(survey.expectedCompletions, groupStudy.expectedCompletions);
+  assert.equal(survey.completedCompletions, 0);
+  assert.equal(survey.estimatedEffortSeconds, groupStudy.estimatedEffortSeconds);
+  assert.equal(survey.estimatedEffortSeconds, seed.GROUP_STUDY_EFFORT_SECONDS);
+  assert.equal(survey.publishedAt, groupStudy.publishedAt);
+});
+
+test("seed: the quality snapshot median matches the generated durations", () => {
+  // 321 rows (odd): the median is the 161st duration.
+  const durations = RX_ROWS.map((row) => row.durationSeconds).sort((a, b) => a - b);
+  assert.equal(seed.analyticsQualitySnapshots(NOW)[0].medianDurationSeconds, durations[160]);
+});
+
 // --- Presentation helpers (lib/forms/results-analytics.ts) ---
 
 test("formatPercent / formatCount / formatStat use vi-VN with at most one decimal", () => {
@@ -325,6 +404,27 @@ test("visualOf: single ≤ 5 slices → donut, 6+ → horizontal bars; Khác cou
   assert.equal(view.choiceSliceCount(fiveWithOther.summary), 6);
   assert.equal(view.visualOf(fiveWithOther), "bar-horizontal");
   assert.equal(view.visualOf({ ...fiveWithOther, summary: { ...fiveWithOther.summary, other: { count: 0, percentage: 0, samples: [] } } }), "donut");
+});
+
+test("free-answer bucket reads “Khác (tự nhập)” when a real option is labelled Khác", () => {
+  const summary = (labels) => ({
+    kind: "choice",
+    multiple: false,
+    options: opts(...labels).map((option) => ({ ...option, count: 1, percentage: 25 })),
+    other: { count: 1, percentage: 25, samples: ["Tự nhập"] },
+  });
+  assert.equal(view.otherBucketLabel(summary(["A", "B"])), "Khác");
+  assert.equal(view.otherBucketLabel(summary(["A", "  khác  "])), "Khác (tự nhập)");
+  assert.equal(view.otherBucketLabel(summary(["A", "KHÁC"])), "Khác (tự nhập)");
+  assert.equal(view.otherBucketLabel(summary(["A", "Khác nữa"])), "Khác");
+  const rows = view.distributionRows({ type: "single_choice", summary: summary(["A", "Khác"]) });
+  assert.equal(rows.at(-1).label, "Khác (tự nhập)");
+  assert.equal(rows.at(-2).label, "Khác");
+});
+
+test("formatAnswerSample: dates read dd/mm/yyyy, other types unchanged", () => {
+  assert.equal(view.formatAnswerSample("date", "2026-03-09"), "09/03/2026");
+  assert.equal(view.formatAnswerSample("text", "2026-03-09"), "2026-03-09");
 });
 
 test("distributionRows: legend rows incl. the Khác bucket and star labels", () => {

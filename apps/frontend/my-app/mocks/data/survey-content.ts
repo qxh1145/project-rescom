@@ -1,4 +1,5 @@
 import { formBlockSchema, type FormBlock, type FormBlockInput } from "@rescom/schemas";
+import { GROUP_STUDY_BLOCKS, GROUP_STUDY_EFFORT_SECONDS } from "./form-analytics-seed";
 import { findFormDraft } from "./form-drafts";
 import { SURVEY_IDS, type MockSurvey } from "./surveys";
 
@@ -459,11 +460,26 @@ const canteenSatisfaction = define(
   { expectedEffortSeconds: 4 * 60, minTimeBarrierSeconds: 15 },
 );
 
+/**
+ * "Hiệu quả của việc học nhóm" = the published v1 blocks of the analytics seed
+ * (`GROUP_STUDY_BLOCKS`, already validated there), so its answers line up
+ * with the publisher's Câu trả lời screens.
+ */
+const groupStudy: MockSurveyContent = {
+  blocks: GROUP_STUDY_BLOCKS,
+  sections: [
+    { id: "gs-s1", title: "Thói quen học nhóm", blockIds: ["gs-freq", "gs-place"] },
+    { id: "gs-s2", title: "Hiệu quả", blockIds: ["gs-help", "gs-size", "gs-why"] },
+  ],
+  metadata: { expectedEffortSeconds: GROUP_STUDY_EFFORT_SECONDS, minTimeBarrierSeconds: 15 },
+};
+
 const CONTENT: Record<string, MockSurveyContent> = {
   [SURVEY_IDS.onlineShopping]: onlineShopping,
   [SURVEY_IDS.librarySatisfaction]: librarySatisfaction,
   [SURVEY_IDS.studyStressSleep]: studyStressSleep,
   [SURVEY_IDS.housingNearCampus]: housingNearCampus,
+  [SURVEY_IDS.groupStudy]: groupStudy,
   [canteenSatisfactionId]: canteenSatisfaction,
 };
 

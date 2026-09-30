@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
-import { REVIEW_DISCLAIMER, responsesLoadErrorMessage } from "@/lib/forms/results-messages";
+import { GOOGLE_FORMS_ANSWERS_NOTE, REVIEW_DISCLAIMER, responsesLoadErrorMessage } from "@/lib/forms/results-messages";
 import type { FormResponse, FormResponses } from "@/lib/forms/results-service";
 import {
   filterResponses,
@@ -256,7 +256,7 @@ export function ResponsesScreen({ selectedId }: { selectedId: string | null }) {
             <p className="text-[12px] leading-[18px] text-ink-muted">
               {questionCount
                 ? `Bảng đang hiện ${columns.length} trong ${questionCount} câu hỏi. Chọn một dòng để xem đủ, hoặc xuất file để có tất cả câu hỏi. `
-                : "Câu trả lời Google Forms nằm trong Google Forms của bạn; Rescom lưu mã hoàn thành đã xác minh. "}
+                : `${GOOGLE_FORMS_ANSWERS_NOTE} `}
               {REVIEW_DISCLAIMER}
             </p>
           </section>

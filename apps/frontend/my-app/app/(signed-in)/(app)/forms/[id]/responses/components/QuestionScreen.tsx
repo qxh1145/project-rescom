@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { AnalyticsSkeleton } from "@/components/analytics/AnalyticsSkeleton";
 import { QuestionAnalyticsCard } from "@/components/analytics/QuestionAnalyticsCard";
 import { TextAnswerList, type TextAnswer } from "@/components/analytics/TextAnswerList";
@@ -10,24 +10,25 @@ import { Select } from "@/components/ui/Select";
 import { Spinner } from "@/components/ui/Spinner";
 import type { QuestionAnalytics } from "@/lib/forms/results-analytics-service";
 import { formatCount, resolveQuestionIndex, visualOf } from "@/lib/forms/results-analytics";
-import { analyticsLoadErrorMessage, responsesLoadErrorMessage } from "@/lib/forms/results-messages";
-import { answerText } from "@/lib/forms/results-view";
+import { analyticsLoadErrorMessage, GOOGLE_FORMS_ANSWERS_NOTE, responsesLoadErrorMessage } from "@/lib/forms/results-messages";
+import { answerText, normalizeSearchText } from "@/lib/forms/results-view";
 import { useAnalytics } from "../hooks/analytics-context";
 import { useResponses } from "../hooks/responses-context";
+import { SearchBox } from "./ResponsesToolbar";
 import { ResultsEmpty, ResultsError } from "./ResultsStatus";
 
 const PAGE = "mx-auto w-full max-w-[1440px] px-5 pt-4 pb-8 lg:px-12 lg:pt-5 lg:pb-12";
 const ANSWERS_STEP = 20;
 const NAV_BUTTON = "disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface-subtle";
 
-/** Every answer of a free-text question from `GET /forms/:id/responses`, newest first. */
+/** Every answer of a free-text question from `GET /forms/:id/responses` (already newest first), searchable. */
 function AllTextAnswers({ question }: { question: QuestionAnalytics }) {
   const { data, error, loading, reload } = useResponses();
+  const [query, setQuery] = useState("");
   const answers = useMemo<TextAnswer[] | null>(() => {
     const source = data?.questions.find((item) => item.id === question.questionId);
     if (!data || !source) return null;
-    return [...data.responses]
-      .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
+    return data.responses
       .map((response) => ({
         key: response.id,
         value: answerText(source, response.answers[source.id]),
@@ -35,6 +36,11 @@ function AllTextAnswers({ question }: { question: QuestionAnalytics }) {
       }))
       .filter((answer) => answer.value !== "");
   }, [data, question.questionId]);
+  const needle = normalizeSearchText(query);
+  const matches = useMemo(
+    () => (answers && needle ? answers.filter((answer) => normalizeSearchText(answer.value).includes(needle)) : answers),
+    [answers, needle],
+  );
 
   if (error && !data) return <ResultsError message={responsesLoadErrorMessage(error)} onRetry={reload} />;
   if (!data) {
@@ -45,11 +51,23 @@ function AllTextAnswers({ question }: { question: QuestionAnalytics }) {
       </p>
     );
   }
-  if (!answers) return <p className="text-body-sm text-ink-muted">Câu hỏi này không có trong phiên bản đang xem.</p>;
+  if (!answers || !matches) return <p className="text-body-sm text-ink-muted">Câu hỏi này không có trong phiên bản đang xem.</p>;
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-caption text-ink-muted">Mới nhất trước · {formatCount(answers.length)} câu trả lời</p>
-      <TextAnswerList key={question.questionId} answers={answers} pageSize={ANSWERS_STEP} />
+      {answers.length ? <SearchBox value={query} onChange={setQuery} size="desktop" label="Tìm trong câu trả lời" /> : null}
+      <p className="text-caption text-ink-muted" aria-live="polite">
+        Mới nhất trước ·{" "}
+        {needle
+          ? `${formatCount(matches.length)} / ${formatCount(answers.length)} câu trả lời`
+          : `${formatCount(answers.length)} câu trả lời`}
+      </p>
+      {/* Remounting on a new query resets "Xem thêm" paging. */}
+      <TextAnswerList
+        key={`${question.questionId}:${needle}`}
+        answers={matches}
+        pageSize={ANSWERS_STEP}
+        emptyLabel={needle ? "Không có câu trả lời phù hợp." : undefined}
+      />
     </div>
   );
 }
@@ -96,7 +114,7 @@ export function QuestionScreen() {
     return (
       <div className={PAGE}>
         <p className="rounded-control bg-surface-subtle px-4 py-3 text-body-sm text-ink-strong">
-          Khảo sát này không có câu hỏi nào để thống kê.
+          {data.form.type === "EXTERNAL" ? GOOGLE_FORMS_ANSWERS_NOTE : "Khảo sát này không có câu hỏi nào để thống kê."}
         </p>
       </div>
     );

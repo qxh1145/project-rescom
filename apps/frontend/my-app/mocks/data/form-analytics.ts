@@ -8,7 +8,12 @@ import type { MockAnswer, MockFormResponse } from "./form-responses";
  * compute the same DTO, so this is the reference for it. No MSW, no storage —
  * unit-tested in `tests/forms-analytics.test.mjs`.
  *
- * - An empty answer (null, missing, "", []) is skipped.
+ * - An empty answer (null, missing, "", []) is skipped, and so is an invalid
+ *   numeric one: a rating / linear-scale answer counts only as an integer
+ *   within [min, max], a number answer only as a finite JS number (the submit
+ *   check `validateAnswersAgainstFormDefinition` never coerces, so a numeric
+ *   string is invalid too). Skipped answers stay out of answeredCount,
+ *   buckets, average and median.
  * - `percentage` = count / answeredCount × 100, one decimal; 0 when nobody answered.
  *   A multiple-choice question uses the same denominator, so it may add up to
  *   more than 100 (never normalised).
@@ -45,9 +50,28 @@ export function percentOf(count: number, total: number): number {
   return total > 0 ? Math.round((count / total) * 1000) / 10 : 0;
 }
 
-function toNumber(value: MockAnswer): number | null {
-  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
-  return Number.isFinite(parsed) ? parsed : null;
+/** A finite JS number (numbers are stored as numbers, never coerced from strings). */
+function isFiniteNumber(value: MockAnswer | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function scaleRange(question: AnalyticsQuestion): { min: number; max: number | null } {
+  return { min: question.scale?.min ?? 1, max: question.scale?.max ?? null };
+}
+
+/** Whether the answer counts for the question (see the rules above). */
+function isCountedAnswer(question: AnalyticsQuestion, value: MockAnswer | undefined): value is MockAnswer {
+  switch (question.type) {
+    case "rating":
+    case "linear_scale": {
+      const { min, max } = scaleRange(question);
+      return isFiniteNumber(value) && Number.isInteger(value) && value >= min && (max === null || value <= max);
+    }
+    case "number":
+      return isFiniteNumber(value);
+    default:
+      return !isEmpty(value);
+  }
 }
 
 function mean(values: readonly number[]): number | null {
@@ -100,10 +124,10 @@ function choiceSummary(question: AnalyticsQuestion, answers: readonly MockAnswer
   };
 }
 
-function scaleSummary(question: AnalyticsQuestion, answers: readonly MockAnswer[], answered: number): QuestionSummary {
-  const values = answers.map(toNumber).filter((value): value is number => value !== null);
-  const min = question.scale?.min ?? 1;
-  const max = question.scale?.max ?? Math.max(min, ...values);
+function scaleSummary(question: AnalyticsQuestion, values: readonly number[], answered: number): QuestionSummary {
+  const range = scaleRange(question);
+  const min = range.min;
+  const max = range.max ?? Math.max(min, ...values);
   const buckets = [];
   for (let point = min; point <= max; point += 1) {
     const count = values.filter((value) => value === point).length;
@@ -121,21 +145,41 @@ function scaleSummary(question: AnalyticsQuestion, answers: readonly MockAnswer[
   };
 }
 
-/** Smallest 1·2·5 × 10ⁿ integer width that covers min..max in at most 8 aligned bins. */
-function niceWidth(min: number, max: number): number {
-  const steps = [1, 2, 5];
-  let magnitude = 1;
+/** Guards the bin arithmetic against binary rounding (0,3 / 0,1 = 2,999…). */
+const BIN_EPSILON = 1e-9;
+
+/** `step` × 10^`exponent`, divided for negative exponents so 0,2 stays the closest double to 0,2. */
+function scaled(step: number, exponent: number): number {
+  return exponent >= 0 ? step * 10 ** exponent : step / 10 ** -exponent;
+}
+
+/** Index of the aligned bin of `value` (bins start at multiples of `width`). */
+function binIndex(value: number, width: number): number {
+  return Math.floor(value / width + BIN_EPSILON);
+}
+
+/**
+ * Smallest 1·2·5 × 10ⁿ width (n may be negative: 0,1 · 0,2 · 0,5…) that covers
+ * min..max in at most 8 aligned bins; `exponent` = n.
+ */
+function niceWidth(min: number, max: number): { width: number; exponent: number } {
+  // A width below span / 8 always needs more than 8 bins, so start just under it.
+  let exponent = Math.floor(Math.log10((max - min) / MAX_NUMBER_BUCKETS));
   for (;;) {
-    for (const step of steps) {
-      const width = step * magnitude;
-      const start = Math.floor(min / width) * width;
-      if (Math.floor((max - start) / width) + 1 <= MAX_NUMBER_BUCKETS) return width;
+    for (const step of [1, 2, 5]) {
+      const width = scaled(step, exponent);
+      if (binIndex(max, width) - binIndex(min, width) + 1 <= MAX_NUMBER_BUCKETS) return { width, exponent };
     }
-    magnitude *= 10;
+    exponent += 1;
   }
 }
 
-/** ≤ 8 distinct values → one bucket each; otherwise ≤ 8 equal-width bins ("0–49", "50–99"…), ascending. */
+/**
+ * ≤ 8 distinct values → one bucket each; otherwise ≤ 8 equal-width bins,
+ * ascending, empty bins kept. Integer answers on an integer width read
+ * "0–49", "50–99"; otherwise bins are half-open: "0–<0,2", "0,2–<0,4".
+ * A negative bound spaces the dash ("-20 – -11").
+ */
 export function numberBuckets(values: readonly number[], answered: number): Array<{ label: string; count: number; percentage: number }> {
   if (!values.length) return [];
   const distinct = [...new Set(values)].sort((a, b) => a - b);
@@ -147,25 +191,26 @@ export function numberBuckets(values: readonly number[], answered: number): Arra
   }
   const min = distinct[0];
   const max = distinct[distinct.length - 1];
-  const width = niceWidth(min, max);
-  const start = Math.floor(min / width) * width;
-  const binCount = Math.floor((max - start) / width) + 1;
-  const integers = values.every(Number.isInteger);
+  const { width, exponent } = niceWidth(min, max);
+  const first = binIndex(min, width);
+  const binCount = binIndex(max, width) - first + 1;
+  const closed = exponent >= 0 && values.every(Number.isInteger);
+  const format = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: Math.max(0, -exponent) });
   const counts = new Array<number>(binCount).fill(0);
-  for (const value of values) counts[Math.min(binCount - 1, Math.floor((value - start) / width))] += 1;
+  for (const value of values) counts[Math.min(binCount - 1, Math.max(0, binIndex(value, width) - first))] += 1;
   return counts.map((count, index) => {
-    const low = start + index * width;
-    const high = integers ? low + width - 1 : low + width;
+    const low = (first + index) * width;
+    const high = closed ? low + width - 1 : low + width;
+    const dash = low < 0 || high < 0 ? " – " : "–";
     return {
-      label: `${NUMBER_FORMAT.format(low)}–${NUMBER_FORMAT.format(high)}`,
+      label: `${format.format(low)}${dash}${closed ? "" : "<"}${format.format(high)}`,
       count,
       percentage: percentOf(count, answered),
     };
   });
 }
 
-function numberSummary(answers: readonly MockAnswer[], answered: number): QuestionSummary {
-  const values = answers.map(toNumber).filter((value): value is number => value !== null);
+function numberSummary(values: readonly number[], answered: number): QuestionSummary {
   return {
     kind: "number",
     average: mean(values),
@@ -192,8 +237,9 @@ function textSummary(question: AnalyticsQuestion, rows: readonly MockFormRespons
 }
 
 function questionAnalytics(question: AnalyticsQuestion, rows: readonly MockFormResponse[]): QuestionAnalytics {
-  const answers = rows.map((row) => row.answers[question.id]).filter((value): value is MockAnswer => !isEmpty(value));
+  const answers = rows.map((row) => row.answers[question.id]).filter((value) => isCountedAnswer(question, value));
   const answered = answers.length;
+  const numbers = answers.filter(isFiniteNumber);
   let summary: QuestionSummary;
   switch (question.type) {
     case "single_choice":
@@ -202,10 +248,10 @@ function questionAnalytics(question: AnalyticsQuestion, rows: readonly MockFormR
       break;
     case "rating":
     case "linear_scale":
-      summary = scaleSummary(question, answers, answered);
+      summary = scaleSummary(question, numbers, answered);
       break;
     case "number":
-      summary = numberSummary(answers, answered);
+      summary = numberSummary(numbers, answered);
       break;
     case "text":
     case "textarea":

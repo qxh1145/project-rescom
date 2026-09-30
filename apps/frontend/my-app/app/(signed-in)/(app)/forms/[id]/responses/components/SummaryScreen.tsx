@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { AnalyticsSkeleton } from "@/components/analytics/AnalyticsSkeleton";
 import { QuestionAnalyticsCard } from "@/components/analytics/QuestionAnalyticsCard";
@@ -8,7 +9,12 @@ import { Icon } from "@/components/ui/Icon";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { useFormHeader } from "@/lib/forms/manage-header-context";
 import { statusViewOf } from "@/lib/forms/manage-status";
-import { analyticsLoadErrorMessage, SURVEY_LINK_COPIED, SURVEY_LINK_COPY_FAILED } from "@/lib/forms/results-messages";
+import {
+  analyticsLoadErrorMessage,
+  GOOGLE_FORMS_ANSWERS_NOTE,
+  SURVEY_LINK_COPIED,
+  SURVEY_LINK_COPY_FAILED,
+} from "@/lib/forms/results-messages";
 import { consentPath } from "@/lib/participation/start-flow";
 import { useAnalytics } from "../hooks/analytics-context";
 import { AnalyticsHeader } from "./AnalyticsHeader";
@@ -80,8 +86,9 @@ export function SummaryScreen() {
   }
 
   const versionQuery = version ? `&v=${version}` : "";
+  const responsesBase = `/forms/${encodeURIComponent(formId)}/responses`;
   const questionHref = (questionId: string) =>
-    `/forms/${encodeURIComponent(formId)}/responses/questions?question=${encodeURIComponent(questionId)}${versionQuery}`;
+    `${responsesBase}/questions?question=${encodeURIComponent(questionId)}${versionQuery}`;
 
   return (
     <div className={`${PAGE} flex flex-col gap-4 lg:gap-5`}>
@@ -95,6 +102,16 @@ export function SummaryScreen() {
             seeAllHref={questionHref(question.questionId)}
           />
         ))
+      ) : data.form.type === "EXTERNAL" ? (
+        <p className="rounded-control bg-surface-subtle px-4 py-3 text-body-sm text-ink-strong">
+          {GOOGLE_FORMS_ANSWERS_NOTE}{" "}
+          <Link
+            href={`${responsesBase}/individual${version ? `?v=${version}` : ""}`}
+            className="font-bold text-primary hover:underline"
+          >
+            Xem mã hoàn thành
+          </Link>
+        </p>
       ) : (
         <p className="rounded-control bg-surface-subtle px-4 py-3 text-body-sm text-ink-strong">
           Khảo sát này không có câu hỏi nào để thống kê.

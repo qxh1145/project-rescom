@@ -4,6 +4,7 @@ import {
   distributionRows,
   formatAnswerSample,
   formatCount,
+  otherBucketLabel,
   questionTypeLabel,
   responsesLabel,
   sharesMayExceed100,
@@ -19,6 +20,19 @@ import { TextAnswerList } from "./TextAnswerList";
 const MULTIPLE_NOTE = "Một người có thể chọn nhiều đáp án — tổng tỷ lệ có thể vượt 100%.";
 
 type Variant = "summary" | "detail";
+
+/** "1 · Không bao giờ" … "10 · Chắc chắn có" under the bars of a scale whose ends are labelled. */
+function ScaleEndLabels({ summary }: { summary: QuestionAnalytics["summary"] }) {
+  if (summary.kind !== "scale" || (!summary.minLabel && !summary.maxLabel)) return null;
+  const end = (point: number, label: string | null) => (label ? `${formatCount(point)} · ${label}` : null);
+  return (
+    // pl-9 = the Y-axis width, so the labels sit under the first and last bars.
+    <div className="mt-1 flex justify-between gap-4 pl-9 text-[12px] leading-4 text-ink-muted">
+      <span className="min-w-0 break-words">{end(summary.min, summary.minLabel)}</span>
+      <span className="min-w-0 text-right break-words">{end(summary.max, summary.maxLabel)}</span>
+    </div>
+  );
+}
 
 function CardBody({
   question,
@@ -61,7 +75,7 @@ function CardBody({
 
   const rows = distributionRows(question);
   const note = sharesMayExceed100(question) ? MULTIPLE_NOTE : null;
-  const others = detail && summary.kind === "choice" && summary.other?.samples.length ? summary.other.samples : [];
+  const other = detail && summary.kind === "choice" && summary.other?.samples.length ? summary.other : null;
 
   return (
     <div className="flex flex-col gap-5">
@@ -70,7 +84,8 @@ function CardBody({
           <div className="flex justify-center">
             <DonutChart rows={rows} total={answeredCount} />
           </div>
-          <DistributionTable rows={rows} caption={title} variant={variant} showColor note={note} />
+          {/* Capped so count and % stay next to the label on wide screens. */}
+          <DistributionTable rows={rows} caption={title} variant={variant} showColor note={note} className="w-full max-w-[460px]" />
         </div>
       ) : visual === "bar-horizontal" ? (
         <>
@@ -84,17 +99,23 @@ function CardBody({
       ) : (
         <>
           <StatList items={statItems(question)} />
-          <DistributionBarChart rows={rows} orientation="vertical" />
-          <DistributionTable rows={rows} caption={title} variant={variant} className={detail ? "" : "sr-only"} />
+          <div>
+            <DistributionBarChart rows={rows} orientation="vertical" />
+            <ScaleEndLabels summary={summary} />
+          </div>
+          {/* Narrow bars can drop tick labels and counts: below md the summary shows the compact table too. */}
+          <DistributionTable rows={rows} caption={title} variant={variant} className={detail ? "" : "md:sr-only"} />
         </>
       )}
-      {others.length ? (
+      {other ? (
         <div>
-          <h4 className="mb-2 text-caption font-bold text-ink">Câu trả lời “Khác”</h4>
-          <TextAnswerList
-            answers={others.map((value, index) => ({ key: `other:${index}`, value }))}
-            total={summary.kind === "choice" ? (summary.other?.count ?? others.length) : others.length}
-          />
+          <h4 className="mb-2 text-caption font-bold text-ink">Câu trả lời “{otherBucketLabel(summary)}”</h4>
+          <TextAnswerList answers={other.samples.map((value, index) => ({ key: `other:${index}`, value }))} />
+          {other.count > other.samples.length ? (
+            <p className="mt-2 text-[12px] leading-[18px] text-ink-muted">
+              Hiển thị {formatCount(other.samples.length)} / {formatCount(other.count)} câu trả lời “{otherBucketLabel(summary)}” gần nhất.
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -127,13 +148,13 @@ export function QuestionAnalyticsCard({
   return (
     <section aria-labelledby={titleId} className="flex flex-col gap-4 rounded-[22px] border border-line bg-surface p-5 lg:p-6">
       <header className="flex flex-col gap-1">
-        <p className="text-[12px] font-semibold text-ink-muted">
+        <p className="text-[12px] leading-[18px] font-semibold text-ink-muted">
           Câu {question.number} · {questionTypeLabel(question.type)}
         </p>
         <h3 id={titleId} className="text-[16px] leading-[22px] font-extrabold break-words text-ink lg:text-[17px]">
           {question.title}
         </h3>
-        <p className="text-caption text-ink-muted">
+        <p className="text-caption leading-[18px] text-ink-muted">
           {responsesLabel(question.answeredCount)}
           {question.skippedCount > 0 ? ` · ${formatCount(question.skippedCount)} bỏ qua` : ""}
         </p>

@@ -14,17 +14,20 @@ export function SearchBox({
   value,
   onChange,
   size,
+  label = "Tìm theo mã hoặc nội dung",
 }: {
   value: string;
   onChange: (value: string) => void;
   size: "desktop" | "mobile";
+  /** Accessible label and placeholder. */
+  label?: string;
 }) {
   const id = useId();
   const desktop = size === "desktop";
   return (
     <div className={`relative ${desktop ? "w-70" : "w-full"}`}>
       <label htmlFor={id} className="sr-only">
-        Tìm theo mã hoặc nội dung
+        {label}
       </label>
       <Icon
         name="search"
@@ -36,7 +39,7 @@ export function SearchBox({
         type="search"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        placeholder="Tìm theo mã hoặc nội dung"
+        placeholder={label}
         className={`w-full rounded-field border border-line-strong bg-surface text-ink placeholder:text-ink-placeholder focus:border-primary focus:ring-3 focus:ring-primary/20 focus:outline-none ${
           desktop ? "h-11 pr-3 pl-10 text-body-sm" : "h-12 pr-3.5 pl-10.5 text-body"
         }`}

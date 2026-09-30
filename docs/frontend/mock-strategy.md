@@ -51,7 +51,7 @@ backend's error codes. Auth state is delegated to the legacy `mockRepository`
 Collections re-read localStorage on every `get()` (parsing again only when the stored JSON
 changed), so two tabs never overwrite each other's writes. `SCHEMA_VERSION` in
 `mocks/db/store.ts` discards stored state when shapes change (2 = attempts use the backend
-`AttemptStatus` values; 3 = survey response analytics seed).
+`AttemptStatus` values; 3 = survey response analytics seed; 4 = its empty survey is also a respondent survey).
 
 `?msw-reset=1` (or `resetMockDb()` in `mocks/db/store.ts`) clears every mock key in
 localStorage: the `rescom:mockdb:*` collections, the legacy demo store
