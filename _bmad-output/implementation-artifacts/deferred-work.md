@@ -364,3 +364,6 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 - IR.4b: lock → unlock → lock before dispatch sends two lock emails.
 - IR.4b: zero-width-only displayName/school pass validation; no NFC normalisation.
 - IR.4b: MSW profile birth-year check uses browser local time vs backend UTC+7.
+- IR.2b: Postgres clock-boundary tests for pending-release (48 h) and starter-expiry (30 d) through the jobs (T9/T11), and a Postgres MAX_ATTEMPTS dead-letter assertion (T7) — not written; logic covered by unit specs.
+- IR.4b: C5 "<500 ms on the seeded pilot dataset" / `forms(status, updated_at)` index use not proven by a test — check in the smoke run.
+- IR.4b: SMTP sender spec does not assert the reduced nodemailer connection/greeting timeouts (transport is injected in tests).

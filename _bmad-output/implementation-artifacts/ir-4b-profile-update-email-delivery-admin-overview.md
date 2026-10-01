@@ -18,8 +18,7 @@ context:
 
 # Story IR.4b: Profile Update, Email Delivery and Admin Overview
 
-Status: review
-
+Status: done
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
 > **Three separable parts.** This story bundles three independent capabilities that IR.4 needs. It is written so it
@@ -385,9 +384,9 @@ so that the pilot supports FR-9 profile updates, FR-57 email for critical events
 
 _bmad-code-review 2026-10-01 of commit `3e9c69e` (Blind Hunter, Edge Case Hunter, Acceptance Auditor; Sonnet)._
 
-- [ ] [Review][Decision] Test/evidence gaps before done — `PrismaAdminEconomyStats` pending-top-up sums, oldest pending top-up and ESCROW total never run against Postgres (C4); HTTP overview test does not assert `pendingTopUps`/`moreCount`; C5 "<500 ms" / index use unproven (NFR-1).
-- [ ] [Review][Patch] SMTP `connectionTimeout`/`greetingTimeout` equal the overall send deadline, so a blackholed host resolves AMBIGUOUS:DEADLINE → UNCONFIRMED (never retried) instead of retryable CONNECTION_TIMEOUT [apps/backend/src/modules/notifications/infrastructure/smtp-email-sender.ts:127]
-- [ ] [Review][Patch] 24 h STALE_EVENT guard only applies when no delivery row exists, so a RETRYABLE FAILED row is resent days later [apps/backend/src/modules/notifications/application/email-delivery.handler.ts:129]
+- [x] [Review][Decision] Test/evidence gaps before done — RESOLVED 2026-10-01 (targeted subset): Postgres test for pending-top-up summary and oldest pending top-up added (escrow total already asserted by the ledger test); HTTP overview asserts `pendingTopUps` and `moreCount`; C5 "<500 ms" proof deferred to the smoke run.
+- [x] [Review][Patch] SMTP `connectionTimeout`/`greetingTimeout` equal the overall send deadline, so a blackholed host resolves AMBIGUOUS:DEADLINE → UNCONFIRMED (never retried) instead of retryable CONNECTION_TIMEOUT [apps/backend/src/modules/notifications/infrastructure/smtp-email-sender.ts:127] — fixed 2026-10-01
+- [x] [Review][Patch] 24 h STALE_EVENT guard only applies when no delivery row exists, so a RETRYABLE FAILED row is resent days later [apps/backend/src/modules/notifications/application/email-delivery.handler.ts:129] — fixed 2026-10-01
 - [x] [Review][Defer] Lock → unlock → lock before dispatch sends two lock emails [email-delivery.handler.ts skipReason] — deferred
 - [x] [Review][Defer] Zero-width-only displayName/school pass validation; no NFC normalisation [packages/schemas/src/users/user-profile.schema.ts] — deferred
 - [x] [Review][Defer] MSW profile birth-year check uses browser local time vs backend UTC+7 [mocks/handlers/profile.ts] — deferred (mock parity)
@@ -688,3 +687,5 @@ integration planning. No backend changes touch these areas; the working tree cha
 
 Key files are listed in the AC audit; the complete list is `git show --stat 3e9c69e`.
 
+
+- 2026-10-01: bmad-code-review of `3e9c69e` done; review fixes and tests applied in worktree `funny-blackwell-1bdbaf` (uncommitted). Status → `done`.

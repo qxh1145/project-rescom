@@ -19,8 +19,7 @@ context:
 
 # Story IR.2a: Respondent Read Endpoints for the Survey Runner
 
-Status: review
-
+Status: done
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
 ## Story
@@ -278,11 +277,11 @@ Legend: ✅ derivable from the source of truth · ⚠️ derivable with a stated
 
 _bmad-code-review 2026-10-01 of commit `3e9c69e` (Blind Hunter, Edge Case Hunter, Acceptance Auditor; Sonnet)._
 
-- [ ] [Review][Decision] QUOTA-closed survey returns 404 from `GET /surveys/:id` — plan 2.3 closes a full survey as CLOSED/QUOTA, so Q7's strict 404 now hits every filled survey and the 18.7 "Khảo sát đã đủ người" screen always shows its card-less variant. Keep strict 404, or return 200 with status CLOSED for QUOTA closes only.
-- [ ] [Review][Patch] Deadline check runs before the active-attempt check, so a respondent cannot resume an IN_PROGRESS attempt through start/Khám phá after the deadline (gets SURVEY_NOT_AVAILABLE instead of CONFLICTING_ACTIVE_ATTEMPT) [apps/backend/src/modules/participation/application/participation.service.ts:218]
-- [ ] [Review][Patch] `GET /surveys/:id` still reports PUBLISHED with free slots after `deadlineAt` until the deadline-close job runs; start then fails [apps/backend/src/modules/participation/application/survey-runner-read.service.ts getSurveySummary]
-- [ ] [Review][Patch] (known open, subtask 5.5) filter spec cases for SurveyNotFound / AttemptNotFound / AttemptNotInProgress [apps/backend/src/common/http/http-exception.filter.spec.ts]
-- [ ] [Review][Patch] (known open, subtask 1.8) `MarketplaceService.getFeed` inlines the effort formula instead of `resolveEstimatedEffortSeconds` [apps/backend/src/modules/marketplace/application/marketplace.service.ts:98]
+- [x] [Review][Decision] QUOTA-closed survey returns 404 from `GET /surveys/:id` — RESOLVED 2026-10-01: owner keeps Q7 strict 404; the card-less 18.7 variant is accepted.
+- [x] [Review][Patch] Deadline check runs before the active-attempt check, so a respondent cannot resume an IN_PROGRESS attempt through start/Khám phá after the deadline (gets SURVEY_NOT_AVAILABLE instead of CONFLICTING_ACTIVE_ATTEMPT) [apps/backend/src/modules/participation/application/participation.service.ts:218] — fixed 2026-10-01
+- [x] [Review][Patch] `GET /surveys/:id` still reports PUBLISHED with free slots after `deadlineAt` until the deadline-close job runs; start then fails [apps/backend/src/modules/participation/application/survey-runner-read.service.ts getSurveySummary] — fixed 2026-10-01
+- [x] [Review][Patch] (known open, subtask 5.5) filter spec cases for SurveyNotFound / AttemptNotFound / AttemptNotInProgress [apps/backend/src/common/http/http-exception.filter.spec.ts] — fixed 2026-10-01
+- [x] [Review][Patch] (known open, subtask 1.8) `MarketplaceService.getFeed` inlines the effort formula instead of `resolveEstimatedEffortSeconds` [apps/backend/src/modules/marketplace/application/marketplace.service.ts:98] — fixed 2026-10-01
 - [x] [Review][Defer] CLOSED-survey panel does not release the IN_PROGRESS attempt (held until expiry/sweep) [SurveyTakingScreen.tsx:70] — deferred
 - [x] [Review][Defer] QUOTA-full thrown before the already-completed check (wrong copy for a completer) [participation.service.ts:207] — deferred
 - [x] [Review][Defer] Unclean-attachment message names only the last file per question [use-survey-runner.ts] — deferred
@@ -451,3 +450,5 @@ Each question has a recommended default that the dev agent may implement if no a
 
 Key files are listed in the AC audit; the complete list is `git show --stat 3e9c69e`.
 
+
+- 2026-10-01: bmad-code-review of `3e9c69e` done; review fixes and tests applied in worktree `funny-blackwell-1bdbaf` (uncommitted). Status → `done`.

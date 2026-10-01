@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: "2026-08-16 17:09:30"
-last_updated: "2026-10-01 00:00:00"
+last_updated: "2026-10-01 23:00:00"
 project: "project-rescom"
 project_key: "NOKEY"
 tracking_system: "file-system"
@@ -110,12 +110,12 @@ development_status:
   ir-1-pilot-scope-ownership-contract-freeze: backlog
   ir-2-local-real-stack-integration-foundation: in-progress  # journeys work on the real stack; formal gate evidence missing
   # Added 2026-09-30 from implementation-readiness-report-2026-09-30 (gap-closing stories).
-  ir-2a-respondent-read-endpoints-survey-runner: review  # built in 3e9c69e (mock-off), see sprint-change-proposal-2026-10-01
-  ir-2b-in-process-scheduler-outbox-dispatcher: review  # built in 3e9c69e (mock-off), see sprint-change-proposal-2026-10-01
+  ir-2a-respondent-read-endpoints-survey-runner: done  # code-reviewed 2026-10-01 (bmad-code-review), fixes in worktree funny-blackwell-1bdbaf
+  ir-2b-in-process-scheduler-outbox-dispatcher: done  # code-reviewed 2026-10-01 (bmad-code-review), fixes in worktree funny-blackwell-1bdbaf
   ir-3-respondent-journey-without-mocks: in-progress  # journeys work on the real stack; formal gate evidence missing
   ir-4-publisher-financial-moderation-journeys-without-mocks: in-progress  # journeys work on the real stack; formal gate evidence missing
-  ir-4a-publisher-progress-response-viewing: review  # built in 3e9c69e (mock-off), see sprint-change-proposal-2026-10-01
-  ir-4b-profile-update-email-delivery-admin-overview: review  # built in 3e9c69e (mock-off), see sprint-change-proposal-2026-10-01
+  ir-4a-publisher-progress-response-viewing: done  # code-reviewed 2026-10-01 (bmad-code-review), fixes in worktree funny-blackwell-1bdbaf
+  ir-4b-profile-update-email-delivery-admin-overview: done  # code-reviewed 2026-10-01 (bmad-code-review), fixes in worktree funny-blackwell-1bdbaf
   ir-5-launch-domain-closure-local-integration-gate: backlog
   ir-6-staging-integration-acceptance-go-no-go-evidence: backlog
   epic-ir-retrospective: optional

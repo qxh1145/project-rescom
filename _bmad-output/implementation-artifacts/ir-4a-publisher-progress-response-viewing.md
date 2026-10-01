@@ -23,8 +23,7 @@ context:
 
 # Story IR.4a: Publisher Progress and Response Viewing
 
-Status: review
-
+Status: done
 <!-- Created by bmad-create-story (unattended run, 2026-09-30). Validation is optional: run validate-create-story before dev-story. -->
 
 ## Story
@@ -250,9 +249,9 @@ Grounding against the real backend changes several epic assumptions. The dev age
 
 _bmad-code-review 2026-10-01 of commit `3e9c69e` (Blind Hunter, Edge Case Hunter, Acceptance Auditor; Sonnet)._
 
-- [ ] [Review][Decision] Test-gap scope before done — missing: `forms-escrow.coordinator.spec` for `getProgressEscrow` and the AC2.3 equalities (escrowRemaining = escrowLocked, completed = completedCompletions); e2e analytics non-owner/401/400/422-over-HTTP; version-detail non-owner/401 (AC10.1).
-- [ ] [Review][Patch] Month-range peak is mapped through WEEKDAY_NAMES, so "T2".."T7" (Feb..Jul) read as "thứ Hai".."thứ Bảy" [apps/frontend/my-app/lib/forms/manage-view.ts:199]
-- [ ] [Review][Patch] Completion note says the response code is an HMAC; `responseDisplayCode` is an unkeyed sha256 (as T4.3 specified) — correct the note [this file, Completion Notes]
+- [x] [Review][Decision] Test-gap scope before done — RESOLVED 2026-10-01 (targeted subset): added `getProgressEscrow` coordinator spec and e2e analytics (non-owner 404, 401, 400, 422 over HTTP) and version-detail (non-owner 404, 401) cases.
+- [x] [Review][Patch] Month-range peak is mapped through WEEKDAY_NAMES, so "T2".."T7" (Feb..Jul) read as "thứ Hai".."thứ Bảy" [apps/frontend/my-app/lib/forms/manage-view.ts:199] — fixed 2026-10-01
+- [x] [Review][Patch] Completion note says the response code is an HMAC; `responseDisplayCode` is an unkeyed sha256 (as T4.3 specified) — correct the note [this file, Completion Notes] — fixed 2026-10-01
 - [x] [Review][Defer] Submit validation accepts any finite number for rating/linear_scale (and non-option single_choice), so the aggregator counts such answers as skipped [packages/schemas/src/forms/internal-submission.schema.ts:215] — deferred, pre-existing
 - [x] [Review][Defer] Analytics count/scan not snapshot-bound: a concurrent submit shifts the aggregated set by one row [publisher-results.service.ts getAnalytics] — deferred
 - [x] [Review][Defer] `versionIdsWithListedResponses` DISTINCT scan per analytics call (index lacks form_version_id) [prisma-publisher-response-read.repository.ts] — deferred (NFR-1 profile OQ-22)
@@ -610,10 +609,12 @@ _(to be filled by dev-story)_
 - Evidence: full verify 2026-10-01 (schemas 615, backend unit 2224, e2e 431 incl. Postgres suites, FE 744, typecheck and lint clean); real-stack smoke and gate G journeys passed. Read-only AC audit 2026-10-01 (targeted unit suites re-run green).
 - AC audit: AC1–AC4, AC6, AC9 MET; AC5 MET (version detail built, Q3); AC8 and AC10 partly verified.
 - **Deliberate overrides (owner decision 2026-10-01, internal testing only; see the Epic IR note in `epics.md`):** AC0/AC7: no screen is hidden. Export stays open with real `/responses` data; Survey Quality and complaints stay reachable and are mock-served in hybrid mode. AC5.2: version diff stays visible (computed client-side from real version details). Only the feedback summary is hidden. IR.1 must re-gate these for the pilot.
-- Open questions as the code resolved them: Q1 analytics BUILT · Q3 version detail BUILT · Q2 respondent identity is an HMAC pseudonym per response · Q4 Admin gets 404 · Q5, Q8, Q11–Q13 story defaults (caps 2000 / 5000).
+- Open questions as the code resolved them: Q1 analytics BUILT · Q3 version detail BUILT · Q2 respondent identity is a per-response pseudonymous code (unkeyed sha256 of the response id, as T4.3 specifies) · Q4 Admin gets 404 · Q5, Q8, Q11–Q13 story defaults (caps 2000 / 5000).
 - Open before `done`: confirm the AC8 frontend cut-over (quality filter / `QualityTag` / `REVIEW_DISCLAIMER` removed, MSW owner-only 404).
 
 ### File List
 
 Key files are listed in the AC audit; the complete list is `git show --stat 3e9c69e`.
 
+
+- 2026-10-01: bmad-code-review of `3e9c69e` done; review fixes and tests applied in worktree `funny-blackwell-1bdbaf` (uncommitted). Status → `done`.

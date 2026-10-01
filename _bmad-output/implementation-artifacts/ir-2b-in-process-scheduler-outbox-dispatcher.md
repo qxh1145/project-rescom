@@ -27,8 +27,7 @@ context:
 
 # Story IR.2b: In-Process Scheduler and Outbox Dispatcher
 
-Status: review
-
+Status: done
 <!-- Created 2026-09-30 by the create-story workflow (non-interactive run). Open product/architecture questions are collected at the end under "Questions / Decisions for Owner"; each has a recommended default so development is not blocked. -->
 
 ## Story
@@ -393,9 +392,9 @@ Job runs, claim conflicts, retries and dead letters are logged with correlation 
 
 _bmad-code-review 2026-10-01 of commit `3e9c69e` (Blind Hunter, Edge Case Hunter, Acceptance Auditor; Sonnet)._
 
-- [ ] [Review][Decision] Test-gap scope before done — missing: in-memory `test/scheduler.e2e-spec.ts` (Task 11.3, known open); unit specs for `pending-release.job`, `starter-expiry.job`, `internal-reward-requested.handler` (AC8/Task 11.1); Postgres clock-boundary tests for pending-release (48 h) and starter-expiry (30 d) (T9/T11); Postgres MAX_ATTEMPTS assertion (T7).
-- [ ] [Review][Patch] `deadline-close` processes at most one batch per run: the query limit equals batchSize + attempted, so `hasMore` is never true and ≥25 stuck forms starve newer ones [apps/backend/src/modules/forms/infrastructure/jobs/deadline-close.job.ts:54]
-- [ ] [Review][Patch] A DB error inside `dispatch()` (e.g. `processedHandlerNames`) aborts the run and strands the rest of the claimed batch for 60 s with attempts already incremented; release the unstarted claims before rethrowing [apps/backend/src/common/scheduler/outbox/outbox-dispatch.job.ts:118]
+- [x] [Review][Decision] Test-gap scope before done — RESOLVED 2026-10-01 (targeted subset): added in-memory `test/scheduler.e2e-spec.ts` and unit specs for `pending-release.job`, `starter-expiry.job`, `internal-reward-requested.handler`; Postgres 48 h / 30 d clock-boundary tests and the Postgres MAX_ATTEMPTS assertion deferred.
+- [x] [Review][Patch] `deadline-close` processes at most one batch per run: the query limit equals batchSize + attempted, so `hasMore` is never true and ≥25 stuck forms starve newer ones [apps/backend/src/modules/forms/infrastructure/jobs/deadline-close.job.ts:54] — fixed 2026-10-01
+- [x] [Review][Patch] A DB error inside `dispatch()` (e.g. `processedHandlerNames`) aborts the run and strands the rest of the claimed batch for 60 s with attempts already incremented; release the unstarted claims before rethrowing [apps/backend/src/common/scheduler/outbox/outbox-dispatch.job.ts:118] — fixed 2026-10-01
 - [x] [Review][Defer] Crash-looping/hanging event is never dead-lettered (attempts incremented at claim, MAX check only in fail()) [prisma-outbox-claim.repository.ts:70] — deferred
 - [x] [Review][Defer] UNSUPPORTED_SCHEMA_VERSION dead-letters on first attempt (image rollback window; re-drive exists) [outbox-dispatch.job.ts:144] — deferred
 - [x] [Review][Defer] Health stays `ok` with dead-lettered events; a renew DB error is recorded LEASE_LOST and resets the failure streak; an in-flight run can outlive the 10 s shutdown grace [scheduler-health.service.ts, scheduler-runner.service.ts] — deferred
@@ -636,3 +635,4 @@ Key files are listed in the AC audit; the complete list is `git show --stat 3e9c
 
 - 2026-09-30: Story created (create-story workflow, non-interactive). Status → `ready-for-dev`.
 - 2026-10-01: Implementation reconciled (built in `3e9c69e`, mock-off plan). Status → `review` (sprint-change-proposal-2026-10-01).
+- 2026-10-01: bmad-code-review (commit `3e9c69e`); review fixes and tests applied in worktree `funny-blackwell-1bdbaf` (uncommitted). Status → `done`.
