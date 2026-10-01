@@ -1105,6 +1105,13 @@ So that the system can track graph evidence without requiring a separate graph d
 - IR.6 requires IR.5 plus Stories 11.1–11.4 deployed to staging. IR.6 is the G5 evidence gate and blocks Story 11.5 go/no-go and production launch.
 - Story status, a health check, or implementation completion alone is not gate evidence; each gate requires the named test report, trace, manifest, or drill record.
 
+**Internal-testing milestone (2026-10-01, owner decisions in `.omc/plans/mock-off-full-backend.md`; reconciled by `sprint-change-proposal-2026-10-01.md`):**
+
+- The milestone's goal is internal team testing on the real stack, not the pilot. For that goal, the plan replaces IR.1's scope decisions. No screen is hidden: the Phase 2-deferred features (disputes, reliability, quality, AI, engagement) run on MSW through `NEXT_PUBLIC_API_MOCKING=hybrid` (3 MOCK_ONLY + 14 DEFERRED_KEEP_MOCK, enforced by `tests/route-diff.test.mjs`). Screens that use them show a "Dữ liệu minh hoạ" tag.
+- Overrides, internal testing only: IR.4a AC7 (export, Survey Quality and complaints stay reachable), IR.4a AC5.2 (version diff visible), IR.4b C3/C4 (`0` placeholders for disputes and quality), IR.4b C7 (no pilot nav filter). The IR.4a and IR.4b acceptance criteria below remain the pilot target.
+- Built without a story and traced to the plan: auth throttle made configurable, S3 presigned checksum fix, runner `file_upload`, integrity consent, survey topic, QUOTA auto-close (not reopenable), forgot/reset password, session revoke reason, and admin fraud-log, ledger and outbox views.
+- Before the pilot, IR.1 must re-gate every override above: hide or build-exclude the deferred screens, close export, and build staging with mocking `disabled`, not `hybrid` (IR.6).
+
 ### Story IR.1: Pilot Scope, Ownership and Contract Freeze
 
 As an Integration Lead,
@@ -1123,6 +1130,7 @@ So that the team knows which contracts are real, which gaps must close, and whic
 **And** password recovery, reliability, form responses, form analytics, progress, complaints, admin disputes and quality routes are explicitly approved for the pilot or hidden/build-time excluded without expanding deferred Phase 2 scope.
 **And** external completion, analytics and consent/telemetry are explicitly recorded as in-scope or out-of-scope.
 **And** secrets, credentials, placeholder bank data and other production-blocking defaults are inventoried with an owner and removal or rotation decision.
+**And** each internal-testing override of 2026-10-01 (see the Epic IR note) is re-decided for the pilot.
 
 ### Story IR.2: Local Real-Stack Integration Foundation
 

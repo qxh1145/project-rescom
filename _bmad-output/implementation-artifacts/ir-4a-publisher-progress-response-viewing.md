@@ -23,7 +23,7 @@ context:
 
 # Story IR.4a: Publisher Progress and Response Viewing
 
-Status: ready-for-dev
+Status: review
 
 <!-- Created by bmad-create-story (unattended run, 2026-09-30). Validation is optional: run validate-create-story before dev-story. -->
 
@@ -245,6 +245,18 @@ Grounding against the real backend changes several epic assumptions. The dev age
   - [ ] T11.2 Do a manual real-stack smoke with mocking disabled: owner sees progress and responses; a second account gets 404; a Google Forms survey shows the not-applicable note.
   - [ ] T11.3 Record the analytics timing at the cap (Prisma e2e log).
   - [ ] T11.4 Update the IR.1 contract register rows API-14/API-15 (and progress/version detail) from `assumed` to `verified`, with evidence paths, if the register exists as a file. Otherwise list the evidence in Completion Notes. Do NOT edit `epics.md` or `sprint-status.yaml` beyond the normal dev-story status flow.
+
+### Review Findings
+
+_bmad-code-review 2026-10-01 of commit `3e9c69e` (Blind Hunter, Edge Case Hunter, Acceptance Auditor; Sonnet)._
+
+- [ ] [Review][Decision] Test-gap scope before done — missing: `forms-escrow.coordinator.spec` for `getProgressEscrow` and the AC2.3 equalities (escrowRemaining = escrowLocked, completed = completedCompletions); e2e analytics non-owner/401/400/422-over-HTTP; version-detail non-owner/401 (AC10.1).
+- [ ] [Review][Patch] Month-range peak is mapped through WEEKDAY_NAMES, so "T2".."T7" (Feb..Jul) read as "thứ Hai".."thứ Bảy" [apps/frontend/my-app/lib/forms/manage-view.ts:199]
+- [ ] [Review][Patch] Completion note says the response code is an HMAC; `responseDisplayCode` is an unkeyed sha256 (as T4.3 specified) — correct the note [this file, Completion Notes]
+- [x] [Review][Defer] Submit validation accepts any finite number for rating/linear_scale (and non-option single_choice), so the aggregator counts such answers as skipped [packages/schemas/src/forms/internal-submission.schema.ts:215] — deferred, pre-existing
+- [x] [Review][Defer] Analytics count/scan not snapshot-bound: a concurrent submit shifts the aggregated set by one row [publisher-results.service.ts getAnalytics] — deferred
+- [x] [Review][Defer] `versionIdsWithListedResponses` DISTINCT scan per analytics call (index lacks form_version_id) [prisma-publisher-response-read.repository.ts] — deferred (NFR-1 profile OQ-22)
+- [x] [Review][Defer] Number buckets NaN/Infinity for extreme values; 6-hex code collisions above ~4k responses; default-version cursor INVALID_CURSOR for direct API callers; `collectResponsePages` drops fetched rows on a later-page failure; deep link beyond 2 000 shows not-found — deferred
 
 ## Dev Notes
 
@@ -594,6 +606,14 @@ _(to be filled by dev-story)_
 - Story context created 2026-09-30 by an unattended create-story run. The ultimate context engine analysis completed, and a comprehensive developer guide was created. `epics.md` and `sprint-status.yaml` were intentionally not edited (caller constraint); sprint status still lists `ir-4a-publisher-progress-response-viewing: backlog`, so update it through the normal flow.
 - Several epic assumptions were corrected against code (R1–R12). Pause (R1) and deadline (R2) cannot be delivered as the epic worded them without new lifecycle and data-model work.
 
+- **2026-10-01, implemented outside the story flow:** built in commit `3e9c69e` as mock-off Phase 3 of `.omc/plans/mock-off-full-backend.md`, not through bmad-dev-story. Task boxes are left unticked on purpose; this entry is the record. Reconciled by `sprint-change-proposal-2026-10-01.md`. Status → `review`.
+- Evidence: full verify 2026-10-01 (schemas 615, backend unit 2224, e2e 431 incl. Postgres suites, FE 744, typecheck and lint clean); real-stack smoke and gate G journeys passed. Read-only AC audit 2026-10-01 (targeted unit suites re-run green).
+- AC audit: AC1–AC4, AC6, AC9 MET; AC5 MET (version detail built, Q3); AC8 and AC10 partly verified.
+- **Deliberate overrides (owner decision 2026-10-01, internal testing only; see the Epic IR note in `epics.md`):** AC0/AC7: no screen is hidden. Export stays open with real `/responses` data; Survey Quality and complaints stay reachable and are mock-served in hybrid mode. AC5.2: version diff stays visible (computed client-side from real version details). Only the feedback summary is hidden. IR.1 must re-gate these for the pilot.
+- Open questions as the code resolved them: Q1 analytics BUILT · Q3 version detail BUILT · Q2 respondent identity is an HMAC pseudonym per response · Q4 Admin gets 404 · Q5, Q8, Q11–Q13 story defaults (caps 2000 / 5000).
+- Open before `done`: confirm the AC8 frontend cut-over (quality filter / `QualityTag` / `REVIEW_DISCLAIMER` removed, MSW owner-only 404).
+
 ### File List
 
-_(to be filled by dev-story)_
+Key files are listed in the AC audit; the complete list is `git show --stat 3e9c69e`.
+
