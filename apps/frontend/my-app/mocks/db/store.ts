@@ -4,11 +4,11 @@
  * flows survive reloads (take a survey → wallet → notifications stay in sync).
  *
  * Reset everything with `?msw-reset=1` or `resetMockDb()`: the collections,
- * the legacy demo store (`lib/mock`, which still holds the signed-in user),
+ * the legacy demo store (`mocks/legacy`, which still holds the signed-in user),
  * passwords registered through MSW and the remembered `?msw=` scenario.
  */
 
-import { LEGACY_STORE_KEY } from "@/lib/mock/store.ts";
+import { LEGACY_STORE_KEY } from "../legacy/store";
 import { CREDENTIALS_KEY } from "../data/auth";
 import { SCENARIO_STORAGE_KEY } from "../scenarios";
 

@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/.next
+**/.env
+**/.env.*
+!**/.env.example
+**/*.tsbuildinfo
+.git
+.omc
+.claude
+_bmad
+_bmad-output
+brag-output
+docs
+deploy/.env.prod
+deploy/backups

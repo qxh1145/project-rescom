@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from './common/config/config.module';
 import { PrismaModule } from './common/database/prisma.module';
+import { SchedulerModule } from './common/scheduler/scheduler.module';
 import { SystemModule } from './common/system/system.module';
 import { SecurityModule } from './common/security/security.module';
 import { AppThrottlerGuard } from './common/security/app-throttler.guard';
@@ -17,11 +18,13 @@ import { EconomyModule } from './modules/economy/economy.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ModerationModule } from './modules/moderation/moderation.module';
 import { ProductToursModule } from './modules/product-tours/product-tours.module';
+import { UserProfileHttpModule } from './modules/users/user-profile-http.module';
 
 @Module({
   imports: [
     ConfigModule,
     PrismaModule,
+    SchedulerModule,
     SystemModule,
     SecurityModule,
     UsersModule,
@@ -36,6 +39,7 @@ import { ProductToursModule } from './modules/product-tours/product-tours.module
     NotificationsModule,
     ModerationModule,
     ProductToursModule,
+    UserProfileHttpModule,
   ],
   providers: [
     {

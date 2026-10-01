@@ -1,7 +1,7 @@
 import { HttpResponse, http } from "msw";
 import { googleLinkStartSchema, loginSchema, registerSchema } from "@rescom/schemas";
 import { apiUrl } from "@/lib/api/config";
-import { mockRepository } from "@/lib/mock/repository.ts";
+import { mockRepository } from "../legacy/repository";
 import {
   DEMO_ACCOUNTS,
   expectedPassword,
@@ -20,9 +20,6 @@ import { applyScenario } from "../scenarios";
  */
 
 const invalidCredentials = () => fail(401, "AUTH_INVALID_CREDENTIALS", "Invalid email or password.");
-
-/** ASSUMED API CONTRACT body of POST /auth/password/forgot (same email rule as login). */
-const passwordForgotSchema = loginSchema.pick({ email: true });
 
 /** MOCK-ONLY: where link/start "sends" the browser instead of Google. The session already exists. */
 const MOCK_GOOGLE_LINK_CALLBACK = "/auth/callback?provider=mock-google-link";
@@ -110,23 +107,6 @@ export const authHandlers = [
     }
     const user = await mockRepository.switchDemoUser("user-new-001");
     return ok({ user: toSanitizedUser(user) });
-  }),
-
-  /**
-   * ASSUMED API CONTRACT: POST /auth/password/forgot `{ email }` → 202 with the
-   * same empty answer whether or not the account exists. Guest route (no CSRF).
-   */
-  http.post(apiUrl("/auth/password/forgot"), async ({ request }) => {
-    const forced = await applyScenario("password-forgot");
-    if (forced) return forced;
-
-    const parsed = passwordForgotSchema.safeParse(await readJson(request));
-    if (!parsed.success) {
-      return fail(400, "AUTH_INVALID_INPUT", parsed.error.errors[0]?.message ?? "Validation failed", {
-        details: parsed.error.format(),
-      });
-    }
-    return ok(null, 202);
   }),
 
   /**

@@ -11,55 +11,124 @@ const xlsx = await import("../lib/forms/results-xlsx.ts");
 const quality = await import("../lib/forms/results-quality.ts");
 const versions = await import("../lib/forms/results-versions.ts");
 const messages = await import("../lib/forms/results-messages.ts");
-const { formResponsesSchema } = await import("../lib/forms/results-service.ts");
+const service = await import("../lib/forms/results-service.ts");
+const { publisherResponsesPageSchema } = await import("@rescom/schemas");
+const { ApiError } = await import("../lib/api/api-error.ts");
 
-// --- Fixture: "Nhu cầu nhà trọ gần trường" (Figma 10d), 3 questions shown + 2 more ---
+// --- Fixture: "Nhu cầu nhà trọ gần trường" (Figma 10d), 5 questions (Story IR.4a page shape) ---
 
 const opts = (...labels) => labels.map((label) => ({ value: label, label }));
 const QUESTIONS = [
-  { id: "q1", number: 1, title: "Hiện bạn đang ở đâu?", shortLabel: "Chỗ ở hiện tại", type: "single_choice", required: true, options: opts("Nhà trọ", "Ký túc xá", "Nhà người thân"), scale: null },
-  { id: "q3", number: 2, title: "Ngân sách cho chỗ ở mỗi tháng?", shortLabel: "Ngân sách/tháng", type: "single_choice", required: true, options: opts("Dưới 1,5 triệu đồng", "1,5–2,5 triệu đồng"), scale: null },
-  { id: "q4", number: 3, title: "Yếu tố quan trọng khi chọn chỗ ở?", shortLabel: null, type: "multiple_choice", required: true, options: opts("Giá thuê", "An ninh", "Gần trường"), scale: null },
-  { id: "q5", number: 4, title: "Mức hài lòng với chỗ ở hiện tại", shortLabel: "Hài lòng", type: "linear_scale", required: true, options: [], scale: { min: 1, max: 5, minLabel: "Rất không hài lòng", maxLabel: "Rất hài lòng" } },
-  { id: "q8", number: 5, title: "Điều bạn muốn cải thiện nhất?", shortLabel: null, type: "text", required: true, options: [], scale: null },
+  { id: "q1", number: 1, title: "Hiện bạn đang ở đâu?", type: "single_choice", required: true, options: opts("Nhà trọ", "Ký túc xá", "Nhà người thân"), allowOther: false, scale: null },
+  { id: "q3", number: 2, title: "Ngân sách cho chỗ ở mỗi tháng?", type: "single_choice", required: true, options: opts("Dưới 1,5 triệu đồng", "1,5–2,5 triệu đồng"), allowOther: false, scale: null },
+  { id: "q4", number: 3, title: "Yếu tố quan trọng khi chọn chỗ ở?", type: "multiple_choice", required: true, options: opts("Giá thuê", "An ninh", "Gần trường"), allowOther: false, scale: null },
+  { id: "q5", number: 4, title: "Mức hài lòng", type: "linear_scale", required: true, options: [], allowOther: false, scale: { min: 1, max: 5, minLabel: "Rất không hài lòng", maxLabel: "Rất hài lòng" } },
+  { id: "q8", number: 5, title: "Điều bạn muốn cải thiện nhất?", type: "text", required: true, options: [], allowOther: false, scale: null },
 ];
+const VERSION_ID = "0b8c3c3e-5f43-4a43-9a51-6f1f1d2b0a01";
 
 function response(code, overrides = {}) {
   return {
     id: `00000000-0000-4000-8000-${code.padStart(12, "0")}`,
     code,
+    formVersionId: VERSION_ID,
     submittedAt: "2026-09-18T16:48:00+07:00",
     durationSeconds: 362,
-    quality: "PASSED",
-    reviewReasons: [],
+    integrity: { applicability: "NOT_ASSESSED" },
     answers: { q1: "Nhà trọ", q3: "1,5–2,5 triệu đồng", q4: ["Giá thuê", "An ninh"], q5: 2, q8: "Phòng hay bị ẩm" },
-    codeVerified: null,
     ...overrides,
   };
 }
 
-const DATA = formResponsesSchema.parse({
-  form: { id: "f1", title: "Nhu cầu nhà trọ gần trường", type: "INTERNAL", versionNumber: 1, estimatedEffortSeconds: 360, externalUrl: null },
+const PAGE = publisherResponsesPageSchema.parse({
+  availability: "AVAILABLE",
+  form: { id: "5b1d7c2e-3f4a-4b6c-8d9e-0f1a2b3c4d01", title: "Nhu cầu nhà trọ gần trường", type: "INTERNAL", versionId: VERSION_ID, versionNumber: 1 },
   questions: QUESTIONS,
   responses: [
     response("A1F2", { submittedAt: "2026-09-22T21:14:00+07:00", durationSeconds: 348, answers: { q1: "Nhà trọ", q3: "1,5–2,5 triệu đồng", q4: ["Gần trường"], q5: 3, q8: 'Wifi yếu, "rất" chậm' } }),
     response("3C7B", { answers: { q1: "Ký túc xá", q3: "Dưới 1,5 triệu đồng", q4: [], q5: 4, q8: "=HYPERLINK(\"x\")" } }),
-    response("6B1C", { quality: "NEEDS_REVIEW", durationSeconds: 118, reviewReasons: [{ code: "TOO_FAST", params: { declaredMinutes: 6 } }] }),
+    response("6B1C", { durationSeconds: null }),
     response("47AD"),
   ],
+  totalCount: 4,
+  nextCursor: null,
+});
+const DATA = { ...PAGE, truncated: false };
+
+// --- Collecting the cursor pages (AC8.1) ---
+
+function pagedFetcher(rows, size) {
+  const calls = [];
+  const fetchPage = async (cursor) => {
+    calls.push(cursor);
+    const start = cursor ? Number(cursor) : 0;
+    const slice = rows.slice(start, start + size);
+    const next = start + size < rows.length ? String(start + size) : null;
+    return { ...PAGE, responses: slice, totalCount: rows.length, nextCursor: next };
+  };
+  return { fetchPage, calls };
+}
+
+test("collectResponsePages follows the cursor, de-duplicates by id and reports truncation", async () => {
+  const rows = Array.from({ length: 7 }, (_, index) => response(`B${index}`));
+  rows.splice(4, 0, rows[3]); // a row seen twice (shifted between pages)
+  const { fetchPage, calls } = pagedFetcher(rows, 3);
+  const all = await service.collectResponsePages(fetchPage);
+  assert.equal(all.responses.length, 7);
+  assert.equal(new Set(all.responses.map((row) => row.id)).size, 7);
+  assert.equal(all.truncated, false);
+  assert.equal(all.nextCursor, null);
+  assert.deepEqual(calls, [null, "3", "6"]);
+
+  const many = Array.from({ length: service.RESPONSES_MAX_PAGES * 2 + 1 }, (_, index) => response(`C${index}`));
+  const capped = await service.collectResponsePages(pagedFetcher(many, 1).fetchPage);
+  assert.equal(capped.responses.length, service.RESPONSES_MAX_PAGES);
+  assert.equal(capped.truncated, true);
 });
 
-// --- View: filters, search, pagination, position ---
+test("collectResponsePages pins the first page's version on every following page", async () => {
+  // Page 1 is v1 (the server's pick); a v2 response arriving mid-walk must not switch the walk.
+  const requested = [];
+  const v2 = { ...PAGE.form, versionId: "0b8c3c3e-5f43-4a43-9a51-6f1f1d2b0a02", versionNumber: 2 };
+  const fetchPage = async (cursor, versionNumber) => {
+    requested.push([cursor, versionNumber]);
+    if (cursor === null) return { ...PAGE, responses: [response("D1")], nextCursor: "c1" };
+    // Unpinned, the server would now pick v2: answer with v2 then.
+    if (versionNumber === null) return { ...PAGE, form: v2, responses: [response("E1")], nextCursor: null };
+    return { ...PAGE, responses: [response("D2")], nextCursor: null };
+  };
+  const all = await service.collectResponsePages(fetchPage);
+  assert.deepEqual(requested, [[null, null], ["c1", 1]]);
+  assert.deepEqual(all.responses.map((row) => row.code), ["D1", "D2"]);
+  // A page of another version is never mixed in.
+  const switched = await service.collectResponsePages(async (cursor) =>
+    cursor === null ? { ...PAGE, responses: [response("F1")], nextCursor: "c1" } : { ...PAGE, form: v2, responses: [response("F2")], nextCursor: null },
+  );
+  assert.deepEqual(switched.responses.map((row) => row.code), ["F1"]);
+});
 
-test("quality counts and filter", () => {
-  assert.deepEqual(view.qualityCounts(DATA.responses), { all: 4, passed: 3, review: 1 });
-  assert.equal(view.filterResponses(DATA.responses, QUESTIONS, { quality: "review", query: "" }).length, 1);
-  assert.equal(view.filterResponses(DATA.responses, QUESTIONS, { quality: "passed", query: "" }).length, 3);
-  assert.equal(view.parseQualityFilter("nope"), "all");
+test("collectResponsePages passes NOT_APPLICABLE through (Google Forms)", async () => {
+  const notApplicable = {
+    availability: "NOT_APPLICABLE",
+    reason: "EXTERNAL_FORM",
+    form: { id: "f2", title: "Đọc sách", type: "EXTERNAL", externalUrl: "https://docs.google.com/forms/d/e/x/viewform" },
+  };
+  let calls = 0;
+  const result = await service.collectResponsePages(async () => (calls++, notApplicable));
+  assert.deepEqual(result, { ...notApplicable, truncated: false });
+  assert.equal(calls, 1);
+});
+
+// --- View: search, pagination, position ---
+
+test("filter is search-only (no quality filter: responses are never graded)", () => {
+  assert.equal(view.filterResponses(DATA.responses, QUESTIONS, { query: "" }).length, 4);
+  assert.equal("qualityCounts" in view, false);
+  assert.equal("parseQualityFilter" in view, false);
 });
 
 test("search matches code with or without # and answers without diacritics", () => {
-  const find = (query) => view.filterResponses(DATA.responses, QUESTIONS, { quality: "all", query }).map((r) => r.code);
+  const find = (query) => view.filterResponses(DATA.responses, QUESTIONS, { query }).map((r) => r.code);
   assert.deepEqual(find("#47ad"), ["47AD"]);
   assert.deepEqual(find("ky tuc"), ["3C7B"]);
   assert.deepEqual(find("wifi"), ["A1F2"]);
@@ -75,7 +144,7 @@ test("paginate clamps the page and reports the visible range", () => {
   assert.deepEqual([empty.pageCount, empty.from, empty.to], [1, 0, 0]);
 });
 
-test("position gives previous (newer) and next (older)", () => {
+test("position gives previous (newer) and next (older) over the collected list", () => {
   const position = view.responsePosition(DATA.responses, DATA.responses[1].id);
   assert.equal(position.index, 2);
   assert.equal(position.total, 4);
@@ -84,11 +153,11 @@ test("position gives previous (newer) and next (older)", () => {
   assert.equal(view.responsePosition(DATA.responses, "missing"), null);
 });
 
-test("default columns prefer questions with a short label", () => {
-  assert.deepEqual(view.defaultColumnIds(QUESTIONS), ["q1", "q3", "q5"]);
+test("default columns are the first questions; headers use the title (no short labels)", () => {
+  assert.deepEqual(view.defaultColumnIds(QUESTIONS), ["q1", "q3", "q4"]);
   assert.deepEqual(view.normalizeColumnIds(QUESTIONS, ["q8", "q1", "zzz"]), ["q1", "q8"]);
-  assert.deepEqual(view.normalizeColumnIds(QUESTIONS, []), ["q1", "q3", "q5"]);
-  assert.equal(view.columnHeader(QUESTIONS[1]), "C2 · Ngân sách/tháng");
+  assert.deepEqual(view.normalizeColumnIds(QUESTIONS, []), ["q1", "q3", "q4"]);
+  assert.equal(view.columnHeader(QUESTIONS[1]), "C2 · Ngân sách cho chỗ ở mỗi tháng?");
 });
 
 test("answer formatting (detail, table, mobile summary)", () => {
@@ -101,28 +170,37 @@ test("answer formatting (detail, table, mobile summary)", () => {
   assert.equal(view.answerCompact(q5, 3), "3/5");
   assert.equal(view.answerCompact(q4, []), "—");
   assert.deepEqual(view.answerChoices(q4, ["Giá thuê", "An ninh"]), ["Giá thuê", "An ninh"]);
-  assert.equal(view.responseSummary(DATA.responses[1], [q1, q3, q5]), "Ký túc xá · dưới 1,5 triệu · hài lòng 4/5");
+  assert.equal(view.responseSummary(DATA.responses[1], [q1, q3, q5]), "Ký túc xá · dưới 1,5 triệu · mức hài lòng 4/5");
   assert.equal(view.questionKindLabel(q5), "thang 1–5");
   assert.equal(view.questionKindLabel(q1), null);
 });
 
-test("durations", () => {
+test("durations, including an unknown (null) one", () => {
   assert.equal(view.formatDurationShort(348), "5p 48s");
   assert.equal(view.formatDurationShort(425), "7p 05s");
   assert.equal(view.formatDurationShort(45), "45s");
+  assert.equal(view.formatDurationShort(null), "—");
   assert.equal(view.formatDurationLong(362), "6 phút 02 giây");
   assert.equal(view.formatDurationLong(300), "5 phút");
+  assert.equal(view.formatDurationLong(null), "—");
   assert.equal(view.formatSubmittedAt("2026-09-22T14:14:00Z"), "22/09 21:14");
 });
 
-test("review reasons are hints", () => {
-  assert.equal(messages.reviewReasonText({ code: "TOO_FAST", params: { declaredMinutes: 6 } }), "nhanh hơn nhiều so với 6 phút");
-  assert.equal(messages.reviewReasonText({ code: "NEW", params: {} }), "có dấu hiệu cần kiểm tra");
+test("load errors: a missing route (bare 404) never says the survey was deleted", () => {
+  const error = (status, code) => new ApiError({ kind: "http", status, code, message: code ?? "x" });
+  assert.match(messages.responsesLoadErrorMessage(error(404, "FORM_NOT_FOUND")), /Không tìm thấy khảo sát này/);
+  const missingRoute = messages.responsesLoadErrorMessage(error(404, "NOT_FOUND"));
+  assert.doesNotMatch(missingRoute, /xoá/);
+  assert.match(missingRoute, /chưa hỗ trợ/);
+  assert.equal(messages.responsesLoadErrorMessage(error(404, "FORM_VERSION_NOT_FOUND")), "Không có phiên bản này của khảo sát.");
+  assert.match(messages.responsesLoadErrorMessage(error(400, "INVALID_CURSOR")), /Tải lại trang/);
+  assert.match(messages.analyticsLoadErrorMessage(error(422, "PUBLISHER_ANALYTICS_LIMIT_EXCEEDED")), /hơn 5\.000 câu trả lời.*chỉ 2\.000 câu trả lời mới nhất/);
+  assert.equal(messages.RESPONSES_TRUNCATED_NOTE, "Chỉ hiển thị 2.000 câu trả lời mới nhất.");
 });
 
 // --- Export: table, CSV, file name ---
 
-test("export table: default columns (Figma: 11 columns for 8 questions)", () => {
+test("export table: default columns (code, time, duration + one column per question)", () => {
   const table = exporter.buildExportTable(DATA, exporter.DEFAULT_EXPORT_OPTIONS);
   assert.deepEqual(table.headers.slice(0, 4), ["Mã", "Thời điểm nộp", "Thời gian làm (giây)", "C1. Hiện bạn đang ở đâu?"]);
   assert.equal(table.headers.length, 3 + QUESTIONS.length);
@@ -131,25 +209,25 @@ test("export table: default columns (Figma: 11 columns for 8 questions)", () => 
   assert.deepEqual(row.slice(0, 3), ["#47AD", "2026-09-18 16:48", 362]);
   assert.equal(row[5], "Giá thuê; An ninh");
   assert.equal(row[6], 2);
+  // An unknown duration is an empty cell; no quality option exists any more.
+  assert.equal(table.rows[2][2], "");
+  assert.equal("includeQuality" in exporter.DEFAULT_EXPORT_OPTIONS, false);
+  assert.equal("scope" in exporter.DEFAULT_EXPORT_OPTIONS, false);
 });
 
-test("export table: passed only, split choices, quality column", () => {
+test("export table: split choices", () => {
   const table = exporter.buildExportTable(DATA, {
     ...exporter.DEFAULT_EXPORT_OPTIONS,
-    scope: "passed",
     multipleChoice: "split",
     includeSubmittedAt: false,
-    includeQuality: true,
   });
-  assert.equal(table.rows.length, 3);
+  assert.equal(table.rows.length, 4);
   assert.deepEqual(table.headers.slice(4, 7), [
     "C3. Yếu tố quan trọng khi chọn chỗ ở? [Giá thuê]",
     "C3. Yếu tố quan trọng khi chọn chỗ ở? [An ninh]",
     "C3. Yếu tố quan trọng khi chọn chỗ ở? [Gần trường]",
   ]);
   assert.deepEqual(table.rows[0].slice(4, 7), [0, 0, 1]);
-  assert.equal(table.headers.at(-1), "Chất lượng");
-  assert.equal(table.rows[0].at(-1), "Đạt");
 });
 
 test("Phase 5 M4: split choices keep a \"Khác\" answer in its own column when the question allows it", () => {
@@ -175,8 +253,6 @@ test("Phase 5 M4: split choices keep a \"Khác\" answer in its own column when t
   assert.equal(plain.headers.some((header) => header.endsWith("[Khác]")), false);
   const joined = exporter.buildExportTable(data, { ...exporter.DEFAULT_EXPORT_OPTIONS, includeSubmittedAt: false, includeDuration: false });
   assert.ok(joined.rows[0].includes("Giá thuê; Có chỗ để xe"));
-  // The results DTO defaults allowOther to false.
-  assert.equal(formResponsesSchema.parse({ ...DATA, questions: QUESTIONS }).questions[0].allowOther, false);
 });
 
 test("CSV: UTF-8 BOM, CRLF, quoting and formula neutralizing", () => {

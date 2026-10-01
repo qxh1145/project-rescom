@@ -173,7 +173,8 @@ export const SCHOOL_OPTIONS = [
 ] as const;
 
 /**
- * Figma 12.7. `value` is what `/users/me/profile.schoolYear` stores (ASSUMED);
+ * Figma 12.7. `value` is what `/users/me/profile.schoolYear` stores
+ * (`SCHOOL_YEAR_VALUES` in @rescom/schemas; a test keeps the two lists equal);
  * mobile spells out the last option ("Năm 5 trở lên").
  */
 export const SCHOOL_YEAR_OPTIONS: readonly { value: string; label: string; longLabel: string }[] = [

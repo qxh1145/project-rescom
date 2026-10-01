@@ -1,5 +1,6 @@
 import {
   marketplaceFeedQuerySchema,
+  matchesSurveySearch,
   starterPointsStatusSchema,
   STARTER_ACTIVATION_MISSING_STEPS,
   STARTER_POINTS_EXPIRY_DAYS,
@@ -41,7 +42,7 @@ function toCard(survey: MockSurvey, completed: boolean) {
     targetingJson: null,
     hasTargeting,
     isCompletedByCurrentUser: completed,
-    // ASSUMED API CONTRACT extension (not in the backend DTO yet).
+    // Plan 2.2: VERIFIED `marketplaceSurveyCardSchema.topic`.
     topic: survey.topic,
   };
 }
@@ -95,7 +96,7 @@ export const marketplaceHandlers = [
 
     const query = parsed.data;
     const completedIds = new Set(completedSurveyIdsOf(user.id, user.email));
-    const search = query.search?.toLowerCase();
+    const search = query.search;
     const catalog = surveys.get();
     const catalogOrder = new Map(catalog.map((survey, index) => [survey.id, index]));
 
@@ -111,9 +112,9 @@ export const marketplaceHandlers = [
       .filter((survey) => query.maxDuration === undefined || survey.estimatedEffortSeconds <= query.maxDuration)
       .filter(
         (survey) =>
-          !search ||
-          // The backend matches title/description; the mock also matches the ASSUMED topic ("Tìm theo chủ đề").
-          [survey.title, survey.description ?? "", survey.topic].some((text) => text.toLowerCase().includes(search)),
+          // Plan 2.2 parity: the backend's search (title, description, topic;
+          // case- and diacritic-insensitive).
+          !search || matchesSurveySearch(survey, search),
       )
       .map((survey) => toCard(survey, completedIds.has(survey.id)))
       .sort(compareCards(query.sortBy, catalogOrder));

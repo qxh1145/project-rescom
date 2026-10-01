@@ -48,3 +48,21 @@ export class StorageScannerOutageException extends Error {
     this.name = 'StorageScannerOutageException';
   }
 }
+
+/**
+ * The question already holds `maxFiles` live uploads (mock-off Phase 7): a
+ * stable code so the runner can tell the respondent to remove a file — or
+ * list and re-adopt the attempt's uploads (`GET storage/uploads`) — instead
+ * of a generic invalid-file error.
+ */
+export class StorageQuestionFullException extends Error {
+  readonly code = 'STORAGE_QUESTION_FULL';
+
+  constructor(
+    readonly questionId: string | null,
+    readonly maxFiles: number,
+  ) {
+    super(`This question allows at most ${maxFiles} uploaded file(s).`);
+    this.name = 'StorageQuestionFullException';
+  }
+}

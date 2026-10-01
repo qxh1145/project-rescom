@@ -1,35 +1,31 @@
 import { vietnamDateTimeParts } from "../format/date-time.ts";
-import type { AnswerValue, FormResponses, ResultQuestion } from "./results-service.ts";
+import type { AnswerValue, AvailableFormResponses, ResultQuestion } from "./results-service.ts";
 import { answerChoices, answerText, normalizeSearchText } from "./results-view.ts";
 
 /**
  * "Xuất câu trả lời" (Figma 10e 62:3771 / 62:3932). The file is built in the
- * browser from `GET /forms/:id/responses` (ASSUMED) — no export endpoint is
- * needed: CSV here, .xlsx in `results-xlsx.ts`. Only the anonymous code
- * ("#47AD") identifies a row: no name, email or phone.
+ * browser from the real `GET /forms/:id/responses` rows (`collectFormResponses`)
+ * — no export endpoint is needed: CSV here, .xlsx in `results-xlsx.ts`. Only
+ * the anonymous code ("#47AD") identifies a row: no name, email or phone. No
+ * quality options: responses are never graded in Phase 1 (IR.4a R8).
  */
 
 export type ExportFormat = "xlsx" | "csv";
-export type ExportScope = "all" | "passed";
 export type MultipleChoiceLayout = "joined" | "split";
 
 export interface ExportOptions {
   format: ExportFormat;
-  scope: ExportScope;
   multipleChoice: MultipleChoiceLayout;
   includeSubmittedAt: boolean;
   includeDuration: boolean;
-  includeQuality: boolean;
 }
 
-/** Figma defaults: .xlsx, every row, choices in one cell, time columns on, quality off. */
+/** Figma defaults: .xlsx, choices in one cell, time columns on. */
 export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
   format: "xlsx",
-  scope: "all",
   multipleChoice: "joined",
   includeSubmittedAt: true,
   includeDuration: true,
-  includeQuality: false,
 };
 
 export type ExportCell = string | number;
@@ -90,9 +86,9 @@ function questionColumns(question: ResultQuestion, layout: MultipleChoiceLayout)
   ];
 }
 
-export function buildExportTable(data: FormResponses, options: ExportOptions): ExportTable {
-  const responses =
-    options.scope === "passed" ? data.responses.filter((response) => response.quality === "PASSED") : data.responses;
+/** Every collected row; an unknown duration (guest response) is an empty cell. */
+export function buildExportTable(data: AvailableFormResponses, options: ExportOptions): ExportTable {
+  const responses = data.responses;
   const columns = data.questions.flatMap((question) =>
     questionColumns(question, options.multipleChoice).map((column) => ({ ...column, id: question.id })),
   );
@@ -101,14 +97,12 @@ export function buildExportTable(data: FormResponses, options: ExportOptions): E
     ...(options.includeSubmittedAt ? ["Thời điểm nộp"] : []),
     ...(options.includeDuration ? ["Thời gian làm (giây)"] : []),
     ...columns.map((column) => column.header),
-    ...(options.includeQuality ? ["Chất lượng"] : []),
   ];
   const rows = responses.map((response) => [
     `#${response.code}`,
     ...(options.includeSubmittedAt ? [exportDateTime(response.submittedAt)] : []),
-    ...(options.includeDuration ? [response.durationSeconds] : []),
+    ...(options.includeDuration ? [response.durationSeconds ?? ""] : []),
     ...columns.map((column) => column.cell(response.answers[column.id])),
-    ...(options.includeQuality ? [response.quality === "PASSED" ? "Đạt" : "Cần xem lại"] : []),
   ]);
   return { headers, rows };
 }

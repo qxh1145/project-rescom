@@ -31,7 +31,10 @@ import { JsonOnlyGuard } from '../../../common/http/json-only.guard';
 import { ParseUUIDPipe } from '../../../common/http/parse-uuid.pipe';
 import { createSuccessEnvelope } from '../../../common/http/response.envelope';
 
-function toAdminUserResponse(user: User): AdminUser {
+function toAdminUserResponse(
+  user: User,
+  lockReasons: ReadonlyMap<string, string>,
+): AdminUser {
   return {
     id: user.id,
     email: user.email,
@@ -39,6 +42,8 @@ function toAdminUserResponse(user: User): AdminUser {
     status: user.status,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
+    lockReason:
+      user.status === 'LOCKED' ? (lockReasons.get(user.id) ?? null) : null,
   };
 }
 
@@ -47,6 +52,11 @@ function toAdminUserResponse(user: User): AdminUser {
 @Roles('ADMIN')
 export class AdminUsersController {
   constructor(private readonly userAdminService: UserAdminService) {}
+
+  private async toResponses(users: readonly User[]): Promise<AdminUser[]> {
+    const lockReasons = await this.userAdminService.findLockReasons(users);
+    return users.map((user) => toAdminUserResponse(user, lockReasons));
+  }
 
   @Get()
   @UsePipes(
@@ -67,7 +77,7 @@ export class AdminUsersController {
     const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
 
     return createSuccessEnvelope({
-      items: users.map(toAdminUserResponse),
+      items: await this.toResponses(users),
       pagination: {
         page,
         limit,
@@ -80,8 +90,9 @@ export class AdminUsersController {
   @Get(':id')
   async getUserById(@Param('id', ParseUUIDPipe) id: string) {
     const user = await this.userAdminService.getUserById(id);
+    const [response] = await this.toResponses([user]);
     return createSuccessEnvelope({
-      user: toAdminUserResponse(user),
+      user: response,
     });
   }
 
@@ -109,8 +120,9 @@ export class AdminUsersController {
       auditMetadata,
     );
 
+    const [response] = await this.toResponses([user]);
     return createSuccessEnvelope({
-      user: toAdminUserResponse(user),
+      user: response,
     });
   }
 
@@ -137,8 +149,9 @@ export class AdminUsersController {
       auditMetadata,
     );
 
+    const [response] = await this.toResponses([user]);
     return createSuccessEnvelope({
-      user: toAdminUserResponse(user),
+      user: response,
     });
   }
 }

@@ -11,8 +11,9 @@ import { FormHeaderProvider, useFormHeader } from "@/lib/forms/manage-header-con
 import { formLoadErrorMessage } from "@/lib/forms/manage-messages";
 import { statusViewOf } from "@/lib/forms/manage-status";
 import { headerMeta } from "@/lib/forms/manage-view";
+import { useSession } from "@/lib/session/SessionProvider";
 import { StatusPill } from "../../components/StatusPill";
-import { FormActionsProvider, useFormActions } from "../hooks/use-form-actions";
+import { FormActionsProvider } from "../hooks/use-form-actions";
 import { HeaderActions } from "./HeaderActions";
 import { SurveyTabs, type SurveyTab } from "./SurveyTabs";
 
@@ -33,7 +34,7 @@ const TAB_OF_SEGMENT: Record<string, SurveyTab> = {
 
 function SurveyChrome({ tab, children }: { tab: SurveyTab; children: ReactNode }) {
   const { form, error, loading, reload } = useFormHeader();
-  const actions = useFormActions();
+  const { user } = useSession();
 
   if (!form) {
     return (
@@ -61,6 +62,10 @@ function SurveyChrome({ tab, children }: { tab: SurveyTab; children: ReactNode }
   }
 
   const view = statusViewOf(form);
+  // IR.4a Q4: progress, responses, analytics and version detail are owner-only
+  // (an Admin gets 404 from the backend). An Admin opening someone else's survey
+  // sees the header and a clear notice instead of those tabs failing.
+  const ownerView = !user || user.id === form.publisherId;
   return (
     <>
       {/* Mobile header (Figma 62:3293): back to the list, title + short meta. */}
@@ -95,23 +100,27 @@ function SurveyChrome({ tab, children }: { tab: SurveyTab; children: ReactNode }
           </div>
         </div>
 
-        <div className="lg:mt-5">
-          <SurveyTabs form={form} active={tab} />
-        </div>
+        {ownerView ? (
+          <div className="lg:mt-5">
+            <SurveyTabs form={form} active={tab} />
+          </div>
+        ) : null}
 
         {/* Mobile: the Tiến độ tab renders its own owner actions from `form` (ProgressScreen,
             Figma 62:3324, shown regardless of progress loading/error state); other tabs get
             them here. ASSUMED. */}
         {tab !== "progress" ? <HeaderActions form={form} className="px-5 pt-4 lg:hidden" /> : null}
-
-        {actions.error ? (
-          <Alert tone="danger" onDismiss={actions.dismissError} className="mx-5 mt-4 lg:mx-0">
-            {actions.error}
-          </Alert>
-        ) : null}
       </div>
 
-      {children}
+      {ownerView ? (
+        children
+      ) : (
+        <div className="mx-auto w-full max-w-[1440px] px-5 pt-4 pb-8 lg:px-12 lg:pt-5">
+          <Alert tone="info">
+            Chỉ chủ khảo sát xem được tiến độ, câu trả lời và các phiên bản. Bạn đang xem khảo sát của người khác.
+          </Alert>
+        </div>
+      )}
     </>
   );
 }

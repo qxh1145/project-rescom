@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { DemoDataTag } from "@/components/ui/DemoDataTag";
 import { useState } from "react";
 import { MobileBackBar } from "@/components/layout/app/MobileTopBar";
 import { buttonClassName } from "@/components/ui/Button";
@@ -75,6 +76,7 @@ export function StreakScreen() {
       <MobileBackBar title="Chuỗi ngày" backHref="/account" />
       <div className="mx-auto flex w-full max-w-[720px] flex-col px-4 pt-5 pb-[140px] lg:px-0 lg:pt-10 lg:pb-12">
         <h1 className="mb-6 hidden text-title font-extrabold text-ink lg:block">Chuỗi ngày</h1>
+        <DemoDataTag className="mb-4 self-start" />
 
         {query.error && !summary && !sessionLost ? (
           <ErrorStatus message={ENGAGEMENT_MESSAGES.summaryLoadFailed} onRetry={query.reload} />

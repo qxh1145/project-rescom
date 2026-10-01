@@ -524,7 +524,7 @@ describe('Story 6.6: TopUpService (FR-34, FR-35, AD-16)', () => {
       expect(publisher.publish).toHaveBeenCalledWith(
         expect.objectContaining({
           userId,
-          type: 'WARNING',
+          type: 'TOPUP_REJECTED',
           dedupeKey: `topup-rejection:${request.id}`,
           message: expect.stringContaining(
             'Không tìm thấy giao dịch chuyển khoản',

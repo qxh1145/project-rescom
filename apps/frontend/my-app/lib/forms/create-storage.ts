@@ -3,8 +3,10 @@ import {
   COLLECTION_DAY_CHOICES,
   SCHOOL_TARGETING_SUPPORTED,
   emptyWizardDraft,
+  normalizeWizardTopic,
   type GoogleFormWizardDraft,
 } from "./create-wizard.ts";
+import { randomUuid } from "../random-uuid.ts";
 
 /**
  * Browser state of the Google Forms wizard:
@@ -24,6 +26,7 @@ type KeyValueStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 const DRAFT_PREFIX = "rescom:create-gform-draft:";
 const SUBMITTED_PREFIX = "rescom:created-form-code:";
 const IDEMPOTENCY_PREFIX = "rescom:create-gform-idempotency:";
+const DEADLINE_PREFIX = "rescom:create-gform-deadline:";
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9-]{16,128}$/;
 
 const draftSchema = z.object({
@@ -78,7 +81,9 @@ function remove(storage: KeyValueStorage | null | undefined, key: string): void 
 export function loadWizardDraft(storage: KeyValueStorage | null | undefined, userId: string): GoogleFormWizardDraft {
   const parsed = draftSchema.safeParse(readJson(storage, DRAFT_PREFIX + userId));
   if (!parsed.success) return emptyWizardDraft();
-  return SCHOOL_TARGETING_SUPPORTED ? parsed.data : { ...parsed.data, school: "" };
+  // Plan 2.2: drafts saved before the shared topic values keep their topic.
+  const draft = { ...parsed.data, topic: normalizeWizardTopic(parsed.data.topic) };
+  return SCHOOL_TARGETING_SUPPORTED ? draft : { ...draft, school: "" };
 }
 
 export function saveWizardDraft(
@@ -95,7 +100,7 @@ export function clearWizardDraft(storage: KeyValueStorage | null | undefined, us
 }
 
 function randomKey(): string {
-  return globalThis.crypto.randomUUID();
+  return randomUuid();
 }
 
 /**
@@ -117,6 +122,28 @@ export function wizardIdempotencyKey(
 /** After success, or once the server answered definitively (the next submit is a new request). */
 export function clearWizardIdempotencyKey(storage: KeyValueStorage | null | undefined, userId: string): void {
   remove(storage, IDEMPOTENCY_PREFIX + userId);
+  remove(storage, DEADLINE_PREFIX + userId);
+}
+
+const storedDeadlineSchema = z.object({ days: z.number(), deadlineAt: z.string().datetime() });
+
+/**
+ * Review MEDIUM-4: the `deadlineAt` of the draft's create request, computed on
+ * the first submit and stored next to the `Idempotency-Key`, so a retry on a
+ * later day (after midnight) sends the same body and is replayed instead of
+ * refused. Recomputed when "Hạn thu thập" changed; cleared with the key.
+ */
+export function wizardSubmitDeadline(
+  storage: KeyValueStorage | null | undefined,
+  userId: string,
+  days: number,
+  compute: () => string,
+): string {
+  const stored = storedDeadlineSchema.safeParse(readJson(storage, DEADLINE_PREFIX + userId));
+  if (stored.success && stored.data.days === days) return stored.data.deadlineAt;
+  const deadlineAt = compute();
+  writeJson(storage, DEADLINE_PREFIX + userId, { days, deadlineAt });
+  return deadlineAt;
 }
 
 const submittedSchema = z.object({

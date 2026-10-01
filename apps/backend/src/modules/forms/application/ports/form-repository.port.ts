@@ -1,4 +1,8 @@
-import { FormStatusEnum, FormTypeEnum } from '@rescom/schemas';
+import {
+  DraftFormDefinition,
+  FormStatusEnum,
+  FormTypeEnum,
+} from '@rescom/schemas';
 import { FormEntity } from '../../domain/form.entity';
 import { FormVersionEntity } from '../../domain/form-version.entity';
 
@@ -8,6 +12,21 @@ export interface FormWithVersion {
   form: FormEntity;
   currentVersion: FormVersionEntity;
   versions?: FormVersionEntity[];
+}
+
+/**
+ * Review LOW-8 (`GET /surveys/:id`): the form row and the metadata of its
+ * newest PUBLISHED version only, never every version's full Form Definition.
+ */
+export interface FormPublishedSummary {
+  form: FormEntity;
+  /** Null when the form has no published version. */
+  newestPublished: {
+    id: string;
+    versionNumber: number;
+    /** That version's Form Definition `metadata` (BE-12 effort). */
+    metadata: DraftFormDefinition['metadata'] | null;
+  } | null;
 }
 
 export interface FormSummaryItem {
@@ -92,6 +111,22 @@ export interface FormEscrowInputs {
   completions: FormCompletionRefs;
 }
 
+/** Story IR.4a: a half-open `[startsAt, endsAt)` progress bucket. */
+export interface CompletionBucketWindow {
+  startsAt: Date;
+  endsAt: Date;
+}
+
+/**
+ * Mock-off plan Phase 3: the Admin rejection behind a moderation close
+ * (`SurveyModerationDecision`, outcome REJECTED).
+ */
+export interface FormRejection {
+  reason: string;
+  refundAmount: number;
+  decidedAt: Date;
+}
+
 export interface FormRepositoryPort {
   /**
    * With `creationKey`, the key is stored with the form; a second form of the
@@ -111,6 +146,9 @@ export interface FormRepositoryPort {
   ): Promise<FormWithCreationKey | null>;
 
   findById(id: string): Promise<FormWithVersion | null>;
+
+  /** Review LOW-8: the slim read behind `GET /surveys/:id`; null for an unknown form. */
+  findPublishedSummaryById(id: string): Promise<FormPublishedSummary | null>;
 
   findManyByPublisher(
     params: ListFormsParams,
@@ -152,6 +190,24 @@ export interface FormRepositoryPort {
   findPublishedForms(): Promise<FormWithVersion[]>;
 
   /**
+   * Story IR.2b Task 9.3 (Q2): ids of PUBLISHED / MODERATION_QUEUE forms
+   * whose deadline is at or before `cutoff`, oldest deadline first.
+   */
+  findFormsPastDeadline(cutoff: Date, limit: number): Promise<string[]>;
+
+  /**
+   * Plan 2.3: the cheap check behind the QUOTA close, run inside a completion
+   * transaction under the form row lock — the status, the sample target and
+   * the completed count only (no versions, no completion refs). Joins the
+   * ambient Unit of Work. Null for an unknown form.
+   */
+  findQuotaState(formId: string): Promise<{
+    status: FormStatusEnum;
+    expectedCompletions: number;
+    completedCount: number;
+  } | null>;
+
+  /**
    * Epic 6 review P4: the form's completions (quota count, guests included)
    * and the Internal responses / External attempts whose rewards draw its
    * Escrow. Joins the ambient Unit of Work (read inside close/publish).
@@ -173,6 +229,26 @@ export interface FormRepositoryPort {
    * ambient Unit of Work.
    */
   countInProgressAttempts(formId: string, startedSince: Date): Promise<number>;
+
+  /**
+   * Story IR.4a (FR-39): completed participations per bucket, same completion
+   * definition as `listRewardableCompletions` (SUBMITTED/VALIDATED Responses
+   * by `submitted_at`, plus COMPLETED attempts without a Response). One count
+   * per bucket, in the buckets' order.
+   */
+  countCompletionsInBuckets(
+    formId: string,
+    buckets: readonly CompletionBucketWindow[],
+  ): Promise<number[]>;
+
+  /**
+   * Story IR.4a: COMPLETED External attempts (no Response) submitted at or
+   * after `since` — the Google Forms completions still in their review window.
+   */
+  countExternalCompletionsSince(formId: string, since: Date): Promise<number>;
+
+  /** Mock-off plan Phase 3: the form's latest REJECTED moderation decision. */
+  findLatestRejection(formId: string): Promise<FormRejection | null>;
 
   /**
    * Story 8.1: forms waiting in `MODERATION_QUEUE`, oldest submission first

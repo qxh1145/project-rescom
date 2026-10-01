@@ -8,6 +8,7 @@ const messages = await import("../lib/forms/manage-messages.ts");
 const service = await import("../lib/forms/manage-service.ts");
 const resubmit = await import("../lib/forms/resubmit-service.ts");
 const { ApiError } = await import("../lib/api/api-error.ts");
+const schemas = await import("@rescom/schemas");
 
 const HOUR = 3_600_000;
 const NOW = Date.parse("2026-09-27T03:00:00.000Z");
@@ -177,18 +178,73 @@ test("tracking text: durations, deadlines, hours left in the 48h review", () => 
   assert.equal(view.percentOf(2, 0), 0);
 });
 
-test("Figma 10a opens summary: 47 opens, busiest Thursday (12)", () => {
-  const summary = view.opensSummary({
-    range: "day",
-    buckets: ["T2", "T3", "T4", "T5", "T6", "T7", "CN"].map((label, index) => ({
-      label,
-      count: [4, 9, 6, 12, 8, 5, 3][index],
-    })),
-  });
+test("Story IR.4a series labels are Vietnam time across the local midnight", () => {
+  // 2026-09-30T16:59:59Z = Wed 23:59:59 local; 17:00Z = Thu 01/10 00:00 local.
+  assert.equal(view.seriesBucketLabel("day", "2026-09-30T16:59:59.000Z"), "T4");
+  assert.equal(view.seriesBucketLabel("day", "2026-09-30T17:00:00.000Z"), "T5");
+  assert.equal(view.seriesBucketLabel("day", "2026-10-03T17:00:00.000Z"), "CN");
+  assert.equal(view.seriesBucketLabel("hour", "2026-09-30T14:00:00.000Z"), "21h");
+  assert.equal(view.seriesBucketLabel("hour", "2026-09-30T17:00:00.000Z"), "0h");
+  assert.equal(view.seriesBucketLabel("week", "2026-09-27T17:00:00.000Z"), "28/09");
+  assert.equal(view.seriesBucketLabel("month", "2026-09-30T17:00:00.000Z"), "T10");
+  assert.equal(view.seriesBucketLabel("month", "2026-12-31T17:00:00.000Z"), "T1");
+});
+
+test("Figma 10a series summary: 47 completions, busiest Thursday (12)", () => {
+  const { publisherProgressWindow, toCompletionsSeries } = schemas;
+  // Mon 28/09 .. Sun 04/10 local: "now" is Sunday 04/10 noon local.
+  const window = publisherProgressWindow("day", new Date("2026-10-04T05:00:00Z"));
+  const series = toCompletionsSeries("day", window, [4, 9, 6, 12, 8, 5, 3]);
+  assert.deepEqual(view.seriesBuckets(series).map((bucket) => bucket.label), ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]);
+  const summary = view.seriesSummary(series);
   assert.deepEqual(summary, { window: "7 ngày qua", total: 47, peak: "thứ Năm", peakIndex: 3, max: 12 });
-  const empty = view.opensSummary({ range: "week", buckets: [{ label: "Tuần 1", count: 0 }] });
+  const empty = view.seriesSummary(toCompletionsSeries("week", publisherProgressWindow("week", new Date()), [0, 0, 0, 0]));
   assert.equal(empty.peak, null);
   assert.equal(empty.total, 0);
+});
+
+test("Story IR.4a: the progress contract is the shared schema (no opens, funnel or feedback)", () => {
+  const { publisherProgressWindow, toCompletionsSeries } = schemas;
+  const progress = {
+    formId: "7c2e3f40-5a6b-4c7d-8e9f-0a1b2c3d4f01",
+    status: "PUBLISHED",
+    completed: 3,
+    expected: 10,
+    pointsSpent: 30,
+    escrowRemaining: 70,
+    deadlineAt: null,
+    pendingAttempts: 2,
+    completionsSeries: toCompletionsSeries("day", publisherProgressWindow("day", new Date()), [0, 0, 1, 0, 2, 0, 0]),
+  };
+  assert.deepEqual(service.formProgressSchema.parse(progress), progress);
+  assert.equal(service.formProgressSchema.safeParse({ ...progress, opens: {} }).success, false);
+  assert.equal(service.formProgressSchema.safeParse({ ...progress, feedback: {} }).success, false);
+  assert.deepEqual([...service.PROGRESS_RANGES], ["hour", "day", "week", "month"]);
+});
+
+test("GET /forms/:id rejection uses the shared shape (reason, refundAmount, decidedAt)", () => {
+  const base = {
+    id: "7c2e3f40-5a6b-4c7d-8e9f-0a1b2c3d4f09",
+    publisherId: "11111111-1111-4111-8111-111111111111",
+    type: "INTERNAL",
+    status: "CLOSED",
+    title: "x",
+    rewardPerResponse: 10,
+    expectedCompletions: 10,
+    closeKind: "MODERATION",
+    currentVersion: { id: "v", versionNumber: 1 },
+    createdAt: "2026-09-20T00:00:00.000Z",
+    updatedAt: "2026-09-21T00:00:00.000Z",
+    closedAt: "2026-09-21T00:00:00.000Z",
+  };
+  const parsed = service.publisherFormSchema.parse({
+    ...base,
+    rejection: { reason: "Thiếu mô tả", refundAmount: 120, decidedAt: "2026-09-21T00:00:00.000Z" },
+  });
+  assert.equal(parsed.rejection.refundAmount, 120);
+  assert.equal(parsed.closedAt, "2026-09-21T00:00:00.000Z");
+  assert.equal(service.publisherFormSchema.parse(base).rejection, null);
+  assert.equal(status.statusViewOf(parsed), "REJECTED");
 });
 
 test("survey header meta lines (Figma 10a / 17)", () => {
@@ -291,8 +347,9 @@ test("Phase 5 M2: list rows offer Mở lại for an owner close and, as a stopga
   assert.equal(status.canReopen(facts({ status: "CLOSED", closeKind: null })), false);
 });
 
-test("Phase 5 M3: pause/resume stays hidden without a backend route", () => {
+test("Phase 5 M3 / IR.4a AC6: pause/resume stays hidden and its dead client is gone", () => {
   assert.equal(service.PAUSE_SUPPORTED, false);
+  assert.equal("setPublisherFormPaused" in service, false);
 });
 
 test("Phase 5 M7: Rút lại for a queued survey and a re-versioned draft only", () => {
@@ -546,4 +603,31 @@ test("Xoá: backend refusals read in Vietnamese", () => {
     const error = new ApiError({ kind: "http", status: 409, code, message: code });
     assert.notEqual(messages.formActionErrorMessage(error, "fallback"), "fallback");
   }
+});
+
+test("plan 2.3 / IR.2b: system closes in the status pill and the reopen rules", () => {
+  const facts = {
+    status: "CLOSED",
+    rejection: null,
+    pausedAt: null,
+    completedCompletions: 3,
+    expectedCompletions: 10,
+  };
+  // A QUOTA close is "Đủ mẫu" even when the counts lag; a DEADLINE close ends early.
+  assert.equal(status.statusViewOf({ ...facts, closeKind: "QUOTA" }), "FULL");
+  assert.equal(status.statusViewOf({ ...facts, closeKind: "DEADLINE" }), "ENDED");
+  assert.equal(status.reopenRefusalOf({ status: "CLOSED", closeKind: "QUOTA" }), "SAMPLE_TARGET_REACHED");
+  assert.equal(status.reopenRefusalOf({ status: "CLOSED", closeKind: "DEADLINE" }), null);
+  assert.match(messages.reopenRefusalMessage("SAMPLE_TARGET_REACHED"), /đủ mẫu/);
+
+  const now = new Date("2026-10-01T00:00:00.000Z");
+  assert.equal(reopen.reopenNeedsNewDeadline("2026-09-30T23:59:59.000Z", now), true);
+  assert.equal(reopen.reopenNeedsNewDeadline("2026-10-02T00:00:00.000Z", now), false);
+  assert.equal(reopen.reopenNeedsNewDeadline(null, now), false);
+  assert.equal(reopen.reopenDeadlineAt(7, now), "2026-10-08T00:00:00.000Z");
+  assert.equal(reopen.reopenDeadlineAt(null, now), null);
+  assert.equal(
+    schemas.reopenSurveySchema.safeParse({ additionalCompletions: 2, deadlineAt: reopen.reopenDeadlineAt(14, now) }).success,
+    true,
+  );
 });

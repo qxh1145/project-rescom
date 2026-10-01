@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { DemoDataTag } from "@/components/ui/DemoDataTag";
 import { AdminPage } from "@/components/layout/admin/AdminPage";
 import { Mascot } from "@/components/brand/Mascot";
 import { Alert } from "@/components/ui/Alert";
@@ -24,6 +25,7 @@ export function DisputesScreen() {
   return (
     <AdminPage
       title="Khiếu nại & báo lỗi"
+      actions={<DemoDataTag />}
       meta={
         <DisputeTabs
           active={queue.tab}

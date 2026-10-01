@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../common/database/prisma.service';
 import {
   SurveyAttemptEntity,
+  AttemptCloseReason,
   AttemptStatus,
   MAX_COMPLETION_CODE_FAILURES,
   MAX_COMPLETION_CODE_FAILURES_PER_ACCOUNT_VERSION,
@@ -11,6 +12,8 @@ import {
 import { ResponseEntity, ResponseStatus } from '../domain/response.entity';
 import { IntegrityEventEntity } from '../domain/integrity-event.entity';
 import {
+  CancelAttemptParams,
+  CancelAttemptResult,
   CreateAttemptWithResponseParams,
   ParticipationRepositoryPort,
   QuotaStatus,
@@ -135,18 +138,21 @@ class SubmitRollback extends Error {
 }
 
 /**
- * Epic 6 review P6: reads the form's status under a shared row lock inside a
+ * Epic 6 review P6: reads the form's status under its row lock inside a
  * completion transaction. Closing takes the row lock with its conditional
  * UPDATE, so an in-flight completion and a close serialize: a completion
  * that commits first is seen by the close refund, one that waits sees
- * CLOSED.
+ * CLOSED. Plan 2.3: the lock is `FOR NO KEY UPDATE` (was `FOR SHARE`), so
+ * completions of one survey serialize too — the one that meets the sample
+ * target counts every earlier completion and closes the survey (QUOTA) in
+ * its own transaction without upgrading a shared lock (no deadlock).
  */
 async function isFormOpenForCompletion(
   tx: { $queryRaw: (...args: any[]) => Promise<unknown> },
   formId: string,
 ): Promise<boolean> {
   const rows = (await tx.$queryRaw`
-    SELECT status FROM forms WHERE id = ${formId}::uuid FOR SHARE
+    SELECT status FROM forms WHERE id = ${formId}::uuid FOR NO KEY UPDATE
   `) as Array<{ status: string }>;
   return rows[0]?.status === 'PUBLISHED';
 }
@@ -154,7 +160,7 @@ async function isFormOpenForCompletion(
 /**
  * Epic 8 review P3 (FR-46): the user's completion lock, a transaction-scoped
  * advisory lock. It is taken FIRST in every completion transaction, before
- * the `forms` row `FOR SHARE` and the attempt row `FOR UPDATE`, so parallel
+ * the `forms` row lock and the attempt row `FOR UPDATE`, so parallel
  * completions of one user serialize on it without lock-order inversions.
  * Re-entrant: taking it again in the same transaction returns immediately.
  */
@@ -288,6 +294,8 @@ function toAttemptEntity(raw: any): SurveyAttemptEntity {
       missingCodeReportedAt: raw.missingCodeReportedAt ?? null,
       missingCodeReason: raw.missingCodeReason ?? null,
     },
+    (raw.closedReason as AttemptCloseReason | null) ?? null,
+    raw.closedAt ?? null,
   );
 }
 
@@ -345,11 +353,16 @@ async function findConflictingActiveAttemptWith(
   });
 }
 
+/**
+ * Lazy expiry (Epic 5 DF7): the respondent's expired IN_PROGRESS attempts on
+ * the form become ABANDONED with closed reason EXPIRED (Story IR.2a).
+ */
 async function abandonExpiredAttemptsWith(
   client: ParticipationClient,
   respondentId: string,
   formId: string,
   cutoffDate: Date,
+  closedAt: Date = new Date(),
 ): Promise<number> {
   const result = await client.surveyAttempt.updateMany({
     where: {
@@ -358,7 +371,7 @@ async function abandonExpiredAttemptsWith(
       status: 'IN_PROGRESS',
       startedAt: { lt: cutoffDate },
     },
-    data: { status: 'ABANDONED' },
+    data: { status: 'ABANDONED', closedReason: 'EXPIRED', closedAt },
   });
   return result.count;
 }
@@ -487,6 +500,30 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
     );
   }
 
+  async abandonExpiredAttemptsBatch(
+    cutoff: Date,
+    limit: number,
+    now: Date,
+  ): Promise<{ abandonedIds: string[] }> {
+    const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      WITH due AS (
+        SELECT id FROM survey_attempts
+        WHERE status = 'IN_PROGRESS' AND started_at < ${cutoff}
+        ORDER BY started_at, id
+        LIMIT ${limit}
+        FOR UPDATE SKIP LOCKED)
+      UPDATE survey_attempts sa
+         SET status = 'ABANDONED',
+             closed_reason = 'EXPIRED',
+             closed_at = ${now},
+             updated_at = ${now}
+        FROM due
+       WHERE sa.id = due.id AND sa.status = 'IN_PROGRESS'
+      RETURNING sa.id::text AS id
+    `;
+    return { abandonedIds: rows.map((row) => row.id) };
+  }
+
   async getQuotaStatus(formId: string, cutoffDate: Date): Promise<QuotaStatus> {
     return getQuotaStatusWith(currentClient(this.prisma), formId, cutoffDate);
   }
@@ -494,7 +531,7 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
   /**
    * Epic 5 review P1: the form row lock (`FOR NO KEY UPDATE`) serializes
    * every start of the form — and the close's conditional UPDATE and the
-   * completions' `FOR SHARE` (Epic 6 review P6) — so the re-checks below and
+   * completions' row lock (Epic 6 review P6) — so the re-checks below and
    * the insert are atomic. `NO KEY` does not block FK inserts on the form
    * (guest responses, attempts of other forms). The partial unique indexes
    * catch anything that bypasses this path.
@@ -511,9 +548,26 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
           await lockCompletionsOf(tx, params.completionReservation.userId);
         }
         const forms = (await tx.$queryRaw`
-          SELECT status FROM forms WHERE id = ${params.formId}::uuid FOR NO KEY UPDATE
-        `) as Array<{ status: string }>;
-        if (forms[0]?.status !== 'PUBLISHED') {
+          SELECT status, close_kind, deadline_at FROM forms WHERE id = ${params.formId}::uuid FOR NO KEY UPDATE
+        `) as Array<{
+          status: string;
+          close_kind: string | null;
+          deadline_at: Date | null;
+        }>;
+        const form = forms[0];
+        // Plan 2.3: a survey closed because its sample target was met is
+        // "full" for the respondent, not "unavailable".
+        if (form?.status === 'CLOSED' && form.close_kind === 'QUOTA') {
+          return { outcome: 'QUOTA_FULL' as const };
+        }
+        if (form?.status !== 'PUBLISHED') {
+          return { outcome: 'NOT_OPEN' as const };
+        }
+        // Story IR.2b Task 9.2: no new start at or after the deadline.
+        if (
+          form.deadline_at &&
+          form.deadline_at.getTime() <= params.startedAt.getTime()
+        ) {
           return { outcome: 'NOT_OPEN' as const };
         }
         const version = await tx.formVersion.findUnique({
@@ -543,6 +597,7 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
             params.respondentId,
             params.formId,
             params.cutoffDate,
+            params.startedAt,
           );
           const active = await findConflictingActiveAttemptWith(
             tx,
@@ -558,7 +613,7 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
           }
 
           // Decision E5-D1: every completion-code try on this version used.
-          // The form row lock serializes this with verifications (FOR SHARE).
+          // The form row lock serializes this with verifications.
           if (params.completionCodeFailureLimit !== undefined) {
             const failedVerifications = await countCompletionCodeFailuresWith(
               tx,
@@ -661,9 +716,10 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
    * Epic 5 review P7 (+ P1 step 4, P4, P21): the whole submission is
    * state-predicated under the attempt row lock. Lock order is the user's
    * completion lock (Epic 8 review P3, only with `completionLimit`), then the
-   * form row (`FOR SHARE`, Epic 6 review P6), then the attempt row — the same
-   * as External verification; attempt start takes only the form row — so
-   * they never deadlock.
+   * form row (`FOR NO KEY UPDATE`, Epic 6 review P6 + plan 2.3), then the
+   * attempt row — the same as External verification; attempt start takes
+   * only the form row — so they never deadlock. `afterCompletion` (plan 2.3,
+   * the QUOTA close) runs last, still under these locks.
    */
   async submitInternalResponseTransaction(
     params: SubmitInternalResponseTransactionParams,
@@ -760,7 +816,32 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
           if (attached.count !== attachments.length) {
             // Rolls the whole submission back: the Response stays
             // IN_PROGRESS, so the respondent can fix the file and resubmit.
-            throw new UncleanAttachmentException();
+            // The files this update did not attach are named for the runner.
+            const rows = await tx.storedObject.findMany({
+              where: { id: { in: ids } },
+              select: {
+                id: true,
+                ownerRecordId: true,
+                questionId: true,
+                status: true,
+                attachedAt: true,
+              },
+            });
+            const byId = new Map(rows.map((row) => [row.id, row]));
+            throw new UncleanAttachmentException(
+              attachments
+                .filter((attachment) => {
+                  const row = byId.get(attachment.objectId);
+                  return !(
+                    row &&
+                    row.ownerRecordId === params.attemptId &&
+                    row.questionId === attachment.questionId &&
+                    row.status === 'ATTACHED' &&
+                    row.attachedAt?.getTime() === params.submittedAt.getTime()
+                  );
+                })
+                .map(({ questionId, objectId }) => ({ questionId, objectId })),
+            );
           }
           const stored = await tx.storedObject.findMany({
             where: { id: { in: ids } },
@@ -815,6 +896,10 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
               orderingStream: `internal-reward:${params.responseId}`,
               streamSequence: 1,
               status: 'PENDING',
+              // Story IR.2b Task 5.2: the synchronous post-commit settlement
+              // stays (instant rewards); the dispatcher is the durable
+              // recovery path and waits a minute to avoid contending with it.
+              availableAt: new Date(params.submittedAt.getTime() + 60_000),
               payload: {
                 responseId: params.responseId,
                 attemptId: params.attemptId,
@@ -865,6 +950,11 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
             },
           },
         });
+
+        // Plan 2.3: the QUOTA close + Escrow refund, in this transaction.
+        if (params.afterCompletion) {
+          await params.afterCompletion();
+        }
 
         const [updatedResponse, updatedAttempt] = await Promise.all([
           tx.response.findUniqueOrThrow({ where: { id: params.responseId } }),
@@ -927,8 +1017,9 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
       if (completionLockUserId) {
         await lockCompletionsOf(tx, completionLockUserId);
       }
+      // Plan 2.3: the completion lock mode (see `isFormOpenForCompletion`).
       await tx.$queryRaw`
-        SELECT id FROM forms WHERE id = ${formId}::uuid FOR SHARE
+        SELECT id FROM forms WHERE id = ${formId}::uuid FOR NO KEY UPDATE
       `;
       await tx.$queryRaw`
         SELECT id FROM survey_attempts WHERE id = ${attemptId}::uuid FOR UPDATE
@@ -948,6 +1039,7 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
     failureCount: number;
     isLocked: boolean;
     accountFailureCount: number;
+    attemptInProgress: boolean;
   }> {
     return runInTransaction(this.prisma, async (tx) => {
       // Row lock prevents concurrent failures from losing increments (3-strike rule).
@@ -989,6 +1081,7 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
           failureCount: currentFailures,
           isLocked: attempt?.status === 'LOCKED',
           accountFailureCount: accountFailuresBefore,
+          attemptInProgress: false,
         };
       }
       const failureCount = currentFailures + 1;
@@ -1023,7 +1116,12 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
         },
       });
 
-      return { failureCount, isLocked, accountFailureCount };
+      return {
+        failureCount,
+        isLocked,
+        accountFailureCount,
+        attemptInProgress: true,
+      };
     });
   }
 
@@ -1154,7 +1252,7 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
           await lockCompletionsOf(tx, params.completionLimit.userId);
         }
         await tx.$queryRaw`
-          SELECT id FROM forms WHERE id = ${params.formId}::uuid FOR SHARE
+          SELECT id FROM forms WHERE id = ${params.formId}::uuid FOR NO KEY UPDATE
         `;
         // Serialize concurrent verifications of the same attempt.
         await tx.$queryRaw`
@@ -1305,6 +1403,76 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
       });
 
       return { reportedAt };
+    });
+  }
+
+  /**
+   * Story IR.2a (API-03): the form row (`FOR SHARE`) and then the attempt row
+   * (`FOR UPDATE`) — the global lock order of start, submit and verify — so a
+   * cancel never deadlocks with them. No user completion lock: a cancel only
+   * removes a reservation, so the E8-D6 count can only go down. The Internal
+   * Response stays IN_PROGRESS (`ResponseStatus` has no abandoned value; the
+   * attempt is authoritative, AD-19).
+   */
+  async cancelAttempt(
+    params: CancelAttemptParams,
+  ): Promise<CancelAttemptResult> {
+    return runInTransaction(this.prisma, async (tx) => {
+      await tx.$queryRaw`
+        SELECT id FROM forms WHERE id = ${params.formId}::uuid FOR SHARE
+      `;
+      await tx.$queryRaw`
+        SELECT id FROM survey_attempts WHERE id = ${params.attemptId}::uuid FOR UPDATE
+      `;
+      const raw = await tx.surveyAttempt.findUnique({
+        where: { id: params.attemptId },
+      });
+      if (
+        !raw ||
+        raw.surveyId !== params.formId ||
+        raw.isGuest ||
+        raw.respondentId !== params.respondentId
+      ) {
+        return { outcome: 'NOT_FOUND' as const };
+      }
+
+      const current = toAttemptEntity(raw);
+      const state = current.cancellation(params.cutoffDate);
+      switch (state.kind) {
+        case 'ALREADY_CANCELLED':
+          return { outcome: 'ALREADY_CANCELLED' as const, attempt: current };
+        case 'NOT_IN_PROGRESS':
+          return {
+            outcome: 'NOT_IN_PROGRESS' as const,
+            attempt: current,
+            derivedCloseReason: state.closedReason,
+          };
+        case 'CANCELLABLE':
+          break;
+      }
+
+      // State-predicated: only an IN_PROGRESS row moves, so a stored
+      // closedAt is never rewritten.
+      const cancelled = await tx.surveyAttempt.updateMany({
+        where: { id: params.attemptId, status: 'IN_PROGRESS' },
+        data: {
+          status: 'ABANDONED',
+          closedReason: 'CANCELLED',
+          closedAt: params.now,
+        },
+      });
+      if (cancelled.count !== 1) {
+        throw new Error(
+          `Survey attempt ${params.attemptId} changed while its row lock was held.`,
+        );
+      }
+      const updated = await tx.surveyAttempt.findUniqueOrThrow({
+        where: { id: params.attemptId },
+      });
+      return {
+        outcome: 'CANCELLED' as const,
+        attempt: toAttemptEntity(updated),
+      };
     });
   }
 }

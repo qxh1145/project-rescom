@@ -20,8 +20,8 @@ export interface StatusFacts {
   status: FormStatusEnum;
   /** VERIFIED on `GET /forms/:id` and (Phase 5 M2) `GET /forms` items; absent = unknown. */
   closeKind?: FormCloseKind | null;
-  /** ASSUMED: the Admin's reason and the refunded Escrow. */
-  rejection: { reason: string; refundedPoints: number } | null;
+  /** `GET /forms/:id`: the Admin's reason and the refunded Escrow (absent on list items). */
+  rejection: { reason: string; refundAmount: number } | null;
   pausedAt: string | null;
   completedCompletions: number;
   expectedCompletions: number;
@@ -43,6 +43,8 @@ export function statusViewOf(form: StatusFacts): PublisherStatusView {
       return form.pausedAt ? "PAUSED" : "RUNNING";
     case "CLOSED":
       if (form.closeKind === "MODERATION") return "REJECTED";
+      // Plan 2.3: the backend closes a survey (QUOTA) when its sample target is met.
+      if (form.closeKind === "QUOTA") return "FULL";
       return form.expectedCompletions > 0 && form.completedCompletions >= form.expectedCompletions ? "FULL" : "ENDED";
   }
 }
@@ -125,7 +127,12 @@ export function aggregateStats(
 }
 
 /** Why `POST /forms/:id/reopen` refuses (backend `FormNotReopenableException.reason`, + not closed). */
-export type ReopenRefusal = "NOT_CLOSED" | "CLOSED_BY_ADMIN_OR_MODERATION" | "VERSION_NOT_APPROVED";
+export type ReopenRefusal =
+  | "NOT_CLOSED"
+  | "CLOSED_BY_ADMIN_OR_MODERATION"
+  | "VERSION_NOT_APPROVED"
+  // Plan 2.3: a QUOTA close (sample target met) is not reopenable for now.
+  | "SAMPLE_TARGET_REACHED";
 
 /**
  * Backend `reopenForm` order: only CLOSED; decision E8-D1 — only a survey its
@@ -140,6 +147,8 @@ export function reopenRefusalOf(form: {
   currentVersion?: Readonly<Record<string, unknown>> | null;
 }): ReopenRefusal | null {
   if (form.status !== "CLOSED") return "NOT_CLOSED";
+  if (form.closeKind === "QUOTA") return "SAMPLE_TARGET_REACHED";
+  // Story IR.2b: OWNER and DEADLINE closes are reopenable.
   if (!isOwnerReopenableClose(form.closeKind ?? null)) return "CLOSED_BY_ADMIN_OR_MODERATION";
   if (form.currentVersion?.isPublished === false) return "VERSION_NOT_APPROVED";
   return null;

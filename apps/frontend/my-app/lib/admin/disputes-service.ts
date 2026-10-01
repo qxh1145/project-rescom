@@ -5,7 +5,7 @@ import {
   type CompletionCodeLimitResetResultDto,
 } from "@rescom/schemas";
 import { apiRequest } from "../api/client.ts";
-import { disputeReasonSchema } from "../forms/manage-service.ts";
+import { disputeReasonSchema } from "../forms/dispute-service.ts";
 
 /**
  * Admin "Khiếu nại & báo lỗi" (Figma 11c, 62:1609). Three kinds of case share

@@ -1,5 +1,5 @@
-import { loginSchema, registerSchema } from "@rescom/schemas";
-import { fieldMessage } from "./auth-error-messages.ts";
+import { loginSchema, registerSchema, resetPasswordSchema } from "@rescom/schemas";
+import { AUTH_MESSAGES, fieldMessage } from "./auth-error-messages.ts";
 import type {
   AuthMode,
   EmailAuthField,
@@ -46,4 +46,24 @@ export function validateEmail(value: string): EmailValidation {
   return result.success
     ? { ok: true, email: result.data }
     : { ok: false, message: fieldMessage("email", value, "login") };
+}
+
+export type NewPasswordValidation =
+  | { ok: true; password: string }
+  | { ok: false; password?: string; confirm?: string };
+
+/**
+ * `/reset-password` (plan 5.4): the new password follows the registration
+ * policy of the shared `resetPasswordSchema`, and the confirmation must match.
+ */
+export function validateNewPassword(password: string, confirm: string): NewPasswordValidation {
+  const policy = resetPasswordSchema.shape.newPassword.safeParse(password);
+  const passwordError = policy.success ? undefined : fieldMessage("password", password, "register");
+  const confirmError = !confirm
+    ? AUTH_MESSAGES.passwordConfirmRequired
+    : confirm !== password
+      ? AUTH_MESSAGES.passwordMismatch
+      : undefined;
+  if (passwordError || confirmError) return { ok: false, password: passwordError, confirm: confirmError };
+  return { ok: true, password };
 }

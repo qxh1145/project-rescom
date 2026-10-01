@@ -17,6 +17,7 @@ import { User } from '../../users/domain/user.entity';
 import {
   Session,
   SessionProps,
+  SessionRevokeReason,
   RefreshCredential,
   RefreshCredentialProps,
 } from '../domain/session.entity';
@@ -24,6 +25,7 @@ import {
   UnauthorizedSessionException,
   SessionExpiredException,
   SessionRevokedException,
+  SessionReplacedException,
   InvalidRefreshTokenException,
   InvalidCsrfTokenException,
   UserLockedException,
@@ -53,10 +55,14 @@ describe('SessionService (Task 1: Identity Session Foundation)', () => {
       }
       const nextVersion = maxVersion + 1;
 
-      // Revoke any existing active session for this user
+      // Revoke any existing active session for this user (plan 5.6: REPLACED)
       for (const [id, s] of this.sessions.entries()) {
         if (s.userId === userId && !s.revoked) {
-          this.sessions.set(id, { ...s, revoked: true });
+          this.sessions.set(id, {
+            ...s,
+            revoked: true,
+            revokedReason: 'REPLACED',
+          });
         }
       }
       const sessionProps: SessionProps = {
@@ -109,21 +115,29 @@ describe('SessionService (Task 1: Identity Session Foundation)', () => {
 
     async revokeSession(
       sessionId: string,
+      reason: SessionRevokeReason,
       auditRecord?: CreateIdentityAuditRecord,
     ): Promise<void> {
       const session = this.sessions.get(sessionId);
       if (session) {
-        this.sessions.set(sessionId, { ...session, revoked: true });
+        this.sessions.set(sessionId, {
+          ...session,
+          revoked: true,
+          revokedReason: reason,
+        });
         if (auditRecord) {
           auditPort.append(auditRecord);
         }
       }
     }
 
-    async revokeAllByUserId(userId: string): Promise<void> {
+    async revokeAllByUserId(
+      userId: string,
+      reason: SessionRevokeReason,
+    ): Promise<void> {
       for (const [id, s] of this.sessions.entries()) {
         if (s.userId === userId && !s.revoked) {
-          this.sessions.set(id, { ...s, revoked: true });
+          this.sessions.set(id, { ...s, revoked: true, revokedReason: reason });
         }
       }
     }
@@ -403,7 +417,7 @@ describe('SessionService (Task 1: Identity Session Foundation)', () => {
           status: 'LOCKED',
         }),
       );
-      await sessionRepo.revokeAllByUserId(user.id);
+      await sessionRepo.revokeAllByUserId(user.id, 'ADMIN_LOCK');
 
       // validateSession must throw UserLockedException (403), NOT SessionRevokedException (401)
       await expect(sessionService.validateSession(accessToken)).rejects.toThrow(
@@ -773,6 +787,75 @@ describe('SessionService (Task 1: Identity Session Foundation)', () => {
 
       // Audit log count must NOT increase
       expect(auditPort.records.length).toBe(auditCountAfterFirstLogout);
+    });
+  });
+
+  describe('Plan 5.6: revoke reasons and AUTH_SESSION_REPLACED', () => {
+    async function signedIn(id: string) {
+      const user = await userRepo.create({
+        id,
+        email: `${id}@example.com`,
+        role: 'RESPONDENT',
+        status: 'ACTIVE',
+      });
+      return { user, tokens: await sessionService.createSession(user.id) };
+    }
+
+    it('answers AUTH_SESSION_REPLACED on access, CSRF bootstrap and refresh after a newer login', async () => {
+      const { user, tokens: first } = await signedIn('user-replaced');
+      await sessionService.createSession(user.id);
+
+      const viaAccess = sessionService.validateSession(first.accessToken);
+      await expect(viaAccess).rejects.toThrow(SessionReplacedException);
+      await expect(
+        sessionService.validateSession(first.accessToken),
+      ).rejects.toMatchObject({ code: 'AUTH_SESSION_REPLACED' });
+      // Still a revocation for every existing `instanceof` check.
+      await expect(
+        sessionService.validateSession(first.accessToken),
+      ).rejects.toThrow(SessionRevokedException);
+
+      await expect(
+        sessionService.rotateCsrf({ refreshToken: first.refreshToken }),
+      ).rejects.toMatchObject({ code: 'AUTH_SESSION_REPLACED' });
+      await expect(
+        sessionService.refreshSession(first.refreshToken, first.csrfToken),
+      ).rejects.toMatchObject({ code: 'AUTH_SESSION_REPLACED' });
+    });
+
+    it('keeps AUTH_SESSION_REVOKED for logout, refresh reuse and admin revocations', async () => {
+      const { tokens: loggedOut } = await signedIn('user-logout-reason');
+      await sessionService.logout({
+        accessToken: loggedOut.accessToken,
+        csrfToken: loggedOut.csrfToken,
+      });
+      const [logoutSession] = [...sessionRepo.sessions.values()].filter(
+        (session) => session.userId === 'user-logout-reason',
+      );
+      expect(logoutSession.revokedReason).toBe('LOGOUT');
+      await expect(
+        sessionService.validateSession(loggedOut.accessToken),
+      ).rejects.toMatchObject({ code: 'AUTH_SESSION_REVOKED' });
+
+      const { tokens: replayed } = await signedIn('user-reuse-reason');
+      const rotated = await sessionService.refreshSession(
+        replayed.refreshToken,
+        replayed.csrfToken,
+      );
+      // The consumed refresh credential replayed with the current CSRF token.
+      await expect(
+        sessionService.refreshSession(replayed.refreshToken, rotated.csrfToken),
+      ).rejects.toThrow(SessionRevokedException);
+      const [reuseSession] = [...sessionRepo.sessions.values()].filter(
+        (session) => session.userId === 'user-reuse-reason',
+      );
+      expect(reuseSession.revokedReason).toBe('REFRESH_REUSE');
+
+      const { user, tokens: roleChanged } = await signedIn('user-role-reason');
+      await sessionRepo.revokeAllByUserId(user.id, 'ROLE_CHANGED');
+      await expect(
+        sessionService.validateSession(roleChanged.accessToken),
+      ).rejects.toMatchObject({ code: 'AUTH_SESSION_REVOKED' });
     });
   });
 });

@@ -4,13 +4,25 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { WalletBalanceDto } from "@rescom/schemas";
 import { getCurrentUser } from "../auth/auth-service.ts";
 import { getDemographics } from "../demographics/demographics-service.ts";
-import { refreshSession, shouldRefreshBeforeLoad, startSessionRefreshScheduler } from "../auth/session-refresh.ts";
+import {
+  accessCookieMayBeExpired,
+  refreshSession,
+  shouldRefreshBeforeLoad,
+  startSessionRefreshScheduler,
+} from "../auth/session-refresh.ts";
 import type { AuthUser } from "../auth/types.ts";
+import { clearSessionReplaced } from "../auth/session-notice.ts";
 import { getUnreadCount } from "../notifications/notification-service.ts";
 import { getUserProfile, type UserProfile } from "../profile/profile-service.ts";
 import { getWalletBalance } from "../wallet/wallet-service.ts";
 import { onboardingStatusOf, type OnboardingStatus } from "./onboarding-gate.ts";
-import { sessionStatusAfterFailure, sessionStatusFromError, type SessionStatus } from "./session-status.ts";
+import {
+  rateLimitRetryAfterSeconds,
+  sessionStatusAfterFailure,
+  sessionStatusFromError,
+  withSessionRetry,
+  type SessionStatus,
+} from "./session-status.ts";
 
 export type { SessionStatus } from "./session-status.ts";
 export type { OnboardingStatus } from "./onboarding-gate.ts";
@@ -30,6 +42,8 @@ export interface SessionState {
   setUnreadCount: (count: number) => void;
   /** Right after a successful onboarding submit, before `refresh()` confirms it. */
   markOnboardingComplete: () => void;
+  /** `Retry-After` of the 429 behind `rate-limited`, for the `/rate-limited` countdown. */
+  retryAfterSeconds: number | null;
 }
 
 const SessionContext = createContext<SessionState | null>(null);
@@ -38,6 +52,7 @@ interface AuthState {
   status: SessionStatus;
   user: AuthUser | null;
   onboarding: OnboardingStatus;
+  retryAfterSeconds?: number | null;
 }
 
 function isAbortError(error: unknown): boolean {
@@ -63,16 +78,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     async function load() {
       // After a long idle the access cookie may be gone; `GET /auth/me` would then
-      // 401 and drop the refresh cookie too, so rotate first. Failures fall through.
-      if (shouldRefreshBeforeLoad()) await refreshSession().catch(() => undefined);
+      // 401 and drop the refresh cookie too, so rotate first. Failures fall through,
+      // except a 429 that outlasts its retries once the access cookie must have
+      // expired: the load stops instead of risking that 401. A younger cookie is
+      // still valid, so `GET /auth/me` goes ahead.
+      if (shouldRefreshBeforeLoad()) {
+        await withSessionRetry(() => refreshSession(), signal).catch((error: unknown) => {
+          if (sessionStatusFromError(error) === "rate-limited" && accessCookieMayBeExpired()) throw error;
+        });
+      }
       if (signal.aborted) return;
 
       const [me, demographics] = await Promise.all([
-        getCurrentUser(signal),
+        withSessionRetry(() => getCurrentUser(signal), signal),
         // Fails open (`unknown`): only `/auth/me` decides whether the session exists.
         getDemographics(signal).catch(() => null),
       ]);
       if (signal.aborted) return;
+      // Signed in (again): an old "replaced" mark must not colour a later sign-out.
+      clearSessionReplaced();
       setAuth((current) => ({
         status: "authenticated",
         user: me,
@@ -100,7 +124,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const status = sessionStatusAfterFailure(current.status, error);
         return status === current.status && status === "authenticated"
           ? current
-          : { status, user: null, onboarding: "unknown" };
+          : { status, user: null, onboarding: "unknown", retryAfterSeconds: rateLimitRetryAfterSeconds(error) };
       });
     });
     return () => controller.abort();
@@ -139,6 +163,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       refresh,
       setUnreadCount,
       markOnboardingComplete,
+      retryAfterSeconds: auth.retryAfterSeconds ?? null,
     };
   }, [auth, profile, balance, unreadCount, refresh, markOnboardingComplete]);
 

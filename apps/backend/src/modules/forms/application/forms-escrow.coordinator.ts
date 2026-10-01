@@ -181,6 +181,32 @@ export class FormsEscrowCoordinator {
   }
 
   /**
+   * Story IR.4a (FR-39): the Escrow facts of the progress screen, from the
+   * same ledger position as `getFundingPosition`: `held` equals its `held`
+   * (and `GET /forms/:id` `escrowLocked`); `spent` is the ledger-posted
+   * Escrow consumption (payout journals, reversed ones excluded). A free
+   * survey holds and spends nothing.
+   */
+  async getProgressEscrow(
+    form: FormEntity,
+    completions: FormCompletionRefs,
+  ): Promise<{ held: number; spent: number }> {
+    if (this.getEscrowQuote(form).effectiveCost <= 0) {
+      return { held: 0, spent: 0 };
+    }
+    const { state, position } = await this.loadEscrowPosition(
+      form,
+      form.publisherId,
+      [],
+      completions,
+    );
+    return {
+      held: Math.max(0, state.remaining),
+      spent: Math.max(0, position.consumed),
+    };
+  }
+
+  /**
    * Phase 5 M-1: `getFundingPosition(form, form.publisherId).held` for a
    * whole page of forms with a constant number of reads (grouped version /
    * completion reads and one batched ledger lookup) instead of ~6 per form.
@@ -350,6 +376,21 @@ export class FormsEscrowCoordinator {
     extraVersionIds: string[] = [],
     preloadedCompletions?: FormCompletionRefs,
   ): Promise<FormEscrowState> {
+    const { state } = await this.loadEscrowPosition(
+      form,
+      publisherId,
+      extraVersionIds,
+      preloadedCompletions,
+    );
+    return state;
+  }
+
+  private async loadEscrowPosition(
+    form: FormEntity,
+    publisherId: string,
+    extraVersionIds: string[] = [],
+    preloadedCompletions?: FormCompletionRefs,
+  ): Promise<{ state: FormEscrowState; position: FormEscrowPosition }> {
     const [versions, completions] = await Promise.all([
       this.formRepository.findAllVersions(form.id),
       preloadedCompletions ??
@@ -369,7 +410,7 @@ export class FormsEscrowCoordinator {
       externalAttemptIds: completions.externalAttemptIds,
     });
 
-    return toEscrowState(form, completions, position);
+    return { state: toEscrowState(form, completions, position), position };
   }
 }
 

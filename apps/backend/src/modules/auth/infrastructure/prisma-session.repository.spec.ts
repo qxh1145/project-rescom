@@ -4,13 +4,25 @@ import { ReplaceUserSessionInput } from '../application/ports/session-repository
 import { SessionProps, RefreshCredentialProps } from '../domain/session.entity';
 import { CreateIdentityAuditRecord } from '../application/ports/identity-audit.port';
 
+// A dedicated, migrated `_test` database, never the developer's DATABASE_URL:
+// these tests create and delete users. Unreachable database → tests no-op.
+const databaseUrl =
+  process.env.SESSION_TEST_DATABASE_URL ??
+  'postgresql://rescom_admin:rescom_password@localhost:5433/rescom_session_test?schema=public';
+
+if (!new URL(databaseUrl).pathname.slice(1).endsWith('_test')) {
+  throw new Error(
+    'SESSION_TEST_DATABASE_URL must target a dedicated database ending in _test',
+  );
+}
+
 describe('PrismaSessionRepository (Integration & Concurrency)', () => {
   let prisma: PrismaService;
   let repository: PrismaSessionRepository;
   let dbAvailable = false;
 
   beforeAll(async () => {
-    prisma = new PrismaService();
+    prisma = new PrismaService({ datasources: { db: { url: databaseUrl } } });
     try {
       await prisma.$connect();
       await prisma.$queryRaw`SELECT 1`;
@@ -262,10 +274,14 @@ describe('PrismaSessionRepository (Integration & Concurrency)', () => {
       // 3. Computed next version must be 4 + 1 = 5
       expect(result.sessionVersion).toBe(5);
 
-      // 4. Must revoke previous unrevoked sessions
+      // 4. Must revoke previous unrevoked sessions, as replaced (plan 5.6)
       expect(mockTx.session.updateMany).toHaveBeenCalledWith({
         where: { userId: 'user-mock', revoked: false },
-        data: { revoked: true },
+        data: {
+          revoked: true,
+          revokedAt: input.session.createdAt,
+          revokedReason: 'REPLACED',
+        },
       });
 
       // 5. Must insert new session with nextVersion

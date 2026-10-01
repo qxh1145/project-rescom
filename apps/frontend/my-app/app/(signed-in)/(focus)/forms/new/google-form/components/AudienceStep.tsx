@@ -207,7 +207,12 @@ export function AudienceStep({ draft, errors, update, estimate }: AudienceStepPr
 function EstimateText({ estimate, format }: { estimate: EstimateState; format: "sentence" | "number" }) {
   if (!estimate) return <>{format === "sentence" ? "Chọn tiêu chí để ước tính" : "—"}</>;
   if (estimate.data) {
-    const count = estimate.data.estimatedRespondents.toLocaleString("vi-VN");
+    const { estimatedRespondents, minimumReportable } = estimate.data;
+    // Below the minimum the backend withholds the number (k-anonymity).
+    if (estimatedRespondents === null) {
+      return <>{format === "sentence" ? `Dưới ${minimumReportable} người phù hợp` : `< ${minimumReportable} người`}</>;
+    }
+    const count = estimatedRespondents.toLocaleString("vi-VN");
     return <>{format === "sentence" ? `Khoảng ${count} người phù hợp` : `${count} người`}</>;
   }
   if (estimate.error) return <>{format === "sentence" ? "Chưa ước tính được số người" : "—"}</>;

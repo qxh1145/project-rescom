@@ -1,5 +1,5 @@
 import type { FormBlockType } from "@rescom/schemas";
-import type { FormAnalytics, QuestionAnalytics, QuestionSummary } from "./results-analytics-service.ts";
+import type { AvailableFormAnalytics, QuestionAnalytics, QuestionSummary } from "./results-analytics-service.ts";
 import { formatDate } from "./results-view.ts";
 
 /**
@@ -182,26 +182,18 @@ export function questionTypeLabel(type: FormBlockType): string {
   }
 }
 
-/** Header metrics; each is null when the data cannot back it (the tile is then hidden). */
+/**
+ * Header metrics; `lastResponseAt` is null without responses (the tile is
+ * then hidden). Started count and average time are FR-41 funnel metrics,
+ * deferred (IR.4a R4, Q6): not in the contract, so no tile.
+ */
 export interface AnalyticsHeaderMetrics {
   totalResponses: number;
-  /** 0–100, one decimal. */
-  completionRate: number | null;
-  averageDurationSeconds: number | null;
   lastResponseAt: string | null;
 }
 
-export function headerMetrics(analytics: FormAnalytics): AnalyticsHeaderMetrics {
-  const { totalResponses, startedCount } = analytics;
-  return {
-    totalResponses,
-    completionRate:
-      startedCount && startedCount >= totalResponses && totalResponses > 0
-        ? Math.round((totalResponses / startedCount) * 1000) / 10
-        : null,
-    averageDurationSeconds: totalResponses > 0 ? analytics.averageDurationSeconds : null,
-    lastResponseAt: analytics.lastResponseAt,
-  };
+export function headerMetrics(analytics: Pick<AvailableFormAnalytics, "totalResponses" | "lastResponseAt">): AnalyticsHeaderMetrics {
+  return { totalResponses: analytics.totalResponses, lastResponseAt: analytics.lastResponseAt };
 }
 
 /** Questions tab: clamp `?question=` to an existing question (default: the first). */

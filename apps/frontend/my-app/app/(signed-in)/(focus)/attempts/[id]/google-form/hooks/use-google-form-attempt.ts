@@ -44,7 +44,7 @@ interface WrongCode {
 
 /**
  * State of `/attempts/[id]/google-form` (Figma page 5): loads the attempt
- * (ASSUMED `GET /attempts/:id`), counts down the time barrier, keeps the
+ * (`GET /attempts/:id`), counts down the time barrier, keeps the
  * typed code + "form opened" per attempt in sessionStorage and verifies the
  * code (VERIFIED `POST /attempts/:id/verify-code`).
  */
@@ -193,6 +193,11 @@ export function useGoogleFormAttempt(attemptId: string) {
     cancelled: () => {
       clearGoogleFormDraft(sessionStore(), attemptId);
       router.replace("/marketplace");
+    },
+    /** "Huỷ lượt làm" found the attempt already completed (409 ATTEMPT_NOT_IN_PROGRESS, COMPLETED). */
+    completed: () => {
+      clearGoogleFormDraft(sessionStore(), attemptId);
+      router.replace(`/attempts/${encodeURIComponent(attemptId)}/complete`);
     },
   };
 }

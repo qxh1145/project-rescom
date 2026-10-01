@@ -1,6 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import {
+  listUploadsResponseSchema,
+  storageQuestionFullDetailsSchema,
+} from '@rescom/schemas';
 import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module';
 import { STORAGE_REPOSITORY_PORT } from '../src/modules/storage/application/ports/storage-repository.port';
@@ -354,6 +358,56 @@ describe('Story 5.3: File Storage & Validation E2E Tests', () => {
       await request(app.getHttpServer())
         .get(`/api/storage/objects/${objectId}/download-url`)
         .expect(403);
+    });
+  });
+  describe('Phase 7: full question and re-adoptable uploads', () => {
+    it('refuses an upload past maxFiles with 409 STORAGE_QUESTION_FULL and details', async () => {
+      for (let i = 0; i < 10; i += 1) {
+        await initiate(uploadInput({ fileName: `file-${i}.pdf` })).expect(201);
+      }
+      const res = await initiate(
+        uploadInput({ fileName: 'one-too-many.pdf' }),
+      ).expect(409);
+      expect(res.body.error.code).toBe('STORAGE_QUESTION_FULL');
+      expect(
+        storageQuestionFullDetailsSchema.parse(res.body.error.details),
+      ).toEqual({ questionId: 'upload-1', maxFiles: 10 });
+    });
+
+    it('lists the live uploads of an attempt question (GET /storage/uploads)', async () => {
+      const first = await initiate(uploadInput()).expect(201);
+      putPdf(first.body.data.storageKey, 1024);
+      await finalize(first.body.data.objectId).expect(200);
+      const other = await initiate(
+        uploadInput({ questionId: 'upload-2' }),
+      ).expect(201);
+
+      const res = await request(app.getHttpServer())
+        .get('/api/storage/uploads')
+        .query({
+          ownerContext: 'participation',
+          ownerRecordId: validRecordId,
+          questionId: 'upload-1',
+        })
+        .expect(200);
+      const listed = listUploadsResponseSchema.parse(res.body.data);
+      expect(
+        listed.objects.map((object) => [object.id, object.status]),
+      ).toEqual([[first.body.data.objectId, 'CLEAN']]);
+
+      const all = await request(app.getHttpServer())
+        .get('/storage/uploads')
+        .query({ ownerContext: 'participation', ownerRecordId: validRecordId })
+        .expect(200);
+      expect(
+        all.body.data.objects.map((object: { id: string }) => object.id),
+      ).toEqual([first.body.data.objectId, other.body.data.objectId]);
+
+      const invalid = await request(app.getHttpServer())
+        .get('/api/storage/uploads')
+        .query({ ownerContext: 'participation', ownerRecordId: 'nope' })
+        .expect(400);
+      expect(invalid.body.error.code).toBe('VALIDATION_ERROR');
     });
   });
 });

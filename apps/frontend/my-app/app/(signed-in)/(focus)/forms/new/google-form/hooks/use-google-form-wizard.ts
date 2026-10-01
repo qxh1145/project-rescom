@@ -19,6 +19,7 @@ import {
   saveWizardDraft,
   stashSubmittedSurvey,
   wizardIdempotencyKey,
+  wizardSubmitDeadline,
 } from "@/lib/forms/create-storage";
 import {
   WIZARD_STEPS,
@@ -30,6 +31,7 @@ import {
   rewardOf,
   sampleSizeOf,
   toCreateRequest,
+  collectionDeadlineAt,
   toTargetingJson,
   validateAudienceStep,
   validateStep,
@@ -150,8 +152,8 @@ export function useGoogleFormWizard() {
   const insufficient = serverShortfall || (quote !== null && quote.shortfall > 0);
 
   const submit = useCallback(async () => {
-    const body = toCreateRequest(draft);
-    if (!body) {
+    const built = toCreateRequest(draft);
+    if (!built) {
       const firstInvalid = WIZARD_STEPS.find((candidate) => hasErrors(validateStep(candidate, draft))) ?? 3;
       setAttempted(new Set(WIZARD_STEPS));
       if (firstInvalid !== step) router.push(stepHref(firstInvalid));
@@ -162,6 +164,14 @@ export function useGoogleFormWizard() {
     setSubmitError(null);
     // C6: one key per draft, reused while the outcome of the last submit is unknown.
     const idempotencyKey = wizardIdempotencyKey(browserStorage("local"), userId);
+    // Review MEDIUM-4: the deadline is fixed with the key (a retry after
+    // midnight must send the same body).
+    const body = {
+      ...built,
+      deadlineAt: wizardSubmitDeadline(browserStorage("local"), userId, draft.collectionDays, () =>
+        collectionDeadlineAt(draft.collectionDays),
+      ),
+    };
     try {
       const created = await createGoogleFormSurvey(body, idempotencyKey);
       stashSubmittedSurvey(browserStorage("session"), {

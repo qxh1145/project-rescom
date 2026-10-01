@@ -8,6 +8,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   UseGuards,
   UsePipes,
 } from '@nestjs/common';
@@ -16,6 +17,8 @@ import {
   finalizeUploadBodySchema,
   initiateUploadInputSchema,
   InitiateUploadInput,
+  ListUploadsQuery,
+  listUploadsQuerySchema,
 } from '@rescom/schemas';
 import { StorageService } from '../application/storage.service';
 import { SessionAuthGuard } from '../../auth/presentation/guards/session-auth.guard';
@@ -81,6 +84,34 @@ export class StorageController {
       capability,
     );
     return createSuccessEnvelope(result);
+  }
+
+  /**
+   * The caller's live uploads of one owner record (optionally one question):
+   * lets a runner that lost its local state re-adopt CLEAN files or delete
+   * stale ones instead of hitting `STORAGE_QUESTION_FULL` (Phase 7). Same
+   * read authorization as status/download.
+   */
+  @Public()
+  @Get('uploads')
+  async listUploads(
+    @Query(
+      new ZodValidationPipe(
+        listUploadsQuerySchema,
+        'VALIDATION_ERROR',
+        'query',
+      ),
+    )
+    query: ListUploadsQuery,
+    @CurrentUser() user: AuthenticatedUser | null,
+    @Headers('x-storage-capability') capability?: string,
+  ) {
+    const objects = await this.storageService.listUploads(
+      query,
+      user?.id ?? null,
+      capability,
+    );
+    return createSuccessEnvelope({ objects });
   }
 
   /**

@@ -103,6 +103,36 @@ export interface MissingCodeReportEvidence {
   reservationExpired: boolean;
 }
 
+/** Story IR.2a (API-03): the owner's request to cancel one attempt. */
+export interface CancelAttemptParams {
+  attemptId: string;
+  respondentId: string;
+  formId: string;
+  /** Attempts started before it no longer hold a reservation (expired). */
+  cutoffDate: Date;
+  /** `closedAt` of the transition. */
+  now: Date;
+}
+
+/**
+ * CANCELLED: this call moved the attempt IN_PROGRESS -> ABANDONED/CANCELLED.
+ * ALREADY_CANCELLED: an earlier (or concurrent) cancel did; nothing was
+ *   written and `attempt.closedAt` is the original time.
+ * NOT_IN_PROGRESS: the attempt is COMPLETED, LOCKED, ABANDONED for another
+ *   reason, or IN_PROGRESS with an expired reservation (`derivedCloseReason`
+ *   EXPIRED); nothing was written.
+ * NOT_FOUND: no attempt of this respondent (unknown, guest or another
+ *   user's) on this form.
+ */
+export type CancelAttemptResult =
+  | { outcome: 'CANCELLED' | 'ALREADY_CANCELLED'; attempt: SurveyAttemptEntity }
+  | {
+      outcome: 'NOT_IN_PROGRESS';
+      attempt: SurveyAttemptEntity;
+      derivedCloseReason: 'EXPIRED' | null;
+    }
+  | { outcome: 'NOT_FOUND' };
+
 export interface ParticipationRepositoryPort {
   /**
    * Checks if an authenticated respondent has already completed a Response for this logical form.
@@ -122,13 +152,29 @@ export interface ParticipationRepositoryPort {
   ): Promise<SurveyAttemptEntity | null>;
 
   /**
-   * Lazily marks expired attempts for this respondent and form as ABANDONED.
+   * Lazily marks expired attempts for this respondent and form as ABANDONED
+   * (closed reason EXPIRED, Story IR.2a).
    */
   abandonExpiredAttempts(
     respondentId: string,
     formId: string,
     cutoffDate: Date,
   ): Promise<number>;
+
+  /**
+   * Story IR.2b Task 8 (AC4; closes Epic 5 DF7): the reservation-expiry
+   * sweep. Moves up to `limit` IN_PROGRESS attempts started before `cutoff`
+   * (oldest first) to ABANDONED with closed reason EXPIRED. Locks only the
+   * attempt rows, `FOR UPDATE SKIP LOCKED`, and updates conditionally on
+   * IN_PROGRESS, so it never waits on — and always loses to — a submit or
+   * verification holding the row. The quota already ignores these attempts
+   * (time window), so quota numbers do not change.
+   */
+  abandonExpiredAttemptsBatch(
+    cutoff: Date,
+    limit: number,
+    now: Date,
+  ): Promise<{ abandonedIds: string[] }>;
 
   /**
    * Retrieves the current quota usage (completed responses + active unexpired reservations).
@@ -190,8 +236,8 @@ export interface ParticipationRepositoryPort {
   saveIntegrityEvents(events: IntegrityEventEntity[]): Promise<number>;
 
   /**
-   * Epic 5 review P6: locks the attempt row (`FOR UPDATE`, after a shared
-   * lock on its form row) for a completion-code check and returns its
+   * Epic 5 review P6: locks the attempt row (`FOR UPDATE`, after the
+   * `FOR NO KEY UPDATE` lock on its form row, plan 2.3) for a completion-code check and returns its
    * current state, including the server-owned strike counter. Joins the
    * caller's Unit of Work, so the status check, the code comparison and the
    * strike or claim form one serialized unit per attempt.
@@ -224,6 +270,8 @@ export interface ParticipationRepositoryPort {
     isLocked: boolean;
     /** The account's counted wrong codes on the FormVersion, this one included. */
     accountFailureCount: number;
+    /** False when the attempt was no longer IN_PROGRESS: no strike was recorded. */
+    attemptInProgress: boolean;
   }>;
 
   /**
@@ -309,6 +357,16 @@ export interface ParticipationRepositoryPort {
     reason: string,
     evidence: MissingCodeReportEvidence,
   ): Promise<{ reportedAt: Date }>;
+
+  /**
+   * Story IR.2a (API-03): in ONE transaction, under the form row lock
+   * (`FOR SHARE`) and then the attempt row lock (`FOR UPDATE`) — the lock
+   * order of start, submit and verify — moves an owned, unexpired
+   * IN_PROGRESS attempt to ABANDONED with closed reason CANCELLED, which
+   * releases its quota reservation (quota counts unexpired IN_PROGRESS
+   * attempts only). State-predicated: a replay never rewrites `closedAt`.
+   */
+  cancelAttempt(params: CancelAttemptParams): Promise<CancelAttemptResult>;
 }
 
 /**
@@ -318,8 +376,10 @@ export interface ParticipationRepositoryPort {
  * the user), so parallel completions of one user on different surveys
  * serialize and the rolling-window count cannot be raced past the cap.
  * Lock order in every completion transaction: user completion lock ->
- * `forms` row `FOR SHARE` (Epic 6 review P6) -> attempt row `FOR UPDATE`
- * (Epic 5 review P7). Attempt start with a completion reservation (decision
+ * `forms` row `FOR NO KEY UPDATE` (Epic 6 review P6; exclusive since plan 2.3
+ * so completions of one survey serialize and the one that meets the sample
+ * target sees every earlier one and closes the survey in its own
+ * transaction) -> attempt row `FOR UPDATE` (Epic 5 review P7). Attempt start with a completion reservation (decision
  * E8-D6) takes the same user lock first, then the form row `FOR NO KEY
  * UPDATE`, so every path takes the user lock before any row lock and no
  * inversion exists.
@@ -411,6 +471,12 @@ export interface SubmitInternalResponseTransactionParams {
   securityEvidence?: SecurityEvidence;
   /** Authenticated respondents, when a rate limiter is configured. */
   completionLimit?: CompletionLimitCheck;
+  /**
+   * Plan 2.3 (decision A): runs inside the submission's transaction after its
+   * completion writes, still under the form row lock — the survey's QUOTA
+   * close and Escrow refund commit or roll back with the last submission.
+   */
+  afterCompletion?: () => Promise<void>;
 }
 
 export interface SubmissionAttachment {

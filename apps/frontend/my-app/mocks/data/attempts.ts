@@ -1,4 +1,9 @@
-import { RESERVATION_EXPIRY_MS, TIME_BARRIER_POLICY_VERSION, type AttemptTimeBarrierDto } from "@rescom/schemas";
+import {
+  RESERVATION_EXPIRY_MS,
+  TIME_BARRIER_POLICY_VERSION,
+  computeInternalTimeBarrier,
+  type AttemptTimeBarrierDto,
+} from "@rescom/schemas";
 import { createCollection, mockId, nowIso } from "../db/store";
 import { getActiveScenario } from "../scenarios";
 import type { SurveyType } from "./surveys";
@@ -10,8 +15,8 @@ import type { SurveyType } from "./surveys";
  */
 /**
  * Backend `AttemptStatus` (prisma). Reward states (Google Forms 48h pending,
- * integrity hold) live in the wallet history (`rewardOutcomeOf`), not here; an
- * expired reservation stays IN_PROGRESS (the backend abandons it lazily).
+ * integrity hold) live in the wallet history, not here; an expired
+ * reservation stays IN_PROGRESS (reads never write, like the backend).
  */
 export type MockAttemptStatus =
   | "IN_PROGRESS"
@@ -30,9 +35,11 @@ export interface MockAttempt {
   formVersionId: string;
   type: SurveyType;
   status: MockAttemptStatus;
-  /** Why an ABANDONED attempt closed (ASSUMED `closedReason` of GET /attempts/:id). */
+  /** Why an ABANDONED attempt closed (`closedReason` of GET /attempts/:id). */
   closedReason: "EXPIRED" | "CANCELLED" | null;
-  /** Pinned FormVersion number (ASSUMED `versionNumber` of GET /attempts/:id). */
+  /** When it closed; absent on attempts stored before the field existed. */
+  closedAt?: string | null;
+  /** Pinned FormVersion number (`versionNumber` of GET /attempts/:id). */
   versionNumber: number;
   startedAt: string;
   expiresAt: string;
@@ -95,6 +102,7 @@ export function createAttempt(input: {
     type: input.type,
     status: "IN_PROGRESS",
     closedReason: null,
+    closedAt: null,
     versionNumber: input.versionNumber,
     startedAt,
     expiresAt: new Date(Date.parse(startedAt) + RESERVATION_EXPIRY_MS).toISOString(),
@@ -133,7 +141,25 @@ export function externalBarrierSecondsOf(attempt: MockAttempt): number {
   return getActiveScenario() === "gform-no-barrier" ? 0 : MOCK_EXTERNAL_TIME_BARRIER_SECONDS;
 }
 
-/** `attemptTimeBarrierSchema` for EXTERNAL attempts; `null` for INTERNAL (owned by the in-Rescom flow). */
+/**
+ * `attemptTimeBarrierSchema` of an INTERNAL attempt: the backend rule
+ * (answerable questions x 2 s or the publisher minimum) on its questions.
+ */
+export function internalTimeBarrierOf(
+  attempt: MockAttempt,
+  definition: Parameters<typeof computeInternalTimeBarrier>[0],
+): AttemptTimeBarrierDto {
+  const { requiredSeconds, questionCount, secondsPerQuestion, policyVersion } = computeInternalTimeBarrier(definition);
+  return {
+    requiredSeconds,
+    questionCount,
+    secondsPerQuestion,
+    earliestSubmitAt: new Date(Date.parse(attempt.startedAt) + requiredSeconds * 1000).toISOString(),
+    policyVersion,
+  };
+}
+
+/** `attemptTimeBarrierSchema` for EXTERNAL attempts; `null` for INTERNAL (see `internalTimeBarrierOf`). */
 export function mockTimeBarrierOf(attempt: MockAttempt): AttemptTimeBarrierDto | null {
   if (attempt.type !== "EXTERNAL") return null;
   const requiredSeconds = externalBarrierSecondsOf(attempt);

@@ -6,6 +6,7 @@ import {
 } from '../application/ports/user-admin-transaction.port';
 import { User, UserRole, UserStatus } from '../domain/user.entity';
 import { CreateIdentityAuditRecord } from '../../auth/application/ports/identity-audit.port';
+import { SessionRevokeReason } from '../../auth/domain/session.entity';
 
 @Injectable()
 export class PrismaUserAdminTransactionAdapter implements UserAdminTransactionPort {
@@ -77,10 +78,17 @@ export class PrismaUserAdminTransactionAdapter implements UserAdminTransactionPo
           });
         },
 
-        revokeUserSessions: async (userId: string): Promise<void> => {
+        revokeUserSessions: async (
+          userId: string,
+          reason: SessionRevokeReason,
+        ): Promise<void> => {
           await tx.session.updateMany({
             where: { userId, revoked: false },
-            data: { revoked: true },
+            data: {
+              revoked: true,
+              revokedAt: new Date(),
+              revokedReason: reason,
+            },
           });
         },
 

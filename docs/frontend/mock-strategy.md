@@ -4,14 +4,29 @@
 
 ```bash
 # apps/frontend/my-app/.env.local
-NEXT_PUBLIC_API_MOCKING=enabled   # MSW answers in the browser
+NEXT_PUBLIC_API_MOCKING=hybrid    # enabled | hybrid | disabled
 NEXT_PUBLIC_API_URL=/api
 RESCOM_API_URL=http://localhost:4000
 ```
 
-`disabled` (or unset) sends every request to the real backend. `NEXT_PUBLIC_*` values are
-inlined at build time: restart `next dev` / rebuild after changing them. With mocking
-disabled the MSW code is dead-code-eliminated from the bundle.
+- `enabled`: MSW answers every API call (tests, demos). Mock-only features are on: demo
+  accounts on `/login`, mock Google sign-in (`/auth/google/mock-complete`), `?msw=` scenarios.
+- `hybrid` (gate G of `.omc/plans/mock-off-full-backend.md`, the default for internal testing):
+  MSW registers only the `DEFERRED_KEEP_MOCK` handlers of `mocks/route-allowlist.ts`
+  (`hybridHandlers` in `mocks/handlers/index.ts`, the list is never duplicated): disputes (3),
+  reliability, admin quality reviews (2), publisher survey quality, AI builder (5), engagement (2).
+  Every other request, the session included, goes to the backend through the `/api` rewrite.
+  Mock-only features are off (`isApiMockingEnabled` is false): real login, real Google flow.
+  The kept handlers never read the mock session or require a mock form/attempt/user
+  (`mocks/hybrid.ts`): they answer demo data for any backend UUID, still parse with the FE
+  schemas and still require `X-CSRF-Token` on writes. No role is checked there: the admin pages
+  sit behind `SessionGate requireAdmin`. `?msw=` scenarios are ignored. Screens fed by them show
+  the `DemoDataTag` "Dữ liệu minh hoạ" (`components/ui/DemoDataTag.tsx`).
+- `disabled` (or unset): every request goes to the real backend, no MSW.
+
+`NEXT_PUBLIC_*` values are inlined at build time: restart `next dev` / rebuild after changing
+them. With mocking disabled the MSW code is dead-code-eliminated from the bundle.
+`tests/route-diff.test.mjs` and `tests/hybrid-mocking.test.mjs` guard the hybrid allowlist.
 
 ## Boot
 

@@ -910,4 +910,94 @@ describe('MarketplaceService', () => {
       expect(feedDuration.surveys[0].id).toBe('form-ai-internal');
     });
   });
+
+  describe('plan 2.2 topic + IR.2b deadline', () => {
+    async function publish(
+      id: string,
+      over: {
+        title: string;
+        topic?: FormEntity['topic'];
+        deadlineAt?: Date | null;
+      },
+    ) {
+      const now = new Date();
+      const form = new FormEntity(
+        id,
+        publisherId,
+        'INTERNAL',
+        'PUBLISHED',
+        over.title,
+        null,
+        10,
+        50,
+        now,
+        now,
+        undefined,
+        0,
+        5,
+        null,
+        over.deadlineAt ?? null,
+        over.topic ?? null,
+      );
+      const version = new FormVersionEntity(
+        id.replace('aaaaaaaa', 'bbbbbbbb'),
+        id,
+        1,
+        {
+          title: over.title,
+          blocks: [],
+          metadata: { expectedEffortSeconds: 60 },
+        } as any,
+        null,
+        true,
+        null,
+        null,
+        now,
+        now,
+      );
+      await formRepo.create(form, version);
+    }
+
+    it('returns the topic on the card and searches it by value or Vietnamese label words, accent-insensitively', async () => {
+      await publish('aaaaaaaa-0000-4000-8000-000000000001', {
+        title: 'Thói quen ngủ',
+        topic: 'HEALTH',
+      });
+      await publish('aaaaaaaa-0000-4000-8000-000000000002', {
+        title: 'Giấc mơ công nghệ',
+        topic: 'IT',
+      });
+
+      const all = await service.getFeed(respondentHanoiId);
+      expect(all.surveys.map((s) => s.topic).sort()).toEqual(['HEALTH', 'IT']);
+
+      const bySynonym = await service.getFeed(respondentHanoiId, {
+        search: 'suc khoe',
+      } as any);
+      expect(bySynonym.surveys.map((s) => s.title)).toEqual(['Thói quen ngủ']);
+
+      const byTitleNoAccents = await service.getFeed(respondentHanoiId, {
+        search: 'giac mo',
+      } as any);
+      expect(byTitleNoAccents.surveys.map((s) => s.topic)).toEqual(['IT']);
+
+      const byValue = await service.getFeed(respondentHanoiId, {
+        search: 'cntt',
+      } as any);
+      expect(byValue.surveys.map((s) => s.topic)).toEqual(['IT']);
+    });
+
+    it('omits surveys at or past their deadline (no new starts)', async () => {
+      await publish('aaaaaaaa-0000-4000-8000-000000000003', {
+        title: 'Expired',
+        deadlineAt: new Date(Date.now() - 1000),
+      });
+      await publish('aaaaaaaa-0000-4000-8000-000000000004', {
+        title: 'Open',
+        deadlineAt: new Date(Date.now() + 86_400_000),
+      });
+      const feed = await service.getFeed(respondentHanoiId);
+      expect(feed.surveys.map((s) => s.title)).toEqual(['Open']);
+    });
+  });
 });

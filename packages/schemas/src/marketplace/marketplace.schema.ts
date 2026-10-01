@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { surveyTargetingSchema } from "../forms/form-targeting.schema";
+import { formTopicEnum } from "../forms/form-topic.schema";
 
 /**
  * Supported sorting options for the marketplace feed.
@@ -53,6 +54,10 @@ export const marketplaceFeedQuerySchema = z.object({
     }
     return val;
   }, z.boolean().default(true)),
+  /**
+   * Matches the title, the description or the topic (value or label words),
+   * ignoring case and Vietnamese diacritics (`matchesSurveySearch`).
+   */
   search: z.string().trim().max(100).optional(),
   type: z.enum(["ALL", "INTERNAL", "EXTERNAL"]).default("ALL"),
   minReward: z.preprocess(
@@ -98,6 +103,8 @@ export const marketplaceSurveyCardSchema = z.object({
   targetingJson: surveyTargetingSchema.nullable().optional(),
   hasTargeting: z.boolean(),
   isCompletedByCurrentUser: z.boolean().default(false),
+  /** Plan 2.2: the survey topic (`FORM_TOPICS`); null when none was chosen. */
+  topic: formTopicEnum.nullable().optional(),
 });
 
 export const marketplaceFeedResponseSchema = z.object({

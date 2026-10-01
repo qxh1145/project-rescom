@@ -1,5 +1,6 @@
 import type { FormBlock } from "@rescom/schemas";
 import type { AiChatMessage, AiConversation, AiDraft, AiDurationBucket, AiMessageOptions } from "../../lib/forms/builder-ai.ts";
+import { randomUuid } from "../../lib/random-uuid.ts";
 
 /**
  * Deterministic "Soạn bằng AI" assistant for MSW (ASSUMED routes, see
@@ -7,7 +8,7 @@ import type { AiChatMessage, AiConversation, AiDraft, AiDurationBucket, AiMessag
  * valid `form-blocks`. Pure (no storage) so it is unit-tested.
  */
 
-const newId = () => crypto.randomUUID();
+const newId = () => randomUuid();
 const nowIso = () => new Date().toISOString();
 
 // --- Block helpers (valid `formBlockSchema` blocks) ---

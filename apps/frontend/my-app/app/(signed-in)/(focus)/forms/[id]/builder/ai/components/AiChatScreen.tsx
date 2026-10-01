@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { DemoDataTag } from "@/components/ui/DemoDataTag";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Mascot } from "@/components/brand/Mascot";
@@ -14,7 +15,15 @@ import { cutRuns, revealSplit, visibleLength } from "@/lib/forms/ai-reveal";
 import { completeThinking, loadThought, planThinking, saveThought } from "@/lib/forms/ai-thinking";
 import { boldRuns, chatTitleFromPrompt, formIdFromAiPath, type AiChatMessage, type AiConversation, type AiMessageOptions } from "@/lib/forms/builder-ai";
 import { aiConversationLoadOutcome, aiErrorMessage, createDraftErrorMessage } from "@/lib/forms/builder-messages";
-import { createBuilderDraft, getAiConversation, listRecentForms, sendAiMessage } from "@/lib/forms/builder-service";
+import { NewChatError, sendNewChatPrompt, type PendingNewChat } from "@/lib/forms/ai-new-chat";
+import {
+  adoptAiConversation,
+  createBuilderDraft,
+  getAiConversation,
+  listRecentForms,
+  sendAiMessage,
+  startAiChat,
+} from "@/lib/forms/builder-service";
 import { useSession } from "@/lib/session/SessionProvider";
 import { useSessionLossRedirect } from "@/lib/session/use-session-loss";
 import { AiComposer } from "./AiComposer";
@@ -132,7 +141,9 @@ interface AiChatPaneProps {
  * One chat of "Soạn bằng AI": entry (13b 62:3204 / 13g 62:3562) and chat with
  * the draft aside (13b' 62:2333 / 13h 62:2904). All AI routes are ASSUMED API
  * CONTRACT (`lib/forms/builder-ai.ts`). Without `formId` (from "Tạo khảo sát")
- * the first prompt creates the In-Rescom draft (`POST /forms`, VERIFIED).
+ * the first prompt is answered first and only then creates the In-Rescom
+ * draft (`POST /forms`, VERIFIED) and attaches the chat to it
+ * (`lib/forms/ai-new-chat.ts`): a failed or stopped prompt leaves no draft.
  */
 function AiChatPane({ formId, onCreated, onAnswered }: AiChatPaneProps) {
   const { displayName } = useSession();
@@ -148,6 +159,8 @@ function AiChatPane({ formId, onCreated, onAnswered }: AiChatPaneProps) {
   const [sendErrorStage, setSendErrorStage] = useState<"create" | "ai">("ai");
   /** C5: the draft created by the first prompt, reused by every retry (never a second draft). */
   const [createdId, setCreatedId] = useState<string | null>(null);
+  /** The first answer whose draft could not be created or attached yet: a retry finishes it. */
+  const pendingChat = useRef<PendingNewChat | null>(null);
   const [draftOpen, setDraftOpen] = useState(true);
   /** The prompt the assistant is working on (shown before the server echoes it). */
   const [pendingText, setPendingText] = useState<string | null>(null);
@@ -213,19 +226,41 @@ function AiChatPane({ formId, onCreated, onAnswered }: AiChatPaneProps) {
     reveal.skip();
     thinking.start(plan);
     try {
-      let targetId = formId ?? createdId;
-      if (!targetId) {
-        setSendErrorStage("create");
-        targetId = (await createBuilderDraft({ title: chatTitleFromPrompt(message) })).id;
+      const existingId = formId ?? createdId;
+      let targetId: string;
+      let next: AiConversation;
+      // A draft created for an answer that is not attached yet still goes through the new-chat path.
+      if (!existingId || (!formId && pendingChat.current)) {
+        // New chat: the assistant answers first; the draft exists only after that.
+        setSendErrorStage("ai");
+        const started = await sendNewChatPrompt(
+          { message, options, pending: pendingChat.current, signal: controller.signal },
+          {
+            startChat: startAiChat,
+            createDraft: ({ title, idempotencyKey }) => createBuilderDraft({ title, idempotencyKey }),
+            adopt: adoptAiConversation,
+            getConversation: (id) => getAiConversation(id),
+          },
+        );
+        pendingChat.current = null;
+        targetId = started.formId;
+        next = started.conversation;
         setCreatedId(targetId);
         onCreated(targetId);
         // The URL now names the draft (a refresh reopens it) without leaving this
         // screen: `router.replace` would remount it and reload the conversation.
         window.history.replaceState(null, "", `/forms/${targetId}/builder/ai`);
+        // A retry with an edited prompt: the kept first answer is attached, the new text follows it.
+        if (started.pending.message !== message) {
+          if (controller.signal.aborted) return;
+          next = await sendAiMessage(targetId, { message, options }, controller.signal);
+        }
+      } else {
+        if (controller.signal.aborted) return;
+        setSendErrorStage("ai");
+        targetId = existingId;
+        next = await sendAiMessage(targetId, { message, options }, controller.signal);
       }
-      if (controller.signal.aborted) return;
-      setSendErrorStage("ai");
-      const next = await sendAiMessage(targetId, { message, options }, controller.signal);
       const last = [...next.messages].reverse().find((m) => m.role === "ASSISTANT");
       const steps = completeThinking(plan, next.draft, previous);
       const seconds = thinking.finish(steps, last?.id ?? null);
@@ -237,6 +272,20 @@ function AiChatPane({ formId, onCreated, onAnswered }: AiChatPaneProps) {
       if (last) reveal.start(last.id, revealTotal(last));
       onAnswered();
     } catch (error) {
+      if (error instanceof NewChatError) {
+        // Keep what succeeded; a draft created before the attach failed is reused, never duplicated.
+        pendingChat.current = error.pending;
+        if (error.pending?.formId) {
+          setCreatedId(error.pending.formId);
+          onCreated(error.pending.formId);
+        }
+        if (controller.signal.aborted) return;
+        thinking.clear();
+        setPrompt((current) => current || message);
+        setSendErrorStage(error.stage);
+        setSendError(error.failure);
+        return;
+      }
       if (controller.signal.aborted) return; // `stop` already showed the stopped state.
       thinking.clear();
       setPrompt((current) => current || message);
@@ -305,6 +354,7 @@ function AiChatPane({ formId, onCreated, onAnswered }: AiChatPaneProps) {
             <IconLink href={formId ? manualHref : "/forms"} icon="chevron-left" label="Quay lại" />
           </span>
           <h1 className="text-lead font-extrabold text-ink lg:hidden">Soạn bằng AI</h1>
+          <DemoDataTag />
           <Link href={manualHref} className="hidden items-center gap-1 text-body-sm font-bold text-primary lg:inline-flex">
             Soạn tay thay vào đó
             <Icon name="arrow-right" size={16} />
@@ -482,6 +532,7 @@ function AiChatPane({ formId, onCreated, onAnswered }: AiChatPaneProps) {
               {busy ? "trợ lý đang soạn" : "bản nháp, chưa gửi duyệt"}
             </p>
           </div>
+          <DemoDataTag className="ml-auto shrink-0" />
         </header>
         <div className="mx-auto flex w-full max-w-[640px] flex-1 flex-col gap-5 px-4 py-6 lg:px-8" aria-live="polite">
           {messages.map(renderMessage)}

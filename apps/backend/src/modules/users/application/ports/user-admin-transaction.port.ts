@@ -1,12 +1,17 @@
 import { User, UserRole, UserStatus } from '../../domain/user.entity';
 import { CreateIdentityAuditRecord } from '../../../auth/application/ports/identity-audit.port';
+import { SessionRevokeReason } from '../../../auth/domain/session.entity';
 
 export interface UserAdminTransactionContext {
   findUserById(userId: string): Promise<User | null>;
   lockActiveAdmins(): Promise<number>;
   updateUserStatus(userId: string, status: UserStatus): Promise<User>;
   updateUserRole(userId: string, role: UserRole): Promise<User>;
-  revokeUserSessions(userId: string): Promise<void>;
+  /** Plan 5.6: `ADMIN_LOCK` or `ROLE_CHANGED`. */
+  revokeUserSessions(
+    userId: string,
+    reason: SessionRevokeReason,
+  ): Promise<void>;
   appendAuditLog(record: CreateIdentityAuditRecord): Promise<void>;
 }
 

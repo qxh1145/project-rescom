@@ -1,4 +1,5 @@
 import { FormRepositoryPort } from './ports/form-repository.port';
+import type { FormsService } from './forms.service';
 import { SurveyResponseRepositoryPort } from '../../marketplace/application/ports/survey-response.repository.port';
 import { CaptchaValidatorService } from '../infrastructure/captcha-validator.service';
 import { GuestSubmissionRateLimiter } from '../infrastructure/guest-submission-rate-limiter';
@@ -20,6 +21,7 @@ import {
   FormBlock,
   FormSettings,
   FormIntegrityMetadata,
+  toRespondentFormBlocks,
 } from '@rescom/schemas';
 
 export class PublicFormsService {
@@ -28,6 +30,11 @@ export class PublicFormsService {
     private readonly responseRepository: SurveyResponseRepositoryPort,
     private readonly captchaValidator: CaptchaValidatorService,
     private readonly rateLimiter: GuestSubmissionRateLimiter,
+    /**
+     * Plan 2.3: closes the survey (QUOTA) and refunds its leftover Escrow
+     * when a guest fills the last slot, in the guest submission transaction.
+     */
+    private readonly quotaCloser?: Pick<FormsService, 'closeFormIfQuotaMet'>,
   ) {}
 
   async getPublicForm(formId: string): Promise<PublicFormDetailsDto> {
@@ -68,7 +75,8 @@ export class PublicFormsService {
       description: formWithVer.form.description,
       type: 'INTERNAL',
       versionNumber: formWithVer.currentVersion.versionNumber,
-      blocks,
+      // Review MEDIUM-1: never the integrity config (attention-check answers).
+      blocks: toRespondentFormBlocks(blocks),
       sections: schemaJson?.sections,
       settings,
       metadata,
@@ -125,6 +133,15 @@ export class PublicFormsService {
     }
 
     const formWithVer = await this.formRepository.findById(formId);
+    // Review LOW-8: a survey closed because its sample target was met is
+    // "full" for a guest too, not "not found".
+    if (
+      formWithVer?.form.isClosed() &&
+      formWithVer.form.closeKind === 'QUOTA' &&
+      formWithVer.form.type === 'INTERNAL'
+    ) {
+      throw new SurveyQuotaFullException();
+    }
     if (
       !formWithVer ||
       formWithVer.form.status !== 'PUBLISHED' ||
@@ -165,6 +182,16 @@ export class PublicFormsService {
         ipAddress,
         telemetry: input.telemetry,
         cutoffDate: new Date(Date.now() - RESERVATION_EXPIRY_MS),
+        ...(this.quotaCloser
+          ? {
+              afterCreate: async () => {
+                await this.quotaCloser?.closeFormIfQuotaMet(
+                  formWithVer.form.id,
+                  new Date(),
+                );
+              },
+            }
+          : {}),
       },
     );
     if (result.outcome === 'NOT_OPEN') {

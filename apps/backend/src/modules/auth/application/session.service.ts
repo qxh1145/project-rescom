@@ -14,10 +14,21 @@ import {
   UnauthorizedSessionException,
   SessionExpiredException,
   SessionRevokedException,
+  SessionReplacedException,
   InvalidRefreshTokenException,
   InvalidCsrfTokenException,
   UserLockedException,
 } from './exceptions/auth.exceptions';
+
+/**
+ * Plan 5.6: a session replaced by a newer login answers
+ * `AUTH_SESSION_REPLACED`; every other revocation `AUTH_SESSION_REVOKED`.
+ */
+function revokedSessionError(session: Session): SessionRevokedException {
+  return session.revokedReason === 'REPLACED'
+    ? new SessionReplacedException()
+    : new SessionRevokedException();
+}
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -156,7 +167,7 @@ export class SessionService {
     }
 
     if (session.revoked) {
-      throw new SessionRevokedException();
+      throw revokedSessionError(session);
     }
 
     if (session.isExpired()) {
@@ -204,7 +215,7 @@ export class SessionService {
       }
 
       if (found.session.revoked) {
-        throw new SessionRevokedException();
+        throw revokedSessionError(found.session);
       }
 
       if (found.session.isExpired() || found.credential.isExpired()) {
@@ -266,7 +277,7 @@ export class SessionService {
     }
 
     if (session.revoked) {
-      throw new SessionRevokedException();
+      throw revokedSessionError(session);
     }
 
     if (session.isExpired() || credential.isExpired()) {
@@ -364,7 +375,7 @@ export class SessionService {
   }
 
   private async revokeForRefreshReuse(session: Session): Promise<never> {
-    await this.sessionRepository.revokeSession(session.id, {
+    await this.sessionRepository.revokeSession(session.id, 'REFRESH_REUSE', {
       action: 'REFRESH_REUSE_REVOKED',
       userId: session.userId,
       outcome: 'FAILURE',
@@ -392,11 +403,15 @@ export class SessionService {
           ) {
             throw new InvalidCsrfTokenException();
           }
-          await this.sessionRepository.revokeSession(claims.sessionId, {
-            action: 'LOGOUT',
-            userId: claims.sub,
-            outcome: 'SUCCESS',
-          });
+          await this.sessionRepository.revokeSession(
+            claims.sessionId,
+            'LOGOUT',
+            {
+              action: 'LOGOUT',
+              userId: claims.sub,
+              outcome: 'SUCCESS',
+            },
+          );
           return;
         }
       } catch (err) {
@@ -433,11 +448,15 @@ export class SessionService {
           ) {
             throw new InvalidCsrfTokenException();
           }
-          await this.sessionRepository.revokeSession(found.session.id, {
-            action: 'LOGOUT',
-            userId: found.session.userId,
-            outcome: 'SUCCESS',
-          });
+          await this.sessionRepository.revokeSession(
+            found.session.id,
+            'LOGOUT',
+            {
+              action: 'LOGOUT',
+              userId: found.session.userId,
+              outcome: 'SUCCESS',
+            },
+          );
         }
       }
     }

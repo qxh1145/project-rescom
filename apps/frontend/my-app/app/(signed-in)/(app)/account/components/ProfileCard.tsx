@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Avatar, initialsOf } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
+import { DemoDataTag } from "@/components/ui/DemoDataTag";
 import { Icon } from "@/components/ui/Icon";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { ACCOUNT_MESSAGES } from "@/lib/profile/account-messages";
@@ -41,6 +42,7 @@ export function ProfileCard({ data }: { data: AccountData }) {
               {view.tierName}
             </Link>
           ) : null}
+          <DemoDataTag className="mt-1.5" />
         </div>
       </div>
 

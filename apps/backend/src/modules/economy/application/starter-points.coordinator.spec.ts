@@ -580,6 +580,61 @@ describe('StarterPointsCoordinator', () => {
     });
   });
 
+  describe('getActivationSnapshot (Story IR.2a, read-only)', () => {
+    it('answers without loading completions while the account is not unlocked', async () => {
+      const completions = jest.spyOn(
+        dataProvider,
+        'findActivationSurveyCompletions',
+      );
+      const grant = jest.spyOn(ledgerService, 'grantStarterPoints');
+
+      await expect(coordinator.getActivationSnapshot(userId)).resolves.toEqual({
+        unlockedAt: null,
+        amount: null,
+        activationSurvey: null,
+      });
+      expect(completions).not.toHaveBeenCalled();
+      // Unlike getStatus, it never recovers a missing grant (a write).
+      expect(grant).not.toHaveBeenCalled();
+      expect(notificationRepo.all()).toHaveLength(0);
+    });
+
+    it('returns the unlock and its activation survey without writing or notifying', async () => {
+      await coordinator.grantStarterPoints(userId);
+      dataProvider.demographicCompletions.set(userId, true);
+      const completion = dataProvider.recordCompletion(userId, {
+        formId: 'form-activating',
+        completedAt: new Date(Date.now() - HOUR),
+      });
+      const unlock = await coordinator.checkAndUnlockStarterPoints(userId);
+      expect(unlock.unlocked).toBe(true);
+      const notices = notificationRepo.all().length;
+      const writes = [
+        jest.spyOn(ledgerService, 'grantStarterPoints'),
+        jest.spyOn(ledgerService, 'unlockStarterPoints'),
+        jest.spyOn(ledgerService, 'expireStarterPoints'),
+        jest.spyOn(ledgerRepo, 'postJournalTransaction'),
+      ];
+
+      const snapshot = await coordinator.getActivationSnapshot(userId);
+
+      expect(snapshot).toEqual({
+        unlockedAt: expect.any(Date),
+        amount: 100,
+        activationSurvey: expect.objectContaining({
+          source: 'INTERNAL',
+          formId: 'form-activating',
+          completedAt: completion.completedAt.toISOString(),
+          status: 'CONFIRMED',
+        }),
+      });
+      for (const write of writes) {
+        expect(write).not.toHaveBeenCalled();
+      }
+      expect(notificationRepo.all()).toHaveLength(notices);
+    });
+  });
+
   describe('checkAndUnlockStarterPoints', () => {
     beforeEach(async () => {
       await coordinator.grantStarterPoints(userId);

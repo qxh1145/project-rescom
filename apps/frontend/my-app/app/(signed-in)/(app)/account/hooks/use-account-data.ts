@@ -12,7 +12,7 @@ import { useSessionLossRedirect } from "@/lib/session/use-session-loss";
 
 /**
  * Data of `/account` and `/account/profile`:
- * - VERIFIED `GET /demographics` + the session's ASSUMED `GET /users/me/profile` → profile fields;
+ * - VERIFIED `GET /demographics` + the session's VERIFIED `GET /users/me/profile` → profile fields;
  * - ASSUMED `GET /engagement/me` → streak, tier, stats, weekly rank;
  * - ASSUMED `GET /integrity/consent` and `GET /integrity/reliability/me` → row values
  *   (best effort: a failure only leaves the row value empty).

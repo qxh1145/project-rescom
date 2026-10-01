@@ -1,15 +1,22 @@
-import { demographicProfileStatusSchema, sanitizedUserSchema } from "@rescom/schemas";
+import {
+  demographicProfileStatusSchema,
+  forgotPasswordResultSchema,
+  resetPasswordResultSchema,
+  sanitizedUserSchema,
+} from "@rescom/schemas";
 import { apiRequest, resetCsrfToken, type ResponseSchema } from "../api/client.ts";
 import { POST_ONBOARDING_DEFAULT_PATH } from "../onboarding.ts";
 import { browserSessionStorage, clearAllOnboardingDrafts } from "../onboarding/onboarding-draft.ts";
 import { browserParticipationStores, clearParticipationStorage } from "../participation/clear-participation-storage.ts";
 import { resolveAdminPostLoginPath, resolvePostLoginPath } from "./post-login-redirect.ts";
+import { clearSessionReplaced } from "./session-notice.ts";
 import type {
   AuthSessionResponse,
   AuthUser,
   DemoAccount,
   GoogleLinkStartResponse,
   LoginRequest,
+  NewPasswordRequest,
   PasswordResetRequest,
   RegisterRequest,
 } from "./types.ts";
@@ -17,8 +24,7 @@ import type {
 /**
  * The only auth module UI code talks to. Contracts are VERIFIED against
  * `apps/backend/src/modules/auth/presentation/*.controller.ts`, except
- * `completeMockGoogleSignIn` (MOCK-ONLY) and `requestPasswordReset`
- * (ASSUMED API CONTRACT).
+ * `completeMockGoogleSignIn` (MOCK-ONLY).
  */
 
 /** `data` of login/register: `{ user }`, validated with the shared user schema. */
@@ -40,6 +46,7 @@ export async function login(input: LoginRequest, signal?: AbortSignal): Promise<
     schema: authSessionSchema,
     signal,
   });
+  clearSessionReplaced();
   return user;
 }
 
@@ -52,19 +59,43 @@ export async function register(input: RegisterRequest, signal?: AbortSignal): Pr
     schema: authSessionSchema,
     signal,
   });
+  clearSessionReplaced();
   return user;
 }
 
 /**
- * ASSUMED API CONTRACT: POST /auth/password/forgot `{ email }` → 202, same
- * generic answer whether or not the account exists (no enumeration). Guest
- * route, so no CSRF. The backend has no password-reset module yet.
+ * VERIFIED (plan 5.4): POST /auth/password/forgot `{ email }` → 202
+ * `{ accepted: true }`, the same answer whether or not the account exists (no
+ * enumeration). Anonymous like login: JSON only, no CSRF token.
  */
 export async function requestPasswordReset(
   input: PasswordResetRequest,
   signal?: AbortSignal,
 ): Promise<void> {
-  await apiRequest("/auth/password/forgot", { method: "POST", csrf: false, body: input, signal });
+  await apiRequest("/auth/password/forgot", {
+    method: "POST",
+    csrf: false,
+    body: input,
+    schema: forgotPasswordResultSchema,
+    signal,
+  });
+}
+
+/**
+ * VERIFIED (plan 5.4): POST /auth/password/reset `{ token, newPassword }` →
+ * 200 `{ passwordReset: true }`; every session of the account is revoked and
+ * this browser's cookies are cleared. 400 `PASSWORD_RESET_TOKEN_INVALID`
+ * (unknown, used or expired link) or `AUTH_INVALID_INPUT` (password policy).
+ */
+export async function resetPassword(input: NewPasswordRequest, signal?: AbortSignal): Promise<void> {
+  await apiRequest("/auth/password/reset", {
+    method: "POST",
+    csrf: false,
+    body: input,
+    schema: resetPasswordResultSchema,
+    signal,
+  });
+  resetCsrfToken();
 }
 
 const googleLinkStartSchema: ResponseSchema<GoogleLinkStartResponse> = {
@@ -193,6 +224,7 @@ export async function logout(): Promise<void> {
     await apiRequest("/auth/logout", { method: "POST" });
   } finally {
     resetCsrfToken();
+    clearSessionReplaced();
     clearAllOnboardingDrafts(browserSessionStorage());
     clearParticipationStorage(...browserParticipationStores());
   }

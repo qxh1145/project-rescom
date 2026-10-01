@@ -10,6 +10,15 @@ describe('EnvService', () => {
     BCRYPT_ROUNDS: '12',
     FRONTEND_ORIGINS: 'http://localhost:3000,http://127.0.0.1:3000',
   };
+  // Story IR.4b B-T4: production refuses to start without SMTP email.
+  const productionEmailEnv = {
+    EMAIL_DELIVERY_MODE: 'smtp',
+    EMAIL_FROM: 'Rescom <no-reply@rescom.io>',
+    EMAIL_APP_BASE_URL: 'https://app.rescom.io',
+    SMTP_HOST: 'smtp.example.com',
+    SMTP_USERNAME: 'smtp-user',
+    SMTP_PASSWORD: 'smtp-password',
+  };
 
   it('should initialize successfully with valid configuration', () => {
     const service = new EnvService(validBaseEnv);
@@ -106,6 +115,7 @@ describe('EnvService', () => {
         TOPUP_BANK_ACCOUNT_NUMBER: '1234567890',
         TOPUP_BANK_ACCOUNT_NAME: 'CONG TY RESCOM',
         PARTICIPATION_RATE_LIMIT_POLICY_VERSION: 'participation-rate-limit-v1',
+        ...productionEmailEnv,
       };
 
       expect(() => new EnvService(productionEnv)).toThrow(
@@ -335,6 +345,7 @@ describe('EnvService', () => {
         STORAGE_SECRET_ACCESS_KEY: 'production-storage-secret',
         TOPUP_BANK_ACCOUNT_NUMBER: '1234567890',
         TOPUP_BANK_ACCOUNT_NAME: 'CONG TY RESCOM',
+        ...productionEmailEnv,
       };
 
       it('is required in production', () => {
@@ -512,6 +523,216 @@ describe('EnvService', () => {
             STORAGE_FORCE_PATH_STYLE: 'garbage',
           }),
       ).toThrow(/STORAGE_FORCE_PATH_STYLE/);
+    });
+  });
+
+  describe('Story IR.2b scheduler settings', () => {
+    it('defaults to disabled, 15 s ticks and 8 Outbox attempts', () => {
+      const service = new EnvService(validBaseEnv);
+      expect(service.schedulerEnabled).toBe(false);
+      expect(service.schedulerTickSeconds).toBe(15);
+      expect(service.outboxMaxAttempts).toBe(8);
+    });
+
+    it.each([
+      ['true', true],
+      ['1', true],
+      ['on', true],
+      ['false', false],
+      ['0', false],
+      ['off', false],
+    ])(
+      'reads SCHEDULER_ENABLED=%s as %s (never z.coerce.boolean)',
+      (raw, expected) => {
+        expect(
+          new EnvService({ ...validBaseEnv, SCHEDULER_ENABLED: raw })
+            .schedulerEnabled,
+        ).toBe(expected);
+      },
+    );
+
+    it('rejects an invalid flag and out-of-range bounds', () => {
+      expect(
+        () => new EnvService({ ...validBaseEnv, SCHEDULER_ENABLED: 'maybe' }),
+      ).toThrow(/SCHEDULER_ENABLED/);
+      expect(
+        () => new EnvService({ ...validBaseEnv, SCHEDULER_TICK_SECONDS: '0' }),
+      ).toThrow(/SCHEDULER_TICK_SECONDS/);
+      expect(
+        () =>
+          new EnvService({ ...validBaseEnv, SCHEDULER_TICK_SECONDS: '301' }),
+      ).toThrow(/SCHEDULER_TICK_SECONDS/);
+      expect(
+        () => new EnvService({ ...validBaseEnv, OUTBOX_MAX_ATTEMPTS: '51' }),
+      ).toThrow(/OUTBOX_MAX_ATTEMPTS/);
+      expect(
+        new EnvService({ ...validBaseEnv, OUTBOX_MAX_ATTEMPTS: '3' })
+          .outboxMaxAttempts,
+      ).toBe(3);
+    });
+  });
+
+  describe('Story IR.4b B-T4 / plan 5.4: email delivery', () => {
+    const productionBase = {
+      ...validBaseEnv,
+      NODE_ENV: 'production',
+      TRUST_PROXY_HOPS: '1',
+      AUTH_SECRET_PROTECTION_KEY:
+        'super_secret_protection_key_at_least_32_chars!',
+      GOOGLE_CLIENT_ID: 'real-client-id',
+      GOOGLE_CLIENT_SECRET: 'real-client-secret',
+      FRONTEND_ORIGINS: 'https://app.rescom.io',
+      GOOGLE_REDIRECT_URI: 'https://api.rescom.io/auth/google/callback',
+      AUTH_FRONTEND_SUCCESS_URL: 'https://app.rescom.io/callback',
+      AUTH_FRONTEND_ERROR_URL: 'https://app.rescom.io/error',
+      STORAGE_ACCESS_KEY_ID: 'production-storage-key',
+      STORAGE_SECRET_ACCESS_KEY: 'production-storage-secret',
+      TOPUP_BANK_ACCOUNT_NUMBER: '1234567890',
+      TOPUP_BANK_ACCOUNT_NAME: 'CONG TY RESCOM',
+      PARTICIPATION_RATE_LIMIT_POLICY_VERSION: 'participation-rate-limit-v1',
+    };
+
+    it('defaults to capture with links on the first frontend origin outside production', () => {
+      const service = new EnvService(validBaseEnv);
+      expect(service.emailDeliveryMode).toBe('capture');
+      expect(service.emailAppBaseUrl).toBe('http://localhost:3000');
+      expect(service.emailReplyTo).toBeNull();
+      expect(service.emailSendTimeoutMs).toBe(10000);
+      expect(service.smtp).toMatchObject({
+        port: 587,
+        secure: false,
+        requireTls: true,
+        username: null,
+        password: null,
+      });
+    });
+
+    it('accepts local Mailpit SMTP without credentials or TLS', () => {
+      const service = new EnvService({
+        ...validBaseEnv,
+        EMAIL_DELIVERY_MODE: 'smtp',
+        EMAIL_FROM: 'Rescom <no-reply@rescom.local>',
+        SMTP_HOST: 'localhost',
+        SMTP_PORT: '1025',
+        SMTP_REQUIRE_TLS: 'false',
+        EMAIL_APP_BASE_URL: 'http://127.0.0.1:3000/',
+      });
+      expect(service.emailDeliveryMode).toBe('smtp');
+      expect(service.smtp).toMatchObject({
+        host: 'localhost',
+        port: 1025,
+        requireTls: false,
+      });
+      expect(service.emailAppBaseUrl).toBe('http://127.0.0.1:3000');
+    });
+
+    it('requires host and sender for smtp, and both credentials or neither', () => {
+      expect(
+        () => new EnvService({ ...validBaseEnv, EMAIL_DELIVERY_MODE: 'smtp' }),
+      ).toThrow(/SMTP_HOST is required.*EMAIL_FROM is required/);
+      expect(
+        () =>
+          new EnvService({
+            ...validBaseEnv,
+            EMAIL_DELIVERY_MODE: 'smtp',
+            SMTP_HOST: 'localhost',
+            EMAIL_FROM: 'a@b.co',
+            SMTP_USERNAME: 'only-user',
+          }),
+      ).toThrow(/Set both SMTP_USERNAME and SMTP_PASSWORD/);
+    });
+
+    it('derives the Message-ID domain from EMAIL_FROM unless set (L8)', () => {
+      expect(new EnvService(validBaseEnv).emailMessageIdDomain).toBe(
+        'rescom.local',
+      );
+      expect(
+        new EnvService({
+          ...validBaseEnv,
+          EMAIL_FROM: 'Rescom <No-Reply@Mail.Rescom.VN>',
+        }).emailMessageIdDomain,
+      ).toBe('mail.rescom.vn');
+      expect(
+        new EnvService({
+          ...validBaseEnv,
+          EMAIL_FROM: 'no-reply@rescom.vn',
+          EMAIL_MESSAGE_ID_DOMAIN: 'msg.rescom.vn',
+        }).emailMessageIdDomain,
+      ).toBe('msg.rescom.vn');
+    });
+
+    it('rejects a link base with a query string or fragment (L10)', () => {
+      for (const value of [
+        'http://localhost:3000/?a=1',
+        'http://localhost:3000/#x',
+      ]) {
+        expect(
+          () => new EnvService({ ...validBaseEnv, EMAIL_APP_BASE_URL: value }),
+        ).toThrow(/EMAIL_APP_BASE_URL must not contain/);
+      }
+    });
+
+    it('rejects a link base outside FRONTEND_ORIGINS', () => {
+      expect(
+        () =>
+          new EnvService({
+            ...validBaseEnv,
+            EMAIL_APP_BASE_URL: 'https://evil.example',
+          }),
+      ).toThrow(/EMAIL_APP_BASE_URL origin/);
+    });
+
+    it('refuses capture, disabled and an unset mode in production', () => {
+      for (const mode of [undefined, 'capture', 'disabled']) {
+        expect(
+          () =>
+            new EnvService({
+              ...productionBase,
+              ...productionEmailEnv,
+              EMAIL_DELIVERY_MODE: mode,
+            }),
+        ).toThrow(/EMAIL_DELIVERY_MODE=smtp is required in production/);
+      }
+    });
+
+    it('requires credentials, HTTPS links and TLS in production', () => {
+      expect(
+        () =>
+          new EnvService({
+            ...productionBase,
+            ...productionEmailEnv,
+            SMTP_USERNAME: undefined,
+            SMTP_PASSWORD: undefined,
+          }),
+      ).toThrow(/SMTP_USERNAME is required/);
+      expect(
+        () =>
+          new EnvService({
+            ...productionBase,
+            ...productionEmailEnv,
+            EMAIL_APP_BASE_URL: undefined,
+          }),
+      ).toThrow(/EMAIL_APP_BASE_URL is required in production/);
+      expect(
+        () =>
+          new EnvService({
+            ...productionBase,
+            ...productionEmailEnv,
+            SMTP_REQUIRE_TLS: 'false',
+          }),
+      ).toThrow(/SMTP_REQUIRE_TLS=false is for local Mailpit only/);
+      expect(
+        () =>
+          new EnvService({
+            ...productionBase,
+            ...productionEmailEnv,
+            EMAIL_FROM: 'Rescom',
+          }),
+      ).toThrow(/Production needs EMAIL_MESSAGE_ID_DOMAIN/);
+      expect(
+        new EnvService({ ...productionBase, ...productionEmailEnv })
+          .emailDeliveryMode,
+      ).toBe('smtp');
     });
   });
 });

@@ -135,6 +135,18 @@ test("Figma 14d: WARNING is told apart by its message (top-up rejection vs start
   assert.equal(notificationText({ type: "WARNING", message: mock }).title, "Yêu cầu nạp điểm chưa được duyệt");
 });
 
+test("IR.4b B3: TOPUP_REJECTED and account status types have their own row (legacy WARNING rows still parse)", () => {
+  const { notificationPresentation, notificationText } = presentation;
+  const rejected = "Your top-up request RESCOMK7Q2M9XA for 100 points was rejected. Reason: no transfer";
+  assert.deepEqual(notificationPresentation("TOPUP_REJECTED", rejected), { icon: "bank", tone: "danger", href: "/wallet" });
+  assert.equal(notificationText({ type: "TOPUP_REJECTED", message: rejected }).title, "Yêu cầu nạp điểm bị từ chối");
+  assert.equal(notificationPresentation("ACCOUNT_LOCKED").tone, "danger");
+  assert.equal(notificationPresentation("ACCOUNT_UNLOCKED").tone, "green");
+  assert.equal(notificationText({ type: "ACCOUNT_UNLOCKED", message: "Unlocked." }).title, "Tài khoản đã được mở khoá");
+  // A rejection stored before IR.4b is still a WARNING told apart by its text.
+  assert.equal(notificationText({ type: "WARNING", message: rejected }).title, "Yêu cầu nạp điểm chưa được duyệt");
+});
+
 test("Figma 14d: time labels and HÔM NAY / TRƯỚC ĐÓ groups (Vietnam time)", () => {
   const { groupNotifications, notificationTimeLabel } = presentation;
   // 27/09 21:00 in Vietnam.

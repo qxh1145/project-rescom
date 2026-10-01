@@ -5,34 +5,14 @@ const { buildFormAnalytics, numberBuckets, median, percentOf } = await import(".
 const seed = await import("../mocks/data/form-analytics-seed.ts");
 const view = await import("../lib/forms/results-analytics.ts");
 const { formAnalyticsSchema } = await import("../lib/forms/results-analytics-service.ts");
+const { toPublisherQuestions } = await import("@rescom/schemas");
 
-const FORM = { id: "f1", title: "Khảo sát thử", type: "INTERNAL", versionNumber: 1 };
+/** The mock aggregator is a thin wrapper of the shared `aggregateFormAnalytics` (Story IR.4a AC1.2). */
+const FORM = { id: "f1", title: "Khảo sát thử", versionId: "v1", versionNumber: 1 };
 const opts = (...labels) => labels.map((label, index) => ({ value: `opt_${index + 1}`, label }));
 
-/** Same mapping as `questionsOf` in `mocks/handlers/forms-results.ts` (MSW module, not importable here). */
-function questionsOf(blocks) {
-  return [...blocks]
-    .sort((a, b) => a.order - b.order)
-    .map((block, index) => ({
-      id: block.id,
-      number: index + 1,
-      title: block.title,
-      shortLabel: null,
-      type: block.type,
-      required: block.required,
-      options:
-        block.type === "single_choice" || block.type === "multiple_choice"
-          ? block.options.map((option) => ({ value: option.value, label: option.label }))
-          : [],
-      allowOther: (block.type === "single_choice" || block.type === "multiple_choice") && block.allowOther === true,
-      scale:
-        block.type === "linear_scale"
-          ? { min: block.min, max: block.max, minLabel: block.minLabel ?? null, maxLabel: block.maxLabel ?? null }
-          : block.type === "rating"
-            ? { min: 1, max: block.maxRating, minLabel: null, maxLabel: null }
-            : null,
-    }));
-}
+/** The shared question projection (backend and MSW use the same one). */
+const questionsOf = (blocks) => toPublisherQuestions(blocks);
 
 // --- Hand-made fixture: 6 rows, newest first ---
 
@@ -69,15 +49,16 @@ const ROWS = ROW_ANSWERS.map((answers, index) => ({
   codeVerified: null,
 }));
 
-const FIXTURE = buildFormAnalytics({ form: FORM, questions: QUESTIONS, rows: ROWS, startedCount: 8 });
+const FIXTURE = buildFormAnalytics({ form: FORM, questions: QUESTIONS, rows: ROWS });
 const byId = (analytics, id) => analytics.questions.find((question) => question.questionId === id);
 
-test("totals: count, mean duration (rounded), newest submission, started passthrough", () => {
+test("totals: count and newest submission; no funnel metrics (FR-41 deferred)", () => {
+  assert.equal(FIXTURE.availability, "AVAILABLE");
   assert.equal(FIXTURE.totalResponses, 6);
-  assert.equal(FIXTURE.averageDurationSeconds, 125);
   assert.equal(FIXTURE.lastResponseAt, "2026-09-26T10:00:00+07:00");
-  assert.equal(FIXTURE.startedCount, 8);
-  assert.deepEqual(FIXTURE.form, FORM);
+  assert.equal("startedCount" in FIXTURE, false);
+  assert.equal("averageDurationSeconds" in FIXTURE, false);
+  assert.deepEqual(FIXTURE.form, { ...FORM, type: "INTERNAL" });
   assert.equal(formAnalyticsSchema.parse(FIXTURE).questions.length, QUESTIONS.length);
 });
 
@@ -199,7 +180,7 @@ test("invalid numeric answers are skipped: scale needs an integer in range, numb
     { stars: 2 },
   ];
   const rows = answers.map((row, index) => ({ ...ROWS[0], id: `x${index}`, answers: row }));
-  const result = buildFormAnalytics({ form: FORM, questions, rows, startedCount: null });
+  const result = buildFormAnalytics({ form: FORM, questions, rows });
   const stars = byId(result, "stars");
   assert.equal(stars.answeredCount, 2);
   assert.equal(stars.skippedCount, 4);
@@ -227,10 +208,9 @@ test("text: newest 5 non-empty answers; file: count only", () => {
   assert.equal(file.skippedCount, 5);
 });
 
-test("no responses: zero percentages and null stats; Google Forms: totals only", () => {
-  const empty = buildFormAnalytics({ form: FORM, questions: QUESTIONS, rows: [], startedCount: null });
+test("no responses: zero percentages and null stats", () => {
+  const empty = buildFormAnalytics({ form: FORM, questions: QUESTIONS, rows: [] });
   assert.equal(empty.totalResponses, 0);
-  assert.equal(empty.averageDurationSeconds, null);
   assert.equal(empty.lastResponseAt, null);
   assert.ok(byId(empty, "where").summary.options.every((option) => option.count === 0 && option.percentage === 0));
   assert.deepEqual(byId(empty, "where").summary.other, { count: 0, percentage: 0, samples: [] });
@@ -240,11 +220,6 @@ test("no responses: zero percentages and null stats; Google Forms: totals only",
   assert.deepEqual(byId(empty, "few").summary, { kind: "number", average: null, median: null, min: null, max: null, buckets: [] });
   assert.deepEqual(byId(empty, "note").summary.samples, []);
   formAnalyticsSchema.parse(empty);
-
-  const external = buildFormAnalytics({ form: { ...FORM, type: "EXTERNAL" }, questions: [], rows: ROWS, startedCount: 7 });
-  assert.deepEqual(external.questions, []);
-  assert.equal(external.totalResponses, 6);
-  formAnalyticsSchema.parse(external);
 });
 
 test("percentOf / median helpers", () => {
@@ -261,10 +236,9 @@ const NOW = Date.parse("2026-09-27T15:30:00+07:00");
 const RX_ROWS = seed.analyticsResponses(NOW);
 const RX_FORM = seed.analyticsPublisherForms(NOW)[0];
 const RX = buildFormAnalytics({
-  form: { id: RX_FORM.id, title: RX_FORM.title, type: RX_FORM.type, versionNumber: 1 },
+  form: { id: RX_FORM.id, title: RX_FORM.title, versionId: "rx-v1", versionNumber: 1 },
   questions: questionsOf(seed.RESCOM_EXPERIENCE_BLOCKS),
   rows: [...RX_ROWS].sort((a, b) => Date.parse(b.submittedAt) - Date.parse(a.submittedAt)),
-  startedCount: seed.analyticsQualitySnapshots(NOW)[0].started,
 });
 const rxQuestion = (id) => byId(RX, id);
 
@@ -289,7 +263,6 @@ test("seed is deterministic and fits the collection window", () => {
 test("seed: exact counts and percentages of the RESCOM survey", () => {
   formAnalyticsSchema.parse(RX);
   assert.equal(RX.totalResponses, 321);
-  assert.equal(RX.startedCount, 356);
   const gender = rxQuestion("rx-gender").summary.options;
   assert.deepEqual(gender.map((option) => option.count), [126, 194, 1]);
   // 126/321 = 39,25… → 39,3 · 194/321 = 60,43… → 60,4 · 1/321 = 0,31… → 0,3
@@ -340,7 +313,7 @@ test("seed: the new survey has one version and no responses", () => {
   assert.equal(versions.length, 1);
   assert.equal(versions[0].blocks.length, 5);
   assert.equal(RX_ROWS.filter((row) => row.formId === groupStudy.id).length, 0);
-  const empty = buildFormAnalytics({ form: { id: groupStudy.id, title: groupStudy.title, type: "INTERNAL", versionNumber: 1 }, questions: questionsOf(versions[0].blocks), rows: [], startedCount: null });
+  const empty = buildFormAnalytics({ form: { id: groupStudy.id, title: groupStudy.title, versionId: versions[0].id, versionNumber: 1 }, questions: questionsOf(versions[0].blocks), rows: [] });
   assert.equal(formAnalyticsSchema.parse(empty).totalResponses, 0);
 });
 
@@ -436,13 +409,9 @@ test("distributionRows: legend rows incl. the Khác bucket and star labels", () 
   assert.equal(view.sharesMayExceed100(rxQuestion("rx-platforms")), true);
 });
 
-test("headerMetrics: completion rate from started; hidden when unknown or inconsistent", () => {
-  assert.equal(view.headerMetrics(RX).completionRate, 90.2);
-  assert.equal(view.headerMetrics({ ...RX, startedCount: null }).completionRate, null);
-  assert.equal(view.headerMetrics({ ...RX, startedCount: 100 }).completionRate, null);
-  const empty = view.headerMetrics({ ...RX, totalResponses: 0, startedCount: 0, averageDurationSeconds: 300 });
-  assert.equal(empty.completionRate, null);
-  assert.equal(empty.averageDurationSeconds, null);
+test("headerMetrics: total and last response only (completion rate and average time are deferred, R4)", () => {
+  assert.deepEqual(view.headerMetrics(RX), { totalResponses: 321, lastResponseAt: RX.lastResponseAt });
+  assert.deepEqual(view.headerMetrics({ totalResponses: 0, lastResponseAt: null }), { totalResponses: 0, lastResponseAt: null });
 });
 
 test("resolveQuestionIndex clamps ?question= to an existing question", () => {

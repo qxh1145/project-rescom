@@ -193,7 +193,7 @@ export function approveStoredTopUp(stored: StoredTopUp, adminId: string): Stored
   return updated;
 }
 
-/** Rejects a PENDING request with the admin's reason; no points move; WARNING notification. */
+/** Rejects a PENDING request with the admin's reason; no points move; TOPUP_REJECTED notification (IR.4b B3). */
 export function rejectStoredTopUp(stored: StoredTopUp, adminId: string, reason: string): StoredTopUp {
   const { request } = stored;
   const updated =
@@ -206,7 +206,7 @@ export function rejectStoredTopUp(stored: StoredTopUp, adminId: string, reason: 
     }) ?? stored;
   notify(
     stored.userId,
-    "WARNING",
+    "TOPUP_REJECTED",
     `Yêu cầu nạp điểm chưa được duyệt — ${formatPoints(request.amount)} điểm, nội dung ${formatTransferReference(request.transferReference)}. Lý do: ${truncateText(reason, 300)}`,
   );
   return updated;

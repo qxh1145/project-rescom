@@ -42,6 +42,15 @@ describe('AdminUsersController', () => {
         total: 1,
       }),
       getUserById: jest.fn().mockResolvedValue(sampleUser),
+      findLockReasons: jest.fn(async (users: readonly User[]) => {
+        const reasons = new Map<string, string>();
+        for (const user of users) {
+          if (user.status === 'LOCKED') {
+            reasons.set(user.id, 'Spam khảo sát hàng loạt');
+          }
+        }
+        return reasons;
+      }),
       updateUserStatus: jest.fn().mockResolvedValue(
         new User({
           ...sampleUser,
@@ -77,6 +86,7 @@ describe('AdminUsersController', () => {
         status: 'ACTIVE',
         createdAt: '2026-09-14T10:00:00.000Z',
         updatedAt: '2026-09-14T10:00:00.000Z',
+        lockReason: null,
       });
       expect((response.data!.items[0] as any).passwordHash).toBeUndefined();
       expect(response.data!.pagination).toEqual({
@@ -112,6 +122,7 @@ describe('AdminUsersController', () => {
         status: 'ACTIVE',
         createdAt: '2026-09-14T10:00:00.000Z',
         updatedAt: '2026-09-14T10:00:00.000Z',
+        lockReason: null,
       });
       expect((response.data!.user as any).passwordHash).toBeUndefined();
     });
@@ -138,6 +149,9 @@ describe('AdminUsersController', () => {
         },
       );
       expect(response.data!.user.status).toBe('LOCKED');
+      // Plan 4.6: the reason of the latest lock, read back from the audit log.
+      expect(response.data!.user.lockReason).toBe('Spam khảo sát hàng loạt');
+      expect(mockUserAdminService.findLockReasons).toHaveBeenCalledTimes(1);
     });
   });
 

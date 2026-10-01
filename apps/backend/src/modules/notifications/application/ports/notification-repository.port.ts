@@ -30,6 +30,17 @@ export interface NotificationRepositoryPort {
    */
   createIfAbsent(record: CreateNotificationRecord): Promise<boolean>;
 
+  /**
+   * Story IR.4b B4: like `createIfAbsent`, and when (and only when) the row
+   * is created, also writes one `NotificationEmailRequested` Outbox event
+   * (`notification-email:{id}`, payload `{ schemaVersion, notificationId,
+   * userId, type }` only) in the same notifications-local transaction.
+   * Never joins a caller's ambient transaction.
+   */
+  createIfAbsentWithEmailRequest(
+    record: CreateNotificationRecord,
+  ): Promise<boolean>;
+
   /** Newest first. */
   listForUser(
     userId: string,

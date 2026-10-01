@@ -34,6 +34,8 @@ const PUBLISH_MESSAGES: Record<string, string> = {
   INSUFFICIENT_BALANCE: "Số điểm khả dụng không đủ để ký quỹ. Hãy nạp thêm điểm hoặc giảm số mẫu.",
   INSUFFICIENT_ESCROW_BALANCE: "Số điểm khả dụng không đủ để ký quỹ. Hãy nạp thêm điểm hoặc giảm số mẫu.",
   FORM_NOT_IN_DRAFT_STATUS: "Khảo sát này đã được gửi duyệt.",
+  // Story IR.2b: the deadline must be 1 h – 180 days ahead at save / publish.
+  FORM_DEADLINE_INVALID: "Hạn thu thập phải cách hiện tại ít nhất 1 giờ và không quá 180 ngày. Chọn lại hạn thu thập.",
   FORM_ALREADY_PUBLISHED: "Khảo sát này đã được đăng.",
   INVALID_FORM_DRAFT: "Form chưa hợp lệ để gửi duyệt. Hãy kiểm tra lại các câu hỏi.",
   VALIDATION_ERROR: "Thông tin gửi duyệt chưa hợp lệ.",

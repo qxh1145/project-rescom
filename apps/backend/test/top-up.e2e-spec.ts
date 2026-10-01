@@ -448,12 +448,25 @@ describe('Story 6.6: Point Top-Up Request & Admin Approval (e2e)', () => {
         .get('/notifications')
         .set('Cookie', otherRespondent.cookie)
         .expect(200);
+      // Story IR.4b B3: its own type (was WARNING), queued for email once.
       const warning = notifications.body.data.items.find(
         (item: { type: string; message: string }) =>
-          item.type === 'WARNING' &&
+          item.type === 'TOPUP_REJECTED' &&
           item.message.includes('Không tìm thấy giao dịch chuyển khoản'),
       );
       expect(warning).toBeDefined();
+      expect(
+        notificationRepo.outboxEvents.filter(
+          (event) =>
+            event.payload.userId === otherRespondent.id &&
+            event.payload.type === 'TOPUP_REJECTED',
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          eventType: 'NotificationEmailRequested',
+          idempotencyKey: `notification-email:${warning.id}`,
+        }),
+      ]);
 
       // A rejected request can no longer be approved.
       const conflict = await approve(admin, topUpId).expect(409);

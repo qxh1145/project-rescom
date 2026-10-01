@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { formTypeEnum, FormTypeEnum } from '../forms/form-draft.schema';
+import { formDeadlineAtSchema } from '../forms/form-topic.schema';
 
 export interface EscrowCostCalculationInput {
   type: FormTypeEnum;
@@ -124,6 +125,13 @@ export const reopenSurveySchema = z.object({
       MAX_EXPECTED_COMPLETIONS,
       'Additional completions cannot exceed 100,000',
     ),
+  /**
+   * Story IR.2b Q3: the new collection deadline (1 h – 180 d ahead) or null
+   * for none. Required when the survey's deadline has passed (a DEADLINE
+   * close, or an owner close after the deadline): otherwise the deadline job
+   * would close it again at once. Omitted = keep the current deadline.
+   */
+  deadlineAt: formDeadlineAtSchema.optional().nullable(),
 });
 
 export type ReopenSurveyDto = z.infer<typeof reopenSurveySchema>;

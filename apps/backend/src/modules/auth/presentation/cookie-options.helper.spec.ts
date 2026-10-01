@@ -13,6 +13,16 @@ import {
   OAUTH_INTENT_COOKIE_NAME,
 } from './cookie-options.helper';
 
+// Story IR.4b B-T4: production refuses to start without SMTP email.
+const PRODUCTION_EMAIL_ENV = {
+  EMAIL_DELIVERY_MODE: 'smtp',
+  EMAIL_FROM: 'Rescom <no-reply@rescom.io>',
+  EMAIL_APP_BASE_URL: 'https://app.rescom.io',
+  SMTP_HOST: 'smtp.example.com',
+  SMTP_USERNAME: 'smtp-user',
+  SMTP_PASSWORD: 'smtp-password',
+};
+
 describe('Cookie Options Helper (AC6)', () => {
   it('should generate cookie options with secure: false in development/test', () => {
     const envService = new EnvService({
@@ -51,6 +61,7 @@ describe('Cookie Options Helper (AC6)', () => {
       TOPUP_BANK_ACCOUNT_NUMBER: '1234567890',
       TOPUP_BANK_ACCOUNT_NAME: 'CONG TY RESCOM',
       PARTICIPATION_RATE_LIMIT_POLICY_VERSION: 'participation-rate-limit-v1',
+      ...PRODUCTION_EMAIL_ENV,
     });
 
     const options = getAuthCookieOptions(envService);
@@ -79,6 +90,7 @@ describe('Cookie Options Helper (AC6)', () => {
       TOPUP_BANK_ACCOUNT_NUMBER: '1234567890',
       TOPUP_BANK_ACCOUNT_NAME: 'CONG TY RESCOM',
       PARTICIPATION_RATE_LIMIT_POLICY_VERSION: 'participation-rate-limit-v1',
+      ...PRODUCTION_EMAIL_ENV,
     });
 
     const clearOptions = getAuthClearCookieOptions(envService);

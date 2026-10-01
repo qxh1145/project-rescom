@@ -100,6 +100,8 @@ export const PARTICIPATION_RATE_LIMITED_CODE = 'PARTICIPATION_RATE_LIMITED';
 export const participationRateLimitScopeSchema = z.enum([
   'COMPLETIONS',
   'ATTEMPT_START',
+  /** `POST /attempts/:attemptId/cancel`: its own burst bucket (review LOW-1). */
+  'ATTEMPT_CANCEL',
   'INTERNAL_SUBMISSION',
   'COMPLETION_CODE',
 ]);

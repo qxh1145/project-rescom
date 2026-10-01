@@ -1,3 +1,4 @@
+import { StorageQuestionFullException } from './exceptions/storage.exceptions';
 import { InitiateUploadInput, InitiateUploadResponse } from '@rescom/schemas';
 import { StorageService } from './storage.service';
 import { InMemoryStorageRepository } from '../infrastructure/in-memory-storage.repository';
@@ -757,6 +758,18 @@ describe('StorageService', () => {
       );
     });
 
+    it('refuses a full question with its own code and details (Phase 7)', async () => {
+      await initiate();
+      await expect(initiate({ fileName: 'second.pdf' })).rejects.toMatchObject({
+        code: 'STORAGE_QUESTION_FULL',
+        questionId: 'upload-1',
+        maxFiles: 1,
+      });
+      await expect(initiate({ fileName: 'second.pdf' })).rejects.toBeInstanceOf(
+        StorageQuestionFullException,
+      );
+    });
+
     it('does not count an outage object toward maxFiles', async () => {
       const init = await initiate();
       putPdf(init.storageKey, 1024);
@@ -861,6 +874,61 @@ describe('StorageService', () => {
         'REJECTED',
       );
       expect(logger.warn).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('listUploads (Phase 7 re-adopt)', () => {
+    it('lists the live uploads of the owner record, per question, oldest first', async () => {
+      const first = await initiate();
+      putPdf(first.storageKey, 1024);
+      await service.finalizeUpload(first.objectId);
+      const other = await initiate({ questionId: 'upload-2' });
+      const rejected = await initiate({
+        questionId: 'upload-3',
+        fileName: 'eicar.pdf',
+      });
+      putPdf(rejected.storageKey, 1024);
+      await service.finalizeUpload(rejected.objectId);
+
+      const all = await service.listUploads({
+        ownerContext: 'participation',
+        ownerRecordId: validRecordId,
+      });
+      expect(all.map((object) => [object.id, object.status])).toEqual([
+        [first.objectId, 'CLEAN'],
+        [other.objectId, 'INITIATED'],
+      ]);
+      const one = await service.listUploads({
+        ownerContext: 'participation',
+        ownerRecordId: validRecordId,
+        questionId: 'upload-2',
+      });
+      expect(one.map((object) => object.id)).toEqual([other.objectId]);
+    });
+
+    it('authorizes the read like status and download', async () => {
+      const authorize = jest.fn().mockResolvedValue(undefined);
+      const guarded = new StorageService(
+        repository,
+        objectStorage,
+        malwareScanner,
+        {
+          authorize,
+          resolveUploadPolicy: jest.fn(),
+        },
+      );
+      await guarded.listUploads(
+        { ownerContext: 'participation', ownerRecordId: validRecordId },
+        'user-1',
+        'cap',
+      );
+      expect(authorize).toHaveBeenCalledWith(
+        'participation',
+        validRecordId,
+        'user-1',
+        'cap',
+        'read',
+      );
     });
   });
 

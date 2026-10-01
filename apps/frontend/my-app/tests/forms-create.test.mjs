@@ -5,14 +5,14 @@ const wizard = await import("../lib/forms/create-wizard.ts");
 const storage = await import("../lib/forms/create-storage.ts");
 const messages = await import("../lib/forms/create-messages.ts");
 const { ApiError } = await import("../lib/api/api-error.ts");
-const { createExternalSurveySchema, surveyTargetingSchema } = await import("@rescom/schemas");
+const { createExternalSurveySchema, surveyTargetingSchema, FORM_TOPICS, FORM_TOPIC_SEARCH_TERMS } = await import("@rescom/schemas");
 
 function draft(overrides = {}) {
   return {
     ...wizard.emptyWizardDraft(),
     externalUrl: "https://forms.gle/Qm8xYt2hLpR",
     title: "Hành vi tiêu dùng của sinh viên Marketing",
-    topic: "Marketing",
+    topic: "MARKETING",
     description: "Khảo sát phục vụ đồ án tốt nghiệp ngành Marketing.",
     durationBand: "FROM_5_TO_10",
     ageMin: "18",
@@ -177,8 +177,15 @@ test("Google Forms wizard · request and storage", async (t) => {
     assert.equal(body.rewardPerResponse, 10);
     assert.equal(body.expectedCompletions, 10);
     assert.equal(createExternalSurveySchema.safeParse(body).success, true);
-    assert.equal("topic" in body, false);
+    // Plan 2.2 / Story IR.2b: the topic and the collection deadline are sent.
+    assert.equal(body.topic, "MARKETING");
+    assert.equal(typeof body.deadlineAt, "string");
     assert.equal("collectionDays" in body, false);
+    // The deadline is the end of the day shown by the label (Asia/Ho_Chi_Minh).
+    const fixed = wizard.toCreateRequest(draft(), new Date("2026-09-26T03:00:00Z"));
+    assert.equal(fixed.deadlineAt, "2026-10-10T16:59:59.999Z");
+    assert.equal(wizard.toCreateRequest(draft(), new Date("2026-09-26T16:59:00Z")).deadlineAt, fixed.deadlineAt);
+    assert.equal(wizard.toCreateRequest(draft({ topic: "" })).topic, null);
     assert.equal("schools" in body.targetingJson, false);
     assert.equal(wizard.toCreateRequest(draft({ rewardPerResponse: "99" })), null);
   });
@@ -187,6 +194,32 @@ test("Google Forms wizard · request and storage", async (t) => {
     const local = memoryStorage();
     storage.saveWizardDraft(local, "u1", draft({ school: "Trường Đại học FPT – Đà Nẵng" }));
     assert.equal(storage.loadWizardDraft(local, "u1").school, "");
+  });
+
+  await t.test("topics: shared values, Vietnamese labels, legacy drafts (plan 2.2)", () => {
+    for (const option of wizard.TOPIC_OPTIONS) {
+      assert.equal(FORM_TOPIC_SEARCH_TERMS[option.value][0], option.label);
+    }
+    assert.deepEqual(
+      wizard.TOPIC_OPTIONS.map((option) => option.value),
+      [...FORM_TOPICS],
+    );
+    assert.equal(wizard.topicLabel("IT"), "Công nghệ thông tin");
+    assert.equal(wizard.topicLabel(null), null);
+    const local = memoryStorage();
+    local.setItem("rescom:create-gform-draft:legacy", JSON.stringify({ ...draft(), topic: "Kinh tế" }));
+    assert.equal(storage.loadWizardDraft(local, "legacy").topic, "BUSINESS");
+    assert.equal(
+      wizard.wizardDraftFromSurvey({
+        type: "EXTERNAL",
+        title: "T",
+        rewardPerResponse: 10,
+        expectedCompletions: 5,
+        topic: "HEALTH",
+        currentVersion: { externalUrl: "https://forms.gle/x" },
+      }).topic,
+      "HEALTH",
+    );
   });
 
   await t.test("draft round-trips per user and ignores stale shapes", () => {
@@ -253,9 +286,29 @@ test("Google Forms wizard · Idempotency-Key per draft (decision C6 a)", async (
     assert.equal(messages.keepsIdempotencyKey(new ApiError({ kind: "malformed", status: 201, message: "x" })), true);
     assert.equal(messages.keepsIdempotencyKey(http(null, 502)), true);
     assert.equal(messages.keepsIdempotencyKey(http("RATE_LIMITED", 429)), true);
-    for (const [code, status] of [["VALIDATION_ERROR", 400], ["INSUFFICIENT_ESCROW_BALANCE", 409], ["IDEMPOTENCY_KEY_CONFLICT", 409], ["SURVEY_DURATION_EXCEEDS_RESERVATION", 422]]) {
+    for (const [code, status] of [["VALIDATION_ERROR", 400], ["INSUFFICIENT_ESCROW_BALANCE", 409], ["SURVEY_DURATION_EXCEEDS_RESERVATION", 422]]) {
       assert.equal(messages.keepsIdempotencyKey(http(code, status)), false, code);
     }
+    // Review MEDIUM-4: a conflict keeps the key (the survey may exist).
+    assert.equal(messages.keepsIdempotencyKey(http("IDEMPOTENCY_KEY_CONFLICT", 409)), true);
+    assert.match(messages.createSurveyErrorMessage(http("IDEMPOTENCY_KEY_CONFLICT", 409)), /danh sách khảo sát của bạn/);
+  });
+
+  await t.test("review MEDIUM-4: a retry after midnight resends the deadline of the first submit", () => {
+    const local = memoryStorage();
+    const day1 = new Date("2026-10-01T16:50:00Z"); // 23:50 in Vietnam
+    const day2 = new Date("2026-10-01T17:10:00Z"); // 00:10 the next day
+    const first = storage.wizardSubmitDeadline(local, "u1", 14, () => wizard.collectionDeadlineAt(14, day1));
+    const retry = storage.wizardSubmitDeadline(local, "u1", 14, () => wizard.collectionDeadlineAt(14, day2));
+    assert.equal(retry, first);
+    assert.notEqual(wizard.collectionDeadlineAt(14, day2), first);
+    // A changed "Hạn thu thập" is recomputed; clearing the key forgets it.
+    assert.notEqual(storage.wizardSubmitDeadline(local, "u1", 7, () => wizard.collectionDeadlineAt(7, day2)), first);
+    storage.clearWizardIdempotencyKey(local, "u1");
+    assert.equal(
+      storage.wizardSubmitDeadline(local, "u1", 7, () => wizard.collectionDeadlineAt(7, day2)),
+      wizard.collectionDeadlineAt(7, day2),
+    );
   });
 
   await t.test("a key reused with another body reads as a possible duplicate", () => {
@@ -369,5 +422,43 @@ test("Google Forms wizard · Sửa & gửi lại prefill (?from=<id>)", async (t
     assert.match(messages.prefillErrorMessage(http("FORM_FORBIDDEN", 403)), /tài khoản khác/);
     assert.match(messages.prefillErrorMessage(http("FORM_NOT_FOUND", 404)), /Không tìm thấy/);
     assert.match(messages.PREFILL_MESSAGES.filled("A"), /“A”/);
+  });
+});
+
+test("Google Forms wizard · audience estimate contract (plan 5.5, VERIFIED)", async (t) => {
+  const { estimateAudience } = await import("../lib/forms/create-service.ts");
+  const { audienceEstimateInputSchema, audienceEstimateSchema, toAudienceEstimate } = await import("@rescom/schemas");
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+  let sent = null;
+  globalThis.fetch = async (url, init) => {
+    if (String(url) === "/api/auth/csrf") return json(200, { data: { csrfToken: "csrf" } });
+    sent = { url: String(url), init };
+    return json(200, { data: toAudienceEstimate(6), error: null, meta: {} });
+  };
+
+  await t.test("sends the strict backend targeting (never the UI-only school) with CSRF", async () => {
+    const result = await estimateAudience({ ageRange: { min: 18, max: 22 }, locations: ["Hà Nội"], schools: ["FPT"] });
+    assert.equal(sent.url, "/api/forms/audience-estimate");
+    assert.equal(sent.init.method, "POST");
+    assert.ok(sent.init.headers["X-CSRF-Token"], "the CSRF token is sent");
+    const body = JSON.parse(sent.init.body);
+    assert.deepEqual(body, { targeting: { ageRange: { min: 18, max: 22 }, locations: ["Hà Nội"] } });
+    assert.equal(audienceEstimateInputSchema.safeParse(body).success, true);
+    // A group under the minimum comes back without a number (k-anonymity).
+    assert.deepEqual(result, { estimatedRespondents: null, minimumReportable: 10 });
+  });
+
+  await t.test("a response outside the shared schema is rejected as malformed", async () => {
+    globalThis.fetch = async (url) =>
+      String(url) === "/api/auth/csrf"
+        ? json(200, { data: { csrfToken: "csrf" } })
+        : json(200, { data: { estimatedRespondents: 7 }, error: null, meta: {} });
+    await assert.rejects(estimateAudience({}), (error) => error.kind === "malformed");
+    assert.equal(audienceEstimateSchema.safeParse({ estimatedRespondents: 7 }).success, false);
   });
 });

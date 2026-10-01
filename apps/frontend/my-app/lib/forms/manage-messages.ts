@@ -1,6 +1,6 @@
 import type { SurveyFeedbackIssueTag } from "@rescom/schemas";
 import { isApiError } from "../api/api-error.ts";
-import type { DisputeReason } from "./manage-service.ts";
+import type { DisputeReason } from "./dispute-service.ts";
 import type { ReopenRefusal } from "./manage-status.ts";
 
 /**
@@ -31,6 +31,9 @@ export function progressErrorMessage(error: unknown): string {
 const ACTION_MESSAGES: Record<string, string> = {
   FORM_ALREADY_CLOSED: "Khảo sát đã kết thúc trước đó.",
   FORM_NOT_REOPENABLE: "Khảo sát này không mở lại được.",
+  // Story IR.2b: reopening after the deadline needs a new one (or none).
+  FORM_DEADLINE_REQUIRED: "Hạn thu thập đã qua. Chọn hạn mới (hoặc không giới hạn) để mở lại.",
+  FORM_DEADLINE_INVALID: "Hạn thu thập phải cách hiện tại ít nhất 1 giờ và không quá 180 ngày.",
   FORM_EDIT_CONFLICT: "Khảo sát vừa thay đổi ở nơi khác. Tải lại trang rồi thử lại.",
   FORM_FORBIDDEN: "Chỉ người tạo khảo sát mới làm được thao tác này.",
   FORM_NOT_FOUND: "Không tìm thấy khảo sát này.",
@@ -57,6 +60,8 @@ export function reopenRefusalMessage(reason: ReopenRefusal | null | undefined): 
       return "Khảo sát bị Admin gỡ hoặc từ chối nên không mở lại được.";
     case "VERSION_NOT_APPROVED":
       return "Phiên bản hiện tại chưa được Admin duyệt nên chưa mở lại được. Gửi duyệt phiên bản này trước.";
+    case "SAMPLE_TARGET_REACHED":
+      return "Khảo sát đã tự đóng khi đủ mẫu nên không mở lại được. Hãy tạo khảo sát mới nếu cần thêm câu trả lời.";
     case "NOT_CLOSED":
       return "Chỉ khảo sát đã kết thúc mới mở lại thêm mẫu được.";
     default:
@@ -77,7 +82,9 @@ export function formActionErrorMessage(error: unknown, fallback: string): string
   if (error.status === 429) return "Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút.";
   if (error.code === "FORM_NOT_REOPENABLE") {
     const reason = detailsReason(error.details);
-    return reason === "CLOSED_BY_ADMIN_OR_MODERATION" || reason === "VERSION_NOT_APPROVED"
+    return reason === "CLOSED_BY_ADMIN_OR_MODERATION" ||
+      reason === "VERSION_NOT_APPROVED" ||
+      reason === "SAMPLE_TARGET_REACHED"
       ? reopenRefusalMessage(reason)
       : ACTION_MESSAGES.FORM_NOT_REOPENABLE;
   }

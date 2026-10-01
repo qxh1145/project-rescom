@@ -1,0 +1,10 @@
+{
+  "availability": "NOT_APPLICABLE",
+  "reason": "EXTERNAL_FORM",
+  "form": {
+    "id": "5b1d7c2e-3f4a-4b6c-8d9e-0f1a2b3c4d02",
+    "title": "Thói quen đọc sách",
+    "type": "EXTERNAL",
+    "externalUrl": "https://docs.google.com/forms/d/e/1FAIpQLSf-example/viewform"
+  }
+}

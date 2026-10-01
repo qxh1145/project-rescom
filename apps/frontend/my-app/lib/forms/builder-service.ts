@@ -1,4 +1,5 @@
 import {
+  formTopicEnum,
   formStatusEnum,
   formTypeEnum,
   parseFormDefinitionDraft,
@@ -9,9 +10,11 @@ import { z } from "zod";
 import { apiRequest } from "../api/client.ts";
 import {
   aiConversationSchema,
+  aiNewChatSchema,
   aiSuggestedBlockSchema,
   type AiConversation,
   type AiMessageInput,
+  type AiNewChat,
   type AiSuggestedBlock,
 } from "./builder-ai.ts";
 import { emptyDoc, normalizeDoc, toDraftDefinition, UNTITLED_FORM, type BuilderDoc, type BuilderSection } from "./builder-blocks.ts";
@@ -43,6 +46,9 @@ export const builderFormSchema = z
     rewardPerResponse: z.number().int(),
     expectedCompletions: z.number().int(),
     estimatedDurationMinutes: z.number().int().nullable().optional(),
+    /** Plan 2.2 / Story IR.2b (`FormDetailDto`). */
+    topic: formTopicEnum.nullable().optional(),
+    deadlineAt: z.string().nullable().optional(),
     currentVersion: z
       .object({
         versionNumber: z.number().int(),
@@ -113,12 +119,18 @@ export function draftPayloadOf(doc: BuilderDoc): DraftPayload {
 }
 
 /** `title` names the draft (e.g. from the first AI prompt); blank → "Khảo sát chưa có tên". */
-export function createBuilderDraft({ title, signal }: { title?: string; signal?: AbortSignal } = {}): Promise<BuilderForm> {
+/** With `idempotencyKey`, a retry after a lost response returns the same draft (never a second one). */
+export function createBuilderDraft({
+  title,
+  signal,
+  idempotencyKey,
+}: { title?: string; signal?: AbortSignal; idempotencyKey?: string } = {}): Promise<BuilderForm> {
   return apiRequest("/forms", {
     method: "POST",
     body: { title: title?.trim() || UNTITLED_FORM, type: "INTERNAL" },
     schema: builderFormSchema,
     signal,
+    ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}),
   });
 }
 
@@ -128,7 +140,13 @@ export function getBuilderForm(formId: string, signal?: AbortSignal): Promise<Bu
 
 export function saveBuilderDraft(
   formId: string,
-  payload: DraftPayload & Partial<Pick<UpdateFormDraftInput, "rewardPerResponse" | "expectedCompletions" | "estimatedDurationMinutes" | "targetingJson">>,
+  payload: DraftPayload &
+    Partial<
+      Pick<
+        UpdateFormDraftInput,
+        "rewardPerResponse" | "expectedCompletions" | "estimatedDurationMinutes" | "targetingJson" | "topic" | "deadlineAt"
+      >
+    >,
   clientUpdatedAt: string,
 ): Promise<BuilderForm> {
   return apiRequest(`/forms/${encodeURIComponent(formId)}/draft`, {
@@ -167,6 +185,25 @@ export function sendAiMessage(formId: string, input: AiMessageInput, signal?: Ab
     body: input,
     schema: aiConversationSchema,
     signal,
+  });
+}
+
+/** First prompt of a new chat: no draft is created for it (see `ai-new-chat.ts`). */
+export function startAiChat(input: AiMessageInput, signal?: AbortSignal): Promise<AiNewChat> {
+  return apiRequest("/forms/ai/messages", {
+    method: "POST",
+    body: input,
+    schema: aiNewChatSchema,
+    signal,
+  });
+}
+
+/** Attaches the new chat's conversation to the draft created after its first answer. */
+export function adoptAiConversation(formId: string, conversationId: string): Promise<AiConversation> {
+  return apiRequest(`/forms/${encodeURIComponent(formId)}/ai/conversation`, {
+    method: "POST",
+    body: { conversationId },
+    schema: aiConversationSchema,
   });
 }
 

@@ -244,12 +244,16 @@ export function toHistoryRows(transactions: readonly WalletTransaction[], now: D
     const magnitude = Math.max(received, spent);
     // Status pill = where the points went; spending with no user-side destination
     // (expiry, a publisher's payout) shows the account they left.
-    const bucket = (largest(positive) ?? largest(negative) ?? first).accountClass;
+    let bucket = (largest(positive) ?? largest(negative) ?? first).accountClass;
     const payout = kind === "SURVEY_REWARD" && direction === "out";
 
     let pendingHoursLeft: number | null = null;
     let pendingDue = false;
     const attemptId = attemptKeyOf(first.idempotencyKey, "external-completion:");
+    // A released pending reward now sits in Khả dụng (its `release-pending:` journal moved it).
+    if (bucket === "PENDING" && attemptId && released.has(attemptId) && !reversed.has(journalId)) {
+      bucket = "USER_AVAILABLE";
+    }
     if (
       kind === "SURVEY_REWARD" &&
       bucket === "PENDING" &&

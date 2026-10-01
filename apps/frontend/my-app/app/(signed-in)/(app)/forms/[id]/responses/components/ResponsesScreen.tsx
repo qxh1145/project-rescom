@@ -4,18 +4,18 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
-import { GOOGLE_FORMS_ANSWERS_NOTE, REVIEW_DISCLAIMER, responsesLoadErrorMessage } from "@/lib/forms/results-messages";
-import type { FormResponse, FormResponses } from "@/lib/forms/results-service";
+import {
+  GOOGLE_FORMS_ANSWERS_NOTE,
+  RESPONSES_TRUNCATED_NOTE,
+  responsesLoadErrorMessage,
+} from "@/lib/forms/results-messages";
+import type { AvailableFormResponses, FormResponse } from "@/lib/forms/results-service";
 import {
   filterResponses,
-  MOBILE_INITIAL_COUNT,
   paginate,
   parsePage,
-  parseQualityFilter,
-  qualityCounts,
   responseLabel,
   responsePosition,
-  type QualityFilter,
   type ResponsePosition,
 } from "@/lib/forms/results-view";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -23,7 +23,7 @@ import { useResponses } from "../hooks/responses-context";
 import { ResponseAnswers, ResponseMeta } from "./ResponseAnswers";
 import { ResponseCards, ResponseDetailMobile } from "./ResponsesMobile";
 import { ResponsesTable } from "./ResponsesTable";
-import { ColumnPicker, QualityChips, QualitySegments, SearchBox } from "./ResponsesToolbar";
+import { ColumnPicker, SearchBox } from "./ResponsesToolbar";
 import { ResultsEmpty, ResultsError, ResultsLoading } from "./ResultsStatus";
 
 const MOBILE_STEP = 20;
@@ -63,7 +63,7 @@ function ResponseAside({
   position,
   hrefFor,
 }: {
-  data: FormResponses;
+  data: AvailableFormResponses;
   response: FormResponse;
   position: ResponsePosition;
   hrefFor: (response: FormResponse) => string;
@@ -89,9 +89,9 @@ function ResponseAside({
 }
 
 /**
- * Figma 10d "Câu trả lời" + 10d' "Chi tiết một câu trả lời". Filters live in
- * the URL (`?quality=passed|review&q=…&page=2&v=1`) so a row link and the
- * back link keep them. Desktop: table + side panel (the first row of the page
+ * Figma 10d "Câu trả lời" + 10d' "Chi tiết một câu trả lời". Search and page
+ * live in the URL (`?q=…&page=2&v=1`) so a row link and the back link keep
+ * them; a legacy `?quality=` is ignored (responses are never graded, R8). Desktop: table + side panel (the first row of the page
  * when none is open — ASSUMED). Mobile: cards, or the detail page.
  */
 export function ResponsesScreen({ selectedId }: { selectedId: string | null }) {
@@ -100,7 +100,6 @@ export function ResponsesScreen({ selectedId }: { selectedId: string | null }) {
   const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams();
-  const quality = parseQualityFilter(search.get("quality"));
   const requestedPage = parsePage(search.get("page"));
   const urlQuery = search.get("q") ?? "";
   const [query, setQuery] = useState(urlQuery);
@@ -129,19 +128,14 @@ export function ResponsesScreen({ selectedId }: { selectedId: string | null }) {
     if (debouncedQuery.trim() !== urlQuery.trim()) updateUrl({ q: debouncedQuery.trim() || null, page: null });
   }, [debouncedQuery, urlQuery, updateUrl]);
 
-  const setQuality = (value: QualityFilter) => {
-    setMobileVisible(MOBILE_INITIAL_COUNT);
-    updateUrl({ quality: value === "all" ? null : value, page: null });
-  };
-
-  const questions = useMemo(() => data?.questions ?? [], [data]);
+  const available = data?.availability === "AVAILABLE" ? data : null;
+  const questions = useMemo(() => available?.questions ?? [], [available]);
   const columns = useMemo(() => questions.filter((question) => columnIds.includes(question.id)), [questions, columnIds]);
   const filtered = useMemo(
-    () => (data ? filterResponses(data.responses, questions, { quality, query: urlQuery }) : []),
-    [data, questions, quality, urlQuery],
+    () => (available ? filterResponses(available.responses, questions, { query: urlQuery }) : []),
+    [available, questions, urlQuery],
   );
   const page = useMemo(() => paginate(filtered, requestedPage), [filtered, requestedPage]);
-  const counts = useMemo(() => qualityCounts(data?.responses ?? []), [data]);
 
   if (error && !data) {
     return (
@@ -158,6 +152,31 @@ export function ResponsesScreen({ selectedId }: { selectedId: string | null }) {
     );
   }
 
+  if (data.availability === "NOT_APPLICABLE") {
+    return (
+      <div className="mx-auto w-full max-w-[1440px] px-5 pt-4 pb-8 lg:px-12 lg:pt-5 lg:pb-12">
+        <ResultsEmpty
+          title="Câu trả lời nằm trong Google Forms"
+          action={
+            data.form.externalUrl ? (
+              <a
+                href={data.form.externalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 font-bold text-primary hover:underline"
+              >
+                Mở Google Forms
+                <Icon name="external-link" size={16} />
+              </a>
+            ) : undefined
+          }
+        >
+          {GOOGLE_FORMS_ANSWERS_NOTE}
+        </ResultsEmpty>
+      </div>
+    );
+  }
+
   const selected = selectedId ? (data.responses.find((response) => response.id === selectedId) ?? null) : null;
   const shownInAside = selectedId ? selected : (page.items[0] ?? null);
   const position = shownInAside ? responsePosition(data.responses, shownInAside.id) : null;
@@ -167,8 +186,7 @@ export function ResponsesScreen({ selectedId }: { selectedId: string | null }) {
     return (
       <div className="mx-auto w-full max-w-[1440px] px-5 pt-4 pb-8 lg:px-12 lg:pt-5 lg:pb-12">
         <ResultsEmpty title="Chưa có câu trả lời nào">
-          Khi có người hoàn thành khảo sát (phiên bản v{data.form.versionNumber}), câu trả lời sẽ hiện ở đây kèm đánh giá
-          chất lượng.
+          Khi có người hoàn thành khảo sát (phiên bản v{data.form.versionNumber}), câu trả lời sẽ hiện ở đây.
         </ResultsEmpty>
       </div>
     );
@@ -208,13 +226,12 @@ export function ResponsesScreen({ selectedId }: { selectedId: string | null }) {
         {/* Mobile list (10d mobile). */}
         <div className="flex flex-col gap-3 lg:hidden">
           <SearchBox size="mobile" value={query} onChange={setQuery} />
-          <QualityChips value={quality} counts={counts} onChange={setQuality} />
+          {data.truncated ? <p className="text-caption text-tone-amber-fg">{RESPONSES_TRUNCATED_NOTE}</p> : null}
           <p className="text-caption text-ink-muted">
             Mới nhất trước{questionCount ? ` · chạm để xem đủ ${questionCount} câu` : ""}
           </p>
           {filtered.length ? (
             <ResponseCards
-              data={data}
               responses={filtered}
               columns={columns}
               hrefFor={hrefFor}
@@ -234,7 +251,7 @@ export function ResponsesScreen({ selectedId }: { selectedId: string | null }) {
           >
             <div className="flex flex-wrap items-center gap-3">
               <SearchBox size="desktop" value={query} onChange={setQuery} />
-              <QualitySegments value={quality} counts={counts} onChange={setQuality} />
+              {data.truncated ? <p className="text-caption text-tone-amber-fg">{RESPONSES_TRUNCATED_NOTE}</p> : null}
               {questionCount ? (
                 <div className="ml-auto">
                   <ColumnPicker questions={questions} columnIds={columnIds} onChange={setColumnIds} />
@@ -243,7 +260,6 @@ export function ResponsesScreen({ selectedId }: { selectedId: string | null }) {
             </div>
             {page.total ? (
               <ResponsesTable
-                data={data}
                 page={page}
                 columns={columns}
                 selectedId={shownInAside?.id ?? null}
@@ -253,12 +269,12 @@ export function ResponsesScreen({ selectedId }: { selectedId: string | null }) {
             ) : (
               <p className="py-10 text-center text-body-sm text-ink-muted">Không có câu trả lời phù hợp.</p>
             )}
-            <p className="text-[12px] leading-[18px] text-ink-muted">
-              {questionCount
-                ? `Bảng đang hiện ${columns.length} trong ${questionCount} câu hỏi. Chọn một dòng để xem đủ, hoặc xuất file để có tất cả câu hỏi. `
-                : `${GOOGLE_FORMS_ANSWERS_NOTE} `}
-              {REVIEW_DISCLAIMER}
-            </p>
+            {questionCount ? (
+              <p className="text-[12px] leading-[18px] text-ink-muted">
+                Bảng đang hiện {columns.length} trong {questionCount} câu hỏi. Chọn một dòng để xem đủ, hoặc xuất file để
+                có tất cả câu hỏi.
+              </p>
+            ) : null}
           </section>
           {shownInAside && position ? (
             <ResponseAside data={data} response={shownInAside} position={position} hrefFor={hrefFor} />

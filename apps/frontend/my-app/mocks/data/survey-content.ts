@@ -1,4 +1,4 @@
-import { formBlockSchema, type FormBlock, type FormBlockInput } from "@rescom/schemas";
+import { formBlockSchema, toRespondentFormBlocks, type FormBlock, type FormBlockInput } from "@rescom/schemas";
 import { GROUP_STUDY_BLOCKS, GROUP_STUDY_EFFORT_SECONDS } from "./form-analytics-seed";
 import { findFormDraft } from "./form-drafts";
 import { SURVEY_IDS, type MockSurvey } from "./surveys";
@@ -8,7 +8,8 @@ import { SURVEY_IDS, type MockSurvey } from "./surveys";
  * "Hành vi mua sắm online…" follows Figma 4 (62:158): 8 questions in 3
  * sections, Q3 radio and Q4 1–5 scale are the drawn ones; the rest is
  * plausible content. Blocks are validated with the shared `formBlockSchema`.
- * `sections` is the ASSUMED contract field (see `lib/participation/survey-form-service.ts`).
+ * `sections` is the optional `formSectionSchema` list of the stored definition
+ * (served with the attempt's pinned form, `pinnedFormOf`).
  */
 export interface MockSurveySection {
   id: string;
@@ -179,10 +180,21 @@ const librarySatisfaction = define(
       maxLength: 200,
       placeholder: "Ví dụ: thêm ổ cắm điện",
     },
+    {
+      // Phase 7: exercises the runner's upload flow (`mocks/handlers/storage.ts`).
+      id: "lib-q6",
+      order: 5,
+      type: "file_upload",
+      title: "Ảnh chụp góc học tập bạn thích ở thư viện (không bắt buộc)",
+      required: false,
+      maxFileSizeMb: 5,
+      allowedMimeTypes: ["image/png", "image/jpeg", "application/pdf"],
+      maxFiles: 2,
+    },
   ],
   [
     { id: "lib-s1", title: "Sử dụng thư viện", blockIds: ["lib-q1", "lib-q2"] },
-    { id: "lib-s2", title: "Mức độ hài lòng", blockIds: ["lib-q3", "lib-q4", "lib-q5"] },
+    { id: "lib-s2", title: "Mức độ hài lòng", blockIds: ["lib-q3", "lib-q4", "lib-q5", "lib-q6"] },
   ],
   { expectedEffortSeconds: 3 * 60, minTimeBarrierSeconds: 10 },
 );
@@ -485,8 +497,8 @@ const CONTENT: Record<string, MockSurveyContent> = {
 
 /**
  * Seeded content, else the definition of a survey made in the Form Builder
- * (`formDrafts`): once the Admin approves it, respondents open it through
- * `GET /public/forms/:id` like any seeded survey.
+ * (`formDrafts`): once the Admin approves it, respondents take it like any
+ * seeded survey.
  */
 export function surveyContentOf(surveyId: string): MockSurveyContent | undefined {
   const seeded = CONTENT[surveyId];
@@ -507,7 +519,15 @@ export function surveyContentOf(surveyId: string): MockSurveyContent | undefined
   };
 }
 
-/** `GET /public/forms/:id` payload (`publicFormDetailsSchema` + ASSUMED `sections`). */
+const MOCK_FORM_SETTINGS = {
+  shuffleBlocks: false,
+  progressBar: true,
+  requireAuth: false,
+  allowPublicAccess: true,
+  submitButtonText: "Nộp bài",
+};
+
+/** `GET /public/forms/:id` payload (`publicFormDetailsSchema`, guest route `/f/:id`). */
 export function publicFormOf(survey: MockSurvey, content: MockSurveyContent) {
   return {
     id: survey.id,
@@ -515,17 +535,37 @@ export function publicFormOf(survey: MockSurvey, content: MockSurveyContent) {
     description: survey.description,
     type: "INTERNAL" as const,
     versionNumber: survey.versionNumber,
-    blocks: content.blocks,
-    settings: {
-      shuffleBlocks: false,
-      progressBar: true,
-      requireAuth: false,
-      allowPublicAccess: true,
-      submitButtonText: "Nộp bài",
-    },
+    // Respondent projection (review MEDIUM-1): no `integrity`, like the backend.
+    blocks: toRespondentFormBlocks(content.blocks),
+    settings: MOCK_FORM_SETTINGS,
     metadata: content.metadata,
-    publicUrl: `/forms/${survey.id}/respond`,
+    // Same as `PublicFormsService.getPublicForm`: the guest route `/f/:id`.
+    publicUrl: `/f/${survey.id}`,
     publishedAt: survey.publishedAt,
     sections: content.sections,
+  };
+}
+
+/**
+ * `form` of `GET /attempts/:id` (`attemptPinnedFormSchema`). The mock keeps
+ * one definition per survey, so the current content stands in for the
+ * version the attempt is pinned to.
+ */
+export function pinnedFormOf(
+  survey: MockSurvey,
+  content: MockSurveyContent,
+  pinned: { formVersionId: string; versionNumber: number },
+) {
+  return {
+    formVersionId: pinned.formVersionId,
+    versionNumber: pinned.versionNumber,
+    title: survey.title,
+    description: survey.description,
+    // Respondent projection (review MEDIUM-1): no `integrity`, like the backend.
+    blocks: toRespondentFormBlocks(content.blocks),
+    sections: content.sections,
+    settings: MOCK_FORM_SETTINGS,
+    metadata: content.metadata,
+    publishedAt: survey.publishedAt,
   };
 }

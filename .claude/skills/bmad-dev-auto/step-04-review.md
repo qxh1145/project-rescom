@@ -8,7 +8,7 @@ deferred_work_file: '{implementation_artifacts}/deferred-work.md'
 
 - YOU MUST ALWAYS SPEAK OUTPUT in your Agent communication style with the config `{communication_language}`
 - No human interaction: do not ask questions or wait for approval in this step.
-- All review subagents must run at the same model capability as the current session.
+- Use `model="sonnet"` explicitly for routine review subagents, regardless of the main session model. Reserve `model="opus"` for a specifically identified architecture, security, or difficult reasoning question. The lead schedules reviewers; reviewers must not spawn nested agents.
 
 ## INSTRUCTIONS
 
@@ -22,7 +22,7 @@ Do NOT `git add` anything — this is read-only inspection.
 
 ### Review
 
-Launch Blind Hunter and Edge Case Hunter in parallel without prior conversation context.
+The lead launches Blind Hunter and Edge Case Hunter without prior conversation context, with at most two active subagents across the session. This is the independent review pass; do not add a duplicate OMC approval pass.
 
 - **Blind Hunter** — prompt:
   > Invoke the `bmad-review-adversarial-general` skill on this diff:
@@ -64,7 +64,7 @@ Launch Blind Hunter and Edge Case Hunter in parallel without prior conversation 
    - addressed_findings:
      - none
    ```
-5. Process findings in cascading order. If intent_gap exists, lower findings are moot; follow the intent_gap branch below. If bad_spec exists, lower findings are moot since code will be re-derived. If neither exists, process patch and defer normally. Before each bad_spec loopback, read `{spec_file}` frontmatter `review_loop_iteration` (missing means `0`), increment it by 1, and write it back. If it exceeds 5, append the triage-log entry for this pass with `addressed_findings: none`, then HALT with status `blocked` and blocking condition `review repair loop exceeded 5 iterations (non-convergence)`.
+5. Process findings in cascading order. If intent_gap exists, lower findings are moot; follow the intent_gap branch below. If bad_spec exists, lower findings are moot since code will be re-derived. If neither exists, process patch and defer normally. Before each bad_spec loopback, read `{spec_file}` frontmatter `review_loop_iteration` (missing means `0`), increment it by 1, and write it back. If it exceeds 2, append the triage-log entry for this pass with `addressed_findings: none`, then HALT with status `blocked` and blocking condition `review repair loop exceeded 2 iterations (non-convergence)`.
    - **intent_gap** — Root cause is inside `<intent-contract>`. Revert code changes. Append the triage-log entry for this pass with `addressed_findings: none`, then HALT with status `blocked`, blocking condition `intent gap in intent contract`, and include the intent-gap findings.
    - **bad_spec** — Root cause is outside `<intent-contract>`. Do not modify content inside `<intent-contract>`. Before reverting code: extract KEEP instructions for positive preservation (what worked well and must survive re-derivation). Revert code changes. Read the `## Spec Change Log` in `{spec_file}` and strictly respect all logged constraints when amending the sections outside `<intent-contract>` that contain the root cause. Append a new change-log entry recording: the triggering finding, what was amended, the known-bad state avoided, and the KEEP instructions. Append the triage-log entry for this pass, listing every bad_spec finding that triggered the spec amendment and implementation loopback under `addressed_findings`. Read fully and follow `./step-03-implement.md` to re-derive the code, then this step will run again.
    - **patch** — Auto-fix. These are the only findings that survive loopbacks. After auto-fixing, append the triage-log entry for this pass, listing every patch fixed in this pass under `addressed_findings`.

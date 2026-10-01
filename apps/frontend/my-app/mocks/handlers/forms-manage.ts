@@ -1,14 +1,20 @@
 import {
+  countIntoProgressWindow,
   escrowDrawPerCompletion,
   EXTERNAL_COMPLETION_REVIEW_HOURS,
   listFormsQuerySchema,
   MAX_EXPECTED_COMPLETIONS,
+  publisherProgressQuerySchema,
+  publisherProgressSchema,
+  publisherProgressWindow,
   RESERVATION_EXPIRY_MS,
   reopenSurveySchema,
+  checkFormDeadline,
+  toCompletionsSeries,
 } from "@rescom/schemas";
 import { http, type RequestHandler } from "msw";
 import { z } from "zod";
-import { apiUrl } from "@/lib/api/config";
+import { apiUrl, isHybridMocking } from "@/lib/api/config";
 import { reopenRefusalOf } from "@/lib/forms/manage-status";
 import { activeReservationCount } from "../data/attempts";
 import { refundSurveyEscrow, reserveSurveyEscrow } from "../data/economy";
@@ -16,10 +22,11 @@ import { ensureDemoRunningForm, findFormDraft, formDrafts, nextUpdatedAt, saveFo
 import { ensureFormActivity } from "../data/form-activity";
 import { versionsOf } from "../data/form-versions";
 import { findPublisherForm, publisherForms, updatePublisherForm, type MockPublisherForm } from "../data/forms";
-import { trackingOf, updateTracking, type OpensRange } from "../data/forms-manage";
+import { formResponses } from "../data/form-responses";
+import { trackingOf, updateTracking } from "../data/forms-manage";
 import { findSurvey, updateSurvey } from "../data/surveys";
 import { getMockSessionUser, type MockSessionUser } from "../db/session";
-import { mockId, nowIso } from "../db/store";
+import { createCollection, mockId, nowIso } from "../db/store";
 import { fail, missingCsrf, ok, unauthorized } from "../envelope";
 import { applyScenario } from "../scenarios";
 import { createdFormExtras } from "./forms-create";
@@ -27,8 +34,9 @@ import { createdFormExtras } from "./forms-create";
 /**
  * Phase 5B — publisher survey management (Figma page 10). Mirrors
  * `forms.controller.ts`: `GET /forms`, `GET /forms/:id`, `POST /forms/:id/close`,
- * `POST /forms/:id/reopen`, `POST /forms/:id/versions`, `DELETE /forms/:id`, `GET /forms/:id/in-progress-attempts` (VERIFIED);
- * progress, pause/resume and attempt disputes are ASSUMED API CONTRACTS.
+ * `POST /forms/:id/reopen`, `POST /forms/:id/versions`, `DELETE /forms/:id`, `GET /forms/:id/in-progress-attempts`
+ * and `GET /forms/:id/progress` (VERIFIED, Story IR.4a); attempt disputes stay an ASSUMED,
+ * MSW-only contract (Story 8.5). No pause/resume: the backend has no PAUSED state (IR.4a AC6).
  */
 
 const DOMAIN = "forms-manage";
@@ -66,7 +74,10 @@ function managementFields(form: MockPublisherForm) {
     closedAt: form.closedAt,
     hiddenFromMarketplace: form.hiddenFromMarketplace,
     pausedAt: form.pausedAt ?? null,
-    rejection: form.rejection,
+    // Shared `formRejectionSchema` (backend `SurveyModerationDecision`); the mock store keeps its own names.
+    rejection: form.rejection
+      ? { reason: form.rejection.reason, refundAmount: form.rejection.refundedPoints, decidedAt: form.rejection.rejectedAt ?? form.closedAt ?? form.createdAt }
+      : null,
     closeKind: form.closeKind ?? null,
   };
 }
@@ -154,7 +165,19 @@ export function toDetail(form: MockPublisherForm, publisherId: string) {
   };
 }
 
-const RANGES: readonly OpensRange[] = ["hour", "day", "week", "month"];
+/**
+ * MOCK-ONLY completion instants of a survey for the progress series: its
+ * stored responses (Form Builder) and the verified Google Forms codes of the
+ * tracking data.
+ */
+function completionInstants(form: MockPublisherForm): Date[] {
+  const responses = formResponses
+    .get()
+    .filter((row) => row.formId === form.id)
+    .map((row) => new Date(row.submittedAt));
+  const verified = trackingOf(form.id).pendingAttempts.map((attempt) => new Date(attempt.codeVerifiedAt));
+  return [...responses, ...verified];
+}
 
 const disputeBodySchema = z
   .object({
@@ -162,6 +185,31 @@ const disputeBodySchema = z
     description: z.string().trim().min(10).max(1000),
   })
   .strict();
+
+/** Hybrid (gate G): disputes filed against real attempts, by attempt id — the mock tracking never holds them. */
+const hybridDisputes = createCollection<Record<string, { id: string; reason: string; createdAt: string }>>(
+  "hybrid-attempt-disputes",
+  () => ({}),
+);
+
+/**
+ * Hybrid: the form and attempt are the backend's (real UUIDs), so ownership and
+ * the 48h window cannot be checked here; any attempt is accepted once, then 409.
+ */
+async function hybridDispute(request: Request, attemptId: string): Promise<Response> {
+  const forced = await applyScenario(DOMAIN);
+  if (forced) return forced;
+  const csrf = missingCsrf(request);
+  if (csrf) return csrf;
+  const body = disputeBodySchema.safeParse(await request.json().catch(() => null));
+  if (!body.success) return fail(400, "VALIDATION_ERROR", "Invalid dispute.", { details: body.error.format() });
+  if (hybridDisputes.get()[attemptId]) return fail(409, "DISPUTE_ALREADY_OPEN", "This attempt is already disputed.");
+  const dispute = { id: mockId(), reason: body.data.reason, createdAt: nowIso() };
+  hybridDisputes.update((all) => {
+    all[attemptId] = dispute;
+  });
+  return ok({ attemptId, dispute: { ...dispute, status: "OPEN" } }, 201);
+}
 
 export const formsManageHandlers: RequestHandler[] = [
   // VERIFIED: GET /forms — the caller's surveys (FormSummaryDto page).
@@ -206,42 +254,37 @@ export const formsManageHandlers: RequestHandler[] = [
     return ok(toDetail(findPublisherForm(guarded.form.id) ?? guarded.form, guarded.user.id));
   }),
 
-  // ASSUMED API CONTRACT: GET /forms/:id/progress?range=hour|day|week|month (Figma 10a).
+  // VERIFIED (Story IR.4a): GET /forms/:id/progress?range=hour|day|week|month — owner only (Admins get 404).
   http.get(apiUrl("/forms/:id/progress"), async ({ request, params }) => {
     const guarded = await guard(request, String(params.id), { mutate: false });
     if ("response" in guarded) return guarded.response;
-    const range = (new URL(request.url).searchParams.get("range") ?? "day") as OpensRange;
-    if (!RANGES.includes(range)) return fail(400, "VALIDATION_ERROR", "range must be hour, day, week or month.");
+    if (guarded.form.ownerEmail !== guarded.user.email) return notFound(guarded.form.id);
+    const query = publisherProgressQuerySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+    if (!query.success) return fail(400, "VALIDATION_ERROR", "range must be hour, day, week or month.");
     ensureFormActivity(guarded.form.id, guarded.user);
     const form = findPublisherForm(guarded.form.id) ?? guarded.form;
-    const tracking = trackingOf(form.id);
     const now = Date.now();
-    const buckets = tracking.opens[range];
-    return ok({
-      formId: form.id,
-      completed: form.completedCompletions,
-      expected: form.expectedCompletions,
-      pointsSpent: form.completedCompletions * escrowDrawPerCompletion(form),
-      escrowRemaining: form.escrowLocked,
-      deadlineAt: form.deadlineAt,
-      opens: { range, total: buckets.reduce((sum, bucket) => sum + bucket.count, 0), buckets },
-      started: tracking.started,
-      abandoned: tracking.abandoned,
-      averageDurationSeconds: tracking.averageDurationSeconds,
-      pendingAttempts: tracking.pendingAttempts
-        .map((attempt) => ({
-          attemptId: attempt.attemptId,
-          respondentCode: attempt.respondentCode,
-          codeVerifiedAt: attempt.codeVerifiedAt,
-          reviewEndsAt: new Date(Date.parse(attempt.codeVerifiedAt) + REVIEW_MS).toISOString(),
-          dispute: attempt.dispute
-            ? { id: attempt.dispute.id, status: attempt.dispute.status, reason: attempt.dispute.reason, createdAt: attempt.dispute.createdAt }
-            : null,
-        }))
-        // A disputed attempt stays listed (its reward is held until the Admin decides).
-        .filter((attempt) => attempt.dispute !== null || Date.parse(attempt.reviewEndsAt) > now),
-      feedback: tracking.feedback,
-    });
+    const window = publisherProgressWindow(query.data.range, new Date(now));
+    const pending = trackingOf(form.id).pendingAttempts.filter(
+      (attempt) => Date.parse(attempt.codeVerifiedAt) + REVIEW_MS > now,
+    ).length;
+    return ok(
+      publisherProgressSchema.parse({
+        formId: form.id,
+        status: form.status,
+        completed: form.completedCompletions,
+        expected: form.expectedCompletions,
+        pointsSpent: form.completedCompletions * escrowDrawPerCompletion(form),
+        escrowRemaining: form.escrowLocked,
+        deadlineAt: form.deadlineAt ? new Date(form.deadlineAt).toISOString() : null,
+        pendingAttempts: form.type === "EXTERNAL" ? pending : null,
+        completionsSeries: toCompletionsSeries(
+          query.data.range,
+          window,
+          countIntoProgressWindow(window, completionInstants(form)),
+        ),
+      }),
+    );
   }),
 
   // VERIFIED: GET /forms/:id/in-progress-attempts (decision E5-D4).
@@ -303,10 +346,21 @@ export const formsManageHandlers: RequestHandler[] = [
       const message =
         refusal === "VERSION_NOT_APPROVED"
           ? "The current version was never approved for the Marketplace."
-          : "This survey was closed by an Admin or moderation.";
+          : refusal === "SAMPLE_TARGET_REACHED"
+            ? "This survey closed automatically when its sample target was met."
+            : "This survey was closed by an Admin or moderation.";
       return fail(409, "FORM_NOT_REOPENABLE", message, {
         details: { reason: refusal, closeKind: form.closeKind ?? null },
       });
+    }
+    // Story IR.2b Q3 parity: after the deadline, a new one (or null) is required.
+    const deadlineAt = body.data.deadlineAt;
+    const now = new Date();
+    if (deadlineAt === undefined && form.deadlineAt && Date.parse(form.deadlineAt) <= now.getTime()) {
+      return fail(422, "FORM_DEADLINE_REQUIRED", "The collection deadline has passed: reopening needs a new deadline (or none).");
+    }
+    if (deadlineAt && checkFormDeadline(new Date(deadlineAt), now)) {
+      return fail(422, "FORM_DEADLINE_INVALID", "The collection deadline must be 1 hour to 180 days ahead.");
     }
     const added = body.data.additionalCompletions;
     if (form.expectedCompletions + added > MAX_EXPECTED_COMPLETIONS) {
@@ -328,6 +382,7 @@ export const formsManageHandlers: RequestHandler[] = [
       draft.escrowLocked += cost;
       draft.closedAt = null;
       draft.hiddenFromMarketplace = false;
+      if (deadlineAt !== undefined) draft.deadlineAt = deadlineAt;
     });
     if (findSurvey(form.id)) {
       updateSurvey(form.id, (survey) => {
@@ -398,23 +453,9 @@ export const formsManageHandlers: RequestHandler[] = [
     return ok({ ...toDetail(updated ?? form, user.id), interruptedAttempts }, 201);
   }),
 
-  // ASSUMED API CONTRACT: POST /forms/:id/pause and /resume ("Tạm dừng", Figma 10a).
-  ...(["pause", "resume"] as const).map((action) =>
-    http.post(apiUrl(`/forms/:id/${action}`), async ({ request, params }) => {
-      const guarded = await guard(request, String(params.id), { mutate: true });
-      if ("response" in guarded) return guarded.response;
-      const { user, form } = guarded;
-      if (form.status !== "PUBLISHED") return fail(409, "FORM_NOT_PUBLISHED", "Only a running survey can be paused.");
-      // Khám phá keeps its own catalog (`surveys.ts`, PUBLISHED | CLOSED only); pausing only hides it here.
-      const updated = updatePublisherForm(form.id, (draft) => {
-        draft.pausedAt = action === "pause" ? nowIso() : null;
-      });
-      return ok(toDetail(updated ?? form, user.id));
-    }),
-  ),
-
   // ASSUMED API CONTRACT: POST /forms/:id/attempts/:attemptId/disputes (Figma 10c, FR-24).
   http.post(apiUrl("/forms/:id/attempts/:attemptId/disputes"), async ({ request, params }) => {
+    if (isHybridMocking) return hybridDispute(request, String(params.attemptId));
     const guarded = await guard(request, String(params.id), { mutate: true });
     if ("response" in guarded) return guarded.response;
     const { form } = guarded;

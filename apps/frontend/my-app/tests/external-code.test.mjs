@@ -5,6 +5,7 @@ const {
   MAX_CODE_TRIES,
   barrierDeadlineMs,
   barrierRemainingSeconds,
+  cancelFailureOf,
   canConfirmCode,
   formatCountdown,
   readGoogleFormDraft,
@@ -19,6 +20,9 @@ const {
   googleFormDraftKey,
 } = await import("../lib/participation/external-code.ts");
 const { EXTERNAL_MESSAGES } = await import("../lib/participation/external-messages.ts");
+const { newCancelIdempotencyKey } = await import("../lib/participation/external-service.ts");
+const { randomUuid } = await import("../lib/random-uuid.ts");
+const { idempotencyKeySchema } = await import("@rescom/schemas");
 const { ApiError } = await import("../lib/api/api-error.ts");
 
 const httpError = (status, code, details, extra = {}) =>
@@ -205,6 +209,45 @@ test("report reason and report errors", () => {
   assert.equal(reportFailureMessage(httpError(409, "ATTEMPT_LOCKED")), EXTERNAL_MESSAGES.reportLocked);
   assert.equal(reportFailureMessage(httpError(409, "SURVEY_ALREADY_COMPLETED")), EXTERNAL_MESSAGES.reportCompleted);
   assert.equal(reportFailureMessage(httpError(500, "X")), EXTERNAL_MESSAGES.reportFailed);
+  assert.equal(
+    reportFailureMessage(httpError(429, "RATE_LIMIT_EXCEEDED", undefined, { retryAfterSeconds: 30 })),
+    EXTERNAL_MESSAGES.rateLimitedFor("30 giây"),
+  );
+});
+
+test("verifyFailureOf: the global throttler's 429 reads like the participation limit", () => {
+  // Global request throttler (`RATE_LIMIT_EXCEEDED` + Retry-After): rate-limit copy with the wait.
+  assert.deepEqual(verifyFailureOf(httpError(429, "RATE_LIMIT_EXCEEDED", undefined, { retryAfterSeconds: 45 })), {
+    kind: "message",
+    message: EXTERNAL_MESSAGES.rateLimitedFor("45 giây"),
+  });
+  assert.deepEqual(verifyFailureOf(httpError(429, "RATE_LIMIT_EXCEEDED")), {
+    kind: "message",
+    message: EXTERNAL_MESSAGES.rateLimited,
+  });
+  // The participation burst limit gets the same copy.
+  const burst = {
+    scope: "COMPLETION_CODE",
+    limit: 10,
+    windowSeconds: 60,
+    retryAfterSeconds: 120,
+    retryAt: "2026-10-01T08:02:00.000Z",
+    policyVersion: "participation-rate-limit-v1",
+  };
+  assert.deepEqual(verifyFailureOf(httpError(429, "PARTICIPATION_RATE_LIMITED", burst, { retryAfterSeconds: 120 })), {
+    kind: "message",
+    message: EXTERNAL_MESSAGES.rateLimitedFor("2 phút"),
+  });
+  // The completions window keeps its own copy with the numbers.
+  const completions = { ...burst, scope: "COMPLETIONS", limit: 20, windowSeconds: 3600 };
+  const limited = verifyFailureOf(httpError(429, "PARTICIPATION_RATE_LIMITED", completions, { retryAfterSeconds: 120 }));
+  assert.equal(limited.kind, "message");
+  assert.match(limited.message, /20/);
+  // Any other 429 is still a rate limit, never the generic failure.
+  assert.deepEqual(verifyFailureOf(httpError(429, null, undefined, { retryAfterSeconds: 5 })), {
+    kind: "message",
+    message: EXTERNAL_MESSAGES.rateLimitedFor("5 giây"),
+  });
 });
 
 test("the typed code and 'opened' survive per attempt in storage", () => {
@@ -225,4 +268,56 @@ test("the typed code and 'opened' survive per attempt in storage", () => {
   clearGoogleFormDraft(storage, "a-5");
   assert.equal(storage.store.has(googleFormDraftKey("a-5")), false);
   assert.deepEqual(readGoogleFormDraft(null, "a-1"), { code: "", opened: false });
+});
+
+test("cancel: a fresh valid Idempotency-Key per confirmation", () => {
+  const first = newCancelIdempotencyKey();
+  assert.equal(idempotencyKeySchema.safeParse(first).success, true);
+  assert.notEqual(newCancelIdempotencyKey(), first);
+});
+
+test("cancel keys fall back to getRandomValues where randomUUID is missing (http LAN origin)", () => {
+  const key = randomUuid({
+    getRandomValues(bytes) {
+      bytes.fill(0xab);
+      return bytes;
+    },
+  });
+  assert.equal(key, "abababab-abab-4bab-abab-abababababab");
+  assert.equal(idempotencyKeySchema.safeParse(key).success, true);
+  assert.equal(idempotencyKeySchema.safeParse(randomUuid(null)).success, true);
+  assert.equal(randomUuid({ randomUUID: () => "native", getRandomValues: () => null }), "native");
+});
+
+test("cancelFailureOf: a completed attempt opens its completion screen, a closed one leaves", () => {
+  const notInProgress = (status, closedReason = null) =>
+    httpError(409, "ATTEMPT_NOT_IN_PROGRESS", { status, closedReason });
+  assert.deepEqual(cancelFailureOf(notInProgress("COMPLETED")), { kind: "completed" });
+  assert.deepEqual(cancelFailureOf(notInProgress("ABANDONED", "CANCELLED")), { kind: "closed" });
+  assert.deepEqual(cancelFailureOf(notInProgress("LOCKED")), { kind: "closed" });
+  // Details that do not match the shared schema: still closed, never "completed".
+  assert.deepEqual(cancelFailureOf(httpError(409, "ATTEMPT_NOT_IN_PROGRESS", { status: "COMPLETED", extra: 1 })), {
+    kind: "closed",
+  });
+  assert.deepEqual(cancelFailureOf(httpError(409, "ATTEMPT_NOT_IN_PROGRESS")), { kind: "closed" });
+
+  assert.deepEqual(cancelFailureOf(httpError(401, "AUTH_UNAUTHORIZED")), { kind: "session" });
+  assert.deepEqual(cancelFailureOf(httpError(403, "AUTH_USER_LOCKED")), { kind: "session" });
+  assert.deepEqual(cancelFailureOf(httpError(429, "RATE_LIMIT_EXCEEDED", undefined, { retryAfterSeconds: 45 })), {
+    kind: "message",
+    message: EXTERNAL_MESSAGES.rateLimitedFor("45 giây"),
+  });
+  assert.deepEqual(cancelFailureOf(httpError(429, "RATE_LIMIT_EXCEEDED")), {
+    kind: "message",
+    message: EXTERNAL_MESSAGES.rateLimited,
+  });
+  assert.deepEqual(cancelFailureOf(new ApiError({ kind: "network", message: "offline" })), {
+    kind: "message",
+    message: EXTERNAL_MESSAGES.network,
+  });
+  assert.deepEqual(cancelFailureOf(httpError(404, "ATTEMPT_NOT_FOUND")), {
+    kind: "message",
+    message: EXTERNAL_MESSAGES.cancelFailed,
+  });
+  assert.deepEqual(cancelFailureOf(new Error("boom")), { kind: "message", message: EXTERNAL_MESSAGES.cancelFailed });
 });

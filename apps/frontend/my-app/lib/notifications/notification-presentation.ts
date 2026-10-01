@@ -32,6 +32,10 @@ export const NOTIFICATION_PRESENTATION: Record<NotificationType, NotificationPre
   // Figma "Yêu cầu nạp điểm chưa được duyệt" (62:2185). No target: the copy asks to contact support.
   // WARNING also carries the starter-points expiry: see `notificationPresentation(type, message)`.
   WARNING: { icon: "bank", tone: "danger", href: null },
+  // Story IR.4b B3 (ASSUMED, not drawn): the rejection replaces the top-up WARNING; the wallet shows the request.
+  TOPUP_REJECTED: { icon: "bank", tone: "danger", href: "/wallet" },
+  ACCOUNT_LOCKED: { icon: "lock", tone: "danger", href: null },
+  ACCOUNT_UNLOCKED: { icon: "unlock", tone: "green", href: null },
 };
 
 /**
@@ -89,6 +93,9 @@ export const NOTIFICATION_TITLES: Record<NotificationType, string> = {
   REWARD_RELEASED: "Điểm thưởng đã vào Khả dụng",
   ACCOUNT_ACTIVATED: "Tài khoản đã kích hoạt",
   WARNING: "Cảnh báo tài khoản",
+  TOPUP_REJECTED: "Yêu cầu nạp điểm bị từ chối",
+  ACCOUNT_LOCKED: "Tài khoản đã bị khoá",
+  ACCOUNT_UNLOCKED: "Tài khoản đã được mở khoá",
 };
 
 const WARNING_TITLES: Record<WarningTopic, string> = {

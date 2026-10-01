@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { formStatusEnum, formTypeEnum } from "../forms/form-draft.schema";
 import { surveyTargetingSchema } from "../forms/form-targeting.schema";
+import { formTopicEnum } from "../forms/form-topic.schema";
 import { MAX_PAGINATION_OFFSET } from "../common/pagination.schema";
 
 /**
@@ -99,6 +100,10 @@ export const moderationQueueItemSchema = z.object({
   isResubmission: z.boolean(),
   /** When the survey entered the moderation queue. */
   submittedAt: z.string().datetime(),
+  /** Plan 2.2: the survey topic (`FORM_TOPICS`); null when none. */
+  topic: formTopicEnum.nullable().optional(),
+  /** Story IR.2b: collection deadline; null = none. */
+  deadlineAt: z.string().datetime().nullable().optional(),
 });
 export type ModerationQueueItemDto = z.infer<typeof moderationQueueItemSchema>;
 

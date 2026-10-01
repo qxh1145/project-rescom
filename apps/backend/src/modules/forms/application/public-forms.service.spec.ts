@@ -13,7 +13,10 @@ import {
   InvalidGuestSubmissionException,
 } from './exceptions/form.exceptions';
 import { SurveyQuotaFullException } from '../../participation/application/exceptions/participation.exceptions';
-import { RESERVATION_EXPIRY_MS } from '@rescom/schemas';
+import {
+  RESERVATION_EXPIRY_MS,
+  publicFormDetailsSchema,
+} from '@rescom/schemas';
 
 describe('PublicFormsService', () => {
   let service: PublicFormsService;
@@ -218,6 +221,94 @@ describe('PublicFormsService', () => {
       expect(publicForm.settings.allowPublicAccess).toBe(true);
     });
 
+    it('never returns block integrity (MEDIUM-1: attention-check answers)', async () => {
+      const formId = '66666666-6666-4666-8666-666666666666';
+      const now = new Date();
+      await formRepo.create(
+        new FormEntity(
+          formId,
+          publisherId,
+          'INTERNAL',
+          'PUBLISHED',
+          'Attention-checked survey',
+          null,
+          10,
+          100,
+          now,
+          now,
+        ),
+        new FormVersionEntity(
+          'v-attention',
+          formId,
+          1,
+          {
+            title: 'Attention-checked survey',
+            blocks: [
+              {
+                id: 'q1',
+                type: 'text',
+                title: 'Your Name',
+                required: true,
+                order: 0,
+                integrity: { semanticCategory: 'DEMOGRAPHIC' },
+              },
+              {
+                id: 'q2',
+                type: 'single_choice',
+                title: 'Chọn "Đồng ý" để tiếp tục',
+                required: true,
+                order: 1,
+                allowOther: false,
+                options: [
+                  { id: 'o1', label: 'Đồng ý', value: 'agree-sentinel' },
+                  { id: 'o2', label: 'Không', value: 'no' },
+                ],
+                integrity: {
+                  attentionCheck: {
+                    isAttentionCheck: true,
+                    expectedValue: 'agree-sentinel',
+                    failAction: 'DISQUALIFY',
+                  },
+                  consistencyPair: { pairedBlockId: 'q1', rule: 'EQUIVALENT' },
+                  semanticCategory: 'ATTENTION_CHECK',
+                },
+              },
+            ],
+            settings: {
+              shuffleBlocks: false,
+              progressBar: true,
+              requireAuth: false,
+              allowPublicAccess: true,
+              submitButtonText: 'Send',
+            },
+            metadata: { expectedEffortSeconds: 60, minTimeBarrierSeconds: 10 },
+          } as any,
+          null,
+          true,
+          null,
+          null,
+          now,
+          now,
+        ),
+      );
+
+      const publicForm = await service.getPublicForm(formId);
+
+      expect(publicFormDetailsSchema.safeParse(publicForm).success).toBe(true);
+      const json = JSON.stringify(publicForm);
+      expect(json).not.toContain('integrity');
+      expect(json).not.toContain('expectedValue');
+      expect(json).not.toContain('isAttentionCheck');
+      expect(json).not.toContain('consistencyPair');
+      expect(json).not.toContain('ATTENTION_CHECK');
+      expect(publicForm.blocks.map((block) => block.id)).toEqual(['q1', 'q2']);
+      // The stored definition keeps the checks for server-side scoring.
+      const stored = await formRepo.findById(formId);
+      expect(
+        stored?.currentVersion.schemaJson.blocks[1].integrity?.attentionCheck,
+      ).toMatchObject({ expectedValue: 'agree-sentinel' });
+    });
+
     it('should throw NotFoundException if form does not exist', async () => {
       await expect(
         service.getPublicForm('99999999-9999-4999-8999-999999999999'),
@@ -252,6 +343,44 @@ describe('PublicFormsService', () => {
       captchaToken: 'test-turnstile-token',
     };
     const clientIp = '192.168.1.100';
+
+    it('review LOW-8: a guest on a survey closed at its sample target gets SURVEY_QUOTA_FULL', async () => {
+      const existing = (await formRepo.findById(publishedInternalId))!;
+      await formRepo.update(
+        existing.form.close('QUOTA', new Date(Date.now() + 1000)),
+      );
+      await expect(
+        service.submitGuestResponse(
+          publishedInternalId,
+          validPayload,
+          clientIp,
+        ),
+      ).rejects.toBeInstanceOf(SurveyQuotaFullException);
+    });
+
+    it('plan 2.3: a guest submission runs the QUOTA close in its transaction', async () => {
+      const quotaCloser = {
+        closeFormIfQuotaMet: jest
+          .fn()
+          .mockResolvedValue({ closed: true, refundAmount: 0 }),
+      };
+      const withCloser = new PublicFormsService(
+        formRepo,
+        responseRepo,
+        captchaValidator,
+        rateLimiter,
+        quotaCloser,
+      );
+      await withCloser.submitGuestResponse(
+        publishedInternalId,
+        validPayload,
+        clientIp,
+      );
+      expect(quotaCloser.closeFormIfQuotaMet).toHaveBeenCalledWith(
+        publishedInternalId,
+        expect.any(Date),
+      );
+    });
 
     it('should successfully submit guest response with 0 reward and NOT_AVAILABLE reliability', async () => {
       const res = await service.submitGuestResponse(

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthService } from './application/auth.service';
 import { SessionService } from './application/session.service';
@@ -55,9 +55,25 @@ import {
 } from '../users/application/ports/user.repository.port';
 import { EnvService } from '../../common/config/env.service';
 import { StarterPointsCoordinator } from '../economy/application/starter-points.coordinator';
+import { PasswordResetService } from './application/password-reset.service';
+import {
+  PASSWORD_RESET_REPOSITORY_PORT,
+  PasswordResetRepositoryPort,
+} from './application/ports/password-reset.repository.port';
+import { PrismaPasswordResetRepository } from './infrastructure/prisma-password-reset.repository';
+import { AuthSchedulerRegistrar } from './infrastructure/auth-scheduler.registrar';
+import { SecurityModule } from '../../common/security/security.module';
+import {
+  RATE_LIMIT_COUNTER_STORE,
+  RateLimitCounterStorePort,
+} from '../../common/security/rate-limit-counter-store.port';
+import {
+  EMAIL_SENDER_PORT,
+  EmailSenderPort,
+} from '../notifications/application/ports/email-sender.port';
 
 @Module({
-  imports: [UsersModule, JwtModule.register({})],
+  imports: [UsersModule, JwtModule.register({}), SecurityModule],
   controllers: [AuthController, GoogleOAuthController],
   providers: [
     {
@@ -194,6 +210,44 @@ import { StarterPointsCoordinator } from '../economy/application/starter-points.
         { token: StarterPointsCoordinator, optional: true },
       ],
     },
+    {
+      provide: PASSWORD_RESET_REPOSITORY_PORT,
+      useClass: PrismaPasswordResetRepository,
+    },
+    {
+      // Plan 5.4. The sender comes from the global NotificationsModule
+      // (optional: a test module without it still builds).
+      provide: PasswordResetService,
+      useFactory: (
+        userRepository: UserRepositoryPort,
+        resets: PasswordResetRepositoryPort,
+        passwordHasher: PasswordHasherPort,
+        envService: EnvService,
+        counters: RateLimitCounterStorePort,
+        emailSender?: EmailSenderPort,
+      ) =>
+        new PasswordResetService(
+          userRepository,
+          resets,
+          passwordHasher,
+          emailSender,
+          counters,
+          {
+            appBaseUrl: envService.emailAppBaseUrl,
+            minimumRequestMs: envService.isTest ? 0 : 400,
+          },
+          new Logger(PasswordResetService.name),
+        ),
+      inject: [
+        USER_REPOSITORY_PORT,
+        PASSWORD_RESET_REPOSITORY_PORT,
+        PASSWORD_HASHER_PORT,
+        EnvService,
+        RATE_LIMIT_COUNTER_STORE,
+        { token: EMAIL_SENDER_PORT, optional: true },
+      ],
+    },
+    AuthSchedulerRegistrar,
     SessionAuthGuard,
     RolesGuard,
     CsrfGuard,

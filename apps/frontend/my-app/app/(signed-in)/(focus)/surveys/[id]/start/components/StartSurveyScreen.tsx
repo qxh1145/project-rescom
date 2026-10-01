@@ -48,6 +48,9 @@ export function StartSurveyScreen() {
       <FocusLoading label="Đang mở khảo sát…" />
     );
   }
+  if (start.consentError) {
+    return <FocusError title="Chưa mở được khảo sát" message={start.consentError} onRetry={start.retry} />;
+  }
 
   const summary = start.summary;
   const title = summary?.title ?? "Khảo sát trong Rescom";

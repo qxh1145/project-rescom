@@ -16,15 +16,16 @@ interface SessionGateProps {
 /**
  * Client-side guard for signed-in areas. A failed session check is routed by
  * cause (`sessionGateRedirect`): 401 → `/login?returnTo=…`, locked account →
- * `/login?error=AUTH_USER_LOCKED`, no connection → `/offline?from=…`, anything
- * else → `/server-error?from=…`. Non-admins on admin pages go to `/forbidden`.
+ * `/login?error=AUTH_USER_LOCKED`, no connection → `/offline?from=…`, 429
+ * after its retries → `/rate-limited?from=…`, anything else →
+ * `/server-error?from=…`. Non-admins on admin pages go to `/forbidden`.
  * Outside the admin console, a respondent who has not finished onboarding is
  * sent to `/onboarding?required=1&returnTo=…` (`onboardingGateRedirect`).
  * The backend still enforces access; this only avoids rendering a shell
  * that can load nothing.
  */
 export function SessionGate({ children, requireAdmin = false }: SessionGateProps) {
-  const { status, user, onboarding } = useSession();
+  const { status, user, onboarding, retryAfterSeconds } = useSession();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -42,10 +43,10 @@ export function SessionGate({ children, requireAdmin = false }: SessionGateProps
     if (forbidden) router.replace("/forbidden");
     else if (onboardingTarget) router.replace(onboardingTarget);
     else if (!authenticated) {
-      const target = sessionGateRedirect(status, currentPath);
+      const target = sessionGateRedirect(status, currentPath, retryAfterSeconds);
       if (target) router.replace(target);
     }
-  }, [authenticated, forbidden, onboardingTarget, status, currentPath, router]);
+  }, [authenticated, forbidden, onboardingTarget, status, currentPath, retryAfterSeconds, router]);
 
   if (authenticated && !forbidden && !onboardingTarget) return <>{children}</>;
   return (

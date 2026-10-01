@@ -20,9 +20,9 @@ test("Story 9.2: mock post-completion feedback", async (t) => {
   const { submitSurveyFeedbackResultSchema, surveyFeedbackStatusSchema } = await import(
     "@rescom/schemas"
   );
-  const { mockRepository } = await import("../lib/mock/repository.ts");
+  const { mockRepository } = await import("../mocks/legacy/repository.ts");
   const { setMockStorage, saveAttempt, loadStore, saveStore } = await import(
-    "../lib/mock/store.ts"
+    "../mocks/legacy/store.ts"
   );
 
   t.beforeEach(() => {
@@ -430,9 +430,9 @@ test("decision E9-D4: the thank-you note makes no Publisher-anonymity promise", 
   // No identity / Publisher-visibility promise until Story 9.3's privacy design is approved.
   assert.doesNotMatch(SURVEY_FEEDBACK_THANK_YOU_NOTE, /danh tính|người đăng khảo sát|ẩn danh/i);
 
-  // The prompt renders the shared note and carries no inline promise of its own.
+  // The feedback panel renders the shared note and carries no inline promise of its own.
   const source = await readFile(
-    new URL("../components/feedback/SurveyFeedbackPrompt.tsx", import.meta.url),
+    new URL("../app/(signed-in)/(focus)/attempts/[id]/complete/components/FeedbackPanel.tsx", import.meta.url),
     "utf8",
   );
   assert.match(source, /SURVEY_FEEDBACK_THANK_YOU_NOTE/);

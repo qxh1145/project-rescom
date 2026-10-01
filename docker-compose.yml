@@ -1,3 +1,9 @@
+# Root credentials of the local object store. They must equal STORAGE_ACCESS_KEY_ID /
+# STORAGE_SECRET_ACCESS_KEY in apps/backend/.env (see apps/backend/.env.example).
+x-minio-credentials: &minio-credentials
+  MINIO_ROOT_USER: minioadmin
+  MINIO_ROOT_PASSWORD: minioadmin
+
 services:
   postgres:
     image: postgres:15-alpine
@@ -12,30 +18,83 @@ services:
     volumes:
       - rescom_pgdata:/var/lib/postgresql/data
 
-  localstack:
-    image: localstack/localstack:latest
-    container_name: rescom_localstack
+  # Private S3-compatible storage (Story 5.3): S3 API on :9000, web console on :9001.
+  # MinIO Inc. no longer publishes images (minio/minio is gone from Docker Hub and
+  # quay.io), so this pins the last MinIO-named release of the community fork
+  # maintained by Pigsty (github.com/pgsty/minio, continued as pgsty/silo) by tag
+  # and digest. Same binary, MINIO_* variables and S3 API as upstream.
+  minio:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
+    container_name: rescom_minio
     restart: always
+    command: server /data --console-address ":9001"
     environment:
-      SERVICES: s3
-      DEBUG: 1
-      DATA_DIR: /tmp/localstack/data
+      <<: *minio-credentials
+      # Browsers PUT uploads straight to presigned URLs on :9000, so the preflight
+      # must allow the frontend origin. MinIO has no per-bucket CORS rules: this
+      # server-wide allow-list (`api cors_allow_origin`) is the CORS setting.
+      MINIO_API_CORS_ALLOW_ORIGIN: http://localhost:3000,http://127.0.0.1:3000
+    # Loopback only: default credentials, never reachable from the LAN.
     ports:
-      - "4566:4566"
-      - "4571:4571"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
-      - rescom_localstack_data:/tmp/localstack
+      - rescom_minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
+  # One-shot bootstrap: creates the private bucket (STORAGE_BUCKET) and removes any
+  # anonymous access. Idempotent, so it runs again on every `docker compose up`.
+  minio-init:
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z@sha256:cfc83108c3abb371f8fb84d99c1fdc88f8c237e022409b0081fb7c0a3be634dd
+    container_name: rescom_minio_init
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      <<: *minio-credentials
+      STORAGE_BUCKET: rescom-private-storage
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        mc alias set rescom http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
+        mc mb --ignore-existing "rescom/$${STORAGE_BUCKET}"
+        mc anonymous set none "rescom/$${STORAGE_BUCKET}"
+
+  # Optional local mail catcher (Story IR.4b B8, plan 5.4) for internal testers:
+  # `docker compose up -d mailpit`, then the backend with EMAIL_DELIVERY_MODE=smtp,
+  # SMTP_HOST=localhost, SMTP_PORT=1025, SMTP_REQUIRE_TLS=false. Read the mail at
+  # http://localhost:8025 (web UI + API). Accepts any address, never relays.
+  # Loopback only, like minio: no auth, never reachable from the LAN.
+  mailpit:
+    image: axllent/mailpit:v1.31.3
+    container_name: rescom_mailpit
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: 5000
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
+  # The Alpine-based clamav/clamav image is amd64-only; the Debian-based image
+  # is multi-arch (amd64, arm64), so it also runs natively on Apple Silicon.
+  # Default StreamMaxLength is 100M, above the 50 MB upload limit.
   clamav:
-    image: clamav/clamav:stable
+    image: clamav/clamav-debian:stable
     container_name: rescom_clamav
     restart: always
+    # Loopback only, like MinIO and Mailpit.
     ports:
-      - "3310:3310"
+      - "127.0.0.1:3310:3310"
     volumes:
       - rescom_clamav_data:/var/lib/clamav
 
 volumes:
   rescom_pgdata:
-  rescom_localstack_data:
+  rescom_minio_data:
   rescom_clamav_data:

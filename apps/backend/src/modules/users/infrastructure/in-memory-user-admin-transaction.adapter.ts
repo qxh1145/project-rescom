@@ -4,6 +4,7 @@ import {
 } from '../application/ports/user-admin-transaction.port';
 import { User, UserRole, UserStatus } from '../domain/user.entity';
 import { CreateIdentityAuditRecord } from '../../auth/application/ports/identity-audit.port';
+import { SessionRevokeReason } from '../../auth/domain/session.entity';
 import { InMemoryUserRepository } from './in-memory-user.repository';
 import { InMemorySessionRepository } from '../../auth/infrastructure/in-memory-session.repository';
 import { InMemoryIdentityAuditRepository } from '../../auth/infrastructure/in-memory-identity-audit.repository';
@@ -86,8 +87,11 @@ export class InMemoryUserAdminTransactionAdapter implements UserAdminTransaction
         return updated;
       },
 
-      revokeUserSessions: async (userId: string): Promise<void> => {
-        await this.sessionRepository.revokeAllByUserId(userId);
+      revokeUserSessions: async (
+        userId: string,
+        reason: SessionRevokeReason,
+      ): Promise<void> => {
+        await this.sessionRepository.revokeAllByUserId(userId, reason);
       },
 
       appendAuditLog: async (

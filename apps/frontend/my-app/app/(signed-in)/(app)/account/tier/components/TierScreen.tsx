@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { DemoDataTag } from "@/components/ui/DemoDataTag";
 import { MobileBackBar } from "@/components/layout/app/MobileTopBar";
 import { buttonClassName } from "@/components/ui/Button";
 import { useApiQuery } from "@/lib/api/use-api-query";
@@ -79,6 +80,7 @@ export function TierScreen() {
       <MobileBackBar title="Hạng thành viên" backHref="/account" />
       <div className="mx-auto flex w-full max-w-[720px] flex-col px-4 pt-[18px] pb-8 lg:px-0 lg:pt-10 lg:pb-12">
         <h1 className="mb-6 hidden text-title font-extrabold text-ink lg:block">Hạng thành viên</h1>
+        <DemoDataTag className="mb-4 self-start" />
 
         {query.error && !summary && !sessionLost ? (
           <ErrorStatus message={ENGAGEMENT_MESSAGES.summaryLoadFailed} onRetry={query.reload} />

@@ -1,0 +1,7 @@
+{
+  "tool_name": "mcp__Claude_Browser__browser_batch",
+  "tool_input_preview": "{\"actions\":[{\"name\":\"computer\",\"input\":{\"action\":\"left_click\",\"ref\":\"ref_25\",\"action_summary\":\"Focuses email field\"}},{\"name\":\"computer\",\"input\":{\"action\":\"type\",\"text\":\"lan.nguyen.gv@rescom.test\",\"ac...",
+  "error": "[computer:left_click] left_click at (757, 384) [ref_25]\n\n\nTab Context:\n- Executed on tabId: seed\n- Available tabs:\n  • tabId seed: \"Đăng nhập — Rescom\" (\"http://localhost:3000/login\")\n[computer:type] typed 25 chars\n\n\nTab Context:\n- Executed on tabId: seed\n- Available tabs:\n  • tabId seed: \"Đăng nhập — Rescom\" (\"http://localhost:3000/login\")\n[computer:left_click] left_click at (757, 384) [ref_27]\n\n\nTab Context:\n- Executed on tabId: seed\n- Available tabs:\n  • tabId seed: \"Đăng nhập — Rescom\" (\"htt...",
+  "timestamp": "2026-10-01T12:41:26.269Z",
+  "retry_count": 1
+}

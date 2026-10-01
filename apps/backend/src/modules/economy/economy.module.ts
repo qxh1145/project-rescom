@@ -1,5 +1,7 @@
 import { Global, Logger, Module } from '@nestjs/common';
 import { PrismaModule } from '../../common/database/prisma.module';
+import { CLOCK, Clock } from '../../common/time/clock';
+import { EconomySchedulerRegistrar } from './infrastructure/economy-scheduler.registrar';
 import { AuthModule } from '../auth/auth.module';
 import {
   LEDGER_REPOSITORY_PORT,
@@ -37,6 +39,8 @@ import { PrismaTopUpRepository } from './infrastructure/prisma-top-up.repository
 import { PrismaAdminCapabilityRepository } from './infrastructure/prisma-admin-capability.repository';
 import { TopUpController } from './presentation/top-up.controller';
 import { AdminTopUpController } from './presentation/admin-top-up.controller';
+import { ADMIN_ECONOMY_STATS_PORT } from './application/ports/admin-economy-stats.port';
+import { PrismaAdminEconomyStats } from './infrastructure/prisma-admin-economy-stats';
 import {
   EXTERNAL_DISPUTE_HOLD_QUERY_PORT,
   ExternalDisputeHoldQueryPort,
@@ -57,16 +61,29 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     AdminTopUpController,
   ],
   providers: [
+    // Admin read views (IR.4b part C, mock-off plan 4.1 and 4.3).
+    {
+      provide: ADMIN_ECONOMY_STATS_PORT,
+      useClass: PrismaAdminEconomyStats,
+    },
     {
       provide: LEDGER_REPOSITORY_PORT,
       useClass: PrismaLedgerRepository,
     },
     {
       provide: LedgerService,
-      useFactory: (repo: LedgerRepositoryPort) =>
-        new LedgerService(repo, { logger: new Logger(LedgerService.name) }),
-      inject: [LEDGER_REPOSITORY_PORT],
+      // Story IR.2b Task 2.1: the scheduler clock drives journal timestamps
+      // and the 48h maturity cutoff, so clock-controlled tests can cross it.
+      useFactory: (repo: LedgerRepositoryPort, clock?: Clock) =>
+        new LedgerService(repo, {
+          logger: new Logger(LedgerService.name),
+          ...(clock ? { clock: () => clock.now() } : {}),
+        }),
+      inject: [LEDGER_REPOSITORY_PORT, { token: CLOCK, optional: true }],
     },
+    // Story IR.2b: pending-release + starter-expiry jobs and the
+    // InternalRewardRequested Outbox handler.
+    EconomySchedulerRegistrar,
     {
       // Epic 6 review P2: server-side dispute check for Pending releases.
       // Phase 1 has no dispute cases; Story 8.5 must bind a real query.
@@ -160,6 +177,7 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     },
   ],
   exports: [
+    ADMIN_ECONOMY_STATS_PORT,
     LedgerService,
     TopUpService,
     TOP_UP_REPOSITORY_PORT,

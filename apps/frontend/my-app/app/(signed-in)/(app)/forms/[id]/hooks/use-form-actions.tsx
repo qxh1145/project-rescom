@@ -1,9 +1,7 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { useFormHeader } from "@/lib/forms/manage-header-context";
-import { formActionErrorMessage } from "@/lib/forms/manage-messages";
-import { setPublisherFormPaused } from "@/lib/forms/manage-service";
 import { useSession } from "@/lib/session/SessionProvider";
 import { CloseFormDialog } from "../components/CloseFormDialog";
 import { EditVersionDialog } from "../components/EditVersionDialog";
@@ -13,51 +11,27 @@ interface FormActions {
   requestClose: () => void;
   /** Opens the "Chỉnh sửa" (new version) confirmation of a running Form Builder survey. */
   requestEdit: () => void;
-  /** "Tạm dừng" / "Tiếp tục" (ASSUMED API). */
-  togglePause: () => void;
-  pausing: boolean;
-  /** Last failed pause/resume, shown under the header. */
-  error: string | null;
-  dismissError: () => void;
 }
 
 const FormActionsContext = createContext<FormActions | null>(null);
 
 /**
  * Survey actions shared by the header (desktop) and the Tiến độ status card
- * (mobile, Figma 62:3324): one close dialog, one pause request at a time.
+ * (mobile, Figma 62:3324): one close dialog and one "Chỉnh sửa" dialog. No
+ * pause/resume: the backend has no PAUSED state (IR.4a AC6, `PAUSE_SUPPORTED`).
  */
 export function FormActionsProvider({ children }: { children: ReactNode }) {
   const { form, applyForm } = useFormHeader();
   const { refresh } = useSession();
   const [closeOpen, setCloseOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [pausing, setPausing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const togglePause = useCallback(async () => {
-    if (!form || pausing) return;
-    setPausing(true);
-    setError(null);
-    try {
-      applyForm(await setPublisherFormPaused(form.id, !form.pausedAt));
-    } catch (cause) {
-      setError(formActionErrorMessage(cause, "Chưa đổi được trạng thái khảo sát. Vui lòng thử lại."));
-    } finally {
-      setPausing(false);
-    }
-  }, [form, pausing, applyForm]);
 
   const value = useMemo<FormActions>(
     () => ({
       requestClose: () => setCloseOpen(true),
       requestEdit: () => setEditOpen(true),
-      togglePause: () => void togglePause(),
-      pausing,
-      error,
-      dismissError: () => setError(null),
     }),
-    [togglePause, pausing, error],
+    [],
   );
 
   return (

@@ -211,7 +211,7 @@ describe('PrismaUserAdminTransactionAdapter', () => {
       expect(await ctx.lockActiveAdmins()).toBe(1);
       expect(await ctx.findUserById(rawUser.id)).not.toBeNull();
       const updated = await ctx.updateUserStatus(rawUser.id, 'LOCKED');
-      await ctx.revokeUserSessions(rawUser.id);
+      await ctx.revokeUserSessions(rawUser.id, 'ADMIN_LOCK');
       await ctx.appendAuditLog({
         action: 'USER_STATUS_CHANGED',
         userId: rawUser.id,
@@ -226,7 +226,11 @@ describe('PrismaUserAdminTransactionAdapter', () => {
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(tx.session.updateMany).toHaveBeenCalledWith({
       where: { userId: rawUser.id, revoked: false },
-      data: { revoked: true },
+      data: {
+        revoked: true,
+        revokedAt: expect.any(Date),
+        revokedReason: 'ADMIN_LOCK',
+      },
     });
     expect(tx.identityAuditLog.create).toHaveBeenCalledTimes(1);
   });

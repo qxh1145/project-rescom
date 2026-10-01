@@ -10,7 +10,12 @@ import { Select } from "@/components/ui/Select";
 import { Spinner } from "@/components/ui/Spinner";
 import type { QuestionAnalytics } from "@/lib/forms/results-analytics-service";
 import { formatCount, resolveQuestionIndex, visualOf } from "@/lib/forms/results-analytics";
-import { analyticsLoadErrorMessage, GOOGLE_FORMS_ANSWERS_NOTE, responsesLoadErrorMessage } from "@/lib/forms/results-messages";
+import {
+  analyticsLoadErrorMessage,
+  GOOGLE_FORMS_ANSWERS_NOTE,
+  RESPONSES_TRUNCATED_NOTE,
+  responsesLoadErrorMessage,
+} from "@/lib/forms/results-messages";
 import { answerText, normalizeSearchText } from "@/lib/forms/results-view";
 import { useAnalytics } from "../hooks/analytics-context";
 import { useResponses } from "../hooks/responses-context";
@@ -25,17 +30,18 @@ const NAV_BUTTON = "disabled:cursor-not-allowed disabled:opacity-40 disabled:hov
 function AllTextAnswers({ question }: { question: QuestionAnalytics }) {
   const { data, error, loading, reload } = useResponses();
   const [query, setQuery] = useState("");
+  const rows = data?.availability === "AVAILABLE" ? data : null;
   const answers = useMemo<TextAnswer[] | null>(() => {
-    const source = data?.questions.find((item) => item.id === question.questionId);
-    if (!data || !source) return null;
-    return data.responses
+    const source = rows?.questions.find((item) => item.id === question.questionId);
+    if (!rows || !source) return null;
+    return rows.responses
       .map((response) => ({
         key: response.id,
         value: answerText(source, response.answers[source.id]),
         submittedAt: response.submittedAt,
       }))
       .filter((answer) => answer.value !== "");
-  }, [data, question.questionId]);
+  }, [rows, question.questionId]);
   const needle = normalizeSearchText(query);
   const matches = useMemo(
     () => (answers && needle ? answers.filter((answer) => normalizeSearchText(answer.value).includes(needle)) : answers),
@@ -55,6 +61,7 @@ function AllTextAnswers({ question }: { question: QuestionAnalytics }) {
   return (
     <div className="flex flex-col gap-3">
       {answers.length ? <SearchBox value={query} onChange={setQuery} size="desktop" label="Tìm trong câu trả lời" /> : null}
+      {rows?.truncated ? <p className="text-caption text-tone-amber-fg">{RESPONSES_TRUNCATED_NOTE}</p> : null}
       <p className="text-caption text-ink-muted" aria-live="polite">
         Mới nhất trước ·{" "}
         {needle
@@ -97,6 +104,13 @@ export function QuestionScreen() {
       </div>
     );
   }
+  if (data.availability === "NOT_APPLICABLE") {
+    return (
+      <div className={PAGE}>
+        <p className="rounded-control bg-surface-subtle px-4 py-3 text-body-sm text-ink-strong">{GOOGLE_FORMS_ANSWERS_NOTE}</p>
+      </div>
+    );
+  }
   if (data.totalResponses === 0) {
     return (
       <div className={PAGE}>
@@ -114,7 +128,7 @@ export function QuestionScreen() {
     return (
       <div className={PAGE}>
         <p className="rounded-control bg-surface-subtle px-4 py-3 text-body-sm text-ink-strong">
-          {data.form.type === "EXTERNAL" ? GOOGLE_FORMS_ANSWERS_NOTE : "Khảo sát này không có câu hỏi nào để thống kê."}
+          Khảo sát này không có câu hỏi nào để thống kê.
         </p>
       </div>
     );

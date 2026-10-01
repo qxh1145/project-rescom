@@ -7,14 +7,18 @@ import {
 } from '../../../common/database/prisma-unit-of-work';
 import {
   countCompletionsByFormIds,
+  countCompletionsInBucketsForForm,
   listCompletionRefsByFormIds,
   listCompletionRefsForForm,
 } from '../../../common/database/completion-counts';
 import {
+  CompletionBucketWindow,
   CreateVersionOptions,
   FormCompletionRefs,
   FormCreationKey,
   FormEscrowInputs,
+  FormPublishedSummary,
+  FormRejection,
   FormRepositoryPort,
   FormSummaryItem,
   FormUpdateExpectation,
@@ -31,6 +35,8 @@ import {
   DraftFormDefinition,
   FormCloseKind,
   FormStatusEnum,
+  FormTopic,
+  formTopicEnum,
   FormTypeEnum,
   SurveyTargetingCriteria,
 } from '@rescom/schemas';
@@ -51,7 +57,15 @@ function toFormEntity(raw: any, versions?: FormVersionEntity[]): FormEntity {
     raw.closeCount ?? 0,
     raw.estimatedDurationMinutes ?? null,
     (raw.closeKind as FormCloseKind | null | undefined) ?? null,
+    raw.deadlineAt ?? null,
+    toFormTopic(raw.topic),
   );
+}
+
+/** Plan 2.2: `forms.topic` is free text; an unknown value reads as none. */
+function toFormTopic(value: unknown): FormTopic | null {
+  const parsed = formTopicEnum.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 /** Phase 5 C6: the unique `(publisher_id, creation_idempotency_key)` index. */
@@ -111,6 +125,8 @@ export class PrismaFormRepository implements FormRepositoryPort {
           closeCount: form.closeCount,
           closeKind: form.closeKind,
           estimatedDurationMinutes: form.estimatedDurationMinutes,
+          deadlineAt: form.deadlineAt,
+          topic: form.topic,
           creationIdempotencyKey: creationKey?.key ?? null,
           creationRequestHash: creationKey?.requestHash ?? null,
           updatedAt: form.updatedAt,
@@ -205,6 +221,38 @@ export class PrismaFormRepository implements FormRepositoryPort {
     };
   }
 
+  async findPublishedSummaryById(
+    id: string,
+  ): Promise<FormPublishedSummary | null> {
+    const client = currentClient(this.prisma);
+    const raw = await client.form.findUnique({ where: { id } });
+    if (!raw) {
+      return null;
+    }
+    // Only `schema_json -> 'metadata'` of the newest published version.
+    const [newest] = await client.$queryRaw<
+      Array<{ id: string; versionNumber: number; metadata: unknown }>
+    >`
+      SELECT id, version_number AS "versionNumber", schema_json -> 'metadata' AS metadata
+      FROM form_versions
+      WHERE form_id = ${id}::uuid AND is_published = true
+      ORDER BY version_number DESC
+      LIMIT 1
+    `;
+    return {
+      form: toFormEntity(raw),
+      newestPublished: newest
+        ? {
+            id: newest.id,
+            versionNumber: newest.versionNumber,
+            metadata:
+              (newest.metadata as DraftFormDefinition['metadata'] | null) ??
+              null,
+          }
+        : null,
+    };
+  }
+
   async findManyByPublisher(
     params: ListFormsParams,
   ): Promise<{ forms: FormSummaryItem[]; total: number }> {
@@ -287,6 +335,8 @@ export class PrismaFormRepository implements FormRepositoryPort {
           closeCount: form.closeCount,
           closeKind: form.closeKind,
           estimatedDurationMinutes: form.estimatedDurationMinutes,
+          deadlineAt: form.deadlineAt,
+          topic: form.topic,
           updatedAt: form.updatedAt,
         },
       });
@@ -471,6 +521,34 @@ export class PrismaFormRepository implements FormRepositoryPort {
     return result;
   }
 
+  async findQuotaState(formId: string) {
+    const client = currentClient(this.prisma);
+    const form = await client.form.findUnique({
+      where: { id: formId },
+      select: { status: true, expectedCompletions: true },
+    });
+    if (!form) return null;
+    const counts = await countCompletionsByFormIds(client, [formId]);
+    return {
+      status: form.status as FormStatusEnum,
+      expectedCompletions: form.expectedCompletions,
+      completedCount: counts.get(formId) ?? 0,
+    };
+  }
+
+  async findFormsPastDeadline(cutoff: Date, limit: number): Promise<string[]> {
+    const rows = await this.prisma.form.findMany({
+      where: {
+        status: { in: ['PUBLISHED', 'MODERATION_QUEUE'] },
+        deadlineAt: { lte: cutoff },
+      },
+      orderBy: [{ deadlineAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+      select: { id: true },
+    });
+    return rows.map((row) => row.id);
+  }
+
   async listRewardableCompletions(formId: string): Promise<FormCompletionRefs> {
     return listCompletionRefsForForm(currentClient(this.prisma), formId);
   }
@@ -516,6 +594,48 @@ export class PrismaFormRepository implements FormRepositoryPort {
         startedAt: { gte: startedSince },
       },
     });
+  }
+
+  async countCompletionsInBuckets(
+    formId: string,
+    buckets: readonly CompletionBucketWindow[],
+  ): Promise<number[]> {
+    return countCompletionsInBucketsForForm(
+      currentClient(this.prisma),
+      formId,
+      buckets,
+    );
+  }
+
+  async countExternalCompletionsSince(
+    formId: string,
+    since: Date,
+  ): Promise<number> {
+    return currentClient(this.prisma).surveyAttempt.count({
+      where: {
+        surveyId: formId,
+        status: 'COMPLETED',
+        response: null,
+        submittedAt: { gte: since },
+      },
+    });
+  }
+
+  async findLatestRejection(formId: string): Promise<FormRejection | null> {
+    const row = await currentClient(
+      this.prisma,
+    ).surveyModerationDecision.findFirst({
+      where: { formId, outcome: 'REJECTED' },
+      orderBy: { decidedAt: 'desc' },
+      select: { reason: true, refundAmount: true, decidedAt: true },
+    });
+    return row
+      ? {
+          reason: row.reason ?? '',
+          refundAmount: row.refundAmount,
+          decidedAt: row.decidedAt,
+        }
+      : null;
   }
 
   async findModerationQueue(

@@ -23,9 +23,9 @@ test("Story 6.6: mock point top-up requests", async (t) => {
     buildVietQrPayload,
     TOP_UP_MAX_PENDING_REQUESTS,
   } = await import("@rescom/schemas");
-  const { mockRepository } = await import("../lib/mock/repository.ts");
+  const { mockRepository } = await import("../mocks/legacy/repository.ts");
   const { setMockStorage, loadStore, saveStore } = await import(
-    "../lib/mock/store.ts"
+    "../mocks/legacy/store.ts"
   );
 
   t.beforeEach(async () => {

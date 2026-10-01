@@ -4,6 +4,7 @@ import { SurveyResponseRepositoryPort } from './ports/survey-response.repository
 import { requireCompleteDemographicProfile } from '../../users/application/demographic-profile.gate';
 import {
   isSurveyTargetingMatch,
+  matchesSurveySearch,
   MarketplaceFeedQueryDto,
   MarketplaceFeedResponseDto,
   MarketplaceSurveyCardDto,
@@ -24,7 +25,8 @@ export class MarketplaceService {
     const hideCompleted = query?.hideCompleted ?? true;
     const sortBy = query?.sortBy ?? 'best_match';
     const typeFilter = query?.type ?? 'ALL';
-    const searchFilter = query?.search?.toLowerCase().trim();
+    const searchFilter = query?.search?.trim();
+    const now = new Date();
     const minReward = query?.minReward;
     const maxDuration = query?.maxDuration;
 
@@ -70,6 +72,11 @@ export class MarketplaceService {
         continue;
       }
 
+      // Story IR.2b Task 9.2: no new start at or after the deadline.
+      if (item.form.isPastDeadline(now)) {
+        continue;
+      }
+
       // Auto-hide completed surveys if hideCompleted is true
       if (hideCompleted && isCompletedByCurrentUser) {
         continue;
@@ -100,15 +107,20 @@ export class MarketplaceService {
         continue;
       }
 
-      // Filter by search keyword (title or description)
-      if (searchFilter) {
-        const titleMatch = item.form.title.toLowerCase().includes(searchFilter);
-        const descMatch = item.form.description
-          ? item.form.description.toLowerCase().includes(searchFilter)
-          : false;
-        if (!titleMatch && !descMatch) {
-          continue;
-        }
+      // Filter by search keyword: title, description or topic (plan 2.2),
+      // ignoring case and Vietnamese diacritics.
+      if (
+        searchFilter &&
+        !matchesSurveySearch(
+          {
+            title: item.form.title,
+            description: item.form.description,
+            topic: item.form.topic,
+          },
+          searchFilter,
+        )
+      ) {
+        continue;
       }
 
       // Demographic targeting check. Stored targeting is runtime-validated:
@@ -153,6 +165,7 @@ export class MarketplaceService {
         targetingJson: targeting,
         hasTargeting,
         isCompletedByCurrentUser,
+        topic: item.form.topic,
       });
     }
 

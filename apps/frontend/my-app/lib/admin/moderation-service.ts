@@ -23,7 +23,7 @@ import { apiRequest } from "../api/client.ts";
  * ASSUMED API CONTRACT extensions (optional, so the real backend still parses):
  * - `publisherName` — Figma "Người đăng: Linh N." (the DTO only has the email)
  * - `publisherFraudLogCount` — Figma "0 vi phạm FraudLog"
- * - `deadlineAt` — Figma "Hạn 10/10/2026" (collection deadline of the wizard)
+ * - (`deadlineAt` and `topic` are VERIFIED since IR.2b / plan 2.2)
  * - `targetingJson.schools` — same extension as the Google Forms wizard
  */
 
@@ -36,7 +36,6 @@ const extensions = {
   targetingJson: targetingSchema.nullable(),
   publisherName: z.string().nullable().optional(),
   publisherFraudLogCount: z.number().int().min(0).nullable().optional(),
-  deadlineAt: z.string().datetime().nullable().optional(),
 };
 
 export const moderationQueueEntrySchema = moderationQueueItemSchema.extend(extensions);

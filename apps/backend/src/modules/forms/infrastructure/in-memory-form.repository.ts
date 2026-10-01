@@ -1,8 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import {
+  CompletionBucketWindow,
   CreateVersionOptions,
   FormCreationKey,
   FormEscrowInputs,
+  FormPublishedSummary,
+  FormRejection,
   FormRepositoryPort,
   FormSummaryItem,
   FormUpdateExpectation,
@@ -26,6 +29,16 @@ type InProgressAttemptsSource = (
   startedSince: Date,
 ) => number | Promise<number>;
 
+/** IR.4a: one completed participation of a form (see `setCompletionTimes`). */
+export interface CompletionTime {
+  submittedAt: Date;
+  external: boolean;
+}
+
+type CompletionTimesSource = (
+  formId: string,
+) => CompletionTime[] | Promise<CompletionTime[]>;
+
 @Injectable()
 export class InMemoryFormRepository implements FormRepositoryPort {
   private readonly forms = new Map<string, FormEntity>();
@@ -38,6 +51,9 @@ export class InMemoryFormRepository implements FormRepositoryPort {
   >();
   private completionSource?: CompletionRefsSource;
   private inProgressAttemptsSource?: InProgressAttemptsSource;
+  private readonly completionTimes = new Map<string, CompletionTime[]>();
+  private completionTimesSource?: CompletionTimesSource;
+  private readonly rejections = new Map<string, FormRejection>();
 
   clear(): void {
     this.forms.clear();
@@ -46,6 +62,9 @@ export class InMemoryFormRepository implements FormRepositoryPort {
     this.creationKeys.clear();
     this.completionSource = undefined;
     this.inProgressAttemptsSource = undefined;
+    this.completionTimes.clear();
+    this.completionTimesSource = undefined;
+    this.rejections.clear();
   }
 
   /**
@@ -127,6 +146,26 @@ export class InMemoryFormRepository implements FormRepositoryPort {
       form,
       currentVersion: formVersions[0],
       versions: formVersions,
+    };
+  }
+
+  async findPublishedSummaryById(
+    id: string,
+  ): Promise<FormPublishedSummary | null> {
+    const form = this.forms.get(id);
+    if (!form) return null;
+    const newest = Array.from(this.versions.values())
+      .filter((v) => v.formId === id && v.isPublished)
+      .sort((a, b) => b.versionNumber - a.versionNumber)[0];
+    return {
+      form,
+      newestPublished: newest
+        ? {
+            id: newest.id,
+            versionNumber: newest.versionNumber,
+            metadata: newest.schemaJson?.metadata ?? null,
+          }
+        : null,
     };
   }
 
@@ -325,6 +364,35 @@ export class InMemoryFormRepository implements FormRepositoryPort {
     return result;
   }
 
+  /** Story IR.2b Task 9.3 parity: oldest deadline first. */
+  async findQuotaState(formId: string) {
+    const form = this.forms.get(formId);
+    if (!form) return null;
+    const refs = await this.listRewardableCompletions(formId);
+    return {
+      status: form.status,
+      expectedCompletions: form.expectedCompletions,
+      completedCount: refs.completedCount,
+    };
+  }
+
+  async findFormsPastDeadline(cutoff: Date, limit: number): Promise<string[]> {
+    return Array.from(this.forms.values())
+      .filter(
+        (form) =>
+          (form.status === 'PUBLISHED' || form.status === 'MODERATION_QUEUE') &&
+          form.deadlineAt !== null &&
+          form.deadlineAt.getTime() <= cutoff.getTime(),
+      )
+      .sort(
+        (a, b) =>
+          (a.deadlineAt?.getTime() ?? 0) - (b.deadlineAt?.getTime() ?? 0) ||
+          a.id.localeCompare(b.id),
+      )
+      .slice(0, Math.max(0, limit))
+      .map((form) => form.id);
+  }
+
   /**
    * Test helper: the quota count only (no settleable completions, so no
    * reward is owed for them).
@@ -376,6 +444,61 @@ export class InMemoryFormRepository implements FormRepositoryPort {
       });
     }
     return result;
+  }
+
+  /**
+   * Test helper (IR.4a): the completion instants of a form (`external` = a
+   * COMPLETED External attempt without a Response) behind the progress
+   * buckets and the review-window count.
+   */
+  setCompletionTimes(formId: string, completions: CompletionTime[]): void {
+    this.completionTimes.set(formId, [...completions]);
+  }
+
+  /** Test helper (IR.4a): read completion instants from another in-memory store. */
+  useCompletionTimesSource(source: CompletionTimesSource): void {
+    this.completionTimesSource = source;
+  }
+
+  private async completionTimesOf(formId: string): Promise<CompletionTime[]> {
+    return this.completionTimesSource
+      ? this.completionTimesSource(formId)
+      : (this.completionTimes.get(formId) ?? []);
+  }
+
+  async countCompletionsInBuckets(
+    formId: string,
+    buckets: readonly CompletionBucketWindow[],
+  ): Promise<number[]> {
+    const completions = await this.completionTimesOf(formId);
+    return buckets.map(
+      (bucket) =>
+        completions.filter(
+          (completion) =>
+            completion.submittedAt >= bucket.startsAt &&
+            completion.submittedAt < bucket.endsAt,
+        ).length,
+    );
+  }
+
+  async countExternalCompletionsSince(
+    formId: string,
+    since: Date,
+  ): Promise<number> {
+    const completions = await this.completionTimesOf(formId);
+    return completions.filter(
+      (completion) => completion.external && completion.submittedAt >= since,
+    ).length;
+  }
+
+  /** Test helper: the latest REJECTED moderation decision of a form. */
+  setRejection(formId: string, rejection: FormRejection | null): void {
+    if (rejection) this.rejections.set(formId, rejection);
+    else this.rejections.delete(formId);
+  }
+
+  async findLatestRejection(formId: string): Promise<FormRejection | null> {
+    return this.rejections.get(formId) ?? null;
   }
 
   async findModerationQueue(

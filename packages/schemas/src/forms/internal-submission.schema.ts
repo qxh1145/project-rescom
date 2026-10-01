@@ -63,9 +63,11 @@ export const internalRewardRequestedPayloadSchema = z
      * E6-D1, option B). It is NOT the Escrow draw: the settlement journal
      * debits the Publisher's Escrow `internalRewardFunding(rewardAmount)
      * .escrowDraw` (= round(0.8 × reward), what publish reserved) and
-     * SYSTEM_ISSUANCE the remaining `platformSubsidy`.
+     * SYSTEM_ISSUANCE the remaining `platformSubsidy`. 0 for a free survey
+     * (the producer writes `form.rewardPerResponse`, which may be 0): the
+     * IR.2b handler records it as a successful no-credit settlement.
      */
-    rewardAmount: z.number().int().positive(),
+    rewardAmount: z.number().int().nonnegative(),
     policyMode: rewardPolicyModeSchema,
     policyDeploymentId: z.string().min(1),
     submittedAt: z.string().datetime(),

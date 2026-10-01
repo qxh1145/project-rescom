@@ -4,6 +4,7 @@ import Link from "next/link";
 import { RescomLogo } from "@/components/brand/RescomLogo";
 import { PointsChip } from "@/components/layout/app/PointsChip";
 import { Icon } from "@/components/ui/Icon";
+import type { CompletionKind } from "@/lib/participation/completion-view";
 
 /** Figma 62:1763 — completion header: logo + points chip (no navigation). */
 export function CompletionDesktopHeader() {
@@ -17,8 +18,21 @@ export function CompletionDesktopHeader() {
   );
 }
 
+/** ASSUMED (not drawn): no "+N điểm" claim when nothing was credited or the reward was reversed. */
+const NO_POINTS_COPY = {
+  "no-reward": "Lượt này không được cộng điểm",
+  reversed: "Điểm thưởng của lượt này đã bị thu hồi",
+} as const;
+
 /** "+12 điểm vào Khả dụng" (Figma 62:1796 / 62:2051) — pending wording for Google Forms (ASSUMED, page 5). */
-export function RewardPill({ amount, kind }: { amount: number; kind: "available" | "pending" }) {
+export function RewardPill({ amount, kind }: { amount: number; kind: Exclude<CompletionKind, "held"> }) {
+  if (kind === "no-reward" || kind === "reversed") {
+    return (
+      <p className="inline-flex min-h-9 items-center rounded-full bg-surface-muted px-4 text-body font-bold text-ink-muted lg:min-h-11 lg:px-5 lg:text-lead">
+        {NO_POINTS_COPY[kind]}
+      </p>
+    );
+  }
   return (
     <p className="inline-flex h-9 items-center rounded-full bg-tone-amber-accent px-4 text-lead font-extrabold text-ink lg:h-11 lg:px-5 lg:text-body-lg">
       +{amount} điểm vào {kind === "pending" ? "Chờ duyệt 48 giờ" : "Khả dụng"}

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
+import { publicFormDetailsSchema } from '@rescom/schemas';
 import { AppModule } from '../src/app.module';
 import { FORM_REPOSITORY_PORT } from '../src/modules/forms/application/ports/form-repository.port';
 import { InMemoryFormRepository } from '../src/modules/forms/infrastructure/in-memory-form.repository';
@@ -132,6 +133,19 @@ describe('Story 4.4: Public Link & Guest Submissions E2E Tests', () => {
             title: 'Service Rating',
             required: false,
             order: 1,
+            // Review MEDIUM-1: stored, scored server-side, never served.
+            integrity: {
+              attentionCheck: {
+                isAttentionCheck: true,
+                expectedValue: 7,
+                failAction: 'FLAG',
+              },
+              consistencyPair: {
+                pairedBlockId: 'name_block',
+                rule: 'EQUIVALENT',
+              },
+              semanticCategory: 'ATTENTION_CHECK',
+            },
           },
         ],
         settings: {
@@ -230,6 +244,12 @@ describe('Story 4.4: Public Link & Guest Submissions E2E Tests', () => {
       expect(res.body.data.title).toBe('Citizen Feedback Form');
       expect(res.body.data.blocks).toHaveLength(2);
       expect(res.body.data.settings.allowPublicAccess).toBe(true);
+      expect(publicFormDetailsSchema.safeParse(res.body.data).success).toBe(
+        true,
+      );
+      expect(JSON.stringify(res.body.data)).not.toMatch(
+        /integrity|expectedValue|isAttentionCheck|consistencyPair|ATTENTION_CHECK/,
+      );
     });
 
     it('should reject draft form with 404', async () => {

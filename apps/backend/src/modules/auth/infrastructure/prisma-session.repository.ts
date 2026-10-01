@@ -6,6 +6,7 @@ import {
 } from '../application/ports/session-repository.port';
 import {
   Session,
+  SessionRevokeReason,
   RefreshCredential,
   RefreshCredentialProps,
 } from '../domain/session.entity';
@@ -31,10 +32,14 @@ export class PrismaSessionRepository implements SessionRepositoryPort {
       });
       const nextVersion = (maxResult._max.sessionVersion ?? 0) + 1;
 
-      // 3. Revoke existing active sessions
+      // 3. Revoke existing active sessions (plan 5.6: replaced by this login)
       await tx.session.updateMany({
         where: { userId, revoked: false },
-        data: { revoked: true },
+        data: {
+          revoked: true,
+          revokedAt: input.session.createdAt,
+          revokedReason: 'REPLACED',
+        },
       });
 
       // 4. Create new Session record with nextVersion
@@ -160,12 +165,14 @@ export class PrismaSessionRepository implements SessionRepositoryPort {
 
   async revokeSession(
     sessionId: string,
+    reason: SessionRevokeReason,
     auditRecord?: CreateIdentityAuditRecord,
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      await tx.session.update({
-        where: { id: sessionId },
-        data: { revoked: true },
+      // An already revoked session keeps its first reason.
+      await tx.session.updateMany({
+        where: { id: sessionId, revoked: false },
+        data: { revoked: true, revokedAt: new Date(), revokedReason: reason },
       });
 
       if (auditRecord) {
@@ -183,10 +190,13 @@ export class PrismaSessionRepository implements SessionRepositoryPort {
     });
   }
 
-  async revokeAllByUserId(userId: string): Promise<void> {
+  async revokeAllByUserId(
+    userId: string,
+    reason: SessionRevokeReason,
+  ): Promise<void> {
     await this.prisma.session.updateMany({
       where: { userId, revoked: false },
-      data: { revoked: true },
+      data: { revoked: true, revokedAt: new Date(), revokedReason: reason },
     });
   }
 

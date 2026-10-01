@@ -8,7 +8,7 @@ import {
 } from "@/lib/admin/admin-transactions";
 import type { AdminJournal, AdminLedgerSummary } from "@/lib/admin/transactions-service";
 import { vietnamDateKey } from "@/lib/format/date-time";
-import { loadStore } from "@/lib/mock/store.ts";
+import { loadStore } from "../legacy/store";
 import { pendingTopUpSummary } from "./admin-top-ups";
 import { toMockUuid } from "./auth";
 import { mockEscrowTotal, transactions, wallets } from "./economy";

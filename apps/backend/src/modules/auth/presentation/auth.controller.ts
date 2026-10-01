@@ -12,14 +12,20 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { SkipThrottle } from '@nestjs/throttler';
 import {
   registerSchema,
   loginSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
   RegisterDto,
   LoginDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
 } from '@rescom/schemas';
 import { AuthService } from '../application/auth.service';
 import { SessionService } from '../application/session.service';
+import { PasswordResetService } from '../application/password-reset.service';
 import { EnvService } from '../../../common/config/env.service';
 import { ZodValidationPipe } from '../../../common/http/zod-validation.pipe';
 import { JsonOnlyGuard } from '../../../common/http/json-only.guard';
@@ -42,6 +48,7 @@ import {
   SessionRevokedException,
   SessionExpiredException,
   UserLockedException,
+  PasswordResetTokenInvalidException,
 } from '../application/exceptions/auth.exceptions';
 import { SessionAuthGuard } from './guards/session-auth.guard';
 import { CurrentUser } from './decorators';
@@ -53,6 +60,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly envService: EnvService,
     private readonly sessionService?: SessionService,
+    private readonly passwordResetService?: PasswordResetService,
   ) {}
 
   @Post('register')
@@ -115,7 +123,51 @@ export class AuthController {
     return createSuccessEnvelope({ user: result.user });
   }
 
+  /**
+   * Plan 5.4: always 202 with the same body and about the same time, whether
+   * or not the address has an account (no enumeration). Anonymous like login:
+   * JSON only (a cross-site form cannot send it without a CORS preflight), no
+   * CSRF token, on the strict `auth` throttler bucket; the service adds
+   * 3 links per hour per (account, IP) and 10 per account.
+   */
+  @Post('password/forgot')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Header('Cache-Control', 'no-store')
+  @UseGuards(JsonOnlyGuard)
+  @UsePipes(new ZodValidationPipe(forgotPasswordSchema, 'AUTH_INVALID_INPUT'))
+  async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
+    await this.passwordResetService?.requestReset(dto.email, req.ip);
+    return createSuccessEnvelope({ accepted: true as const });
+  }
+
+  /**
+   * Plan 5.4: redeems a reset token (invalid, expired and used answer the
+   * same 400 `PASSWORD_RESET_TOKEN_INVALID`), sets the new password and
+   * revokes every session of the account. This browser's cookies are cleared
+   * too: the user signs in again with the new password.
+   */
+  @Post('password/reset')
+  @HttpCode(HttpStatus.OK)
+  @Header('Cache-Control', 'no-store')
+  @UseGuards(JsonOnlyGuard)
+  @UsePipes(new ZodValidationPipe(resetPasswordSchema, 'AUTH_INVALID_INPUT'))
+  async resetPassword(
+    @Body() dto: ResetPasswordDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    if (!this.passwordResetService) {
+      throw new PasswordResetTokenInvalidException();
+    }
+    await this.passwordResetService.resetPassword(dto);
+    clearAuthCookies(res, this.envService);
+    return createSuccessEnvelope({ passwordReset: true as const });
+  }
+
+  // Plan 0.1: csrf, refresh, me and logout are session upkeep that runs on
+  // every page load, so they skip the strict `auth` bucket (credential checks
+  // only) and stay on `default`.
   @Get('csrf')
+  @SkipThrottle({ auth: true })
   @HttpCode(HttpStatus.OK)
   @Header('Cache-Control', 'no-store')
   async getCsrf(
@@ -159,6 +211,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @SkipThrottle({ auth: true })
   @HttpCode(HttpStatus.OK)
   @Header('Cache-Control', 'no-store')
   async refresh(
@@ -216,6 +269,7 @@ export class AuthController {
   }
 
   @Get('me')
+  @SkipThrottle({ auth: true })
   @UseGuards(SessionAuthGuard)
   @Header('Cache-Control', 'no-store')
   async getMe(@CurrentUser() user: AuthenticatedUser) {
@@ -223,6 +277,7 @@ export class AuthController {
   }
 
   @Post('logout')
+  @SkipThrottle({ auth: true })
   @HttpCode(HttpStatus.NO_CONTENT)
   @Header('Cache-Control', 'no-store')
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { DemoDataTag } from "@/components/ui/DemoDataTag";
 import { useCallback, useMemo } from "react";
 import { MobileBackBar } from "@/components/layout/app/MobileTopBar";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
@@ -100,6 +101,7 @@ export function LeaderboardScreen() {
             <h1 id="leaderboard-title" className="mb-3.5 hidden text-[24px] font-extrabold text-ink lg:block">
               Bảng xếp hạng
             </h1>
+            <DemoDataTag className="mb-3" />
             <SegmentedControl
               segments={TYPE_SEGMENTS}
               value={type}

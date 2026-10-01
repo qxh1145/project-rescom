@@ -20,9 +20,83 @@ export const DISALLOWED_MIME_TYPES = [
   "application/java-archive",
 ];
 
+/**
+ * File names the server refuses (`StorageService.assertSafeExtension`), shared
+ * so the runner and the mock reject them before any upload. Windows drops
+ * trailing dots and spaces, so `evil.exe.` counts as `.exe`.
+ */
+export const DANGEROUS_FILE_EXTENSIONS: readonly string[] = [
+  ".exe",
+  ".dll",
+  ".msi",
+  ".msc",
+  ".com",
+  ".scr",
+  ".bat",
+  ".cmd",
+  ".ps1",
+  ".lnk",
+  ".hta",
+  ".jar",
+  ".sh",
+  ".csh",
+  ".vbs",
+  ".vbe",
+  ".js",
+  ".jse",
+  ".mjs",
+  ".wsf",
+  ".php",
+  ".phtml",
+  ".html",
+  ".htm",
+  ".xhtml",
+  ".shtml",
+  ".svg",
+  ".svgz",
+];
+
+export const MAX_UPLOAD_FILE_NAME_LENGTH = 255;
+
+/** The dangerous extension `fileName` ends with (case-insensitive), or null. */
+export function dangerousFileExtension(fileName: string): string | null {
+  const normalized = fileName.toLowerCase().replace(/[.\s]+$/, "");
+  return (
+    DANGEROUS_FILE_EXTENSIONS.find((extension) =>
+      normalized.endsWith(extension),
+    ) ?? null
+  );
+}
+
+export type UploadFileNameProblem =
+  "EMPTY" | "TOO_LONG" | "PATH" | "DANGEROUS_EXTENSION";
+
+/** Why the server would refuse this file name, or null (same rules as initiate). */
+export function uploadFileNameProblem(
+  fileName: string,
+): UploadFileNameProblem | null {
+  const trimmed = fileName.trim();
+  if (!trimmed || !trimmed.replace(/^\.+/, "")) return "EMPTY";
+  if (trimmed.length > MAX_UPLOAD_FILE_NAME_LENGTH) return "TOO_LONG";
+  if (trimmed.includes("..") || trimmed.includes("/") || trimmed.includes("\\"))
+    return "PATH";
+  return dangerousFileExtension(trimmed) ? "DANGEROUS_EXTENSION" : null;
+}
+
+/** 409 when a question already holds `maxFiles` live uploads (`details`: below). */
+export const STORAGE_QUESTION_FULL_CODE = "STORAGE_QUESTION_FULL";
+
+export const storageQuestionFullDetailsSchema = z.object({
+  questionId: z.string().nullable(),
+  maxFiles: z.number().int().positive(),
+});
+
 const sha256ChecksumSchema = z
   .string()
-  .regex(/^[a-fA-F0-9]{64}$/, "Checksum must be a 64-character hex string (SHA-256)");
+  .regex(
+    /^[a-fA-F0-9]{64}$/,
+    "Checksum must be a 64-character hex string (SHA-256)",
+  );
 
 // --- Enums ---
 export const storedObjectStatusEnum = z.enum([
@@ -70,9 +144,7 @@ export const initiateUploadInputSchema = z
       .max(255, "File name must not exceed 255 characters")
       .refine(
         (name) =>
-          !name.includes("..") &&
-          !name.includes("/") &&
-          !name.includes("\\"),
+          !name.includes("..") && !name.includes("/") && !name.includes("\\"),
         "File name contains invalid path traversal characters",
       ),
     fileSize: z
@@ -179,6 +251,31 @@ export const fileAttachmentAnswerSchema = z.object({
   status: z.literal("CLEAN"),
 });
 
-export type FileAttachmentAnswer = z.infer<
-  typeof fileAttachmentAnswerSchema
+export type FileAttachmentAnswer = z.infer<typeof fileAttachmentAnswerSchema>;
+
+// --- List an owner's live uploads (re-adopt / clean up, Phase 7) ---
+/** `GET storage/uploads`: the caller's live uploads of one owner record (and question). */
+export const listUploadsQuerySchema = z
+  .object({
+    ownerContext: storageOwnerContextEnum,
+    ownerRecordId: z.string().uuid("Invalid owner record UUID"),
+    questionId: z.string().max(100).optional(),
+  })
+  .strict();
+
+export type ListUploadsQuery = z.infer<typeof listUploadsQuerySchema>;
+
+export const listUploadsResponseSchema = z.object({
+  objects: z.array(storedObjectDtoSchema),
+});
+
+export type ListUploadsResponse = z.infer<typeof listUploadsResponseSchema>;
+
+/** `details` of a 400 `UNCLEAN_ATTACHMENT` at submit: the files that could not be attached. */
+export const uncleanAttachmentDetailsSchema = z.object({
+  files: z.array(z.object({ questionId: z.string(), objectId: z.string() })),
+});
+
+export type UncleanAttachmentDetails = z.infer<
+  typeof uncleanAttachmentDetailsSchema
 >;

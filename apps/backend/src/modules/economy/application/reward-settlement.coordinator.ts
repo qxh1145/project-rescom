@@ -1,7 +1,13 @@
-import { RewardPolicyMode, RewardSettlementResultDto } from '@rescom/schemas';
+import {
+  decodeMaturedReleaseCursor,
+  encodeMaturedReleaseCursor,
+  RewardPolicyMode,
+  RewardSettlementResultDto,
+} from '@rescom/schemas';
 import {
   attemptIdFromExternalCompletionKey,
   ExternalCreditState,
+  ExternalSettlementState,
   LedgerService,
   PENDING_REWARD_MATURITY_MS,
   ReleasePendingRewardParams,
@@ -9,6 +15,7 @@ import {
 } from './ledger.service';
 import {
   DisputeHoldActiveException,
+  InvalidLedgerOperationException,
   PendingCreditNotFoundException,
 } from './exceptions/economy.exceptions';
 import { LedgerJournalEntity } from '../domain/ledger-journal.entity';
@@ -33,7 +40,10 @@ export function internalRewardNotificationKey(responseId: string): string {
 export const MATURED_RELEASE_DEFAULT_LIMIT = 100;
 export const MATURED_RELEASE_MAX_LIMIT = 500;
 
-export type { ExternalCreditState } from './ledger.service';
+export type {
+  ExternalCreditState,
+  ExternalSettlementState,
+} from './ledger.service';
 
 export interface SettleInternalRewardParams {
   responseId: string;
@@ -55,6 +65,11 @@ export interface ReleaseMaturedPendingRewardsParams {
   cutoffDate?: Date;
   /** Batch size, 1..500 (default 100). */
   limit?: number;
+  /**
+   * Story IR.2b Task 6.2: `nextCursor` of the previous batch (opaque,
+   * server-issued); omitted = from the oldest unreleased credit.
+   */
+  after?: string;
 }
 
 export interface MaturedReleaseSummary {
@@ -64,6 +79,12 @@ export interface MaturedReleaseSummary {
   failedCount: number;
   /** More matured credits remain after this batch. */
   hasMore: boolean;
+  /**
+   * Position after the last credit of this batch (null when `hasMore` is
+   * false). Failed credits stay behind it, so a paged run never re-reads
+   * them; the next run starts from the oldest again and retries them.
+   */
+  nextCursor: string | null;
   /** The effective (clamped) cutoff, ISO-8601. */
   cutoffDate: string;
 }
@@ -224,6 +245,18 @@ export class RewardSettlementCoordinator {
   }
 
   /**
+   * Story IR.2a (read-only): `getExternalCreditState` refined by the
+   * attempt's dispute journals — `HELD` (open dispute hold),
+   * `REFUNDED_TO_PUBLISHER`, or `RELEASED` after a resolution in the
+   * Respondent's favour. Never posts a journal.
+   */
+  getExternalSettlementState(
+    attemptId: string,
+  ): Promise<ExternalSettlementState> {
+    return this.ledgerService.getExternalSettlementState(attemptId);
+  }
+
+  /**
    * Releases one matured pending external reward to USER_AVAILABLE (FR-24) and,
    * after the journal commits, notifies the respondent (FR-57). The
    * notification shares the journal identity, so a replay never duplicates it.
@@ -295,9 +328,11 @@ export class RewardSettlementCoordinator {
    * credits created at or before `cutoffDate` — clamped to now − 48 h, so a
    * caller can never release early — that were neither released nor
    * reversed, oldest first, `limit` per call. One failure never stops the
-   * batch. The recurring scheduler is deferred (no worker infrastructure).
+   * batch.
    * Credits settled by a resolved dispute hold are not scanned (BE-5); one
    * settled or reversed after the scan read counts as disputed, not failed.
+   * Story IR.2b: the `pending-release` scheduler job pages through this with
+   * `after`/`nextCursor`; this Admin command stays the operator fallback.
    */
   async releaseMaturedPendingRewards(
     params: ReleaseMaturedPendingRewardsParams = {},
@@ -314,9 +349,25 @@ export class RewardSettlementCoordinator {
       Math.max(1, Math.floor(params.limit ?? MATURED_RELEASE_DEFAULT_LIMIT)),
     );
 
+    const after =
+      params.after !== undefined
+        ? decodeMaturedReleaseCursor(params.after)
+        : null;
+    if (params.after !== undefined && !after) {
+      throw new InvalidLedgerOperationException('Invalid release cursor.');
+    }
+
     const credits = await this.ledgerService.findMaturedPendingCredits({
       cutoff,
       limit: limit + 1,
+      ...(after
+        ? {
+            after: {
+              createdAt: new Date(after.createdAt),
+              journalId: after.journalId,
+            },
+          }
+        : {}),
     });
     const batch = credits.slice(0, limit);
 
@@ -347,12 +398,21 @@ export class RewardSettlementCoordinator {
       }
     }
 
+    const hasMore = credits.length > limit;
+    const last = batch[batch.length - 1];
     return {
       processed: batch.length,
       releasedCount,
       disputedCount,
       failedCount,
-      hasMore: credits.length > limit,
+      hasMore,
+      nextCursor:
+        hasMore && last
+          ? encodeMaturedReleaseCursor({
+              createdAt: last.createdAt.toISOString(),
+              journalId: last.id,
+            })
+          : null,
       cutoffDate: cutoff.toISOString(),
     };
   }

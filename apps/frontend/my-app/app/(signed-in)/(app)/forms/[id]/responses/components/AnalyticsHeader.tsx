@@ -1,7 +1,6 @@
 import { formatShortDateTime } from "@/lib/format/date-time";
-import type { FormAnalytics } from "@/lib/forms/results-analytics-service";
-import { formatCount, formatPercent, headerMetrics, responsesLabel } from "@/lib/forms/results-analytics";
-import { formatDurationLong } from "@/lib/forms/results-view";
+import type { AvailableFormAnalytics } from "@/lib/forms/results-analytics-service";
+import { headerMetrics, responsesLabel } from "@/lib/forms/results-analytics";
 
 interface Tile {
   label: string;
@@ -11,25 +10,13 @@ interface Tile {
 
 /**
  * Tóm tắt header: "321 câu trả lời" + stat tiles in the quality-screen style.
- * A tile is drawn only when the data backs it (`headerMetrics` → null hides it).
+ * A tile is drawn only when the data backs it (`headerMetrics` → null hides
+ * it). No completion-rate or average-time tile: FR-41 funnel metrics are
+ * deferred (IR.4a R4, Q6).
  */
-export function AnalyticsHeader({ analytics }: { analytics: FormAnalytics }) {
+export function AnalyticsHeader({ analytics }: { analytics: AvailableFormAnalytics }) {
   const metrics = headerMetrics(analytics);
   const tiles: Tile[] = [];
-  if (metrics.completionRate !== null && analytics.startedCount !== null) {
-    tiles.push({
-      label: "Tỷ lệ hoàn thành",
-      value: formatPercent(metrics.completionRate),
-      caption: `${formatCount(metrics.totalResponses)} / ${formatCount(analytics.startedCount)} lượt bắt đầu`,
-    });
-  }
-  if (metrics.averageDurationSeconds !== null) {
-    tiles.push({
-      label: "Thời gian trung bình",
-      value: formatDurationLong(metrics.averageDurationSeconds),
-      caption: "mỗi lượt hoàn thành",
-    });
-  }
   if (metrics.lastResponseAt !== null) {
     tiles.push({
       label: "Câu trả lời gần nhất",

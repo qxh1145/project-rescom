@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { externalSurveyResponseSchema } from "@rescom/schemas";
+import { audienceEstimateSchema, externalSurveyResponseSchema, type AudienceEstimateDto } from "@rescom/schemas";
 import { apiRequest } from "../api/client.ts";
 import type { CreateGoogleFormSurveyBody, WizardTargeting } from "./create-wizard.ts";
 
@@ -31,20 +31,24 @@ export function createGoogleFormSurvey(
   });
 }
 
-export const audienceEstimateSchema = z.object({
-  estimatedRespondents: z.number().int().nonnegative(),
-});
-export type AudienceEstimate = z.infer<typeof audienceEstimateSchema>;
+export { audienceEstimateSchema };
+export type AudienceEstimate = AudienceEstimateDto;
 
 /**
- * ASSUMED API CONTRACT: `POST /forms/audience-estimate` `{ targeting }` →
- * `{ estimatedRespondents }` — Figma 9b "Người phù hợp ước tính". No backend
- * route yet; the screen hides the number when the call fails.
+ * VERIFIED: `POST /forms/audience-estimate` (`audience-estimate.controller.ts`,
+ * session + CSRF, strict `audienceEstimateInputSchema`) → 200
+ * `audienceEstimateSchema` — Figma 9b "Người phù hợp ước tính". The count is
+ * rounded and `estimatedRespondents` is null below `minimumReportable`
+ * (k-anonymity: a small group is never revealed). The UI-only `schools`
+ * filter is not part of the backend contract and is never sent. The screen
+ * hides the number when the call fails.
  */
 export function estimateAudience(targeting: WizardTargeting, signal?: AbortSignal): Promise<AudienceEstimate> {
+  const backendTargeting: WizardTargeting = { ...targeting };
+  delete backendTargeting.schools;
   return apiRequest("/forms/audience-estimate", {
     method: "POST",
-    body: { targeting },
+    body: { targeting: backendTargeting },
     schema: audienceEstimateSchema,
     signal,
   });

@@ -1,7 +1,7 @@
 import { Icon } from "@/components/ui/Icon";
 import { Tag } from "@/components/ui/Tag";
-import { reviewReasonText } from "@/lib/forms/results-messages";
-import type { FormResponse, FormResponses, ResultQuestion } from "@/lib/forms/results-service";
+import { NOT_ASSESSED_LABEL } from "@/lib/forms/results-messages";
+import type { AvailableFormResponses, FormResponse, ResultQuestion } from "@/lib/forms/results-service";
 import {
   answerChoices,
   answerText,
@@ -9,19 +9,19 @@ import {
   formatSubmittedAt,
   questionKindLabel,
 } from "@/lib/forms/results-view";
-import { QualityTag } from "./QualityTag";
 
 type Variant = "panel" | "page";
 
 /**
- * "Nộp 18/09 16:48 · 6 phút 02 giây" + quality pill + "Ẩn danh" (publishers only ever see the
- * response code — ASSUMED hint) (+ ASSUMED reason line for "Cần xem lại").
+ * "Nộp 18/09 16:48 · 6 phút 02 giây" + "Ẩn danh" (publishers only ever see the
+ * response code) + the neutral "Chưa đánh giá chất lượng" tag: responses are
+ * never graded in Phase 1 (`integrity.applicability` NOT_ASSESSED, IR.4a R8).
  */
-export function ResponseMeta({ response, variant }: { response: FormResponse; variant: Variant }) {
+export function ResponseMeta({ response }: { response: FormResponse; variant: Variant }) {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-caption text-ink-muted">
-        <QualityTag quality={response.quality} withCheck={variant === "page"} />
+        {response.integrity.applicability === "NOT_ASSESSED" ? <Tag tone="neutral">{NOT_ASSESSED_LABEL}</Tag> : null}
         <Tag tone="neutral" icon={<Icon name="lock" size={12} />}>
           Ẩn danh
         </Tag>
@@ -29,11 +29,6 @@ export function ResponseMeta({ response, variant }: { response: FormResponse; va
         <span aria-hidden="true">·</span>
         <span>{formatDurationLong(response.durationSeconds)}</span>
       </div>
-      {response.quality === "NEEDS_REVIEW" && response.reviewReasons.length ? (
-        <p className="text-caption text-tone-amber-fg">
-          Gợi ý kiểm tra: {response.reviewReasons.map(reviewReasonText).join(", ")}.
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -87,32 +82,10 @@ export function ResponseAnswers({
   response,
   variant,
 }: {
-  data: FormResponses;
+  data: AvailableFormResponses;
   response: FormResponse;
   variant: Variant;
 }) {
-  if (data.form.type === "EXTERNAL") {
-    return (
-      <div className="flex flex-col gap-2 border-t border-line-subtle pt-3 text-body-sm text-ink-strong">
-        <p>
-          <span className="font-semibold text-ink">Mã hoàn thành:</span>{" "}
-          {response.codeVerified ? "đã xác minh trong Rescom" : "chưa xác minh"}
-        </p>
-        <p>Nội dung câu trả lời nằm trong Google Forms của bạn — Rescom chỉ lưu mã xác minh.</p>
-        {data.form.externalUrl ? (
-          <a
-            href={data.form.externalUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 font-bold text-primary hover:underline"
-          >
-            Mở Google Forms
-            <Icon name="external-link" size={16} />
-          </a>
-        ) : null}
-      </div>
-    );
-  }
   return (
     <ol className="flex flex-col">
       {data.questions.map((question, index) => (

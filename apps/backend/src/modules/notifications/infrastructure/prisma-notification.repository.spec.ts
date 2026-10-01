@@ -1,4 +1,5 @@
 import { PrismaService } from '../../../common/database/prisma.service';
+import { PrismaUnitOfWork } from '../../../common/database/prisma-unit-of-work';
 import { PrismaNotificationRepository } from './prisma-notification.repository';
 
 describe('Story 9.6: PrismaNotificationRepository', () => {
@@ -55,6 +56,52 @@ describe('Story 9.6: PrismaNotificationRepository', () => {
       skipDuplicates: true,
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  describe('inside an ambient Unit of Work (Story IR.2b Task 2.4)', () => {
+    const record = {
+      userId,
+      type: 'REWARD_EARNED' as const,
+      message: 'm',
+      dedupeKey: 'internal-reward:r-1',
+    };
+
+    function unitOfWork() {
+      const transactional = {
+        $transaction: jest.fn(async (work: (tx: unknown) => Promise<unknown>) =>
+          work({}),
+        ),
+      };
+      return new PrismaUnitOfWork(transactional as any);
+    }
+
+    it('defers the insert until the source transaction committed', async () => {
+      prisma.notification.createMany.mockResolvedValue({ count: 1 });
+      const inserted: number[] = [];
+
+      await unitOfWork().run('k', async () => {
+        await expect(repo.createIfAbsent(record)).resolves.toBe(true);
+        inserted.push(prisma.notification.createMany.mock.calls.length);
+      });
+
+      expect(inserted).toEqual([0]);
+      expect(prisma.notification.createMany).toHaveBeenCalledTimes(1);
+      expect(prisma.notification.createMany).toHaveBeenCalledWith({
+        data: [record],
+        skipDuplicates: true,
+      });
+    });
+
+    it('writes nothing when the source transaction rolls back', async () => {
+      await expect(
+        unitOfWork().run('k', async () => {
+          await repo.createIfAbsent(record);
+          throw new Error('ledger failure');
+        }),
+      ).rejects.toThrow('ledger failure');
+
+      expect(prisma.notification.createMany).not.toHaveBeenCalled();
+    });
   });
 
   it('lists owner-scoped rows newest first with paging and maps them to entities', async () => {

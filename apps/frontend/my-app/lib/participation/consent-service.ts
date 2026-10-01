@@ -1,29 +1,31 @@
-import { z } from "zod";
+import {
+  INTEGRITY_CONSENT_NOTICE_VERSION,
+  INTEGRITY_CONSENT_VERSION_MISMATCH_CODE,
+  integrityConsentSchema,
+  type AcceptIntegrityConsentInput,
+  type IntegrityConsentDto,
+} from "@rescom/schemas";
 import { isApiError } from "../api/api-error.ts";
 import { apiRequest } from "../api/client.ts";
 
 /**
  * Integrity telemetry notice (Figma 14 "Thông báo dữ liệu chất lượng",
- * "Thông báo phiên bản 1"). The backend stores `IntegrityConsent
- * { purpose, noticeVersion }` per user and telemetry batches carry
- * `consentNoticeVersion`, but there is no consent route yet.
+ * "Thông báo phiên bản 1"). Accepting a notice version is remembered per
+ * user (`IntegrityConsent`), so the screen is shown again only when the
+ * version changes; telemetry batches carry the accepted version.
  *
- * ASSUMED API CONTRACT:
+ * VERIFIED (`integrity-consent.controller.ts`, session required):
  * - `GET /integrity/consent` → `integrityConsentSchema`
- * - `POST /integrity/consent` `{ noticeVersion }` (CSRF) → `integrityConsentSchema`
- *
- * ASSUMED product rule: accepting a notice version is remembered per user, so
- * the screen is shown again only when the version changes.
+ * - `POST /integrity/consent` `{ noticeVersion }` (CSRF + JSON) →
+ *   `integrityConsentSchema`; accepting the same version again is an
+ *   idempotent 200 with the original `acceptedAt`; another version is 409
+ *   `INTEGRITY_CONSENT_VERSION_MISMATCH` (`details.currentVersion`).
  */
-export const integrityConsentSchema = z.object({
-  currentVersion: z.number().int().positive(),
-  acceptedVersion: z.number().int().positive().nullable(),
-  acceptedAt: z.string().datetime().nullable(),
-});
-export type IntegrityConsent = z.infer<typeof integrityConsentSchema>;
+export { integrityConsentSchema };
+export type IntegrityConsent = IntegrityConsentDto;
 
-/** Version shown when the status cannot be read. */
-export const FALLBACK_NOTICE_VERSION = 1;
+/** Version shown when the status cannot be read (no response at all). */
+export const FALLBACK_NOTICE_VERSION = INTEGRITY_CONSENT_NOTICE_VERSION;
 
 export function getIntegrityConsent(signal?: AbortSignal): Promise<IntegrityConsent> {
   return apiRequest("/integrity/consent", { schema: integrityConsentSchema, signal });
@@ -32,7 +34,7 @@ export function getIntegrityConsent(signal?: AbortSignal): Promise<IntegrityCons
 export function acceptIntegrityConsent(noticeVersion: number, signal?: AbortSignal): Promise<IntegrityConsent> {
   return apiRequest("/integrity/consent", {
     method: "POST",
-    body: { noticeVersion },
+    body: { noticeVersion } satisfies AcceptIntegrityConsentInput,
     schema: integrityConsentSchema,
     signal,
   });
@@ -43,9 +45,15 @@ export function hasAcceptedCurrentNotice(consent: IntegrityConsent | null | unde
 }
 
 /**
- * The route may not exist on the real backend yet (404/405/501): recording the
- * acceptance then must not block the survey.
+ * No response at all (offline, DNS…): the only consent failure the start
+ * screen tolerates — the notice is shown from the fallback version and an
+ * unrecorded acceptance does not block the survey. Every HTTP error is shown.
  */
-export function isConsentRouteMissing(error: unknown): boolean {
-  return isApiError(error) && error.kind === "http" && (error.status === 404 || error.status === 405 || error.status === 501);
+export function isConsentUnreachable(error: unknown): boolean {
+  return isApiError(error) && error.kind === "network";
+}
+
+/** 409: the notice changed since it was shown; it must be read again. */
+export function isConsentNoticeOutdated(error: unknown): boolean {
+  return isApiError(error) && error.code === INTEGRITY_CONSENT_VERSION_MISMATCH_CODE;
 }

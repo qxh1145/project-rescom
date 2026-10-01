@@ -5,6 +5,16 @@ import { LedgerEntryEntity } from '../../domain/ledger-entry.entity';
 
 export const LEDGER_REPOSITORY_PORT = Symbol('LEDGER_REPOSITORY_PORT');
 
+/**
+ * Story IR.2b Task 6.2: keyset position in the FR-24 maturity scan order
+ * `(created_at, id)`, so a credit that keeps failing cannot hold the head of
+ * the scan.
+ */
+export interface MaturedCreditCursor {
+  createdAt: Date;
+  journalId: string;
+}
+
 export interface LedgerRepositoryPort {
   findAccountById(id: string): Promise<LedgerAccountEntity | null>;
   findAccountByUserAndClass(
@@ -61,11 +71,13 @@ export interface LedgerRepositoryPort {
   /**
    * FR-24 maturity scan: `external-completion:{attemptId}` credits created at
    * or before `cutoff` that have no `release-pending:{attemptId}` journal and
-   * no reversal, oldest first, at most `limit`.
+   * no reversal, oldest first, at most `limit`. With `after` (Story IR.2b
+   * Task 6.2 keyset), only credits strictly after that `(createdAt, id)`.
    */
   findMaturedPendingCredits(params: {
     cutoff: Date;
     limit: number;
+    after?: MaturedCreditCursor;
   }): Promise<LedgerJournalEntity[]>;
 
   /**

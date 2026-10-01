@@ -153,7 +153,7 @@ describe('UserAdminService', () => {
         'LOCKED',
       );
       expect(result.status).toBe('LOCKED');
-      expect(revokeSpy).toHaveBeenCalledWith('user-normal');
+      expect(revokeSpy).toHaveBeenCalledWith('user-normal', 'ADMIN_LOCK');
 
       expect(auditRepo.records).toContainEqual(
         expect.objectContaining({
@@ -360,7 +360,7 @@ describe('UserAdminService', () => {
         'PUBLISHER',
       );
       expect(result.role).toBe('PUBLISHER');
-      expect(revokeSpy).toHaveBeenCalledWith('user-normal');
+      expect(revokeSpy).toHaveBeenCalledWith('user-normal', 'ROLE_CHANGED');
 
       expect(auditRepo.records).toContainEqual(
         expect.objectContaining({
@@ -468,6 +468,122 @@ describe('UserAdminService', () => {
           errorCode: 'USER_ADMIN_ACTOR_NOT_ACTIVE_ADMIN',
         }),
       );
+    });
+  });
+
+  describe('findLockReasons (mock-off plan 4.6)', () => {
+    it('returns the reason of the latest effective lock of LOCKED users only', async () => {
+      service = new UserAdminService(
+        userRepo,
+        transactionAdapter,
+        auditRepo,
+        auditRepo,
+      );
+      const locked = await service.updateUserStatus(
+        admin1.id,
+        normalUser.id,
+        'LOCKED',
+        { reason: 'Vi phạm lặp lại: nộp quá nhanh' },
+      );
+      // A no-op re-lock with another reason does not replace it.
+      await service.updateUserStatus(admin1.id, normalUser.id, 'LOCKED', {
+        reason: 'Lý do khác, không áp dụng',
+      });
+
+      const reasons = await service.findLockReasons([locked, admin2]);
+      expect([...reasons]).toEqual([
+        [normalUser.id, 'Vi phạm lặp lại: nộp quá nhanh'],
+      ]);
+
+      // Unlocking then locking without a reason leaves no reason.
+      await service.updateUserStatus(admin1.id, normalUser.id, 'ACTIVE');
+      const relocked = await service.updateUserStatus(
+        admin1.id,
+        normalUser.id,
+        'LOCKED',
+      );
+      expect((await service.findLockReasons([relocked])).size).toBe(0);
+    });
+
+    it('reads nothing without a reader or without a locked user', async () => {
+      const findLatestLockReasons = jest.fn();
+      const withReader = new UserAdminService(
+        userRepo,
+        transactionAdapter,
+        auditRepo,
+        { findLatestLockReasons },
+      );
+      expect((await withReader.findLockReasons([admin1, admin2])).size).toBe(0);
+      expect(findLatestLockReasons).not.toHaveBeenCalled();
+
+      const lockedUser = new User({ ...normalUser, status: 'LOCKED' });
+      expect((await service.findLockReasons([lockedUser])).size).toBe(0);
+    });
+  });
+
+  describe('Story IR.4b B3: ACCOUNT_LOCKED / ACCOUNT_UNLOCKED notices', () => {
+    let publisher: { publish: jest.Mock };
+    let ids: number;
+
+    beforeEach(() => {
+      publisher = { publish: jest.fn().mockResolvedValue('CREATED') };
+      ids = 0;
+      service = new UserAdminService(
+        userRepo,
+        transactionAdapter,
+        auditRepo,
+        undefined,
+        publisher,
+        () => `change-${++ids}`,
+      );
+    });
+
+    it('publishes once per effective change, with the change id shared by the audit row', async () => {
+      await service.updateUserStatus('admin-1', 'user-normal', 'LOCKED');
+      await service.updateUserStatus('admin-1', 'user-normal', 'ACTIVE');
+
+      expect(publisher.publish).toHaveBeenCalledTimes(2);
+      expect(publisher.publish).toHaveBeenNthCalledWith(1, {
+        userId: 'user-normal',
+        type: 'ACCOUNT_LOCKED',
+        message: expect.any(String),
+        dedupeKey: 'account-status:user-normal:change-1',
+      });
+      expect(publisher.publish).toHaveBeenNthCalledWith(2, {
+        userId: 'user-normal',
+        type: 'ACCOUNT_UNLOCKED',
+        message: expect.any(String),
+        dedupeKey: 'account-status:user-normal:change-2',
+      });
+      expect(auditRepo.records).toContainEqual(
+        expect.objectContaining({
+          action: 'USER_STATUS_CHANGED',
+          metadata: expect.objectContaining({
+            changed: true,
+            changeId: 'change-1',
+            newStatus: 'LOCKED',
+          }),
+        }),
+      );
+    });
+
+    it('publishes nothing for a same-status no-op or a refused change', async () => {
+      await service.updateUserStatus('admin-1', 'user-normal', 'ACTIVE');
+      await expect(
+        service.updateUserStatus('admin-1', 'admin-1', 'LOCKED'),
+      ).rejects.toThrow(CannotLockSelfException);
+      await service.updateUserRole('admin-1', 'user-normal', 'PUBLISHER');
+      expect(publisher.publish).not.toHaveBeenCalled();
+    });
+
+    it('keeps the result when publishing fails', async () => {
+      publisher.publish.mockRejectedValueOnce(new Error('down'));
+      const result = await service.updateUserStatus(
+        'admin-1',
+        'user-normal',
+        'LOCKED',
+      );
+      expect(result.status).toBe('LOCKED');
     });
   });
 });

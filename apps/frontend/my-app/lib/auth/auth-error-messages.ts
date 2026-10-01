@@ -30,9 +30,14 @@ export const AUTH_MESSAGES = {
   googleIdentityConflict: "Tài khoản Google này đã được liên kết với một tài khoản Rescom khác.",
   googleAlreadyLinked: "Tài khoản này đã liên kết Google. Hãy đăng nhập bằng Google.",
   passwordResetResent: "Đã gửi lại. Hãy kiểm tra hộp thư của bạn.",
-  /** ASSUMED `POST /auth/password/forgot` is not deployed yet (404/501). */
-  passwordResetUnavailable:
-    "Tính năng đặt lại mật khẩu chưa được hỗ trợ. Vui lòng liên hệ quản trị viên để được hỗ trợ.",
+  /** Plan 5.4: `/login?reason=password-reset`. */
+  passwordResetDone: "Đã đặt lại mật khẩu. Hãy đăng nhập bằng mật khẩu mới.",
+  /** 400 `PASSWORD_RESET_TOKEN_INVALID`: unknown, used and expired links look the same. */
+  resetLinkInvalid: "Link đặt lại mật khẩu không hợp lệ hoặc đã hết hạn. Hãy yêu cầu link mới.",
+  resetLinkMissing: "Link đặt lại mật khẩu thiếu mã xác nhận. Hãy mở lại link trong email hoặc yêu cầu link mới.",
+  passwordConfirmRequired: "Vui lòng nhập lại mật khẩu mới.",
+  passwordMismatch: "Mật khẩu nhập lại không khớp.",
+  passwordPolicy: "Mật khẩu mới cần tối thiểu 12 ký tự và tối đa 72 byte.",
 } as const;
 
 export function rateLimitedMessage(retryAfterSeconds: number | null): string {
@@ -113,6 +118,7 @@ export function getOAuthErrorMessage(code: string): string {
     case "AUTH_UNAUTHORIZED":
     case "AUTH_SESSION_EXPIRED":
     case "AUTH_SESSION_REVOKED":
+    case "AUTH_SESSION_REPLACED":
       return AUTH_MESSAGES.sessionInvalid;
     default:
       return "Đăng nhập Google không thành công. Vui lòng thử lại.";
@@ -130,7 +136,7 @@ function transportMessage(error: unknown): string | null {
 }
 
 /**
- * ASSUMED API CONTRACT `POST /auth/password/forgot` (15b/15c). The endpoint
+ * VERIFIED `POST /auth/password/forgot` (15b/15c, plan 5.4). The endpoint
  * answers 202 whether or not the account exists, so only input, rate-limit and
  * transport failures can surface here.
  */
@@ -138,9 +144,34 @@ export function getPasswordResetErrorMessage(error: unknown): AuthErrorMessage {
   const transport = transportMessage(error);
   if (transport) return { form: transport };
   if (isApiError(error) && error.status === 400) return { fields: { email: AUTH_MESSAGES.emailInvalid } };
-  // The route is ASSUMED: until the backend ships it, say so instead of "system error".
-  if (isApiError(error) && (error.status === 404 || error.status === 501)) {
-    return { form: AUTH_MESSAGES.passwordResetUnavailable };
+  return { form: AUTH_MESSAGES.server };
+}
+
+/** `/reset-password` error: a form message, a new-password field message, or a dead link. */
+export interface ResetPasswordErrorMessage {
+  form?: string;
+  password?: string;
+  /** The link cannot be used any more: offer a new one instead of a retry. */
+  linkInvalid?: boolean;
+}
+
+/**
+ * VERIFIED `POST /auth/password/reset` (plan 5.4): 400
+ * `PASSWORD_RESET_TOKEN_INVALID` (unknown, used or expired link) or 400
+ * `AUTH_INVALID_INPUT` (the new password breaks the registration policy).
+ */
+export function getResetPasswordErrorMessage(error: unknown): ResetPasswordErrorMessage {
+  const transport = transportMessage(error);
+  if (transport) return { form: transport };
+  if (isApiError(error) && error.code === "PASSWORD_RESET_TOKEN_INVALID") {
+    return { form: AUTH_MESSAGES.resetLinkInvalid, linkInvalid: true };
+  }
+  if (isApiError(error) && error.status === 400) {
+    const details = error.details as { newPassword?: { _errors?: unknown[] } } | undefined;
+    if (Array.isArray(details?.newPassword?._errors) && details.newPassword._errors.length > 0) {
+      return { password: AUTH_MESSAGES.passwordPolicy };
+    }
+    return { form: AUTH_MESSAGES.resetLinkInvalid, linkInvalid: true };
   }
   return { form: AUTH_MESSAGES.server };
 }

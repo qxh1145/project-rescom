@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { AnalyticsSkeleton } from "@/components/analytics/AnalyticsSkeleton";
 import { QuestionAnalyticsCard } from "@/components/analytics/QuestionAnalyticsCard";
@@ -74,6 +73,13 @@ export function SummaryScreen() {
     );
   }
 
+  if (data.availability === "NOT_APPLICABLE") {
+    return (
+      <div className={PAGE}>
+        <p className="rounded-control bg-surface-subtle px-4 py-3 text-body-sm text-ink-strong">{GOOGLE_FORMS_ANSWERS_NOTE}</p>
+      </div>
+    );
+  }
   if (data.totalResponses === 0) {
     const live = form ? statusViewOf(form) === "RUNNING" : false;
     return (
@@ -102,16 +108,6 @@ export function SummaryScreen() {
             seeAllHref={questionHref(question.questionId)}
           />
         ))
-      ) : data.form.type === "EXTERNAL" ? (
-        <p className="rounded-control bg-surface-subtle px-4 py-3 text-body-sm text-ink-strong">
-          {GOOGLE_FORMS_ANSWERS_NOTE}{" "}
-          <Link
-            href={`${responsesBase}/individual${version ? `?v=${version}` : ""}`}
-            className="font-bold text-primary hover:underline"
-          >
-            Xem mã hoàn thành
-          </Link>
-        </p>
       ) : (
         <p className="rounded-control bg-surface-subtle px-4 py-3 text-body-sm text-ink-strong">
           Khảo sát này không có câu hỏi nào để thống kê.

@@ -224,17 +224,17 @@ describe('Single-Session Enforcement E2E Tests (Story 1.3)', () => {
       .expect(200);
     expect(meResB.body.data.id).toBe(user.id);
 
-    // 6. Device A calls GET /auth/me -> 401 AUTH_SESSION_REVOKED, cookies cleared, Cache-Control: no-store
+    // 6. Device A calls GET /auth/me -> 401 AUTH_SESSION_REPLACED (plan 5.6), cookies cleared, Cache-Control: no-store
     const revokedRes = await request(app.getHttpServer())
       .get('/auth/me')
       .set('Cookie', `${AUTH_COOKIE_NAME}=${deviceAAccessToken}`)
       .expect(401);
 
-    expect(revokedRes.body.error.code).toBe('AUTH_SESSION_REVOKED');
+    expect(revokedRes.body.error.code).toBe('AUTH_SESSION_REPLACED');
     expect(revokedRes.headers['cache-control']).toBe('no-store');
     expectCookiesCleared(revokedRes);
 
-    // 7. Device A attempts POST /auth/refresh -> 401 AUTH_SESSION_REVOKED, cookies cleared
+    // 7. Device A attempts POST /auth/refresh -> 401 AUTH_SESSION_REPLACED, cookies cleared
     const refreshRes = await request(app.getHttpServer())
       .post('/auth/refresh')
       .set('Origin', 'http://localhost:3000')
@@ -242,7 +242,7 @@ describe('Single-Session Enforcement E2E Tests (Story 1.3)', () => {
       .set('x-csrf-token', 'irrelevant-token')
       .expect(401);
 
-    expect(refreshRes.body.error.code).toBe('AUTH_SESSION_REVOKED');
+    expect(refreshRes.body.error.code).toBe('AUTH_SESSION_REPLACED');
     expectCookiesCleared(refreshRes);
 
     // 8. Device A attempts POST /auth/logout with revoked cookies -> 204 No Content, idempotent, no audit pollution

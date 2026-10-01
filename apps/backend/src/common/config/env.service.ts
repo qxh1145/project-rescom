@@ -1,9 +1,10 @@
 import { Injectable, Optional } from '@nestjs/common';
 import {
+  type EmailDeliveryMode,
   PARTICIPATION_RATE_LIMIT_POLICY_VERSION,
   type ParticipationRateLimitPolicy,
 } from '@rescom/schemas';
-import { envSchema, EnvConfig } from './env.schema';
+import { emailFromDomain, envSchema, EnvConfig } from './env.schema';
 
 @Injectable()
 export class EnvService {
@@ -65,6 +66,69 @@ export class EnvService {
 
   get systemMetricsLogIntervalSeconds(): number {
     return this.config.SYSTEM_METRICS_LOG_INTERVAL_SECONDS;
+  }
+
+  /** Story IR.2b: run the in-process scheduler + Outbox dispatcher. */
+  get schedulerEnabled(): boolean {
+    return this.config.SCHEDULER_ENABLED;
+  }
+
+  get schedulerTickSeconds(): number {
+    return this.config.SCHEDULER_TICK_SECONDS;
+  }
+
+  get outboxMaxAttempts(): number {
+    return this.config.OUTBOX_MAX_ATTEMPTS;
+  }
+
+  /** Story IR.4b B-T4: `capture` outside production when unset (production requires `smtp`). */
+  get emailDeliveryMode(): EmailDeliveryMode {
+    return this.config.EMAIL_DELIVERY_MODE ?? 'capture';
+  }
+
+  get emailFrom(): string {
+    return this.config.EMAIL_FROM ?? 'Rescom <no-reply@rescom.local>';
+  }
+
+  get emailReplyTo(): string | null {
+    return this.config.EMAIL_REPLY_TO ?? null;
+  }
+
+  /** Base of email links, without a trailing slash. */
+  get emailAppBaseUrl(): string {
+    return (this.config.EMAIL_APP_BASE_URL ?? this.config.FRONTEND_ORIGINS[0])
+      .trim()
+      .replace(/\/+$/, '');
+  }
+
+  get emailMessageIdDomain(): string {
+    return (
+      this.config.EMAIL_MESSAGE_ID_DOMAIN ??
+      emailFromDomain(this.config.EMAIL_FROM) ??
+      'rescom.local'
+    );
+  }
+
+  get emailSendTimeoutMs(): number {
+    return this.config.EMAIL_SEND_TIMEOUT_MS;
+  }
+
+  get smtp(): {
+    host: string;
+    port: number;
+    secure: boolean;
+    requireTls: boolean;
+    username: string | null;
+    password: string | null;
+  } {
+    return {
+      host: this.config.SMTP_HOST ?? 'localhost',
+      port: this.config.SMTP_PORT,
+      secure: this.config.SMTP_SECURE,
+      requireTls: this.config.SMTP_REQUIRE_TLS,
+      username: this.config.SMTP_USERNAME ?? null,
+      password: this.config.SMTP_PASSWORD ?? null,
+    };
   }
 
   get sessionAbsoluteTtlSeconds(): number {

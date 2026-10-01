@@ -1,6 +1,7 @@
 "use client";
 
 import { escrowDrawPerCompletion } from "@rescom/schemas";
+import { DemoDataTag } from "@/components/ui/DemoDataTag";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { Alert } from "@/components/ui/Alert";
@@ -16,26 +17,19 @@ import {
   validateDisputeDraft,
   type DisputeDraftErrors,
 } from "@/lib/forms/manage-messages";
-import {
-  DISPUTE_REASONS,
-  submitAttemptDispute,
-  type DisputeReason,
-  type FormProgress,
-  type PendingAttempt,
-  type PublisherForm,
-} from "@/lib/forms/manage-service";
-import { hoursUntil } from "@/lib/forms/manage-view";
+import { DISPUTE_REASONS, submitAttemptDispute, type DisputeReason } from "@/lib/forms/dispute-service";
+import type { PublisherForm } from "@/lib/forms/manage-service";
 import { SheetDialog } from "../../../components/SheetDialog";
 
 function ComplaintForm({
   form,
-  attempt,
+  attemptId,
   onCancel,
   onSent,
   onBusyChange,
 }: {
   form: PublisherForm;
-  attempt: PendingAttempt;
+  attemptId: string;
   onCancel: () => void;
   onSent: () => void;
   onBusyChange: (busy: boolean) => void;
@@ -54,7 +48,7 @@ function ComplaintForm({
     onBusyChange(true);
     setError(null);
     try {
-      await submitAttemptDispute(form.id, attempt.attemptId, { reason, description: description.trim() });
+      await submitAttemptDispute(form.id, attemptId, { reason, description: description.trim() });
       onSent();
     } catch (cause) {
       setError(formActionErrorMessage(cause, "Chưa gửi được khiếu nại. Vui lòng thử lại."));
@@ -147,36 +141,34 @@ function ComplaintForm({
 
 /**
  * Figma 10c "Khiếu nại lượt làm" (62:1720, mobile sheet). Desktop ASSUMED:
- * the same content in the centered 576px dialog used by 10b.
+ * the same content in the centered 576px dialog used by 10b. The dispute
+ * route stays on MSW (`PUBLISHER_DISPUTES_ENABLED`, Story 8.5 deferred): the
+ * progress contract no longer lists the 48h attempts, so the attempt comes
+ * from the URL and the server answers whether it is still disputable
+ * (`ATTEMPT_NOT_DISPUTABLE`, `DISPUTE_WINDOW_CLOSED`, `DISPUTE_ALREADY_OPEN`).
  */
-export function ComplaintDialog({ progress }: { progress: FormProgress | undefined }) {
+export function ComplaintDialog() {
   const router = useRouter();
   const params = useParams<{ attemptId: string }>();
   const { form, invalidate } = useFormHeader();
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [now] = useState(() => Date.now());
-  if (!form || !progress) return null;
+  if (!form) return null;
 
   const attemptId = decodeURIComponent(params.attemptId);
-  const attempt = progress.pendingAttempts.find((item) => item.attemptId === attemptId);
   const close = () => {
     if (busy) return;
     if (sent) invalidate();
     router.replace(`/forms/${encodeURIComponent(form.id)}`, { scroll: false });
   };
-  const subtitle = attempt
-    ? `Người trả lời ${attempt.respondentCode} · còn ${hoursUntil(attempt.reviewEndsAt, now)} giờ để khiếu nại`
-    : form.title;
 
   return (
-    <SheetDialog
-      titleId="complaint-title"
-      title="Khiếu nại lượt làm"
-      subtitle={subtitle}
-      onClose={close}
-      dismissible={!busy}
-    >
+    <SheetDialog titleId="complaint-title" title="Khiếu nại lượt làm" subtitle={
+        <>
+          {form.title} <DemoDataTag className="ml-1 align-middle" />
+        </>
+      }
+      onClose={close} dismissible={!busy}>
       {sent ? (
         <>
           <Alert tone="info" className="mt-4">
@@ -186,14 +178,12 @@ export function ComplaintDialog({ progress }: { progress: FormProgress | undefin
             Xong
           </Button>
         </>
-      ) : attempt && !attempt.dispute && hoursUntil(attempt.reviewEndsAt, now) > 0 ? (
-        <ComplaintForm form={form} attempt={attempt} onCancel={close} onSent={() => setSent(true)} onBusyChange={setBusy} />
+      ) : form.type === "EXTERNAL" ? (
+        <ComplaintForm form={form} attemptId={attemptId} onCancel={close} onSent={() => setSent(true)} onBusyChange={setBusy} />
       ) : (
         <>
           <Alert tone="info" className="mt-4">
-            {attempt?.dispute
-              ? "Lượt làm này đã được khiếu nại, Admin đang xem xét."
-              : "Lượt làm này không còn khiếu nại được: đã hết 48 giờ hoặc không thuộc khảo sát này."}
+            Chỉ lượt làm Google Forms mới khiếu nại được.
           </Alert>
           <Button variant="secondary" size="xl" fullWidth className="mt-5" onClick={close}>
             Đóng

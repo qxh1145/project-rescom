@@ -1,6 +1,7 @@
 "use client";
 
 import { Mascot } from "@/components/brand/Mascot";
+import { DemoDataTag } from "@/components/ui/DemoDataTag";
 import { AdminPage } from "@/components/layout/admin/AdminPage";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -19,7 +20,7 @@ export function QualityScreen() {
   const { items, selected, hrefFor, error, loading, reload, decide, notice, clearNotice } = useQualityReviews();
 
   return (
-    <AdminPage title="Xem xét chất lượng" meta={items ? qualityQueueMeta(items) : undefined}>
+    <AdminPage title="Xem xét chất lượng" meta={items ? qualityQueueMeta(items) : undefined} actions={<DemoDataTag />}>
       {notice ? (
         <Alert tone={notice.tone} onDismiss={clearNotice} className="mb-4">
           {notice.text}

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { formBlockSchema } from "./form-blocks.schema";
+import { respondentFormBlockSchema } from "./form-blocks.schema";
 import {
   formSectionSchema,
   formSettingsSchema,
@@ -9,6 +9,7 @@ import { formIntegrityMetadataSchema } from "./form-integrity.schema";
 /**
  * Public Form Details Schema
  * Projected representation of a published internal form accessible to unauthenticated guests.
+ * Blocks are the Respondent projection: no `integrity` (review MEDIUM-1).
  */
 export const publicFormDetailsSchema = z
   .object({
@@ -17,7 +18,7 @@ export const publicFormDetailsSchema = z
     description: z.string().nullable().optional(),
     type: z.literal("INTERNAL"),
     versionNumber: z.number().int().positive(),
-    blocks: z.array(formBlockSchema).min(1),
+    blocks: z.array(respondentFormBlockSchema).min(1),
     sections: z.array(formSectionSchema).max(50).optional(),
     settings: formSettingsSchema,
     metadata: formIntegrityMetadataSchema,

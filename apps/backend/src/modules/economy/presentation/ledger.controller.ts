@@ -157,8 +157,9 @@ export class LedgerController {
   }
 
   /**
-   * Admin / worker trigger of the FR-24 maturity scan (AC6.4). The recurring
-   * scheduler is deferred until the worker infrastructure exists.
+   * Admin trigger of the FR-24 maturity scan (AC6.4). Since Story IR.2b the
+   * `pending-release` scheduler job runs the same scan; this endpoint stays
+   * the operator fallback (pass `after` = the previous `nextCursor` to page).
    */
   @Post('rewards/release-matured')
   @HttpCode(HttpStatus.OK)
@@ -171,6 +172,7 @@ export class LedgerController {
     const summary = await this.coordinator.releaseMaturedPendingRewards({
       cutoffDate: body?.cutoffDate ? new Date(body.cutoffDate) : undefined,
       limit: body?.limit,
+      after: body?.after,
     });
     return createSuccessEnvelope(summary);
   }

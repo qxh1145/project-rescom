@@ -92,17 +92,21 @@ export function ExpiredPanel({ restartHref, onRestart }: { restartHref: string; 
 }
 
 /**
- * ASSUMED (not in Figma): the published form moved to a newer version than
- * the one this attempt is pinned to (`versionNumber` of the ASSUMED
- * GET /attempts/:id vs GET /public/forms/:id). Answers of the old version
- * cannot be submitted against the new one, so the attempt is restarted.
+ * ASSUMED (not in Figma): the survey left PUBLISHED after this attempt
+ * started (`survey.status` of GET /attempts/:id is DRAFT, MODERATION_QUEUE or
+ * ESCROW_LOCKED) — the Publisher is preparing a new version. Decision E5-D4:
+ * the pinned attempt can no longer be submitted, so it is cancelled and
+ * restarted; "Thử lại sau" reads the attempt again instead.
  */
 export function FormUpdatedPanel({
   onRestart,
+  onRetryLater,
   busy,
   error,
 }: {
   onRestart: () => void;
+  /** Re-reads the attempt (the survey may be PUBLISHED again by then). */
+  onRetryLater: () => void;
   busy: boolean;
   error: string | null;
 }) {
@@ -125,9 +129,41 @@ export function FormUpdatedPanel({
           <Link href="/marketplace" className={buttonClassName({ variant: "secondary", size: "base", radius: "field" })}>
             Về Khám phá
           </Link>
+          <Button variant="secondary" size="base" radius="field" onClick={onRetryLater} disabled={busy}>
+            Thử lại sau
+          </Button>
           <Button size="base" radius="field" onClick={onRestart} loading={busy} loadingLabel="Đang mở lại…">
             Bắt đầu lại
           </Button>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+/**
+ * ASSUMED (not in Figma): the survey CLOSED after this attempt started. It
+ * takes no answers and no new attempt, so there is nothing to restart.
+ */
+export function SurveyClosedPanel() {
+  const headingRef = useFocusOnMount<HTMLHeadingElement>();
+  return (
+    <main className="flex flex-1 items-start justify-center px-5 py-10 lg:items-center">
+      <section className="flex w-full max-w-[480px] flex-col gap-4 rounded-card border border-line bg-surface p-6 lg:p-8">
+        <span className="flex size-11 items-center justify-center rounded-field bg-tone-amber-bg text-tone-amber-fg">
+          <Icon name="lock" size={22} />
+        </span>
+        <h1 ref={headingRef} tabIndex={-1} className="text-[22px] font-extrabold text-ink focus:outline-none">
+          Khảo sát đã đóng
+        </h1>
+        <p className="text-body-sm text-ink-muted">
+          Người đăng đã đóng khảo sát sau khi bạn bắt đầu, nên lượt làm này không nộp được nữa. Hãy chọn một khảo sát
+          khác trong Khám phá.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <Link href="/marketplace" className={buttonClassName({ size: "base", radius: "field" })}>
+            Về Khám phá
+          </Link>
         </div>
       </section>
     </main>

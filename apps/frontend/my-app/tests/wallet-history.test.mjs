@@ -86,6 +86,7 @@ test("wallet history rows (Figma 7)", async (t) => {
     assert.equal(rows[0].kind, "REWARD_RELEASE");
     assert.equal(rows[0].bucket, "USER_AVAILABLE");
     assert.equal(rows[1].pendingHoursLeft, null);
+    assert.equal(history.statusLabel(rows[1]), "Khả dụng", "the original credit no longer reads Chờ duyệt");
     assert.equal(history.nextPendingReleaseHours(rows), null);
   });
 
@@ -358,7 +359,8 @@ test("mock ledger (MSW) is backend-shaped: the release is its own journal", () =
     [
       ["Mở khoá điểm khởi đầu", 100, "USER_AVAILABLE", false],
       ["Điểm chờ duyệt đã mở", 18, "USER_AVAILABLE", false],
-      ["Thưởng khảo sát", 18, "PENDING", false],
+      // Released: the original credit reads Khả dụng, not Chờ duyệt.
+      ["Thưởng khảo sát", 18, "USER_AVAILABLE", false],
       ["Điểm khởi đầu", 100, "FROZEN", false],
     ],
   );

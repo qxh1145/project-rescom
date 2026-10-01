@@ -45,7 +45,7 @@ const BASE64URL_ALPHABET =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 /** Unpadded base64url of an ASCII string (no Buffer/btoa: runs anywhere). */
-function asciiToBase64Url(ascii: string): string {
+export function asciiToBase64Url(ascii: string): string {
   let output = "";
   let buffer = 0;
   let bits = 0;
@@ -64,7 +64,7 @@ function asciiToBase64Url(ascii: string): string {
   return output;
 }
 
-function base64UrlToAscii(encoded: string): string | null {
+export function base64UrlToAscii(encoded: string): string | null {
   let output = "";
   let buffer = 0;
   let bits = 0;

@@ -18,6 +18,7 @@ import {
 } from "@/lib/forms/results-versions";
 import { ResultsEmpty, ResultsError, ResultsLoading } from "../../responses/components/ResultsStatus";
 import { useFormVersions } from "../hooks/use-form-versions";
+import { VERSION_DETAIL_ENABLED, VERSION_DIFF_ENABLED } from "@/lib/forms/results-scope";
 
 const ACTION = buttonClassName({ variant: "secondary", size: "md", radius: "field", className: "text-label" });
 const PRIMARY_ACTION = buttonClassName({ variant: "primary", size: "md", radius: "field", className: "text-label" });
@@ -145,9 +146,11 @@ export function VersionsScreen() {
                     caption={publishedCaption(version)}
                     actions={
                       <>
-                        <Link href={`/forms/${id}/versions/${version.versionNumber}`} className={ACTION}>
-                          Xem (chỉ đọc)
-                        </Link>
+                        {VERSION_DETAIL_ENABLED ? (
+                          <Link href={`/forms/${id}/versions/${version.versionNumber}`} className={ACTION}>
+                            Xem (chỉ đọc)
+                          </Link>
+                        ) : null}
                         <Link href={`/forms/${id}/responses?v=${version.versionNumber}`} className={ACTION}>
                           Câu trả lời
                         </Link>
@@ -186,7 +189,7 @@ export function VersionsScreen() {
                       </>
                     }
                   />
-                  {version.id === draft?.id && base ? (
+                  {VERSION_DIFF_ENABLED && version.id === draft?.id && base ? (
                     <Changes
                       base={base}
                       changes={changes}

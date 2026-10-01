@@ -1,0 +1,7 @@
+{
+  "tool_name": "mcp__Claude_Browser__browser_batch",
+  "tool_input_preview": "{\"actions\":[{\"name\":\"computer\",\"input\":{\"action\":\"left_click\",\"ref\":\"ref_78\",\"action_summary\":\"Submits the survey answers\"}},{\"name\":\"computer\",\"input\":{\"action\":\"wait\",\"duration\":3}},{\"name\":\"compute...",
+  "error": "actions[0] (computer:left_click) failed: ref ref_78 is entirely outside the viewport (center (0, 0)) — likely hidden or off-canvas, so a click cannot reach it. Interact with what opens it first, or re-run read_page and pick a visible element. (0 completed, 2 remaining)",
+  "timestamp": "2026-10-01T12:46:40.612Z",
+  "retry_count": 1
+}

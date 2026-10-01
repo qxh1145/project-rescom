@@ -27,8 +27,8 @@ const COMPLETE_SURVEY = {
 };
 
 test("Story 7.1: Mandatory Demographic Survey gate (mock-first)", async (t) => {
-  const { mockRepository } = await import("../lib/mock/repository.ts");
-  const { setMockStorage } = await import("../lib/mock/store.ts");
+  const { mockRepository } = await import("../mocks/legacy/repository.ts");
+  const { setMockStorage } = await import("../mocks/legacy/store.ts");
   const onboarding = await import("../lib/onboarding.ts");
 
   t.beforeEach(() => {
@@ -274,7 +274,7 @@ test("Story 7.1: Mandatory Demographic Survey gate (mock-first)", async (t) => {
 
 test("code review P9: demo profiles only use the wizard's option catalogs", async () => {
   const options = await import("../lib/demographic-options.ts");
-  const fixtures = await import("../lib/mock/fixtures.ts");
+  const fixtures = await import("../mocks/legacy/fixtures.ts");
 
   const profiles = [fixtures.MOCK_ACTIVATED_DEMOGRAPHICS, fixtures.MOCK_INCOMPLETE_DRAFT.answers];
   for (const profile of profiles) {

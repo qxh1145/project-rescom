@@ -1,9 +1,13 @@
 import { z } from "zod";
 import {
   formCloseKindEnum,
+  formRejectionSchema,
   formStatusEnum,
   formTypeEnum,
-  surveyFeedbackIssueTagSchema,
+  PUBLISHER_PROGRESS_RANGES,
+  publisherProgressSchema,
+  type PublisherProgressDto,
+  type PublisherProgressRange,
 } from "@rescom/schemas";
 import { apiRequest } from "../api/client.ts";
 
@@ -33,24 +37,24 @@ const managementExtensions = {
    * a response without the field): the UI then shows no number.
    */
   escrowLocked: count.nullable().default(null),
+  /** `GET /forms/:id`: when the survey entered the moderation queue (null otherwise). */
   submittedAt: nullableIso,
   publishedAt: nullableIso,
   /** Collection deadline ("hạn 05/10 · còn 9 ngày"). */
   deadlineAt: nullableIso,
+  /** `GET /forms/:id`: when the survey closed (null unless CLOSED). */
   closedAt: nullableIso,
   /** Hidden from Khám phá ("đã ẩn khỏi Khám phá"). */
   hiddenFromMarketplace: z.boolean().default(false),
   /** "Tạm dừng" (Figma 10a) — no backend state exists yet. */
   pausedAt: nullableIso,
   /**
-   * Admin rejection of the submitted version ("Bị từ chối · Đã hoàn 120
-   * điểm"): reason + points actually refunded. The rejection itself is
-   * VERIFIED as `status` CLOSED + `closeKind` MODERATION; these details are not.
+   * `GET /forms/:id` (shared `formRejectionSchema`): the Admin rejection of a
+   * survey closed by moderation ("Bị từ chối · Đã hoàn 120 điểm"), from its
+   * `SurveyModerationDecision`. The rejection itself is `status` CLOSED +
+   * `closeKind` MODERATION; the list DTO does not carry these details.
    */
-  rejection: z
-    .object({ reason: z.string(), refundedPoints: count, rejectedAt: z.string().nullable().default(null) })
-    .nullable()
-    .default(null),
+  rejection: formRejectionSchema.nullable().default(null),
 };
 
 /**
@@ -127,68 +131,18 @@ export const inProgressAttemptsSchema = z.object({
 });
 export type InProgressAttempts = z.infer<typeof inProgressAttemptsSchema>;
 
-/** "Giờ / Ngày / Tuần / Tháng" of "Lượt mở khảo sát". */
-export const OPENS_RANGES = ["hour", "day", "week", "month"] as const;
-export type OpensRange = (typeof OPENS_RANGES)[number];
-
-/** ASSUMED: why a Publisher disputes a Google Forms attempt (Figma 10c chips). */
-export const DISPUTE_REASONS = ["LOW_EFFORT", "NO_MATCHING_RESPONSE", "DUPLICATE_RESPONDENT", "OTHER"] as const;
-export const disputeReasonSchema = z.enum(DISPUTE_REASONS);
-export type DisputeReason = z.infer<typeof disputeReasonSchema>;
-
-const disputeSchema = z.object({
-  id: z.string(),
-  status: z.enum(["OPEN", "UPHELD", "DISMISSED"]),
-  reason: disputeReasonSchema,
-  createdAt: z.string(),
-});
+/** "Giờ / Ngày / Tuần / Tháng" of the "Lượt hoàn thành" chart (shared ranges). */
+export const PROGRESS_RANGES = PUBLISHER_PROGRESS_RANGES;
+export type ProgressRange = PublisherProgressRange;
 
 /**
- * ASSUMED API CONTRACT: `GET /forms/:id/progress?range=` — Figma 10a
- * "Tiến độ". No backend route aggregates opens, the funnel, the 48h review
- * queue and the rating summary for a Publisher yet.
+ * VERIFIED (Story IR.4a): `GET /forms/:id/progress?range=` — Figma 10a
+ * "Tiến độ", the shared `publisherProgressSchema`. Owner only (404
+ * `FORM_NOT_FOUND` for anybody else, Admins included). No opens/funnel
+ * metrics (FR-41 deferred) and no feedback summary (Story 9.3).
  */
-export const formProgressSchema = z.object({
-  formId: z.string(),
-  completed: count,
-  expected: count,
-  /** Escrow drawn by validated completions ("Điểm đã chi"). */
-  pointsSpent: count,
-  escrowRemaining: count,
-  deadlineAt: z.string().nullable(),
-  opens: z.object({
-    range: z.enum(OPENS_RANGES),
-    total: count,
-    buckets: z.array(z.object({ label: z.string(), count })),
-  }),
-  started: count,
-  abandoned: count,
-  averageDurationSeconds: z.number().nonnegative().nullable(),
-  /** Google Forms completions still in their 48h review (FR-24: disputable). */
-  pendingAttempts: z.array(
-    z.object({
-      attemptId: z.string(),
-      /** Anonymous respondent handle ("#7F3A"). */
-      respondentCode: z.string(),
-      codeVerifiedAt: z.string(),
-      reviewEndsAt: z.string(),
-      dispute: disputeSchema.nullable(),
-    }),
-  ),
-  feedback: z.object({
-    count,
-    averageRating: z.number().min(0).max(5).nullable(),
-    issues: z.array(z.object({ tag: surveyFeedbackIssueTagSchema, percent: z.number().min(0).max(100) })),
-  }),
-});
-export type FormProgress = z.infer<typeof formProgressSchema>;
-export type PendingAttempt = FormProgress["pendingAttempts"][number];
-
-export const disputeResultSchema = z.object({
-  attemptId: z.string(),
-  dispute: disputeSchema,
-});
-export type DisputeResult = z.infer<typeof disputeResultSchema>;
+export const formProgressSchema = publisherProgressSchema;
+export type FormProgress = PublisherProgressDto;
 
 /** Figma 10 lists every survey on one screen: the backend maximum page size. */
 export const PUBLISHER_FORMS_PAGE_SIZE = 100;
@@ -230,8 +184,8 @@ export function getPublisherForm(id: string, signal?: AbortSignal): Promise<Publ
   return apiRequest(formPath(id), { schema: publisherFormSchema, signal });
 }
 
-/** ASSUMED API CONTRACT: `GET /forms/:id/progress?range=day`. */
-export function getFormProgress(id: string, range: OpensRange, signal?: AbortSignal): Promise<FormProgress> {
+/** VERIFIED: `GET /forms/:id/progress?range=day` (Story IR.4a). */
+export function getFormProgress(id: string, range: ProgressRange, signal?: AbortSignal): Promise<FormProgress> {
   return apiRequest(`${formPath(id)}/progress?range=${range}`, { schema: formProgressSchema, signal });
 }
 
@@ -250,11 +204,18 @@ export function closePublisherForm(id: string): Promise<PublisherForm> {
   return apiRequest(`${formPath(id)}/close`, { method: "POST", body: {}, schema: publisherFormSchema });
 }
 
-/** VERIFIED: `POST /forms/:id/reopen` (`reopenSurveySchema`) — owner only, locks the added Escrow. */
-export function reopenPublisherForm(id: string, additionalCompletions: number): Promise<PublisherForm> {
+/**
+ * VERIFIED: `POST /forms/:id/reopen` (`reopenSurveySchema`) — owner only, locks the added Escrow.
+ * `deadlineAt` (Story IR.2b Q3): omitted keeps the current deadline; required (ISO or null) once it passed.
+ */
+export function reopenPublisherForm(
+  id: string,
+  additionalCompletions: number,
+  deadlineAt?: string | null,
+): Promise<PublisherForm> {
   return apiRequest(`${formPath(id)}/reopen`, {
     method: "POST",
-    body: { additionalCompletions },
+    body: deadlineAt === undefined ? { additionalCompletions } : { additionalCompletions, deadlineAt },
     schema: publisherFormSchema,
   });
 }
@@ -288,30 +249,3 @@ export function createFormVersion(id: string): Promise<CreatedFormVersion> {
  * so "Tạm dừng" / "Tiếp tục" stay hidden until it does.
  */
 export const PAUSE_SUPPORTED = false;
-
-/** ASSUMED API CONTRACT: `POST /forms/:id/pause` / `POST /forms/:id/resume` ("Tạm dừng", Figma 10a); unused while `PAUSE_SUPPORTED` is false. */
-export function setPublisherFormPaused(id: string, paused: boolean): Promise<PublisherForm> {
-  return apiRequest(`${formPath(id)}/${paused ? "pause" : "resume"}`, {
-    method: "POST",
-    body: {},
-    schema: publisherFormSchema,
-  });
-}
-
-export interface DisputeInput {
-  reason: DisputeReason;
-  description: string;
-}
-
-/**
- * ASSUMED API CONTRACT: `POST /forms/:id/attempts/:attemptId/disputes`
- * (Figma 10c, FR-24). The backend holds the reward of a disputed Google Forms
- * attempt (`external-dispute:` ledger hold) but exposes no Publisher route yet.
- */
-export function submitAttemptDispute(formId: string, attemptId: string, input: DisputeInput): Promise<DisputeResult> {
-  return apiRequest(`${formPath(formId)}/attempts/${encodeURIComponent(attemptId)}/disputes`, {
-    method: "POST",
-    body: input,
-    schema: disputeResultSchema,
-  });
-}

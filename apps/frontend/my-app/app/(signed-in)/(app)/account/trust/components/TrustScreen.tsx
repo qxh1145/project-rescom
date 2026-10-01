@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { DemoDataTag } from "@/components/ui/DemoDataTag";
 import { MobileBackBar } from "@/components/layout/app/MobileTopBar";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -65,6 +66,7 @@ export function TrustScreen() {
       <MobileBackBar title="Độ tin cậy câu trả lời" backHref="/account" />
       <div className="mx-auto flex w-full max-w-[720px] flex-col px-4 pt-[18px] pb-8 lg:px-0 lg:pt-10">
         <h1 className="mb-6 hidden text-title font-extrabold text-ink lg:block">Độ tin cậy câu trả lời</h1>
+        <DemoDataTag className="mb-4 self-start" />
 
         {query.error && !summary ? (
           <Alert tone="danger">

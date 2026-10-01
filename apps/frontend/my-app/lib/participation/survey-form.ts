@@ -1,10 +1,11 @@
 import {
   MAX_ANSWER_STRING_LENGTH,
   parseStrictIsoDate,
-  type BlockAnswer,
   type FormBlock,
+  type InternalFormSubmissionInput,
   type IntegrityEventType,
 } from "@rescom/schemas";
+import { isFileAttachmentList } from "./file-upload.ts";
 
 /**
  * Pure rules for taking an in-Rescom survey (Figma page 4): section paging,
@@ -145,6 +146,8 @@ function requiredMessage(block: FormBlock): string {
       return "Vui lòng chọn ít nhất một đáp án.";
     case "date":
       return "Vui lòng chọn ngày.";
+    case "file_upload":
+      return "Vui lòng tải lên ít nhất một tệp.";
     default:
       return "Vui lòng trả lời câu hỏi này.";
   }
@@ -217,7 +220,9 @@ export function validateAnswer(block: FormBlock, value: unknown): string | null 
     case "date":
       return typeof value === "string" && parseStrictIsoDate(value) !== null ? null : "Ngày không hợp lệ.";
     case "file_upload":
-      return "Loại câu hỏi này chưa hỗ trợ trong ứng dụng.";
+      // Only finalized (scanned, CLEAN) uploads are ever stored as the answer.
+      if (!isFileAttachmentList(value)) return "Tệp tải lên chưa hợp lệ. Hãy tải lại tệp.";
+      return value.length > block.maxFiles ? `Chỉ được tải tối đa ${block.maxFiles} tệp.` : null;
     default:
       return null;
   }
@@ -239,28 +244,40 @@ export function firstPageWith(layout: SurveyLayout, blockIds: Iterable<string>):
   return layout.pages.findIndex((page) => page.blocks.some((block) => wanted.has(block.id)));
 }
 
+/** The `answers` record of `POST /responses/:responseId/submit` (`internalFormSubmissionInputSchema`). */
+export type SubmissionAnswers = Extract<InternalFormSubmissionInput["answers"], Record<string, unknown>>;
+
 /**
- * `POST /responses/:responseId/submit` answers: one `{ blockId, value }` per
- * answered question in form order; text is trimmed, multiple-choice values
- * follow the option order. Unknown keys (stale drafts) are dropped.
+ * `POST /responses/:responseId/submit` answers as a record keyed by block id
+ * (the array form cannot carry file attachments): answered questions only,
+ * in form order; text is trimmed, multiple-choice values follow the option
+ * order, a file question carries its CLEAN `FileAttachmentAnswer` list.
+ * Unknown keys (stale drafts) are dropped.
  */
-export function toSubmissionAnswers(blocks: readonly FormBlock[], answers: Record<string, unknown>): BlockAnswer[] {
-  const result: BlockAnswer[] = [];
+export function toSubmissionAnswers(blocks: readonly FormBlock[], answers: Record<string, unknown>): SubmissionAnswers {
+  const result: SubmissionAnswers = {};
   for (const block of orderedBlocks(blocks)) {
     const value = answers[block.id];
     if (!isAnswerProvided(value)) continue;
-    if (typeof value === "string") {
-      result.push({ blockId: block.id, value: value.trim() });
+    if (block.type === "file_upload") {
+      if (isFileAttachmentList(value)) {
+        result[block.id] = value.map(({ objectId, fileName, fileSize, mimeType }) => ({
+          objectId,
+          fileName,
+          fileSize,
+          mimeType,
+          status: "CLEAN" as const,
+        }));
+      }
+    } else if (typeof value === "string") {
+      result[block.id] = value.trim();
     } else if (Array.isArray(value) && block.type === "multiple_choice") {
       const selected = new Set(value);
-      result.push({
-        blockId: block.id,
-        value: block.options.map((option) => option.value).filter((item) => selected.has(item)),
-      });
+      result[block.id] = block.options.map((option) => option.value).filter((item) => selected.has(item));
     } else if (typeof value === "number" || typeof value === "boolean") {
-      result.push({ blockId: block.id, value });
+      result[block.id] = value;
     } else if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
-      result.push({ blockId: block.id, value });
+      result[block.id] = value;
     }
   }
   return result;

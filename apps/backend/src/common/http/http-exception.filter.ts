@@ -27,6 +27,7 @@ import {
   FinalLoginMethodException,
   GoogleIdentityConflictException,
   ForbiddenResourceException,
+  PasswordResetTokenInvalidException,
 } from '../../modules/auth/application/exceptions/auth.exceptions';
 import {
   UserNotFoundException,
@@ -37,6 +38,7 @@ import {
   UserAdminActorNotActiveAdminException,
 } from '../../modules/users/application/exceptions/user-admin.exceptions';
 import { DemographicProfileRequiredException } from '../../modules/users/application/exceptions/demographics.exceptions';
+import { UserProfileValidationException } from '../../modules/users/application/exceptions/user-profile.exceptions';
 import {
   AuditLogNotFoundException,
   ImmutableAuditLogException,
@@ -65,6 +67,9 @@ import {
   FormPublishedFieldsImmutableException,
   FormInModerationException,
   IdempotencyKeyConflictException,
+  FormVersionNotFoundException,
+  InvalidResultsCursorException,
+  PublisherAnalyticsLimitExceededException,
 } from '../../modules/forms/application/exceptions/form.exceptions';
 import {
   ParticipantNotEligibleException,
@@ -86,7 +91,11 @@ import {
   AttemptNotExternalException,
   SurveyRewardUnavailableException,
   RewardNotSettleableException,
+  SurveyNotFoundException,
+  AttemptNotFoundException,
+  AttemptNotInProgressException,
 } from '../../modules/participation/application/exceptions/participation.exceptions';
+import { IntegrityConsentVersionMismatchException } from '../../modules/participation/application/exceptions/integrity-consent.exceptions';
 import {
   SurveyFeedbackAlreadySubmittedException,
   SurveyFeedbackAttemptNotFoundException,
@@ -98,6 +107,7 @@ import {
   StorageObjectNotCleanException,
   StorageUnauthorizedAccessException,
   StorageScannerOutageException,
+  StorageQuestionFullException,
 } from '../../modules/storage/application/exceptions/storage.exceptions';
 import {
   UnbalancedJournalException,
@@ -163,6 +173,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
       status = HttpStatus.UNAUTHORIZED;
       code = exception.code;
       message = exception.message;
+    } else if (exception instanceof PasswordResetTokenInvalidException) {
+      // Plan 5.4: unknown, malformed, expired and used tokens look the same.
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
     } else if (
       exception instanceof UnauthorizedSessionException ||
       exception instanceof SessionExpiredException ||
@@ -187,11 +202,26 @@ export class HttpExceptionFilter implements ExceptionFilter {
       exception instanceof UserNotFoundException ||
       exception instanceof AuditLogNotFoundException ||
       exception instanceof FormNotFoundException ||
-      exception instanceof NotificationNotFoundException
+      exception instanceof NotificationNotFoundException ||
+      exception instanceof FormVersionNotFoundException
     ) {
       status = HttpStatus.NOT_FOUND;
       code = exception.code;
       message = exception.message;
+    } else if (exception instanceof InvalidResultsCursorException) {
+      // Story IR.4a: malformed responses cursor, or one of another version.
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof PublisherAnalyticsLimitExceededException) {
+      // Story IR.4a AC4 (NFR-30): bounded analytics scan.
+      status = HttpStatus.UNPROCESSABLE_ENTITY;
+      code = exception.code;
+      message = exception.message;
+      details = {
+        totalResponses: exception.totalResponses,
+        limit: exception.limit,
+      };
     } else if (
       exception instanceof FormNotInDraftStatusException ||
       exception instanceof FormAlreadyPublishedException ||
@@ -285,6 +315,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
       code = exception.code;
       message = exception.message;
       details = { missingFields: exception.missingFields };
+    } else if (exception instanceof UserProfileValidationException) {
+      // Story IR.4b part A: same answer as `ZodValidationPipe`.
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+      details = exception.details;
     } else if (
       exception instanceof ParticipantNotEligibleException ||
       exception instanceof SelfParticipationForbiddenException
@@ -339,6 +375,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       status = HttpStatus.BAD_REQUEST;
       code = exception.code;
       message = exception.message;
+      details = exception.details;
     } else if (exception instanceof InvalidCompletionCodeException) {
       status = HttpStatus.BAD_REQUEST;
       code = exception.code;
@@ -381,6 +418,26 @@ export class HttpExceptionFilter implements ExceptionFilter {
       status = HttpStatus.CONFLICT;
       code = exception.code;
       message = exception.message;
+    } else if (
+      // Story IR.2a: unpublished surveys and other users' attempts are 404s
+      // that reveal nothing.
+      exception instanceof SurveyNotFoundException ||
+      exception instanceof AttemptNotFoundException
+    ) {
+      status = HttpStatus.NOT_FOUND;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof AttemptNotInProgressException) {
+      // Story IR.2a: the attempt's status and why it closed.
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = exception.details;
+    } else if (exception instanceof IntegrityConsentVersionMismatchException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = { currentVersion: exception.currentVersion };
     } else if (exception instanceof StorageObjectNotFoundException) {
       status = HttpStatus.NOT_FOUND;
       code = exception.code;
@@ -396,6 +453,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
       status = HttpStatus.FORBIDDEN;
       code = exception.code;
       message = exception.message;
+    } else if (exception instanceof StorageQuestionFullException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = {
+        questionId: exception.questionId,
+        maxFiles: exception.maxFiles,
+      };
     } else if (exception instanceof StorageScannerOutageException) {
       status = HttpStatus.SERVICE_UNAVAILABLE;
       code = exception.code;

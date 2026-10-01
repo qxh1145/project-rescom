@@ -5,6 +5,7 @@ import {
 import {
   Session,
   SessionProps,
+  SessionRevokeReason,
   RefreshCredential,
   RefreshCredentialProps,
 } from '../domain/session.entity';
@@ -54,7 +55,12 @@ export class InMemorySessionRepository implements SessionRepositoryPort {
       // 2. Single active session enforcement: revoke previous active sessions
       for (const session of this.sessions.values()) {
         if (session.userId === userId && !session.revoked) {
-          this.sessions.set(session.id, { ...session, revoked: true });
+          this.sessions.set(session.id, {
+            ...session,
+            revoked: true,
+            revokedAt: input.session.createdAt,
+            revokedReason: 'REPLACED',
+          });
         }
       }
 
@@ -151,21 +157,36 @@ export class InMemorySessionRepository implements SessionRepositoryPort {
 
   async revokeSession(
     sessionId: string,
+    reason: SessionRevokeReason,
     auditRecord?: CreateIdentityAuditRecord,
   ): Promise<void> {
     const session = this.sessions.get(sessionId);
-    if (session) {
-      this.sessions.set(sessionId, { ...session, revoked: true });
+    if (session && !session.revoked) {
+      this.sessions.set(sessionId, {
+        ...session,
+        revoked: true,
+        revokedAt: new Date(),
+        revokedReason: reason,
+      });
     }
     if (auditRecord && this.auditPort) {
       await this.auditPort.append(auditRecord);
     }
   }
 
-  async revokeAllByUserId(userId: string): Promise<void> {
+  async revokeAllByUserId(
+    userId: string,
+    reason: SessionRevokeReason,
+  ): Promise<void> {
+    const revokedAt = new Date();
     for (const [id, session] of this.sessions.entries()) {
       if (session.userId === userId && !session.revoked) {
-        this.sessions.set(id, { ...session, revoked: true });
+        this.sessions.set(id, {
+          ...session,
+          revoked: true,
+          revokedAt,
+          revokedReason: reason,
+        });
       }
     }
   }

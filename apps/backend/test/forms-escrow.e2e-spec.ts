@@ -756,10 +756,19 @@ describe('Story 6.3: Escrow Lock, Release & Refund E2E Tests (FR-14, FR-15, FR-1
           .balance,
       ).toBe(issuanceBefore - 15);
 
-      // Nothing is left to refund on close.
+      // Plan 2.3 (decision A): the last submission closed the survey itself
+      // (QUOTA); nothing was left to refund, so no refund journal.
+      const detail = await request(app.getHttpServer())
+        .get(`/forms/${internalId}`)
+        .set('Cookie', authCookie)
+        .expect(200);
+      expect(detail.body.data).toMatchObject({
+        status: 'CLOSED',
+        closeKind: 'QUOTA',
+      });
       await post(`/forms/${internalId}/close`, authCookie, csrfToken, {
         reason: 'Quota reached',
-      }).expect(200);
+      }).expect(409);
       expect(
         await ledgerService.findJournalByIdempotencyKey(
           `close-refund:${internalId}:c1`,

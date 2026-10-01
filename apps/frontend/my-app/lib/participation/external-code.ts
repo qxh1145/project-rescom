@@ -1,15 +1,17 @@
 import {
+  ATTEMPT_NOT_IN_PROGRESS_CODE,
   COMPLETION_CODE_POLICY,
   DEFAULT_EXTERNAL_TIME_BARRIER_SECONDS,
   isCompletionCodeLimitReached,
+  attemptNotInProgressDetailsSchema,
   remainingCompletionCodeTries,
   timeBarrierRejectionDetailsSchema,
 } from "@rescom/schemas";
-import { isApiError } from "../api/api-error.ts";
+import { isApiError, type ApiError } from "../api/api-error.ts";
 import { sessionStatusFromError } from "../session/session-status.ts";
 import { attemptPhase, type AttemptStatus } from "./attempts-service.ts";
 import { EXTERNAL_MESSAGES } from "./external-messages.ts";
-import { completionsLimitMessage } from "./start-flow.ts";
+import { completionsLimitMessage, formatRetryAfter } from "./start-flow.ts";
 
 /**
  * Pure rules of the Google Forms flow (`/attempts/[id]/google-form`),
@@ -25,7 +27,7 @@ export const MAX_CODE_TRIES = COMPLETION_CODE_POLICY.maxFailuresPerAttempt;
 
 interface BarrierSource {
   startedAt: string;
-  /** `attemptTimeBarrierSchema` (start response, or the ASSUMED GET /attempts/:id). */
+  /** `attemptTimeBarrierSchema` (start response, or GET /attempts/:id). */
   timeBarrier?: { earliestSubmitAt: string } | null;
 }
 
@@ -148,9 +150,9 @@ export function remainingTriesFrom(details: unknown, previousWrongCount = 0): nu
 }
 
 /**
- * Tries left shown on load (ASSUMED GET /attempts/:id exposes `wrongCodeCount`
- * and, when known, the account+version total `accountWrongCodeCount`): the
- * smaller of the attempt's and the account's budget, like the backend.
+ * Tries left shown on load (GET /attempts/:id exposes `wrongCodeCount` and
+ * the account+version total `accountWrongCodeCount`): the smaller of the
+ * attempt's and the account's budget, like the backend.
  */
 export function remainingTriesFromCount(wrongCodeCount: number, accountWrongCodeCount?: number): number {
   if (accountWrongCodeCount === undefined) {
@@ -159,11 +161,25 @@ export function remainingTriesFromCount(wrongCodeCount: number, accountWrongCode
   return remainingCompletionCodeTries({ attemptFailures: wrongCodeCount, accountFailures: accountWrongCodeCount });
 }
 
+/**
+ * Any 429 — the participation limits (`PARTICIPATION_RATE_LIMITED`) or the
+ * global request throttler (`RATE_LIMIT_EXCEEDED`): the completions-window
+ * copy with its numbers, else the rate-limit copy with the server's
+ * Retry-After when it sent one.
+ */
+function rateLimitMessage(error: ApiError): string {
+  const completions = completionsLimitMessage(error);
+  if (completions) return completions;
+  return error.retryAfterSeconds
+    ? EXTERNAL_MESSAGES.rateLimitedFor(formatRetryAfter(error.retryAfterSeconds))
+    : EXTERNAL_MESSAGES.rateLimited;
+}
+
 export function verifyFailureOf(error: unknown, previousWrongCount = 0): VerifyFailure {
   if (!isApiError(error)) return { kind: "message", message: EXTERNAL_MESSAGES.generic };
   if (error.kind === "network") return { kind: "message", message: EXTERNAL_MESSAGES.network };
   const session = sessionStatusFromError(error);
-  if (session === "unauthenticated" || session === "locked") return { kind: "session" };
+  if (session === "unauthenticated" || session === "replaced" || session === "locked") return { kind: "session" };
 
   switch (error.code) {
     case "INVALID_COMPLETION_CODE": {
@@ -195,12 +211,41 @@ export function verifyFailureOf(error: unknown, previousWrongCount = 0): VerifyF
     case "SURVEY_NOT_AVAILABLE":
       return { kind: "message", message: EXTERNAL_MESSAGES.notAvailable };
     case "PARTICIPATION_RATE_LIMITED":
-      return { kind: "message", message: completionsLimitMessage(error) ?? EXTERNAL_MESSAGES.rateLimited };
+    case "RATE_LIMIT_EXCEEDED":
+      return { kind: "message", message: rateLimitMessage(error) };
     case "VALIDATION_ERROR":
       return { kind: "message", message: EXTERNAL_MESSAGES.invalidFormat };
     default:
-      return { kind: "message", message: EXTERNAL_MESSAGES.generic };
+      return {
+        kind: "message",
+        message: error.status === 429 ? rateLimitMessage(error) : EXTERNAL_MESSAGES.generic,
+      };
   }
+}
+
+// ── Cancel errors → UI state ───────────────────────────────────────────────
+
+export type CancelFailure =
+  /** 409 ATTEMPT_NOT_IN_PROGRESS with `details.status` COMPLETED: show its completion screen. */
+  | { kind: "completed" }
+  /** 409 ATTEMPT_NOT_IN_PROGRESS otherwise (expired, cancelled, locked): nothing is left to cancel. */
+  | { kind: "closed" }
+  /** 401 / AUTH_USER_LOCKED: `SessionGate` takes over after `refresh()`. */
+  | { kind: "session" }
+  | { kind: "message"; message: string };
+
+/** What a failed `POST /attempts/:id/cancel` means for the "Huỷ lượt làm" dialog. */
+export function cancelFailureOf(error: unknown): CancelFailure {
+  if (!isApiError(error)) return { kind: "message", message: EXTERNAL_MESSAGES.cancelFailed };
+  if (error.kind === "network") return { kind: "message", message: EXTERNAL_MESSAGES.network };
+  const session = sessionStatusFromError(error);
+  if (session === "unauthenticated" || session === "replaced" || session === "locked") return { kind: "session" };
+  if (error.code === ATTEMPT_NOT_IN_PROGRESS_CODE) {
+    const details = attemptNotInProgressDetailsSchema.safeParse(error.details);
+    return details.success && details.data.status === "COMPLETED" ? { kind: "completed" } : { kind: "closed" };
+  }
+  if (error.status === 429) return { kind: "message", message: rateLimitMessage(error) };
+  return { kind: "message", message: EXTERNAL_MESSAGES.cancelFailed };
 }
 
 // ── Report missing code ────────────────────────────────────────────────────
@@ -227,9 +272,10 @@ export function reportFailureMessage(error: unknown): string {
     case "VALIDATION_ERROR":
       return EXTERNAL_MESSAGES.reportReasonTooShort;
     case "PARTICIPATION_RATE_LIMITED":
-      return EXTERNAL_MESSAGES.rateLimited;
+    case "RATE_LIMIT_EXCEEDED":
+      return rateLimitMessage(error);
     default:
-      return EXTERNAL_MESSAGES.reportFailed;
+      return error.status === 429 ? rateLimitMessage(error) : EXTERNAL_MESSAGES.reportFailed;
   }
 }
 

@@ -6,7 +6,7 @@ import { useApiQuery } from "@/lib/api/use-api-query";
 import type { ApiError } from "@/lib/api/api-error";
 import { resolveQuestionIndex, visualOf } from "@/lib/forms/results-analytics";
 import type { FormAnalytics } from "@/lib/forms/results-analytics-service";
-import { getFormResponses, type FormResponses } from "@/lib/forms/results-service";
+import { collectFormResponses, type FormResponses } from "@/lib/forms/results-service";
 import { MOBILE_INITIAL_COUNT, normalizeColumnIds } from "@/lib/forms/results-view";
 import { useSessionLossRedirect } from "@/lib/session/use-session-loss";
 import { isAnalyticsSegment, useAnalytics } from "./analytics-context";
@@ -29,13 +29,14 @@ const ResponsesContext = createContext<ResponsesContextValue | null>(null);
 
 /** Theo câu hỏi needs every answer only for a free-text question (text / paragraph / date list). */
 function questionListsAnswers(analytics: FormAnalytics | null, questionId: string | null): boolean {
-  if (!analytics) return false;
+  if (!analytics || analytics.availability !== "AVAILABLE") return false;
   const question = analytics.questions[resolveQuestionIndex(analytics.questions, questionId)];
   return question ? visualOf(question) === "text-list" : false;
 }
 
 /**
- * Loads `GET /forms/:id/responses` once for `/responses/individual` and every
+ * Collects `GET /forms/:id/responses` (every cursor page, up to
+ * `RESPONSES_MAX_PAGES`) once for `/responses/individual` and every
  * `/responses/:responseId` (mounted by `responses/layout.tsx`, inside
  * `AnalyticsProvider`), so opening a row does not refetch. Tóm tắt never
  * loads it; Theo câu hỏi only for a free-text question's full answer list.
@@ -50,14 +51,14 @@ export function ResponsesProvider({ children }: { children: ReactNode }) {
   const needed =
     !isAnalyticsSegment(segment) || (segment === "questions" && questionListsAnswers(analytics.data, search.get("question")));
   const query = useApiQuery(needed ? `form-responses:${id}:${version ?? ""}` : null, (signal) =>
-    getFormResponses(id, version, signal),
+    collectFormResponses(id, version, signal),
   );
   const sessionLost = useSessionLossRedirect(query.error);
   const [chosenColumns, setColumnIds] = useState<string[]>([]);
   const [mobileVisible, setMobileVisible] = useState(MOBILE_INITIAL_COUNT);
   const data = query.data ?? null;
   const columnIds = useMemo(
-    () => (data ? normalizeColumnIds(data.questions, chosenColumns) : []),
+    () => (data?.availability === "AVAILABLE" ? normalizeColumnIds(data.questions, chosenColumns) : []),
     [data, chosenColumns],
   );
 

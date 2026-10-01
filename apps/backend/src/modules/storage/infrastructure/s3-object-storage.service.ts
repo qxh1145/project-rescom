@@ -29,6 +29,13 @@ export class S3ObjectStorageService implements ObjectStoragePort {
         accessKeyId: envService.storageAccessKeyId,
         secretAccessKey: envService.storageSecretAccessKey,
       },
+      // SDK >= 3.729 adds a flexible checksum to every request by default. A
+      // presigned PUT then signs `x-amz-checksum-crc32` of the EMPTY body
+      // (`AAAAAA==`), so the browser's real upload fails verification. Only
+      // send/validate checksums when the operation requires one; finalize
+      // computes its own SHA-256 over the uploaded bytes (AD-22).
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
     });
   }
 

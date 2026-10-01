@@ -1,5 +1,5 @@
 import type { UserRole, UserStatus } from "@rescom/schemas";
-import { loadStore, updateUser } from "@/lib/mock/store.ts";
+import { loadStore, updateUser } from "../legacy/store";
 import { createCollection } from "../db/store";
 import { findMockUserByEmail } from "../db/session";
 import { attempts } from "./attempts";
@@ -9,7 +9,7 @@ import { FRAUD_SEED_USER_IDS, fraudSummaryOf } from "./admin-fraud-log";
 
 /**
  * Admin · Người dùng (Figma 11d, 63:2212). Two sources, one list:
- * - the real mock accounts of the legacy demo store (`lib/mock`, where the auth
+ * - the real mock accounts of the legacy demo store (`mocks/legacy`, where the auth
  *   mock signs people in) — locking one makes its login fail (`isMockAccountLocked`);
  * - Figma seed users who only exist for the console (no password, cannot sign in).
  * The shape is the VERIFIED `adminUserSchema` + the ASSUMED extensions of

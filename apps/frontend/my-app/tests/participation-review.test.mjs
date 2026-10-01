@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 const { ApiError } = await import("../lib/api/api-error.ts");
 const startFlow = await import("../lib/participation/start-flow.ts");
 const { START_FLOW_MESSAGES } = await import("../lib/participation/start-flow-messages.ts");
-const { attemptPhase, attemptDetailsSchema } = await import("../lib/participation/attempts-service.ts");
+const { attemptPhase, surveyAttemptDetailsSchema } = await import("../lib/participation/attempts-service.ts");
 const draft = await import("../lib/participation/answer-draft.ts");
 const { clearParticipationStorage } = await import("../lib/participation/clear-participation-storage.ts");
 const messages = await import("../lib/participation/participation-messages.ts");
@@ -112,17 +112,35 @@ test("attempt status: backend AttemptStatus values + time → screen phase", () 
     responseId: null,
     formId: "5a0c1f7e-2b4d-4c6a-8e1f-0a1b2c3d4e02",
     formVersionId: "6b1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+    versionNumber: 1,
     type: "EXTERNAL",
+    closedReason: null,
+    closedAt: null,
     startedAt: "2026-09-27T09:30:00.000Z",
     expiresAt: future,
     submittedAt: null,
     wrongCodeCount: 0,
-    survey: { title: "T", rewardPerResponse: 18, estimatedEffortSeconds: 480, publisherName: "P", externalUrl: null },
+    accountWrongCodeCount: 0,
+    timeBarrier: {
+      requiredSeconds: 15,
+      questionCount: null,
+      secondsPerQuestion: null,
+      earliestSubmitAt: "2026-09-27T09:30:15.000Z",
+      policyVersion: "time-barrier-v1",
+    },
+    survey: { title: "T", status: "PUBLISHED", rewardPerResponse: 18, estimatedEffortSeconds: 480, externalUrl: null },
+    form: null,
   };
-  assert.equal(attemptDetailsSchema.safeParse({ ...base, status: "COMPLETED", rewardStatus: "PENDING" }).success, true);
+  assert.equal(surveyAttemptDetailsSchema.safeParse({ ...base, status: "COMPLETED" }).success, true);
   for (const legacy of ["PENDING_REVIEW", "SUBMITTED", "EXPIRED", "CANCELLED"]) {
-    assert.equal(attemptDetailsSchema.safeParse({ ...base, status: legacy }).success, false, legacy);
+    assert.equal(surveyAttemptDetailsSchema.safeParse({ ...base, status: legacy }).success, false, legacy);
   }
+  // Owner decisions Q1/Q3: no publisher name, no reward status on the attempt read (strict schema).
+  assert.equal(surveyAttemptDetailsSchema.safeParse({ ...base, status: "COMPLETED", rewardStatus: "PENDING" }).success, false);
+  assert.equal(
+    surveyAttemptDetailsSchema.safeParse({ ...base, status: "IN_PROGRESS", survey: { ...base.survey, publisherName: "P" } }).success,
+    false,
+  );
 });
 
 // ── 5: draft privacy ──────────────────────────────────────────────────────

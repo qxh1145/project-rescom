@@ -10,12 +10,18 @@ import { Button, buttonClassName } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { IconLink } from "@/components/ui/IconButton";
 import { Spinner } from "@/components/ui/Spinner";
+import { Select } from "@/components/ui/Select";
 import { TextField } from "@/components/ui/TextField";
+import { normalizeWizardTopic, TOPIC_OPTIONS } from "@/lib/forms/topics";
 import { hasIssues, summarizeDoc, validateForPublish } from "@/lib/forms/builder-blocks";
 import { loadFormErrorMessage, PENDING_ATTENTION_BLOCKER, publishErrorMessage } from "@/lib/forms/builder-messages";
 import { loadLocalDraft } from "@/lib/forms/builder-offline";
 import {
+  builderDeadlineAt,
+  builderDeadlineChoices,
   buildTargeting,
+  defaultBuilderDeadlineChoice,
+  type BuilderDeadlineChoice,
   estimateEscrow,
   FROZEN_REWARD_HINT,
   GENDER_LABELS,
@@ -81,6 +87,9 @@ export function PublishScreen() {
   const [targetError, setTargetError] = useState<string | null>(null);
   const [values, setValues] = useState({ expectedCompletions: "", rewardPerResponse: "", estimatedDurationMinutes: "" });
   const [errors, setErrors] = useState<PublishSettingsErrors>({});
+  // Plan 2.2 / Story IR.2b (review LOW-17): topic and collection deadline.
+  const [topic, setTopic] = useState("");
+  const [deadlineChoice, setDeadlineChoice] = useState<BuilderDeadlineChoice>("none");
   const [busy, setBusy] = useState(false);
   const [publishError, setPublishError] = useState<unknown>(null);
   const [quote, setQuote] = useState<PricingQuote | null>(null);
@@ -106,6 +115,8 @@ export function PublishScreen() {
           setNotReady(readiness);
           if (!checked) router.replace(`/forms/${formId}/builder?continue=1`);
         }
+        setTopic(normalizeWizardTopic(loaded.topic));
+        setDeadlineChoice(defaultBuilderDeadlineChoice(loaded.deadlineAt));
         setValues({
           expectedCompletions: String(loaded.expectedCompletions),
           rewardPerResponse: String(loaded.rewardPerResponse),
@@ -230,6 +241,9 @@ export function PublishScreen() {
           // C3: a re-versioned draft keeps the published reward (409 FORM_PUBLISHED_FIELDS_IMMUTABLE).
           ...(reversioned ? {} : { rewardPerResponse: settings.value.rewardPerResponse }),
           estimatedDurationMinutes: settings.value.estimatedDurationMinutes,
+          topic: normalizeWizardTopic(topic) || null,
+          // Always sent, so a stored deadline about to pass is replaced (no dead end).
+          deadlineAt: builderDeadlineAt(deadlineChoice, form.deadlineAt),
         },
         form.updatedAt,
       );
@@ -401,6 +415,21 @@ export function PublishScreen() {
                 value={values.estimatedDurationMinutes}
                 onChange={setValue("estimatedDurationMinutes")}
                 error={errors.estimatedDurationMinutes}
+              />
+              <Select
+                id="pub-topic"
+                label="Chủ đề"
+                placeholder="Chọn chủ đề"
+                options={TOPIC_OPTIONS}
+                value={topic}
+                onChange={(event) => setTopic(normalizeWizardTopic(event.target.value))}
+              />
+              <Select
+                id="pub-deadline"
+                label="Hạn thu thập"
+                options={builderDeadlineChoices(form.deadlineAt)}
+                value={deadlineChoice}
+                onChange={(event) => setDeadlineChoice(event.target.value as BuilderDeadlineChoice)}
               />
             </div>
             <dl className="mt-5 flex flex-col gap-2 rounded-[14px] bg-surface-muted p-4 text-body-sm">

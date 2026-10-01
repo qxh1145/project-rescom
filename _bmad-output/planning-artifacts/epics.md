@@ -136,7 +136,7 @@ NFR-22: CSAT target > 4.0/5.0
 - **Epic 8: Moderation & Anti-Fraud** -> FR-20, FR-28, FR-45, FR-46, FR-47, FR-48, FR-53, FR-54, FR-55
 - **Epic 9: Analytics & Notifications** -> FR-41, FR-42, FR-43, FR-44, FR-56, FR-57
 - **Epic 10: Research Integrity Foundation & TrustGraph** -> FR-58, FR-59, FR-60, FR-61, FR-62, FR-63, FR-64, FR-65, FR-66, FR-67
-- **Epic IR: Integration Readiness** -> Phase 1 launch journeys and cross-cutting integration acceptance gates (no new FRs)
+- **Epic IR: Integration Readiness** -> Phase 1 launch journeys and cross-cutting integration acceptance gates; gap-closing stories IR.2a/IR.2b/IR.4a/IR.4b add FR-39, FR-40 and complete FR-5, FR-9, FR-24, FR-32, FR-57 (email)
 - **Epic 11: Production Deployment & Pilot Readiness** -> NFR-ADD-3, NFR-ADD-4, NFR-ADD-5, AD-23 (no new FRs)
 
 ## Epic List
@@ -183,7 +183,7 @@ NFR-22: CSAT target > 4.0/5.0
 
 ### Epic IR: Integration Readiness
 **Goal:** Phase 1 launch journeys run end to end against the real backend with mock mode disabled, verified frontend-to-backend contracts, same-origin `/api` behavior, and evidence for every applicable success and failure state.
-**FRs covered:** no new FRs; integrates the completed Phase 1 capabilities from Epics 1, 2, 4, 5, 6, 7, 8 and 9. Epic 3, Epic 10 and all other deferred Phase 2 scope remain excluded unless separately approved.
+**FRs covered:** FR-39, FR-40 (IR.4a) and completion of FR-5, FR-24, FR-32 (IR.2b), FR-9 and FR-57 email (IR.4b), added 2026-09-30 from the implementation-readiness report; otherwise integrates the completed Phase 1 capabilities from Epics 1, 2, 4, 5, 6, 7, 8 and 9. Epic 3, Epic 10 and all other deferred Phase 2 scope remain excluded unless separately approved.
 
 ### Epic 11: Production Deployment & Pilot Readiness
 **Goal:** The Phase 1 platform runs for pilot students on a simple, portable Google Cloud topology (Architecture AD-23) with automated deploys, error and uptime alerts, tested backups, and a rehearsed exit path to another provider.
@@ -1100,6 +1100,7 @@ So that the system can track graph evidence without requiring a separate graph d
 **Dependencies and acceptance gates:**
 
 - IR.1 establishes G0/G1 and unblocks IR.2; IR.2 is the G2 local real-stack gate. Epic 11 packaging and infrastructure may proceed in parallel once IR.1 confirms AD-23, the canonical origin, and environment ownership.
+- IR.2a (respondent read endpoints) and IR.2b (scheduler and Outbox dispatcher) close backend gaps found by the 2026-09-30 readiness assessment. They may start after IR.1 and in parallel with IR.2. IR.3 requires IR.2a and IR.2b. IR.4a and IR.4b implement publisher/profile/admin reads approved at IR.1; IR.4 requires IR.4a and IR.4b, or the IR.1 decision to hide the corresponding routes. Migration order: IR.2a (attempt `closed_reason`/`closed_at`) → IR.2b (`scheduler_job_leases`, `forms.deadline_at`, Outbox dispatcher) → IR.4b email part (Outbox handler) and IR.4a deadline read. The IR.4b profile and admin-overview parts and IR.4a's other reads do not depend on IR.2b.
 - IR.3 and IR.4 may proceed in parallel after IR.2. IR.5 requires both and is the G3 local integration gate.
 - IR.6 requires IR.5 plus Stories 11.1–11.4 deployed to staging. IR.6 is the G5 evidence gate and blocks Story 11.5 go/no-go and production launch.
 - Story status, a health check, or implementation completion alone is not gate evidence; each gate requires the named test report, trace, manifest, or drill record.
@@ -1141,6 +1142,75 @@ So that domains can move from mocks to real APIs without an uncontrolled all-at-
 **And** migration prerequisites are checked and `prisma migrate deploy` runs through a pipeline-equivalent local path.
 **And** build-time, non-secret runtime and secret runtime configuration are classified, with no secret committed or embedded in an image.
 
+### Story IR.2a: Respondent Read Endpoints for the Survey Runner
+
+As a Respondent,
+I want the survey summary, my attempt, its pinned form and its outcome to load from the real backend,
+So that I can start, resume, cancel and finish a survey without mock data.
+
+**Acceptance Criteria:**
+
+**Given** the frontend contracts currently marked ASSUMED in `lib/participation/survey-form-service.ts`, `attempts-service.ts`, `submission-service.ts` and `external-service.ts`
+**When** the contracts are implemented
+**Then** each request/response schema is promoted into `@rescom/schemas`, and the frontend service and backend controller import the same schema, which is covered by a contract test.
+
+**Given** any caller, including an unauthenticated one
+**When** it calls `GET /surveys/:id`
+**Then** it receives only public facts about a published survey (title, description, form type, estimated duration, reward, remaining slots, status), with no targeting internals, Completion Code or Publisher-private data.
+**And** an unknown, draft or unpublished survey returns 404 without leaking existence.
+
+**Given** an authenticated Respondent who owns the Attempt
+**When** they call `GET /attempts/:attemptId`
+**Then** the response returns the Attempt status, server `startedAt`/`expiresAt`, form type and the **pinned** `formVersionId`/`versionNumber`. For an Internal Form it also returns the pinned version's Form Definition, which remains unchanged even after a newer version is published (AD-19, API-05).
+**And** another user's Attempt returns 404 (not 403), and Admin read access, if any, is explicit and audited.
+
+**Given** an owned Attempt
+**When** the Respondent calls `GET /attempts/:attemptId/outcome`
+**Then** the response returns the reward state derived from posted Ledger journals: `AVAILABLE`, `PENDING` with `releasesAt`, or `HELD_IN_INTEGRITY` only when an `ENFORCED` policy exists. It also returns the credited amount and the starter-point unlock effect, and it never recomputes or mutates balances.
+
+**Given** an owned `IN_PROGRESS` Attempt
+**When** the Respondent calls `POST /attempts/:attemptId/cancel` with CSRF and an `Idempotency-Key`
+**Then** the Attempt moves to its abandoned state with a recorded reason and releases its quota reservation in one transaction.
+**And** a retry returns the original result, and cancelling a submitted or completed Attempt returns 409 with a stable error code.
+
+**And** every route uses the `{data,error,meta}` envelope and stable error codes, and has tests for unauthorized, not-found, conflict, concurrency (cancel racing submit) and idempotent retry.
+
+### Story IR.2b: In-Process Scheduler and Outbox Dispatcher
+
+As a Respondent and Publisher,
+I want time-based point movements to happen automatically,
+So that pending rewards release, starter points expire and unused escrow is refunded without an Admin pressing a button.
+
+**Acceptance Criteria:**
+
+**Given** the single-replica pilot (AD-5 amendment, AD-23)
+**When** the API starts with the scheduler configuration flag enabled
+**Then** exactly one logical scheduler owner runs in-process; with the flag disabled no job runs. Every job claims work through PostgreSQL with an owner/fencing token and lease (AD-10, AD-17), so a restart or accidental second owner cannot double-process.
+
+**Given** External Form rewards whose 48-hour Pending window has elapsed and that carry no locked dispute hold
+**When** the pending-release job runs
+**Then** it releases them to Available through the existing idempotent Economy command (FR-24, NFR-13), producing exactly one Ledger journal per reward and a notification.
+
+**Given** accounts whose starter onboarding has not completed within 30 days of registration
+**When** the starter-expiry job runs
+**Then** the Frozen Points are voided exactly once through the existing Economy command, and the user is notified (FR-5).
+
+**Given** Attempts whose reservation has expired
+**When** the reservation-expiry job runs
+**Then** each Attempt is closed as abandoned and its quota slot is released, without racing a concurrent submission.
+
+**Given** surveys whose deadline has passed with unfilled slots
+**When** the escrow-refund job runs
+**Then** the survey closes and the remaining Escrow is refunded under a stable close command, and the Publisher is notified (FR-32, NFR-12).
+
+**Given** unprocessed `OutboxEvent` rows
+**When** the Outbox dispatcher runs
+**Then** it dispatches each event to its registered handlers with claim/lease, retry with backoff and dead-letter after a bounded number of attempts. Each handler's effect commits atomically with its `ProcessedHandler` record, so replay is a no-op.
+
+**And** the existing admin re-drive and manual release endpoints keep working as operator fallbacks.
+**And** job runs, claim conflicts, retries and dead letters are logged with correlation IDs and exposed to readiness/metrics.
+**And** tests cover a clock-controlled boundary for every job, duplicate/concurrent runs, crash-after-claim recovery and a no-double-journal ledger invariant.
+
 ### Story IR.3: Respondent Journey Without Mocks
 
 As a Respondent,
@@ -1149,7 +1219,7 @@ So that attempt state, pinned forms, submissions and rewards are proven before s
 
 **Acceptance Criteria:**
 
-**Given** IR.2 is complete and the respondent-domain contract gaps are resolved
+**Given** IR.2, IR.2a and IR.2b are complete and the respondent-domain contract gaps are resolved
 **When** the respondent journey runs with its domain mocks disabled
 **Then** authentication, demographics, marketplace eligibility, survey summary, attempt start/read/resume/cancel/outcome, pinned form read and internal submission complete end to end.
 **And** concurrent reservation/start tests prove an attempt is not granted twice and resume continues on the form version pinned to that attempt.
@@ -1166,13 +1236,74 @@ So that the pilot proves escrow, top-up, moderation and notification invariants 
 
 **Acceptance Criteria:**
 
-**Given** IR.2 is complete and publisher-domain contract gaps are resolved
+**Given** IR.2, IR.4a and IR.4b are complete (or their routes are hidden per IR.1) and publisher-domain contract gaps are resolved
 **When** the publisher and administration journeys run with their domain mocks disabled
 **Then** form draft creation/editing is idempotent and publish creates the expected escrow ledger entry for sufficient funds while rejecting insufficient funds safely.
 **And** top-up approval creates an auditable ledger transaction and retries do not duplicate top-ups, rewards or notifications.
 **And** transaction/outbox events produce real in-app notifications with no direct mock source.
 **And** moderation is tested with two distinct admins; self-review is forbidden, concurrent decisions record only one result, and every decision has an audit trail.
 **And** success and every applicable unauthorized, forbidden, validation, conflict, rate-limit, session-expiry, offline, idempotency and empty-state case have automated evidence.
+
+### Story IR.4a: Publisher Progress and Response Viewing
+
+As a Publisher,
+I want to see my survey's progress and read the responses it has collected,
+So that I can track collection and review my data inside RESCOM (FR-39, FR-40).
+
+**Acceptance Criteria:**
+
+**Given** the frontend contracts marked ASSUMED in `lib/forms/manage-service.ts` (`GET /forms/:id/progress?range=`), `lib/forms/results-service.ts` (`GET /forms/:id/responses[?versionNumber=]`, `GET /forms/:id/versions/:versionId`) and `lib/forms/results-analytics-service.ts` (`GET /forms/:id/analytics`)
+**When** these contracts are implemented
+**Then** each schema is promoted into `@rescom/schemas` and is shared by the frontend service and the backend controller under a contract test. Any field IR.1 did not approve is removed from the frontend rather than faked.
+
+**Given** the Publisher who owns the form
+**When** they call `GET /forms/:id/progress`
+**Then** they receive completions against target, Points spent, Escrow remaining (derived from Ledger), deadline, status, and a bucketed time series for the requested `range` (FR-39).
+**And** a non-owner receives 404; Admin read access, if granted, is explicit and audited.
+
+**Given** an Internal Form owned by the Publisher
+**When** they call `GET /forms/:id/responses`
+**Then** they receive cursor-paginated submitted responses for one pinned Form Version, newest first, each with its `formVersionId` and answers (FR-40).
+**And** no raw integrity telemetry, device/account evidence or unrelated Respondent history is returned. Respondent identity follows the IR.1/AD-21 privacy decision, and integrity metadata is `NOT_ASSESSED` while Epic 10 is deferred.
+**And** an External Form returns an explicit not-applicable result rather than an empty list that could be mistaken for no data.
+
+**Given** the analytics summary is approved at IR.1
+**When** the Publisher calls `GET /forms/:id/analytics`
+**Then** they receive per-question aggregates computed server-side for one Form Version within NFR-1, with no unbounded scan (NFR-30). If it is not approved, the analytics entry point is hidden.
+
+**Given** the Form lifecycle has no paused status, and `POST /forms/:id/status` is Admin-only (verified 2026-09-30)
+**When** the pilot build is produced
+**Then** `PAUSE_SUPPORTED` stays `false`, and the unused ASSUMED `/pause` and `/resume` client and mock handlers are removed. Publisher pause requires a separate lifecycle story if IR.1 wants it.
+**And** `deadlineAt` is read from `forms.deadline_at` once IR.2b adds it; until then it returns `null`.
+
+**And** export, Survey Quality and version-diff routes stay hidden unless separately approved (OQ-6, OQ-8).
+**And** tests cover owner, non-owner, empty, paginated and mixed-version cases.
+
+### Story IR.4b: Profile Update, Email Delivery and Admin Overview
+
+As a User and as an Admin,
+I want to edit my profile, receive critical emails, and see what needs my attention,
+So that the pilot supports FR-9 profile updates, FR-57 email for critical events and an actionable admin landing page.
+
+**Acceptance Criteria:**
+
+**Given** the ASSUMED contract in `lib/profile/profile-service.ts`
+**When** an authenticated user calls `GET /users/me/profile` or `PATCH /users/me/profile` with CSRF
+**Then** they read or update display name and the non-demographic profile fields (university, academic year, onboarding goal) through a shared schema.
+**And** demographic matching fields keep flowing through the existing `/demographics` routes and take effect for future matching immediately (FR-9).
+**And** the goal intent never changes roles or permissions.
+
+**Given** a critical event (complaint resolution, ban/unban, top-up approved or rejected)
+**When** the in-app notification is written
+**Then** an email is also queued through an `EmailSenderPort` via the Outbox (IR.2b). A provider adapter is selected, configured and documented, and there is a local no-op/capture adapter.
+**And** email sending is idempotent per event, failures retry without blocking the originating transaction, and no secret or personal data beyond what is required appears in logs.
+
+**Given** an authenticated Admin
+**When** they call `GET /admin/queue-counts` or `GET /admin/overview` (ASSUMED in `lib/admin/admin-queue-service.ts` and `overview-service.ts`)
+**Then** they receive counts for pending moderation, pending top-ups and other queues approved at IR.1, plus overview aggregates computed with bounded queries.
+**And** non-admins receive 403, and deferred queues (disputes, quality, fraud-log) are omitted or hidden rather than faked.
+
+**And** tests cover validation, authorization, the email adapter contract and the no-duplicate-email invariant.
 
 ### Story IR.5: Launch-Domain Closure and Local Integration Gate
 

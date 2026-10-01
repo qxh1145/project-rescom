@@ -1,9 +1,16 @@
 import {
   DEMOGRAPHIC_INTERESTS_MAX,
+  hasProfileControlCharacters,
+  schoolYearSchema,
+  USER_PROFILE_DISPLAY_NAME_MAX,
   type DemographicProfileDto,
   type DemographicProfileField,
   type Gender,
+  type SchoolYear,
   type SubmitDemographicSurveyInput,
+  type UpdateUserProfileInput,
+  type UserGoal,
+  type UserProfileDto,
 } from "@rescom/schemas";
 import { GENDER_OPTIONS } from "../demographic-options.ts";
 import { interestsShortfallMessage, ONBOARDING_MESSAGES } from "./onboarding-messages.ts";
@@ -16,14 +23,14 @@ import {
 } from "./onboarding-steps.ts";
 
 /**
- * Answers of the onboarding flow and their mapping to the two APIs:
- * VERIFIED `POST /demographics/survey` (FR-6 fields) and the ASSUMED
- * `PATCH /users/me/profile` (display name, birth year, school, goal).
+ * Answers of the onboarding flow and their mapping to the two VERIFIED APIs:
+ * `POST /demographics/survey` (FR-6 fields) and `PATCH /users/me/profile`
+ * (display name, birth year, school, school year, goal).
  * Pure module: the current year is always passed in.
  */
 
-/** Same values as `userGoalSchema` (`lib/profile/profile-service.ts`, ASSUMED). */
-export type OnboardingGoal = "EARN" | "COLLECT" | "BOTH";
+/** The shared `UserGoal` (`@rescom/schemas`). */
+export type OnboardingGoal = UserGoal;
 
 /** Figma 12.11 option titles. */
 export const GOAL_LABELS: Record<OnboardingGoal, string> = {
@@ -67,7 +74,7 @@ export const EMPTY_ANSWERS: OnboardingAnswers = {
 export const MIN_INTERESTS = 3;
 export const AGE_MIN = 13;
 export const AGE_MAX = 100;
-export const DISPLAY_NAME_MAX = 50;
+export const DISPLAY_NAME_MAX = USER_PROFILE_DISPLAY_NAME_MAX;
 
 /**
  * Age sent to the backend. ASSUMED: `currentYear − birthYear` (the birthday may
@@ -98,6 +105,8 @@ export function validateStep(step: QuestionStep, answers: OnboardingAnswers, cur
     case "name": {
       const name = answers.displayName.trim();
       if (!name) return ONBOARDING_MESSAGES.nameRequired;
+      // Same rules as `updateUserProfileSchema`, so the profile save cannot fail on them.
+      if (hasProfileControlCharacters(name)) return ONBOARDING_MESSAGES.nameInvalid;
       return name.length > DISPLAY_NAME_MAX ? ONBOARDING_MESSAGES.nameTooLong : null;
     }
     case "birth-year": {
@@ -110,10 +119,14 @@ export function validateStep(step: QuestionStep, answers: OnboardingAnswers, cur
       return answers.location?.trim() ? null : ONBOARDING_MESSAGES.locationRequired;
     case "occupation":
       return answers.occupation?.trim() ? null : ONBOARDING_MESSAGES.occupationRequired;
-    case "school":
-      return answers.school?.trim() ? null : ONBOARDING_MESSAGES.schoolRequired;
+    case "school": {
+      const school = answers.school?.trim();
+      if (!school) return ONBOARDING_MESSAGES.schoolRequired;
+      return hasProfileControlCharacters(school) ? ONBOARDING_MESSAGES.schoolInvalid : null;
+    }
     case "school-year":
-      return answers.schoolYear ? null : ONBOARDING_MESSAGES.schoolYearRequired;
+      // Only a catalog value saves (`SCHOOL_YEAR_VALUES`); a retired one must be picked again.
+      return schoolYearSchema.safeParse(answers.schoolYear).success ? null : ONBOARDING_MESSAGES.schoolYearRequired;
     case "field":
       return answers.fieldOfStudy?.trim() ? null : ONBOARDING_MESSAGES.fieldRequired;
     case "income":
@@ -180,29 +193,26 @@ export interface ProfilePatch {
   displayName: string;
   birthYear: number | null;
   school: string | null;
-  schoolYear: string | null;
+  schoolYear: SchoolYear | null;
   goal: OnboardingGoal | null;
 }
 
-/** ASSUMED `PATCH /users/me/profile` body. School answers are cleared for non-students. */
+/**
+ * VERIFIED `PATCH /users/me/profile` body (`updateUserProfileSchema`); every
+ * key is sent, so the stored profile matches the answers. School answers are
+ * cleared for non-students. Call only when valid.
+ */
 export function toProfilePatch(answers: OnboardingAnswers, currentYear: number): ProfilePatch {
   const check = checkBirthYear(answers.birthYear, currentYear);
   const student = isStudentOccupation(answers.occupation);
+  const schoolYear = schoolYearSchema.safeParse(answers.schoolYear);
   return {
     displayName: answers.displayName.trim(),
     birthYear: check.ok ? check.year : null,
     school: student ? answers.school?.trim() || null : null,
-    schoolYear: student ? answers.schoolYear : null,
+    schoolYear: student && schoolYear.success ? schoolYear.data : null,
     goal: answers.goal,
   };
-}
-
-interface ServerProfile {
-  displayName: string | null;
-  birthYear: number | null;
-  school: string | null;
-  schoolYear: string | null;
-  goal: OnboardingGoal | null;
 }
 
 const text = (value: string | null | undefined) => (typeof value === "string" && value.trim() ? value : null);
@@ -210,7 +220,7 @@ const text = (value: string | null | undefined) => (typeof value === "string" &&
 /** Prefill from `GET /demographics` and `GET /users/me/profile` (either may be missing). */
 export function answersFromServer(
   demographics: Partial<DemographicProfileDto> | null,
-  profile: ServerProfile | null,
+  profile: UserProfileDto | null,
   currentYear: number,
 ): OnboardingAnswers {
   const age = demographics?.age;
@@ -244,6 +254,15 @@ export const FIELD_STEP: Record<DemographicProfileField, QuestionStep> = {
   specificInterests: "interests",
 };
 
+/** `PATCH /users/me/profile` field → the question that collects it (a 400 of the profile save). */
+export const PROFILE_FIELD_STEP: Record<keyof UpdateUserProfileInput, QuestionStep> = {
+  displayName: "name",
+  birthYear: "birth-year",
+  school: "school",
+  schoolYear: "school-year",
+  goal: "goal",
+};
+
 /** True when a zod `format()` subtree holds an error at any depth (`specificInterests.2._errors`). */
 function hasFormattedErrors(node: unknown): boolean {
   if (typeof node !== "object" || node === null) return false;
@@ -252,14 +271,19 @@ function hasFormattedErrors(node: unknown): boolean {
   );
 }
 
-/** First question named by a zod `format()` error tree (`details` of a 400), in flow order. */
+/**
+ * First question named by a zod `format()` error tree (`details` of a 400 from
+ * the survey or the profile save), in flow order.
+ */
 export function stepFromValidationDetails(details: unknown): QuestionStep | null {
   if (typeof details !== "object" || details === null) return null;
   const tree = details as Record<string, unknown>;
-  const fields = (Object.keys(FIELD_STEP) as DemographicProfileField[]).filter((field) =>
-    hasFormattedErrors(tree[field]),
-  );
-  return fields.length > 0 ? FIELD_STEP[fields[0]] : null;
+  const fieldSteps: Record<string, QuestionStep> = { ...FIELD_STEP, ...PROFILE_FIELD_STEP };
+  const steps = Object.entries(fieldSteps)
+    .filter(([field]) => hasFormattedErrors(tree[field]))
+    .map(([, step]) => step);
+  if (steps.length === 0) return null;
+  return steps.reduce((first, step) => (QUESTION_STEPS.indexOf(step) < QUESTION_STEPS.indexOf(first) ? step : first));
 }
 
 /** "Marketing & Truyền thông" → "Marketing" (Figma summary line). */

@@ -305,4 +305,74 @@ describe('Story 9.6: NotificationsService', () => {
       });
     });
   });
+
+  describe('Story IR.4b B4: email request queued on publish', () => {
+    let emailService: NotificationsService;
+
+    beforeEach(() => {
+      emailService = new NotificationsService(repo, logger, () => now, {
+        emailRequests: true,
+      });
+    });
+
+    it('writes one notification and one identifiers-only Outbox event for a critical type', async () => {
+      const result = await emailService.publish({
+        userId: alice,
+        type: 'TOPUP_REJECTED',
+        message: 'Your top-up request was rejected.',
+        dedupeKey: 'topup-rejection:t1',
+      });
+
+      expect(result).toBe('CREATED');
+      const [notification] = repo.all();
+      expect(repo.outboxEvents).toEqual([
+        {
+          idempotencyKey: `notification-email:${notification.id}`,
+          eventType: 'NotificationEmailRequested',
+          aggregateId: notification.id,
+          payload: {
+            schemaVersion: 1,
+            notificationId: notification.id,
+            userId: alice,
+            type: 'TOPUP_REJECTED',
+          },
+        },
+      ]);
+    });
+
+    it('writes no Outbox event for a duplicate publish', async () => {
+      const command = {
+        userId: alice,
+        type: 'ACCOUNT_LOCKED' as const,
+        message: 'Locked.',
+        dedupeKey: 'account-status:alice:c1',
+      };
+      expect(await emailService.publish(command)).toBe('CREATED');
+      expect(await emailService.publish(command)).toBe('DUPLICATE');
+      expect(repo.all()).toHaveLength(1);
+      expect(repo.outboxEvents).toHaveLength(1);
+    });
+
+    it('writes no Outbox event for an in-app-only type', async () => {
+      await emailService.publish({
+        userId: alice,
+        type: 'WARNING',
+        message: 'Starter points expired.',
+        dedupeKey: 'starter-expiry:alice',
+      });
+      expect(repo.all()).toHaveLength(1);
+      expect(repo.outboxEvents).toHaveLength(0);
+    });
+
+    it('writes no Outbox event when email is disabled', async () => {
+      await service.publish({
+        userId: alice,
+        type: 'TOPUP_SUCCESS',
+        message: 'Approved.',
+        dedupeKey: 'topup-approval:t2',
+      });
+      expect(repo.all()).toHaveLength(1);
+      expect(repo.outboxEvents).toHaveLength(0);
+    });
+  });
 });

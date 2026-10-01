@@ -23,10 +23,20 @@ import {
   writeDraft,
   type OnboardingDraft,
 } from "@/lib/onboarding/onboarding-draft";
-import { ONBOARDING_MESSAGES, onboardingSubmitErrorMessage } from "@/lib/onboarding/onboarding-messages";
-import { submitOnboarding } from "@/lib/onboarding/onboarding-submit";
+import {
+  ONBOARDING_MESSAGES,
+  onboardingSubmitErrorMessage,
+  profileNotSavedMessage,
+} from "@/lib/onboarding/onboarding-messages";
+import {
+  isProfileSaveFailure,
+  profileFixStep,
+  saveProfileExtras,
+  submitOnboarding,
+} from "@/lib/onboarding/onboarding-submit";
 import {
   buildStepHref,
+  isStudentOccupation,
   nextStepOf,
   parseStep,
   previousStepOf,
@@ -47,15 +57,15 @@ interface StepError {
 function endsSession(error: unknown): boolean {
   if (!isApiError(error)) return false;
   const status = sessionStatusFromError(error);
-  return status === "unauthenticated" || status === "locked";
+  return status === "unauthenticated" || status === "replaced" || status === "locked";
 }
 
 /**
  * State of `/onboarding`: the step lives in the URL (`?step=`, so back and
  * refresh work), answers in a per-user sessionStorage draft layered over the
  * server profile. The last question submits VERIFIED `POST /demographics/survey`
- * first, then the ASSUMED `PATCH /users/me/profile` best-effort, then shows
- * the done screen.
+ * first, then VERIFIED `PATCH /users/me/profile`, then shows the done screen —
+ * which says so, with a retry, when only the profile save failed.
  */
 export function useOnboardingFlow() {
   const router = useRouter();
@@ -80,14 +90,15 @@ export function useOnboardingFlow() {
   const [entryRedirect, setEntryRedirect] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState<StepError | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  /** The survey was saved but the profile extras were not (shown on the done screen). */
+  const [profileError, setProfileError] = useState<unknown | null>(null);
+  const [profileRetrying, setProfileRetrying] = useState(false);
 
   // Always read the server copy: it prefills a first visit and wins over an older draft.
-  // Only `/demographics` may block loading; the ASSUMED profile route is optional.
+  // Both reads must succeed: an empty profile in place of a failed read would make "Sửa"
+  // ask again for saved answers and resubmit them blank (a 404 still reads as no profile).
   const prefill = useApiQuery(`onboarding-prefill:${ownerId}`, async (signal) => {
-    const [demographics, profile] = await Promise.all([
-      getDemographics(signal),
-      getUserProfile(signal).catch(() => null),
-    ]);
+    const [demographics, profile] = await Promise.all([getDemographics(signal), getUserProfile(signal)]);
     return {
       answers: answersFromServer(demographics.profile, profile, currentYear),
       updatedAt: demographics.profile.updatedAt ?? null,
@@ -169,10 +180,8 @@ export function useOnboardingFlow() {
         submitSurvey: submitDemographicSurvey,
         updateProfile: updateUserProfile,
       });
-      if (result.profileError && !(isApiError(result.profileError) && result.profileError.status === 404)) {
-        // Best-effort by design: the survey is saved; name/school/goal can be edited later.
-        console.warn("Onboarding: PATCH /users/me/profile failed", result.profileError);
-      }
+      // The survey is saved and opens the gate either way; the done screen offers the retry.
+      setProfileError(isProfileSaveFailure(result.profileError) ? result.profileError : null);
       saveDraft({ answers, submitted: { nextStep: result.nextStep }, updatedAt: new Date().toISOString() });
       // `SessionGate` must not send "Tiếp tục" back here before `refresh()` returns.
       markOnboardingComplete();
@@ -215,6 +224,33 @@ export function useOnboardingFlow() {
     goTo(previousStepOf(step, answers));
   }, [step, answers, goTo]);
 
+  /** Done screen "Thử lại": saves the profile extras of the submitted answers again. */
+  const retryProfile = useCallback(async () => {
+    setProfileRetrying(true);
+    const failure = await saveProfileExtras(answers, currentYear, updateUserProfile);
+    setProfileRetrying(false);
+    if (failure === null) {
+      setProfileError(null);
+      // Header name picks up the saved profile.
+      refresh();
+    } else if (endsSession(failure)) {
+      refresh();
+    } else if (isProfileSaveFailure(failure)) {
+      setProfileError(failure);
+    }
+  }, [answers, currentYear, refresh]);
+
+  /**
+   * Done screen "Sửa" after a 400 VALIDATION_ERROR of the profile save: the
+   * same patch would be refused again, so open the question to fix instead.
+   */
+  const fixStep = profileError === null ? null : profileFixStep(profileError);
+  const fixProfile = useCallback(() => {
+    if (fixStep === null) return;
+    setError({ step: fixStep, message: ONBOARDING_MESSAGES.submitInvalid });
+    router.push(buildStepHref(fixStep, query));
+  }, [fixStep, router, query]);
+
   /**
    * The done screen unmounted: the stored draft keeps only `nextStep` (a
    * refresh of the done screen reads the answers from the server). The
@@ -248,6 +284,13 @@ export function useOnboardingFlow() {
     greetingName: answers.displayName.trim() || displayName,
     required: searchParams.get("required") === "1",
     nextStep,
+    /** Done screen: the survey was saved, the profile extras were not (with a retry). */
+    profileWarning:
+      profileError === null ? null : profileNotSavedMessage(profileError, isStudentOccupation(answers.occupation)),
+    profileRetrying,
+    retryProfile,
+    /** Set instead of a useful retry when the profile save was refused (400 VALIDATION_ERROR). */
+    fixProfile: fixStep === null ? null : fixProfile,
     /** Activation (`/marketplace?activation=1`) until done, then `returnTo` or the Marketplace. */
     continueHref: resolvePostOnboardingPath({ nextStep }, returnTo),
     stepHref: (target: OnboardingStep) => buildStepHref(target, query),

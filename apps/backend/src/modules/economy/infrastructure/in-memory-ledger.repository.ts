@@ -1,6 +1,7 @@
 import { LedgerAccountClass } from '@rescom/schemas';
 import {
   LedgerRepositoryPort,
+  MaturedCreditCursor,
   PostJournalTransactionOptions,
   UserLedgerTransactionRecord,
 } from '../application/ports/ledger-repository.port';
@@ -160,7 +161,9 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
   async findMaturedPendingCredits(params: {
     cutoff: Date;
     limit: number;
+    after?: MaturedCreditCursor;
   }): Promise<LedgerJournalEntity[]> {
+    const after = params.after;
     const prefix = 'external-completion:';
     const keys = new Set(
       Array.from(this.journals.values()).map((j) => j.idempotencyKey),
@@ -205,7 +208,11 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
             `release-pending:${j.idempotencyKey.slice(prefix.length)}`,
           ) &&
           !reversed.has(j.id) &&
-          !settledByDispute.has(j.idempotencyKey.slice(prefix.length)),
+          !settledByDispute.has(j.idempotencyKey.slice(prefix.length)) &&
+          (!after ||
+            j.createdAt.getTime() > after.createdAt.getTime() ||
+            (j.createdAt.getTime() === after.createdAt.getTime() &&
+              j.id.localeCompare(after.journalId) > 0)),
       )
       .sort(
         (a, b) =>

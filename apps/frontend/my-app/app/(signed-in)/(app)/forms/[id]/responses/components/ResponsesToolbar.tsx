@@ -3,12 +3,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Icon } from "@/components/ui/Icon";
-import { ToggleChip } from "@/components/ui/ToggleChip";
-import { radioGroupKeyTarget } from "@/components/ui/radio-group-keys";
 import type { ResultQuestion } from "@/lib/forms/results-service";
-import { MAX_COLUMNS, QUALITY_FILTERS, type QualityCounts, type QualityFilter } from "@/lib/forms/results-view";
-
-const FILTER_LABELS: Record<QualityFilter, string> = { all: "Tất cả", passed: "Đạt", review: "Cần xem lại" };
+import { MAX_COLUMNS } from "@/lib/forms/results-view";
 
 export function SearchBox({
   value,
@@ -44,79 +40,6 @@ export function SearchBox({
           desktop ? "h-11 pr-3 pl-10 text-body-sm" : "h-12 pr-3.5 pl-10.5 text-body"
         }`}
       />
-    </div>
-  );
-}
-
-/** Desktop "Lọc theo chất lượng" (63:3758): bordered track, active segment outlined in ink. */
-export function QualitySegments({
-  value,
-  counts,
-  onChange,
-}: {
-  value: QualityFilter;
-  counts: QualityCounts;
-  onChange: (value: QualityFilter) => void;
-}) {
-  const refs = useRef<Array<HTMLButtonElement | null>>([]);
-  const selected = QUALITY_FILTERS.indexOf(value);
-  return (
-    <div
-      role="radiogroup"
-      aria-label="Lọc theo chất lượng"
-      className="inline-flex h-11 items-center gap-0.5 rounded-field border border-line-strong bg-surface-subtle p-1"
-    >
-      {QUALITY_FILTERS.map((filter, index) => {
-        const active = index === selected;
-        return (
-          <button
-            key={filter}
-            ref={(node) => {
-              refs.current[index] = node;
-            }}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            tabIndex={active ? 0 : -1}
-            onClick={() => onChange(filter)}
-            onKeyDown={(event) => {
-              const target = radioGroupKeyTarget(event.key, index, QUALITY_FILTERS.length);
-              if (target === null) return;
-              event.preventDefault();
-              refs.current[target]?.focus();
-              onChange(QUALITY_FILTERS[target]);
-            }}
-            className={`h-8.5 whitespace-nowrap rounded-[9px] border px-3.5 text-[13px] transition-colors ${
-              active
-                ? "border-ink bg-surface font-bold text-ink"
-                : "border-transparent font-semibold text-ink-strong hover:text-ink"
-            }`}
-          >
-            {FILTER_LABELS[filter]} · {counts[filter]}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Mobile chips (63:4558–4564). */
-export function QualityChips({
-  value,
-  counts,
-  onChange,
-}: {
-  value: QualityFilter;
-  counts: QualityCounts;
-  onChange: (value: QualityFilter) => void;
-}) {
-  return (
-    <div role="group" aria-label="Lọc theo chất lượng" className="flex flex-wrap gap-2">
-      {QUALITY_FILTERS.map((filter) => (
-        <ToggleChip key={filter} selected={value === filter} onSelectedChange={() => onChange(filter)} className="text-[14px]">
-          {FILTER_LABELS[filter]} · {counts[filter]}
-        </ToggleChip>
-      ))}
     </div>
   );
 }

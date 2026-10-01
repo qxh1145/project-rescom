@@ -4,13 +4,11 @@ import { apiRequest } from "../api/client.ts";
 import { toFeedQueryParams, type MarketplaceFilters } from "./marketplace-query.ts";
 
 /**
- * Survey card of the feed. `topic` ("Marketing", "CNTT" on the Figma cards)
- * is an ASSUMED API CONTRACT extension — the backend DTO has no such field
- * yet, so it is optional and the card simply omits it when absent.
+ * Survey card of the feed. VERIFIED since plan 2.2: `topic` is a shared
+ * `FORM_TOPICS` value (or null); the card shows its Vietnamese label
+ * (`topicLabel`).
  */
-export const marketplaceCardSchema = marketplaceSurveyCardSchema.extend({
-  topic: z.string().trim().min(1).nullable().optional(),
-});
+export const marketplaceCardSchema = marketplaceSurveyCardSchema;
 export type MarketplaceCard = z.infer<typeof marketplaceCardSchema>;
 
 export const marketplaceFeedSchema = marketplaceFeedResponseSchema.extend({

@@ -75,8 +75,12 @@ export function MobileSurveyHeader({
   );
 }
 
-/** Figma 62:203 "Phần thưởng" card. */
-export function RewardCard({ reward, effort, publisher }: { reward: number; effort: string; publisher: string }) {
+/**
+ * Figma 62:203 "Phần thưởng" card. The drawn "Người đăng" row is omitted
+ * (owner decision IR.2a Q1): the API exposes no publisher name, and the
+ * account email is personal data.
+ */
+export function RewardCard({ reward, effort }: { reward: number; effort: string }) {
   return (
     <section aria-label="Phần thưởng" className="flex flex-col gap-4 rounded-[20px] border border-line bg-surface px-5 pt-5 pb-[22px]">
       <div className="flex items-center justify-between">
@@ -89,10 +93,6 @@ export function RewardCard({ reward, effort, publisher }: { reward: number; effo
         <div className="flex justify-between gap-3">
           <dt className="text-ink-muted">Thời lượng ước tính</dt>
           <dd className="font-bold text-ink">{effort}</dd>
-        </div>
-        <div className="flex justify-between gap-3">
-          <dt className="text-ink-muted">Người đăng</dt>
-          <dd className="truncate font-bold text-ink">{publisher}</dd>
         </div>
       </dl>
     </section>

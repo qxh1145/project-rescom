@@ -4,16 +4,22 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ErrorScreen, errorActionClassName } from "@/components/feedback/ErrorScreen";
 import { CountdownPanel } from "@/components/feedback/ErrorScreenSlots";
-import { countdownAnnouncement, formatCountdown } from "@/lib/feedback/error-pages";
+import { countdownAnnouncement, formatCountdown, type RateLimitReason } from "@/lib/feedback/error-pages";
 
 interface RateLimitedScreenProps {
+  /** `session`: the session check got a 429 (neutral copy); else the participation pause. */
+  reason: RateLimitReason;
   retryAfterSeconds: number;
   /** Where "Thử lại" goes once the pause is over. */
   retryPath: string;
 }
 
-/** Figma 18.4 "Tạm dừng vì làm quá nhiều" — desktop 63:6102, mobile 63:6141. */
-export function RateLimitedScreen({ retryAfterSeconds, retryPath }: RateLimitedScreenProps) {
+/**
+ * Figma 18.4 "Tạm dừng vì làm quá nhiều" — desktop 63:6102, mobile 63:6141.
+ * `reason: "session"` reuses the layout with neutral copy (ASSUMED, not drawn):
+ * any request may have tripped the throttler, not only survey participation.
+ */
+export function RateLimitedScreen({ reason, retryAfterSeconds, retryPath }: RateLimitedScreenProps) {
   const [remaining, setRemaining] = useState(retryAfterSeconds);
   const done = remaining <= 0;
 
@@ -27,6 +33,35 @@ export function RateLimitedScreen({ retryAfterSeconds, retryPath }: RateLimitedS
     }, 1000);
     return () => window.clearInterval(id);
   }, [retryAfterSeconds]);
+
+  if (reason === "session") {
+    return (
+      <ErrorScreen
+        pill="Quá nhiều yêu cầu"
+        title="Thử lại sau ít phút nhé"
+        description="Quá nhiều yêu cầu, thử lại sau ít phút. Rescom tạm thời chưa kiểm tra được phiên đăng nhập của bạn."
+        mascot="sleep"
+        extra={
+          <>
+            <CountdownPanel label={done ? "Bạn đã có thể thử lại" : "Bạn có thể thử lại sau"} time={formatCountdown(remaining)} />
+            <p aria-live="polite" className="sr-only">
+              {countdownAnnouncement(remaining, reason)}
+            </p>
+          </>
+        }
+        actions={
+          <>
+            <Link href={retryPath} className={errorActionClassName("primary")}>
+              Thử lại
+            </Link>
+            <Link href="/marketplace" className={errorActionClassName("secondary")}>
+              Về Khám phá
+            </Link>
+          </>
+        }
+      />
+    );
+  }
 
   return (
     <ErrorScreen

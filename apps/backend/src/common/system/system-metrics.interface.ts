@@ -58,4 +58,27 @@ export interface SystemMetrics {
   memory: MemoryMetrics;
   /** Database connection metrics */
   database: DatabaseMetrics;
+  /**
+   * Story IR.2b: scheduler jobs and Outbox backlog (`GET /system/metrics`
+   * only; `SchedulerHealthSnapshot`). Absent without the SchedulerModule.
+   */
+  scheduler?: {
+    enabled: boolean;
+    status: 'ok' | 'degraded' | 'disabled';
+    jobs: Array<{
+      name: string;
+      lastStatus: string | null;
+      lastFinishedAt: string | null;
+      nextRunAt: string | null;
+      consecutiveFailures: number;
+      overdue: boolean;
+    }>;
+    outbox: {
+      pending: number;
+      retrying: number;
+      deadLetter: number;
+      oldestAvailableAgeSeconds: number | null;
+      unsubscribedPending: number;
+    };
+  };
 }

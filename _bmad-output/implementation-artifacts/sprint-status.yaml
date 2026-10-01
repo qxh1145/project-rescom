@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: "2026-08-16 17:09:30"
-last_updated: "2026-09-29 00:00:00"
+last_updated: "2026-09-30 00:00:00"
 project: "project-rescom"
 project_key: "NOKEY"
 tracking_system: "file-system"
@@ -106,11 +106,16 @@ development_status:
   # Added 2026-09-29 from the approved integration/deployment plan.
   # IR.1 unblocks parallel Epic 11 packaging/infrastructure; IR.5 gates staging;
   # IR.6 plus Stories 11.1-11.4 gates Story 11.5 production launch.
-  epic-ir: backlog
+  epic-ir: in-progress
   ir-1-pilot-scope-ownership-contract-freeze: backlog
   ir-2-local-real-stack-integration-foundation: backlog
+  # Added 2026-09-30 from implementation-readiness-report-2026-09-30 (gap-closing stories).
+  ir-2a-respondent-read-endpoints-survey-runner: ready-for-dev
+  ir-2b-in-process-scheduler-outbox-dispatcher: ready-for-dev
   ir-3-respondent-journey-without-mocks: backlog
   ir-4-publisher-financial-moderation-journeys-without-mocks: backlog
+  ir-4a-publisher-progress-response-viewing: ready-for-dev
+  ir-4b-profile-update-email-delivery-admin-overview: ready-for-dev
   ir-5-launch-domain-closure-local-integration-gate: backlog
   ir-6-staging-integration-acceptance-go-no-go-evidence: backlog
   epic-ir-retrospective: optional

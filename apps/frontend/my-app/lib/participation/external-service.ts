@@ -1,11 +1,14 @@
 import {
+  IDEMPOTENCY_KEY_HEADER,
+  cancelAttemptResponseSchema,
   reportMissingCompletionCodeResponseSchema,
   verifyExternalCompletionCodeResponseSchema,
+  type CancelAttemptResponseDto,
   type ReportMissingCompletionCodeResponseDto,
   type VerifyExternalCompletionCodeResponseDto,
 } from "@rescom/schemas";
-import { z } from "zod";
 import { apiRequest } from "../api/client.ts";
+import { randomUuid } from "../random-uuid.ts";
 
 /**
  * Google Forms completion-code routes (`participation.controller.ts`,
@@ -58,20 +61,36 @@ export function reportMissingCode(
 }
 
 /**
- * ASSUMED API CONTRACT: `POST /attempts/:attemptId/cancel` ("Huỷ lượt làm").
- * The backend has an ABANDONED attempt status but no route to abandon one.
- * → 200 `{ attemptId, status: "ABANDONED" }` (backend `AttemptStatus`); 409 ATTEMPT_NOT_IN_PROGRESS.
+ * VERIFIED: `POST /attempts/:attemptId/cancel` ("Huỷ lượt làm";
+ * `survey-runner.controller.ts`, CsrfGuard + JsonOnlyGuard), body `{}` and a
+ * required `Idempotency-Key` (one per user confirmation, reused on retry) →
+ * 200 `cancelAttemptResponseSchema` (ABANDONED / CANCELLED with `closedAt`;
+ * a replay returns the original `closedAt`). Errors: 409
+ * ATTEMPT_NOT_IN_PROGRESS (`attemptNotInProgressDetailsSchema`: completed,
+ * locked, otherwise abandoned or expired), 404 ATTEMPT_NOT_FOUND, 400
+ * INVALID_IDEMPOTENCY_KEY. Both attempt types. Errors map to UI states in
+ * `cancelFailureOf` (`external-code.ts`).
  */
-export const cancelAttemptResponseSchema = z.object({
-  attemptId: z.string().uuid(),
-  status: z.literal("ABANDONED"),
-});
+export { cancelAttemptResponseSchema };
 
-export function cancelAttempt(attemptId: string, signal?: AbortSignal) {
+export function cancelAttempt(
+  attemptId: string,
+  idempotencyKey: string,
+  signal?: AbortSignal,
+): Promise<CancelAttemptResponseDto> {
   return apiRequest(`/attempts/${encodeURIComponent(attemptId)}/cancel`, {
     method: "POST",
     body: {},
+    headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey },
     schema: cancelAttemptResponseSchema,
     signal,
   });
+}
+
+/**
+ * One key per "Huỷ lượt làm" confirmation (`idempotencyKeySchema`: a UUID
+ * fits). `randomUuid` also works on a non-secure origin (http LAN IP).
+ */
+export function newCancelIdempotencyKey(): string {
+  return randomUuid();
 }

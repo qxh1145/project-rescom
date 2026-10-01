@@ -13,6 +13,8 @@ export const EXTERNAL_MESSAGES = {
   notAvailable: "Khảo sát này không còn nhận câu trả lời.",
   alreadyCompleted: "Bạn đã hoàn thành khảo sát này rồi.",
   rateLimited: "Bạn thao tác hơi nhanh. Đợi một chút rồi thử lại nhé.",
+  // ASSUMED: the same, when the 429 carries a Retry-After ("45 giây", "3 phút").
+  rateLimitedFor: (wait: string) => `Bạn thao tác hơi nhanh. Thử lại sau ${wait} nhé.`,
   invalidFormat: "Mã hoàn thành gồm đúng 6 chữ số.",
   network: "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.",
   generic: "Chưa xác nhận được mã. Vui lòng thử lại sau ít phút.",

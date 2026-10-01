@@ -1,9 +1,10 @@
 import { http, type RequestHandler } from "msw";
-import { apiUrl } from "@/lib/api/config";
+import { apiUrl, isHybridMocking } from "@/lib/api/config";
 import { LEADERBOARD_PERIODS, LEADERBOARD_TYPES } from "@/lib/engagement/leaderboard-service";
 import { engagementOf, leaderboardOf } from "../data/engagement";
 import { getMockSessionUser } from "../db/session";
 import { fail, ok, unauthorized } from "../envelope";
+import { HYBRID_MEMBER } from "../hybrid";
 import { applyScenario } from "../scenarios";
 
 /**
@@ -21,7 +22,7 @@ export const engagementHandlers: RequestHandler[] = [
   http.get(apiUrl("/engagement/me"), async () => {
     const forced = await applyScenario("engagement");
     if (forced) return forced;
-    const user = await getMockSessionUser();
+    const user = isHybridMocking ? HYBRID_MEMBER : await getMockSessionUser();
     if (!user) return unauthorized();
     return ok(engagementOf(user));
   }),
@@ -30,7 +31,7 @@ export const engagementHandlers: RequestHandler[] = [
   http.get(apiUrl("/engagement/leaderboard"), async ({ request }) => {
     const forced = await applyScenario("engagement");
     if (forced) return forced;
-    const user = await getMockSessionUser();
+    const user = isHybridMocking ? HYBRID_MEMBER : await getMockSessionUser();
     if (!user) return unauthorized();
     const params = new URL(request.url).searchParams;
     const type = params.get("type") ?? "surveys";

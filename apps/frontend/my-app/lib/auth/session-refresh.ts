@@ -100,6 +100,16 @@ export function shouldRefreshBeforeLoad(now: number = Date.now()): boolean {
   return last !== null && now - last >= SESSION_REFRESH_INTERVAL_MS;
 }
 
+/**
+ * True when the access cookie must have expired: the last refresh is at least
+ * the full access TTL old. Below that the cookie is still valid, so a
+ * throttled refresh (429) can fall through to `GET /auth/me`. Unknown age → false.
+ */
+export function accessCookieMayBeExpired(now: number = Date.now()): boolean {
+  const last = readLastRefresh();
+  return last !== null && now - last >= ACCESS_TOKEN_TTL_SECONDS * 1000;
+}
+
 /** Milliseconds until the next refresh is due (0 = now). Unknown age → now. */
 export function msUntilRefreshDue(last: number | null, now: number, intervalMs = SESSION_REFRESH_INTERVAL_MS): number {
   if (last === null) return 0;

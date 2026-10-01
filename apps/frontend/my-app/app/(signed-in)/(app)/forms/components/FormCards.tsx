@@ -52,9 +52,9 @@ function CardBody({ row, now }: { row: MyFormRow; now: number }) {
             </div>
           ) : null}
           <p className="mt-2.5 text-caption font-semibold text-tone-teal-fg">
-            {/* ASSUMED `rejection` may be absent (backend list DTO): the escrow is refunded either way. */}
+            {/* `rejection` is on `GET /forms/:id` only, not on list items: the escrow is refunded either way. */}
             {form.rejection
-              ? `Đã hoàn ${form.rejection.refundedPoints} điểm ký quỹ vào số dư`
+              ? `Đã hoàn ${form.rejection.refundAmount} điểm ký quỹ vào số dư`
               : "Ký quỹ đã được hoàn vào số dư"}
           </p>
         </>

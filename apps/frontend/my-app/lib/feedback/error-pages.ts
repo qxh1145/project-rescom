@@ -51,9 +51,22 @@ export function formatCountdown(totalSeconds: number): string {
   return hours > 0 ? `${hours}:${mmss}` : mmss;
 }
 
+/**
+ * Why `/rate-limited` was opened (`?reason=`): `session` when `SessionGate`
+ * got a 429 on the session check (any request, neutral copy); anything else
+ * is the participation pause of Figma 18.4.
+ */
+export type RateLimitReason = "session" | "participation";
+
+export function parseRateLimitReason(raw: string | null | undefined): RateLimitReason {
+  return raw === "session" ? "session" : "participation";
+}
+
 /** Screen-reader copy for the countdown; changes only once per minute. */
-export function countdownAnnouncement(totalSeconds: number): string {
-  if (totalSeconds <= 0) return "Bạn có thể nhận khảo sát mới ngay bây giờ.";
+export function countdownAnnouncement(totalSeconds: number, reason: RateLimitReason = "participation"): string {
+  if (totalSeconds <= 0) {
+    return reason === "session" ? "Bạn có thể thử lại ngay bây giờ." : "Bạn có thể nhận khảo sát mới ngay bây giờ.";
+  }
   return `Còn khoảng ${Math.ceil(totalSeconds / 60)} phút nữa.`;
 }
 

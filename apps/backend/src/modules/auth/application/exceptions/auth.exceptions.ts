@@ -49,12 +49,38 @@ export class SessionExpiredException extends Error {
 }
 
 export class SessionRevokedException extends Error {
-  readonly code = 'AUTH_SESSION_REVOKED';
+  readonly code: string = 'AUTH_SESSION_REVOKED';
 
   constructor(message = 'Session has been revoked.') {
     super(message);
     this.name = 'SessionRevokedException';
     Object.setPrototypeOf(this, SessionRevokedException.prototype);
+  }
+}
+
+/**
+ * Plan 5.6: the session was revoked because the account signed in elsewhere
+ * (single active session). A revocation like any other (same cookie clearing
+ * and 401), with its own code so the frontend can show notice 15e.
+ */
+export class SessionReplacedException extends SessionRevokedException {
+  readonly code: string = 'AUTH_SESSION_REPLACED';
+
+  constructor(message = 'Session was replaced by a newer sign-in.') {
+    super(message);
+    this.name = 'SessionReplacedException';
+    Object.setPrototypeOf(this, SessionReplacedException.prototype);
+  }
+}
+
+/** Plan 5.4: unknown, malformed, expired and used reset tokens look the same. */
+export class PasswordResetTokenInvalidException extends Error {
+  readonly code = 'PASSWORD_RESET_TOKEN_INVALID';
+
+  constructor(message = 'This password reset link is invalid or has expired.') {
+    super(message);
+    this.name = 'PasswordResetTokenInvalidException';
+    Object.setPrototypeOf(this, PasswordResetTokenInvalidException.prototype);
   }
 }
 

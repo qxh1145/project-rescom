@@ -4,6 +4,7 @@ import { SystemMetricsService } from './system-metrics.service';
 import { SystemMetrics } from './system-metrics.interface';
 import { SessionAuthGuard } from '../../modules/auth/presentation/guards/session-auth.guard';
 import { RolesGuard } from '../../modules/auth/presentation/guards/roles.guard';
+import { SchedulerHealthService } from '../scheduler/scheduler-health.service';
 
 describe('SystemController', () => {
   let controller: SystemController;
@@ -108,5 +109,78 @@ describe('SystemController', () => {
     ).toBeUndefined();
     expect(Reflect.getMetadata('THROTTLER:LIMITdefault', handler)).toBe(60);
     expect(Reflect.getMetadata('THROTTLER:TTLdefault', handler)).toBe(60000);
+  });
+
+  describe('scheduler health (Story IR.2b Task 10.3, T18)', () => {
+    const snapshot = {
+      enabled: true,
+      status: 'degraded' as const,
+      jobs: [
+        {
+          name: 'outbox-dispatch',
+          lastStatus: 'FAILED',
+          lastFinishedAt: null,
+          nextRunAt: null,
+          consecutiveFailures: 3,
+          overdue: false,
+        },
+      ],
+      outbox: {
+        pending: 4,
+        retrying: 1,
+        deadLetter: 2,
+        oldestAvailableAgeSeconds: 30,
+        unsubscribedPending: 121,
+      },
+    };
+
+    async function withScheduler(health: Record<string, unknown>) {
+      const module = await Test.createTestingModule({
+        controllers: [SystemController],
+        providers: [
+          { provide: SystemMetricsService, useValue: mockMetricsService },
+          { provide: SchedulerHealthService, useValue: health },
+        ],
+      })
+        .overrideGuard(SessionAuthGuard)
+        .useValue({ canActivate: () => true })
+        .overrideGuard(RolesGuard)
+        .useValue({ canActivate: () => true })
+        .compile();
+      return module.get(SystemController);
+    }
+
+    it('health adds only enabled + status (no counts)', async () => {
+      const scheduled = await withScheduler({
+        enabled: true,
+        cachedSnapshot: jest.fn().mockResolvedValue(snapshot),
+      });
+      const response = await scheduled.getHealth();
+      expect(response.data).toMatchObject({
+        status: 'ok',
+        scheduler: { enabled: true, status: 'degraded' },
+      });
+      expect(JSON.stringify(response.data)).not.toContain('deadLetter');
+    });
+
+    it('metrics (Admin) carry the full snapshot', async () => {
+      const scheduled = await withScheduler({
+        enabled: true,
+        snapshot: jest.fn().mockResolvedValue(snapshot),
+      });
+      const response = await scheduled.getMetrics();
+      expect(response.data).toEqual({ ...sampleMetrics, scheduler: snapshot });
+    });
+
+    it('an unreadable snapshot never fails the endpoint', async () => {
+      const scheduled = await withScheduler({
+        enabled: false,
+        cachedSnapshot: jest.fn().mockRejectedValue(new Error('db down')),
+      });
+      const response = await scheduled.getHealth();
+      expect(response.data).toMatchObject({
+        scheduler: { enabled: false, status: 'disabled' },
+      });
+    });
   });
 });

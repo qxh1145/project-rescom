@@ -4,6 +4,7 @@ import { canAccountClassOverdraft, LedgerAccountClass } from '@rescom/schemas';
 import { PrismaService } from '../../../common/database/prisma.service';
 import {
   LedgerRepositoryPort,
+  MaturedCreditCursor,
   PostJournalTransactionOptions,
   UserLedgerTransactionRecord,
 } from '../application/ports/ledger-repository.port';
@@ -220,7 +221,12 @@ export class PrismaLedgerRepository implements LedgerRepositoryPort {
   async findMaturedPendingCredits(params: {
     cutoff: Date;
     limit: number;
+    after?: MaturedCreditCursor;
   }): Promise<LedgerJournalEntity[]> {
+    // Story IR.2b Task 6.2: keyset continuation in the scan order.
+    const afterPredicate = params.after
+      ? Prisma.sql`AND (j.created_at, j.id) > (${params.after.createdAt}, ${params.after.journalId}::uuid)`
+      : Prisma.empty;
     // External completion credits old enough to mature that were neither
     // released (`release-pending:{attemptId}`) nor reversed, nor settled by a
     // resolved dispute hold, oldest first. `settled` (BE-5) is computed once:
@@ -266,6 +272,7 @@ export class PrismaLedgerRepository implements LedgerRepositoryPort {
       FROM ledger_journals j
       WHERE j.idempotency_key LIKE 'external-completion:%'
         AND j.created_at <= ${params.cutoff}
+        ${afterPredicate}
         AND NOT EXISTS (
           SELECT 1 FROM ledger_journals r
           -- 21 = length('external-completion:') + 1: the attempt id suffix.

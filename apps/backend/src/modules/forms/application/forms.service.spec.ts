@@ -3769,6 +3769,37 @@ describe('FormsService', () => {
       });
     });
 
+    it('replays a keyed draft creation and refuses the key with another body (Phase 6)', async () => {
+      const first = await service.createDraft(
+        publisherId,
+        { title: 'AI chat draft', type: 'INTERNAL' },
+        'ai-chat-key-0001',
+      );
+      const again = await service.createDraft(
+        publisherId,
+        { title: 'AI chat draft', type: 'INTERNAL' },
+        'ai-chat-key-0001',
+      );
+      expect(again.id).toBe(first.id);
+      const { forms } = await service.listForms(publisherId, {
+        page: 1,
+        limit: 10,
+      });
+      expect(forms.filter((form) => form.id === first.id)).toHaveLength(1);
+      await expect(
+        service.createDraft(
+          publisherId,
+          { title: 'Another title', type: 'INTERNAL' },
+          'ai-chat-key-0001',
+        ),
+      ).rejects.toBeInstanceOf(IdempotencyKeyConflictException);
+      const unkeyed = await service.createDraft(publisherId, {
+        title: 'AI chat draft',
+        type: 'INTERNAL',
+      });
+      expect(unkeyed.id).not.toBe(first.id);
+    });
+
     it('lists closeKind and completedCompletions, and escrowLocked null without an Escrow coordinator', async () => {
       const draft = await service.createDraft(publisherId, { title: 'Plain' });
       repository.setRewardableCompletions(draft.id, { completedCount: 4 });

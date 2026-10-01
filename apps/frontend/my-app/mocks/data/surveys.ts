@@ -1,3 +1,4 @@
+import type { FormTopic } from "@rescom/schemas";
 import { createCollection, hoursAgo } from "../db/store";
 import { ANALYTICS_FORM_IDS, analyticsRespondentSurveys } from "./form-analytics-seed";
 
@@ -37,8 +38,8 @@ export interface MockSurvey {
   expectedCompletions: number;
   completedCompletions: number;
   estimatedEffortSeconds: number;
-  /** Figma card tag ("Marketing", "CNTT"…). ASSUMED: not in the backend DTO yet. */
-  topic: string;
+  /** Plan 2.2: shared `FORM_TOPICS` value (the card shows its label). */
+  topic: FormTopic | null;
   /** Figma 4 "Người đăng". ASSUMED display field. */
   publisherName: string;
   /** Google Forms URL for EXTERNAL surveys. */
@@ -62,7 +63,7 @@ function seed(): MockSurvey[] {
       expectedCompletions: 100,
       completedCompletions: 62,
       estimatedEffortSeconds: 5 * 60,
-      topic: "Marketing",
+      topic: "MARKETING",
       publisherName: "Nhóm Capstone MKT",
       externalUrl: null,
       publishedAt: hoursAgo(72),
@@ -79,7 +80,7 @@ function seed(): MockSurvey[] {
       expectedCompletions: 80,
       completedCompletions: 68,
       estimatedEffortSeconds: 8 * 60,
-      topic: "CNTT",
+      topic: "IT",
       publisherName: "CLB Nghiên cứu AI",
       externalUrl: "https://docs.google.com/forms/d/e/mock-ai-study-habits/viewform",
       publishedAt: hoursAgo(50),
@@ -96,7 +97,7 @@ function seed(): MockSurvey[] {
       expectedCompletions: 60,
       completedCompletions: 6,
       estimatedEffortSeconds: 3 * 60,
-      topic: "QTKD",
+      topic: "BUSINESS",
       publisherName: "Nhóm SWP QTKD",
       externalUrl: null,
       publishedAt: hoursAgo(20),
@@ -113,7 +114,7 @@ function seed(): MockSurvey[] {
       expectedCompletions: 150,
       completedCompletions: 130,
       estimatedEffortSeconds: 10 * 60,
-      topic: "Tâm lý học",
+      topic: "SOCIAL_SCIENCES",
       publisherName: "Nhóm Tâm lý K18",
       externalUrl: null,
       publishedAt: hoursAgo(120),
@@ -130,7 +131,7 @@ function seed(): MockSurvey[] {
       expectedCompletions: 50,
       completedCompletions: 9,
       estimatedEffortSeconds: 6 * 60,
-      topic: "Kinh tế",
+      topic: "BUSINESS",
       publisherName: "Nhóm KT Xanh",
       externalUrl: "https://docs.google.com/forms/d/e/mock-e-scooter/viewform",
       publishedAt: hoursAgo(30),
@@ -147,7 +148,7 @@ function seed(): MockSurvey[] {
       expectedCompletions: 20,
       completedCompletions: 20,
       estimatedEffortSeconds: 6 * 60,
-      topic: "Kinh tế",
+      topic: "BUSINESS",
       // Owned by the demo publisher in page 10 (Khảo sát của tôi).
       publisherName: "Lê Nhật Minh",
       externalUrl: null,

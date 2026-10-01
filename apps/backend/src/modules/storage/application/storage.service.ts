@@ -1,6 +1,8 @@
 import * as crypto from 'crypto';
 import {
+  dangerousFileExtension,
   DISALLOWED_MIME_TYPES,
+  ListUploadsQuery,
   GetDownloadUrlResponse,
   InitiateUploadInput,
   InitiateUploadResponse,
@@ -12,6 +14,7 @@ import {
   StorageInvalidFileException,
   StorageObjectNotCleanException,
   StorageObjectNotFoundException,
+  StorageQuestionFullException,
   StorageScannerOutageException,
 } from './exceptions/storage.exceptions';
 import { MalwareScannerPort } from './ports/malware-scanner.port';
@@ -47,36 +50,7 @@ const SNIFF_WINDOW_BYTES = 512;
 /** Leading markup comments are skipped within this window before sniffing. */
 const MARKUP_COMMENT_WINDOW_BYTES = 64 * 1024;
 const LEADING_MARKUP_COMMENTS = /^(?:<!--[\s\S]*?-->\s*)+/;
-const DANGEROUS_EXTENSIONS = new Set([
-  '.exe',
-  '.dll',
-  '.msi',
-  '.msc',
-  '.com',
-  '.scr',
-  '.bat',
-  '.cmd',
-  '.ps1',
-  '.lnk',
-  '.hta',
-  '.jar',
-  '.sh',
-  '.csh',
-  '.vbs',
-  '.vbe',
-  '.js',
-  '.jse',
-  '.mjs',
-  '.wsf',
-  '.php',
-  '.phtml',
-  '.html',
-  '.htm',
-  '.xhtml',
-  '.shtml',
-  '.svg',
-  '.svgz',
-]);
+/** Shared with the runner and the mock (`@rescom/schemas`). */
 const ASCII_WHITESPACE = new Set([0x09, 0x0a, 0x0c, 0x0d, 0x20]);
 /** Leading markup a browser would render or execute (checked lower-cased). */
 const ACTIVE_CONTENT_PREFIXES = [
@@ -431,6 +405,41 @@ export class StorageService {
         'read',
       ),
     );
+  }
+
+  /**
+   * The live uploads of one owner record (and question): what a runner that
+   * lost its local state (reload, crash) re-adopts or cleans up, so a
+   * question is never left full of uploads the respondent cannot see.
+   * Terminal objects (REJECTED, EXPIRED, DELETED) are left out.
+   */
+  async listUploads(
+    query: ListUploadsQuery,
+    callerUserId: string | null = null,
+    ownerCapability?: string | null,
+  ): Promise<StoredObjectDto[]> {
+    if (this.ownerAuthorization) {
+      await this.ownerAuthorization.authorize(
+        query.ownerContext,
+        query.ownerRecordId,
+        callerUserId,
+        ownerCapability,
+        'read',
+      );
+    }
+    const objects = await this.storageRepository.findByOwner(
+      query.ownerContext,
+      query.ownerRecordId,
+    );
+    return objects
+      .filter(
+        (object) =>
+          !['REJECTED', 'EXPIRED', 'DELETED'].includes(object.status) &&
+          (query.questionId === undefined ||
+            object.questionId === query.questionId),
+      )
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((object) => this.toDto(object));
   }
 
   async attachObject(
@@ -861,9 +870,7 @@ export class StorageService {
         !this.isLapsedUpload(object, now),
     ).length;
     if (activeForQuestion >= policy.maxFiles) {
-      throw new StorageInvalidFileException(
-        `This question allows at most ${policy.maxFiles} uploaded file(s).`,
-      );
+      throw new StorageQuestionFullException(questionId, policy.maxFiles);
     }
   }
 
@@ -947,13 +954,11 @@ export class StorageService {
 
   private assertSafeExtension(fileName: string): void {
     // Windows drops trailing dots and spaces, so `evil.exe.` runs as `.exe`.
-    const normalized = fileName.toLowerCase().replace(/[.\s]+$/, '');
-    for (const extension of DANGEROUS_EXTENSIONS) {
-      if (normalized.endsWith(extension)) {
-        throw new StorageInvalidFileException(
-          `Files ending in ${extension} are prohibited.`,
-        );
-      }
+    const extension = dangerousFileExtension(fileName);
+    if (extension) {
+      throw new StorageInvalidFileException(
+        `Files ending in ${extension} are prohibited.`,
+      );
     }
   }
 
