@@ -28,6 +28,9 @@ services:
     build:
       context: ..
       dockerfile: deploy/frontend.Dockerfile
+      args:
+        # Gate G: deferred endpoints (disputes, AI, ...) stay on MSW.
+        NEXT_PUBLIC_API_MOCKING: hybrid
     restart: always
     depends_on: [backend]
 
