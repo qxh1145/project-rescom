@@ -124,8 +124,12 @@ export class SmtpEmailSender implements EmailSenderPort {
           config.username && config.password
             ? { user: config.username, pass: config.password }
             : undefined,
-        connectionTimeout: config.timeoutMs,
-        greetingTimeout: config.timeoutMs,
+        // Connect + greeting together stay under the send deadline, so a
+        // host that never answers fails as retryable CONNECTION_TIMEOUT
+        // (nothing handed over) instead of AMBIGUOUS:DEADLINE (review
+        // 2026-10-01).
+        connectionTimeout: Math.floor(config.timeoutMs / 3),
+        greetingTimeout: Math.floor(config.timeoutMs / 3),
         socketTimeout: config.timeoutMs,
         logger: false,
         debug: false,

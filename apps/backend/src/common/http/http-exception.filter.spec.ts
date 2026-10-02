@@ -40,6 +40,9 @@ import {
   ConflictingActiveAttemptException,
   TelemetryRejectedException,
   SelfParticipationForbiddenException,
+  SurveyNotFoundException,
+  AttemptNotFoundException,
+  AttemptNotInProgressException,
 } from '../../modules/participation/application/exceptions/participation.exceptions';
 import {
   SurveyFeedbackAlreadySubmittedException,
@@ -557,6 +560,45 @@ describe('HttpExceptionFilter (Unit Tests)', () => {
       expect(json).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.objectContaining({ code: 'TELEMETRY_REJECTED' }),
+        }),
+      );
+    });
+
+    it.each([
+      [new SurveyNotFoundException(), 'SURVEY_NOT_FOUND'],
+      [new AttemptNotFoundException(), 'ATTEMPT_NOT_FOUND'],
+    ])('maps %p to 404 (IR.2a)', (exception, code) => {
+      const { response, status, json } = createResponse();
+
+      filter.catch(exception, createMockHost(response));
+
+      expect(status).toHaveBeenCalledWith(HttpStatus.NOT_FOUND);
+      expect(json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.objectContaining({ code }),
+        }),
+      );
+    });
+
+    it('maps ATTEMPT_NOT_IN_PROGRESS to 409 with its details (IR.2a)', () => {
+      const { response, status, json } = createResponse();
+      const details = {
+        status: 'ABANDONED',
+        closedReason: 'CANCELLED',
+      } as const;
+
+      filter.catch(
+        new AttemptNotInProgressException(details),
+        createMockHost(response),
+      );
+
+      expect(status).toHaveBeenCalledWith(HttpStatus.CONFLICT);
+      expect(json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.objectContaining({
+            code: 'ATTEMPT_NOT_IN_PROGRESS',
+            details,
+          }),
         }),
       );
     });

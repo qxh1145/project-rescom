@@ -203,6 +203,14 @@ test("Figma 10a series summary: 47 completions, busiest Thursday (12)", () => {
   assert.equal(empty.total, 0);
 });
 
+test("series summary: a month range names the peak 'tháng N', not a weekday", () => {
+  const { publisherProgressWindow, toCompletionsSeries } = schemas;
+  const window = publisherProgressWindow("month", new Date("2026-10-04T05:00:00Z"));
+  const summary = view.seriesSummary(toCompletionsSeries("month", window, [1, 2, 3, 4, 9, 5]));
+  assert.equal(summary.peak, "tháng 9");
+  assert.equal(summary.peakIndex, 4);
+});
+
 test("Story IR.4a: the progress contract is the shared schema (no opens, funnel or feedback)", () => {
   const { publisherProgressWindow, toCompletionsSeries } = schemas;
   const progress = {

@@ -253,6 +253,14 @@ describe('Admin read views (mock-off Phase 4) E2E', () => {
         transferReference: 'RESCOMK7Q2M9XA',
         createdAt: new Date(),
       },
+      {
+        id: id(3),
+        userId: admin.id,
+        amount: 50,
+        amountVnd: 10_000,
+        transferReference: 'RESCOMB3N8Q1ZY',
+        createdAt: new Date(Date.now() + 60_000),
+      },
     ];
     economy.balances = { escrow: 250, pending: 0 };
     missingCodes.unresolved = 3;
@@ -264,7 +272,7 @@ describe('Admin read views (mock-off Phase 4) E2E', () => {
       expect(counts.headers['cache-control']).toBe('no-store');
       expect(adminQueueCountsSchema.parse(counts.body.data)).toEqual({
         surveys: 1,
-        topUps: 1,
+        topUps: 2,
         disputes: 0,
         quality: 0,
       });
@@ -273,6 +281,11 @@ describe('Admin read views (mock-off Phase 4) E2E', () => {
       const overview = adminOverviewSchema.parse(res.body.data);
       expect(overview.pendingSurveys.count).toBe(1);
       expect(overview.escrow).toEqual({ points: 250, runningSurveys: 1 });
+      expect(overview.pendingTopUps).toEqual({
+        count: 2,
+        points: 150,
+        amountVnd: 30_000,
+      });
       expect(overview.openIssues).toEqual({
         disputes: 0,
         missingCodeReports: 3,
@@ -282,7 +295,12 @@ describe('Admin read views (mock-off Phase 4) E2E', () => {
         'TOP_UP',
       ]);
       expect(overview.todo[0]).toMatchObject({ publisherName: 'Linh' });
-      expect(overview.todo[1]).toMatchObject({ requesterName: admin.email });
+      expect(overview.todo[0]).toMatchObject({ moreCount: 0 });
+      // The oldest of 2 pending top-ups: "+1 more".
+      expect(overview.todo[1]).toMatchObject({
+        requesterName: admin.email,
+        moreCount: 1,
+      });
     }
   });
 

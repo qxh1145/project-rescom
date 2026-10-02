@@ -176,6 +176,13 @@ export interface SeriesSummary {
   max: number;
 }
 
+/** "thứ Năm" for a day bucket, "tháng 2" for a month bucket ("T2" both ways). */
+function peakName(range: keyof typeof RANGE_WINDOWS, label: string): string {
+  if (range === "day") return WEEKDAY_NAMES[label] ?? label;
+  if (range === "month") return `tháng ${label.slice(1)}`;
+  return label;
+}
+
 /** Figma 10a "7 ngày qua · 5 lượt hoàn thành · nhiều nhất thứ Năm". */
 export function seriesSummary(series: {
   range: keyof typeof RANGE_WINDOWS;
@@ -196,7 +203,7 @@ export function seriesSummary(series: {
   return {
     window: RANGE_WINDOWS[series.range],
     total,
-    peak: peakLabel === null ? null : (WEEKDAY_NAMES[peakLabel] ?? peakLabel),
+    peak: peakLabel === null ? null : peakName(series.range, peakLabel),
     peakIndex,
     max,
   };

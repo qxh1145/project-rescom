@@ -245,6 +245,26 @@ describe('Story IR.4b B5/B6: EmailDeliveryHandler', () => {
     });
   });
 
+  it('skips a stale retry of a FAILED delivery instead of resending', async () => {
+    sender.failNext({ outcome: 'RETRYABLE', code: 'SMTP_421' });
+    await expect(handler.handle(event())).rejects.toThrow(
+      EmailSendRetryableError,
+    );
+
+    await handler.handle(
+      event({
+        attempts: 2,
+        createdAt: new Date(now.getTime() - EMAIL_MAX_EVENT_AGE_MS - 1),
+      }),
+    );
+
+    expect(sender.sent()).toHaveLength(0);
+    expect(deliveries.all()[0]).toMatchObject({
+      status: 'SKIPPED',
+      lastErrorCode: 'STALE_EVENT',
+    });
+  });
+
   it('records SKIPPED when the sender is disabled', async () => {
     const disabled = new EmailDeliveryHandler(
       deliveries,

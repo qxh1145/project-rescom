@@ -90,6 +90,7 @@ describe('ParticipationService', () => {
     targetingJson?: Record<string, unknown> | null;
     externalUrl?: string | null;
     publisherId?: string;
+    deadlineAt?: Date | null;
   }): FormWithVersion {
     const form = new FormEntity(
       formId,
@@ -102,6 +103,11 @@ describe('ParticipationService', () => {
       overrides?.expectedCompletions ?? 10,
       new Date(),
       new Date(),
+      undefined,
+      0,
+      null,
+      null,
+      overrides?.deadlineAt ?? null,
     );
 
     const currentVersion = new FormVersionEntity(
@@ -480,6 +486,46 @@ describe('ParticipationService', () => {
       await expect(
         service.startAttempt(formId, userId, {}, clientIp),
       ).rejects.toThrow(ConflictingActiveAttemptException);
+    });
+
+    describe('past-deadline start (IR.2b Task 9.2)', () => {
+      const pastDeadline = () => new Date(Date.now() - 60_000);
+
+      it('lets a user with an unexpired active attempt hit the resume conflict, not SURVEY_NOT_AVAILABLE', async () => {
+        mockFormRepo.findById.mockResolvedValue(
+          createMockFormWithVersion({ deadlineAt: pastDeadline() }),
+        );
+        mockParticipationRepo.findConflictingActiveAttempt.mockResolvedValue(
+          new SurveyAttemptEntity(
+            'existing-attempt-uuid',
+            formId,
+            formVersionId,
+            userId,
+            'IN_PROGRESS',
+            false,
+            new Date(),
+            null,
+            null,
+            new Date(),
+            new Date(),
+          ),
+        );
+
+        await expect(
+          service.startAttempt(formId, userId, {}, clientIp),
+        ).rejects.toThrow(ConflictingActiveAttemptException);
+      });
+
+      it('still refuses a user without an active attempt with SurveyNotAvailableException', async () => {
+        mockFormRepo.findById.mockResolvedValue(
+          createMockFormWithVersion({ deadlineAt: pastDeadline() }),
+        );
+
+        await expect(
+          service.startAttempt(formId, userId, {}, clientIp),
+        ).rejects.toThrow(SurveyNotAvailableException);
+        expect(mockParticipationRepo.reserveAttempt).not.toHaveBeenCalled();
+      });
     });
 
     it('should reject with SurveyQuotaFullException if remaining quota is 0', async () => {

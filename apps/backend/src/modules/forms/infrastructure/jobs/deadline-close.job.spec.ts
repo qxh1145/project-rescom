@@ -31,7 +31,7 @@ describe('DeadlineCloseJob (Story IR.2b Task 9.6)', () => {
 
     expect(repo.findFormsPastDeadline).toHaveBeenCalledWith(
       new Date(now.getTime() - DEADLINE_CLOSE_GRACE_MS),
-      25,
+      26,
     );
     expect(forms.closeFormAtDeadline.mock.calls.map((c) => c[0])).toEqual([
       'f1',
@@ -60,5 +60,31 @@ describe('DeadlineCloseJob (Story IR.2b Task 9.6)', () => {
       new DeadlineCloseJob(forms, repo).run(testJobContext(now)),
     ).rejects.toMatchObject({ code: 'ALL_ITEMS_FAILED' });
     expect(forms.closeFormAtDeadline).toHaveBeenCalledTimes(1);
+  });
+
+  it('continues past one batch when more than 25 forms are due', async () => {
+    const due = Array.from({ length: 26 }, (_, i) => `f${i}`);
+    const open = new Set(due);
+    const forms = {
+      closeFormAtDeadline: jest.fn(async (id: string) => {
+        open.delete(id);
+        return { closed: true, refundAmount: 1, refundIdempotencyKey: 'k' };
+      }),
+    };
+    const repo = {
+      findFormsPastDeadline: jest.fn(async (_cutoff: Date, limit: number) =>
+        [...open].slice(0, limit),
+      ),
+    };
+
+    const summary = await new DeadlineCloseJob(forms, repo).run(
+      testJobContext(now),
+    );
+
+    expect(forms.closeFormAtDeadline).toHaveBeenCalledTimes(26);
+    expect(summary).toMatchObject({
+      counts: { closedCount: 26 },
+      hasMore: false,
+    });
   });
 });

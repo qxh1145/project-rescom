@@ -125,8 +125,9 @@ export class EmailDeliveryHandler implements OutboxHandler {
     }
 
     const now = this.clock();
+    // A retry of a failed send is aged too (review 2026-10-01).
     if (
-      !existing &&
+      (!existing || existing.status === 'FAILED') &&
       now.getTime() - event.createdAt.getTime() > EMAIL_MAX_EVENT_AGE_MS
     ) {
       await this.skip(delivery, existing, 'STALE_EVENT');

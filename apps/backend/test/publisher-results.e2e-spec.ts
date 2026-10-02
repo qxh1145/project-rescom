@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
+  PUBLISHER_ANALYTICS_MAX_RESPONSES,
   publisherAnalyticsSchema,
   publisherFormVersionDetailSchema,
   publisherProgressSchema,
@@ -447,6 +448,35 @@ describe('Story IR.4a: Publisher progress and response viewing E2E (FR-39, FR-40
     });
   });
 
+  describe('GET /forms/:id/analytics errors', () => {
+    it('non-owner 404; unauthenticated 401; bad versionNumber / UUID 400', async () => {
+      expect(
+        (await get(`/forms/${internalFormId}/analytics`, 'other').expect(404))
+          .body.error.code,
+      ).toBe('FORM_NOT_FOUND');
+      await get(`/forms/${internalFormId}/analytics`, null).expect(401);
+      for (const bad of ['abc', '0', '-1', '1.5']) {
+        await get(
+          `/forms/${internalFormId}/analytics?versionNumber=${bad}`,
+        ).expect(400);
+      }
+      await get('/forms/not-a-uuid/analytics').expect(400);
+    });
+
+    it('422 PUBLISHER_ANALYTICS_LIMIT_EXCEEDED above the response cap', async () => {
+      const at = new Date(Date.UTC(2026, 8, 5));
+      for (let i = 0; i <= PUBLISHER_ANALYTICS_MAX_RESPONSES; i++) {
+        addResponse(v1Id, at);
+      }
+      const res = await get(`/forms/${internalFormId}/analytics`).expect(422);
+      expect(res.body.error.code).toBe('PUBLISHER_ANALYTICS_LIMIT_EXCEEDED');
+      expect(res.body.error.details).toEqual({
+        totalResponses: PUBLISHER_ANALYTICS_MAX_RESPONSES + 1,
+        limit: PUBLISHER_ANALYTICS_MAX_RESPONSES,
+      });
+    });
+  });
+
   describe('GET /forms/:id/versions/:versionId', () => {
     it('owner: the stored definition, no completion code; another form’s version 404', async () => {
       const res = await get(`/forms/${internalFormId}/versions/${v1Id}`).expect(
@@ -466,6 +496,10 @@ describe('Story IR.4a: Publisher progress and response viewing E2E (FR-39, FR-40
         404,
       );
       await get(`/forms/${internalFormId}/versions/nope`).expect(400);
+      await get(`/forms/${internalFormId}/versions/${v1Id}`, 'other').expect(
+        404,
+      );
+      await get(`/forms/${internalFormId}/versions/${v1Id}`, null).expect(401);
     });
 
     it('the versions list keeps its semantics (owner 200, list route not shadowed)', async () => {

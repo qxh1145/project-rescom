@@ -116,6 +116,9 @@ describe('Admin read views PostgreSQL integration', () => {
       select: { id: true },
     });
     await removeForms(stale.map((form) => form.id));
+    await prisma.topUpRequest.deleteMany({
+      where: { transferReference: { startsWith: TITLE_PREFIX } },
+    });
   }, 180_000);
 
   afterAll(async () => {
@@ -124,6 +127,9 @@ describe('Admin read views PostgreSQL integration', () => {
     // Users owning ledger accounts stay: posted ledger rows are append-only.
     await prisma.fraudLog.deleteMany({
       where: { userId: { in: createdUserIds } },
+    });
+    await prisma.topUpRequest.deleteMany({
+      where: { transferReference: { startsWith: TITLE_PREFIX } },
     });
     const withLedger = await prisma.ledgerAccount.findMany({
       where: { userId: { in: createdUserIds } },
@@ -642,6 +648,47 @@ describe('Admin read views PostgreSQL integration', () => {
       });
     },
   );
+
+  liveIt('summarises PENDING top-ups and finds the oldest one', async () => {
+    const stats = new PrismaAdminEconomyStats(prisma);
+    const before = await stats.pendingTopUpSummary();
+    const user = await createUser();
+    const topUp = (
+      amount: number,
+      status: 'PENDING' | 'APPROVED',
+      createdAt: Date,
+    ) =>
+      prisma.topUpRequest.create({
+        data: {
+          userId: user.id,
+          amount,
+          amountVnd: amount * 200,
+          transferReference: `${TITLE_PREFIX}-${randomUUID()}`,
+          status,
+          createdAt,
+        },
+      });
+    const oldest = await topUp(
+      100,
+      'PENDING',
+      new Date('1990-01-01T00:00:00.000Z'),
+    );
+    await topUp(50, 'PENDING', new Date());
+    await topUp(999, 'APPROVED', new Date());
+
+    await expect(stats.pendingTopUpSummary()).resolves.toEqual({
+      count: before.count + 2,
+      points: before.points + 150,
+      amountVnd: before.amountVnd + 30_000,
+    });
+    await expect(stats.oldestPendingTopUp()).resolves.toMatchObject({
+      id: oldest.id,
+      userId: user.id,
+      amount: 100,
+      amountVnd: 20_000,
+      createdAt: new Date('1990-01-01T00:00:00.000Z'),
+    });
+  });
 
   liveIt('counts unresolved missing-code reports only', async () => {
     const reports = new PrismaMissingCodeReportStats(prisma);

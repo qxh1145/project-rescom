@@ -425,5 +425,24 @@ describe('OutboxDispatchJob (Story IR.2b Task 4, AC6)', () => {
         });
       }
     });
+
+    it('releases unstarted claims and rethrows when dispatch fails outside a handler', async () => {
+      const events = [1, 2, 3].map(() =>
+        claims.add({ eventType: 'InternalRewardRequested' }),
+      );
+      jest
+        .spyOn(claims, 'processedHandlerNames')
+        .mockRejectedValueOnce(new Error('db down'));
+
+      await expect(job().run(context())).rejects.toThrow('db down');
+
+      for (const rest of events.slice(1)) {
+        expect(rest).toMatchObject({
+          status: 'PENDING',
+          claimOwner: null,
+          attempts: 0,
+        });
+      }
+    });
   });
 });

@@ -80,6 +80,7 @@ function makeForm(
     estimatedDurationMinutes: number | null;
     expectedCompletions: number;
     rewardPerResponse: number;
+    deadlineAt: Date;
   }> = {},
 ): FormEntity {
   return new FormEntity(
@@ -96,6 +97,8 @@ function makeForm(
     undefined,
     0,
     overrides.estimatedDurationMinutes ?? null,
+    null,
+    overrides.deadlineAt ?? null,
   );
 }
 
@@ -333,6 +336,19 @@ describe('Story IR.2a: SurveyRunnerReadService', () => {
         makeVersion(randomUUID(), formId, 1, definition(['q1']), {
           isPublished: false,
         }),
+      );
+      await expect(service.getSurveySummary(formId)).rejects.toBeInstanceOf(
+        SurveyNotFoundException,
+      );
+    });
+
+    it('answers 404 for a PUBLISHED survey whose deadline has passed (before the close job runs)', async () => {
+      const formId = randomUUID();
+      await formRepo.create(
+        makeForm(formId, 'INTERNAL', {
+          deadlineAt: new Date(clock.getTime() - MINUTE),
+        }),
+        makeVersion(randomUUID(), formId, 1, definition(['q1'])),
       );
       await expect(service.getSurveySummary(formId)).rejects.toBeInstanceOf(
         SurveyNotFoundException,

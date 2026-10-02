@@ -215,14 +215,6 @@ export class ParticipationService {
       );
     }
 
-    // Story IR.2b Task 9.2: no new start at or after the deadline (attempts
-    // started before it may still finish; the deadline close waits for them).
-    if (form.deadlineAt && form.deadlineAt.getTime() <= Date.now()) {
-      throw new SurveyNotAvailableException(
-        `Survey "${formId}" is past its collection deadline.`,
-      );
-    }
-
     // 1b. Decision E4-DN2 (option A): a Publisher never takes their own
     // survey (no self-payment from their own Escrow, no self-selected
     // sample); the Marketplace feed hides it as well.
@@ -308,6 +300,16 @@ export class ParticipationService {
         action: 'ATTEMPT_START',
         formId: form.id,
       });
+    }
+
+    // Story IR.2b Task 9.2: no new start at or after the deadline (attempts
+    // started before it may still finish; the deadline close waits for them).
+    // Checked after the active-attempt conflict so an open attempt can still
+    // be resumed through start (review 2026-10-01).
+    if (form.isPastDeadline(now)) {
+      throw new SurveyNotAvailableException(
+        `Survey "${formId}" is past its collection deadline.`,
+      );
     }
 
     // Quota: completed participations + active reservations < expectedCompletions

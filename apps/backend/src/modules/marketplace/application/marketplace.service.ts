@@ -9,6 +9,7 @@ import {
   MarketplaceFeedResponseDto,
   MarketplaceSurveyCardDto,
   parseStoredTargeting,
+  resolveEstimatedEffortSeconds,
 } from '@rescom/schemas';
 
 export class MarketplaceService {
@@ -95,12 +96,10 @@ export class MarketplaceService {
       // BE-12: the Publisher's estimated duration wins over the stored
       // `metadata.expectedEffortSeconds`; the same value drives the
       // maxDuration filter, the duration sorts and the card.
-      const schema = item.currentVersion.schemaJson;
-      const minutes = item.form.estimatedDurationMinutes;
-      const durationSeconds =
-        typeof minutes === 'number' && minutes > 0 ? minutes * 60 : undefined;
-      const estimatedEffort =
-        durationSeconds ?? schema?.metadata?.expectedEffortSeconds ?? 60;
+      const estimatedEffort = resolveEstimatedEffortSeconds({
+        estimatedDurationMinutes: item.form.estimatedDurationMinutes,
+        metadata: item.currentVersion.schemaJson?.metadata,
+      });
 
       // Filter by maxDuration
       if (maxDuration != null && estimatedEffort > maxDuration) {

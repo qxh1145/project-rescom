@@ -133,7 +133,9 @@ export class SurveyRunnerReadService {
     const summary = await this.formRepository.findPublishedSummaryById(formId);
     const published =
       summary && summary.form.isPublished() ? summary.newestPublished : null;
-    if (!summary || !published) {
+    // Past its deadline a survey takes no new start, so it is not offered
+    // even before the deadline-close job has run (review 2026-10-01).
+    if (!summary || !published || summary.form.isPastDeadline(this.now())) {
       throw new SurveyNotFoundException();
     }
 

@@ -50,9 +50,10 @@ export class DeadlineCloseJob implements ScheduledJob {
     let hasMore = false;
     for (let batch = 0; batch < this.maxBatches; batch++) {
       if (batch > 0 && !(await ctx.shouldContinue())) break;
+      // One row past the batch tells whether another batch is due.
       const ids = await this.formRepository.findFormsPastDeadline(
         cutoff,
-        DEADLINE_CLOSE_JOB.batchSize + attempted.size,
+        DEADLINE_CLOSE_JOB.batchSize + attempted.size + 1,
       );
       const fresh = ids.filter((id) => !attempted.has(id));
       if (fresh.length === 0) {

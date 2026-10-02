@@ -116,7 +116,20 @@ export class OutboxDispatchJob implements ScheduledJob {
           }
           break;
         }
-        const outcome = await this.dispatch(event, ctx, fencingToken);
+        let outcome: EventOutcome;
+        try {
+          outcome = await this.dispatch(event, ctx, fencingToken);
+        } catch (error) {
+          // A failure outside a handler (e.g. a DB read) aborts the run: hand
+          // the unstarted claims back instead of stranding them until the
+          // claim lease expires (review 2026-10-01).
+          for (const rest of events.slice(index + 1)) {
+            await this.claims
+              .releaseClaim(rest.id, ctx.owner, fencingToken)
+              .catch(() => undefined);
+          }
+          throw error;
+        }
         if (outcome === 'PROCESSED') counts.processed++;
         else if (outcome === 'RETRY') counts.retried++;
         else if (outcome === 'DEAD_LETTER') counts.deadLettered++;
