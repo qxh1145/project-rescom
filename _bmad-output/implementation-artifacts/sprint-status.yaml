@@ -112,8 +112,8 @@ development_status:
   # Added 2026-09-30 from implementation-readiness-report-2026-09-30 (gap-closing stories).
   ir-2a-respondent-read-endpoints-survey-runner: done  # code-reviewed 2026-10-01 (bmad-code-review), fixes in worktree funny-blackwell-1bdbaf
   ir-2b-in-process-scheduler-outbox-dispatcher: done  # code-reviewed 2026-10-01 (bmad-code-review), fixes in worktree funny-blackwell-1bdbaf
-  ir-3-respondent-journey-without-mocks: in-progress  # journeys work on the real stack; formal gate evidence missing
-  ir-4-publisher-financial-moderation-journeys-without-mocks: in-progress  # journeys work on the real stack; formal gate evidence missing
+  ir-3-respondent-journey-without-mocks: review  # PG evidence 2026-10-02: ir-3-ir-4-evidence-2026-10-02.md
+  ir-4-publisher-financial-moderation-journeys-without-mocks: review  # PG evidence 2026-10-02: ir-3-ir-4-evidence-2026-10-02.md
   ir-4a-publisher-progress-response-viewing: done  # code-reviewed 2026-10-01 (bmad-code-review), fixes in worktree funny-blackwell-1bdbaf
   ir-4b-profile-update-email-delivery-admin-overview: done  # code-reviewed 2026-10-01 (bmad-code-review), fixes in worktree funny-blackwell-1bdbaf
   ir-5-launch-domain-closure-local-integration-gate: backlog

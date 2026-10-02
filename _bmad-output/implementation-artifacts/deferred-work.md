@@ -374,3 +374,7 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 - Hybrid mode loads real reports and mocked disputes with one `Promise.all`; one failed request blanks the whole disputes screen [apps/frontend/my-app/lib/admin/disputes-service.ts].
 - A report whose form title lookup misses shows "Khảo sát không xác định" with no survey id [apps/backend/src/modules/admin/application/admin-missing-code-reports.service.ts].
 - Tests: no reportedAt tie case for the keyset id tiebreak; survey/respondent null branches untested.
+
+## Deferred from: IR.3 / IR.4 evidence (2026-10-02)
+
+- A revoked session on the guest-capable `POST /responses/:id/submit` degrades to guest and returns 403 PARTICIPANT_NOT_ELIGIBLE instead of 401 AUTH_SESSION_REVOKED; a client that keys re-login on 401 misses it (the runner's attempt read normally gets the 401 first) [apps/backend/src/modules/participation].

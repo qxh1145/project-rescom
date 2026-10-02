@@ -144,6 +144,19 @@ test("a route outside the allowlist is not mocked in hybrid (it reaches the back
   }
 });
 
+test("IR.4: the notification centre has no direct mock source in hybrid (routes are real backend, not in the allowlist)", async () => {
+  const routes = ["/notifications", "/notifications/unread-count"];
+  for (const route of routes) {
+    const response = await getResponse(hybridHandlers, new Request(`${ORIGIN}/api${route}`), { baseUrl: ORIGIN });
+    assert.equal(response, undefined, `GET ${route} is not answered by MSW`);
+  }
+  for (const route of [`/notifications/${randomUUID()}/read`, "/notifications/read-all"]) {
+    const response = await getResponse(hybridHandlers, new Request(`${ORIGIN}/api${route}`, { method: "PATCH" }), { baseUrl: ORIGIN });
+    assert.equal(response, undefined, `PATCH ${route} is not answered by MSW`);
+  }
+  assert.deepEqual(Object.keys(ROUTE_ALLOWLIST.DEFERRED_KEEP_MOCK).filter((key) => key.includes("/notifications")), [], "no notification route is DEFERRED_KEEP_MOCK");
+});
+
 test("engagement and reliability answer without a mock session", async () => {
   parsed(engagementSummarySchema, await call("GET", "/engagement/me"));
   const board = parsed(leaderboardSchema, await call("GET", "/engagement/leaderboard?type=streak&period=all"));

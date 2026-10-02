@@ -137,6 +137,28 @@ test("a network failure keeps the payload for the next flush", async () => {
   assert.equal(autosaveLabel(controller.snapshot(), true, () => "12:00"), "Chưa lưu · sửa các câu được đánh dấu");
 });
 
+test("a failed (non-network) save keeps the payload and retries it against the same baseline", async () => {
+  const serverError = Object.assign(new Error("boom"), { status: 500 });
+  const attempts = [];
+  let failing = true;
+  const { controller } = setup(async (payload, clientUpdatedAt) => {
+    attempts.push([payload, clientUpdatedAt]);
+    if (failing) throw serverError;
+    return { updatedAt: "2026-09-27T12:30:00.000Z" };
+  });
+  controller.queue("keep-me");
+  await controller.flush();
+  assert.equal(controller.snapshot().status, "error");
+  assert.equal(controller.snapshot().hasPending, true);
+  failing = false;
+  await controller.flush();
+  assert.equal(controller.snapshot().status, "saved");
+  assert.deepEqual(attempts, [
+    ["keep-me", "2026-09-27T10:00:00.000Z"],
+    ["keep-me", "2026-09-27T10:00:00.000Z"],
+  ]);
+});
+
 test("discardPending drops the queued edit (e.g. after loading the server version)", async () => {
   let calls = 0;
   const { controller, timers } = setup(async () => {
