@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd /Users/quan/HocTap/Vibecode/project-rescom; grep -rln \\\"health\\\" apps/backend/src --include=*.ts | grep -v spec | head; rtk grep -rl \\\"sentry\\\" apps/backend/package.json apps/frontend/m...",
+  "error": "Exit code 1\n(eval):1: no matches found: --include=*.ts",
+  "timestamp": "2026-10-02T02:54:17.973Z",
+  "retry_count": 1
+}

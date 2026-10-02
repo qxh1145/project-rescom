@@ -19,8 +19,7 @@ context:
 
 # Story IR.2a: Respondent Read Endpoints for the Survey Runner
 
-Status: ready-for-dev
-
+Status: done
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
 ## Story
@@ -274,6 +273,21 @@ Legend: ✅ derivable from the source of truth · ⚠️ derivable with a stated
 | 409 code | `ATTEMPT_NOT_IN_PROGRESS` | `AttemptNotInProgressException` + `details {status, closedReason}` | ✅ |
 | not-owner code | mock: 403 `PARTICIPANT_NOT_ELIGIBLE` / 404 `SURVEY_NOT_AVAILABLE` | **404 `ATTEMPT_NOT_FOUND`** (epic AC); fix the mock | ⚠️ mock change |
 
+### Review Findings
+
+_bmad-code-review 2026-10-01 of commit `3e9c69e` (Blind Hunter, Edge Case Hunter, Acceptance Auditor; Sonnet)._
+
+- [x] [Review][Decision] QUOTA-closed survey returns 404 from `GET /surveys/:id` — RESOLVED 2026-10-01: owner keeps Q7 strict 404; the card-less 18.7 variant is accepted.
+- [x] [Review][Patch] Deadline check runs before the active-attempt check, so a respondent cannot resume an IN_PROGRESS attempt through start/Khám phá after the deadline (gets SURVEY_NOT_AVAILABLE instead of CONFLICTING_ACTIVE_ATTEMPT) [apps/backend/src/modules/participation/application/participation.service.ts:218] — fixed 2026-10-01
+- [x] [Review][Patch] `GET /surveys/:id` still reports PUBLISHED with free slots after `deadlineAt` until the deadline-close job runs; start then fails [apps/backend/src/modules/participation/application/survey-runner-read.service.ts getSurveySummary] — fixed 2026-10-01
+- [x] [Review][Patch] (known open, subtask 5.5) filter spec cases for SurveyNotFound / AttemptNotFound / AttemptNotInProgress [apps/backend/src/common/http/http-exception.filter.spec.ts] — fixed 2026-10-01
+- [x] [Review][Patch] (known open, subtask 1.8) `MarketplaceService.getFeed` inlines the effort formula instead of `resolveEstimatedEffortSeconds` [apps/backend/src/modules/marketplace/application/marketplace.service.ts:98] — fixed 2026-10-01
+- [x] [Review][Defer] CLOSED-survey panel does not release the IN_PROGRESS attempt (held until expiry/sweep) [SurveyTakingScreen.tsx:70] — deferred
+- [x] [Review][Defer] QUOTA-full thrown before the already-completed check (wrong copy for a completer) [participation.service.ts:207] — deferred
+- [x] [Review][Defer] Unclean-attachment message names only the last file per question [use-survey-runner.ts] — deferred
+- [x] [Review][Defer] HELD_IN_DISPUTE maps to the integrity-hold copy [completion-view.ts kindOfState] — deferred (disputes P2)
+- [x] [Review][Defer] Cancel leaves the Internal Response row IN_PROGRESS (no reader miscounts today) [prisma-participation.repository.ts cancelAttempt] — deferred
+
 ## Dev Notes
 
 ### Current state of the code this story touches (read before editing)
@@ -426,4 +440,15 @@ Each question has a recommended default that the dev agent may implement if no a
 
 - Story context created 2026-09-30 by create-story (context-engine analysis completed; comprehensive developer guide created). Grounded in the code at baseline `d1175eb`.
 
+- **2026-10-01, implemented outside the story flow:** built in commit `3e9c69e` as mock-off Phase 1 of `.omc/plans/mock-off-full-backend.md`, not through bmad-dev-story. Task boxes are left unticked on purpose; this entry is the record. Reconciled by `sprint-change-proposal-2026-10-01.md`. Status → `review`.
+- Evidence: full verify 2026-10-01 (schemas 615, backend unit 2224, e2e 431 incl. Postgres suites, FE 744, typecheck and lint clean); real-stack smoke and gate G journeys passed. Read-only AC audit 2026-10-01 (targeted unit suites re-run green).
+- AC audit: AC1–AC7 MET.
+- Open questions as the code resolved them: Q1 `publisherName` dropped · Q2 all 8 reward states · Q3 `rewardStatus` dropped from `GET /attempts/:id` · Q4 `Idempotency-Key` required and validated, not stored · Q5 cancel allowed after a missing-code report · Q6 no Admin read · Q7 CLOSED survey → 404 · Q8 reservation-expiry job sets `EXPIRED`. Internal `REVERSED` is deliberately not derived (review LOW-3).
+- Open before `done`: `http-exception.filter.spec.ts` cases for `SurveyNotFound` / `AttemptNotFound` / `AttemptNotInProgress` (subtask 5.5); `MarketplaceService.getFeed` to use `resolveEstimatedEffortSeconds` (subtask 1.8).
+
 ### File List
+
+Key files are listed in the AC audit; the complete list is `git show --stat 3e9c69e`.
+
+
+- 2026-10-01: bmad-code-review of `3e9c69e` done; review fixes and tests applied in worktree `funny-blackwell-1bdbaf` (uncommitted). Status → `done`.

@@ -18,8 +18,7 @@ context:
 
 # Story IR.4b: Profile Update, Email Delivery and Admin Overview
 
-Status: ready-for-dev
-
+Status: done
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
 > **Three separable parts.** This story bundles three independent capabilities that IR.4 needs. It is written so it
@@ -381,6 +380,17 @@ so that the pilot supports FR-9 profile updates, FR-57 email for critical events
   - [ ] `tests/admin-overview.test.mjs`: cases for absent `openIssues`/`flaggedAccounts` and a schema parse of a
         backend-shaped payload. Add an `admin-nav` filter test.
 
+### Review Findings
+
+_bmad-code-review 2026-10-01 of commit `3e9c69e` (Blind Hunter, Edge Case Hunter, Acceptance Auditor; Sonnet)._
+
+- [x] [Review][Decision] Test/evidence gaps before done — RESOLVED 2026-10-01 (targeted subset): Postgres test for pending-top-up summary and oldest pending top-up added (escrow total already asserted by the ledger test); HTTP overview asserts `pendingTopUps` and `moreCount`; C5 "<500 ms" proof deferred to the smoke run.
+- [x] [Review][Patch] SMTP `connectionTimeout`/`greetingTimeout` equal the overall send deadline, so a blackholed host resolves AMBIGUOUS:DEADLINE → UNCONFIRMED (never retried) instead of retryable CONNECTION_TIMEOUT [apps/backend/src/modules/notifications/infrastructure/smtp-email-sender.ts:127] — fixed 2026-10-01
+- [x] [Review][Patch] 24 h STALE_EVENT guard only applies when no delivery row exists, so a RETRYABLE FAILED row is resent days later [apps/backend/src/modules/notifications/application/email-delivery.handler.ts:129] — fixed 2026-10-01
+- [x] [Review][Defer] Lock → unlock → lock before dispatch sends two lock emails [email-delivery.handler.ts skipReason] — deferred
+- [x] [Review][Defer] Zero-width-only displayName/school pass validation; no NFC normalisation [packages/schemas/src/users/user-profile.schema.ts] — deferred
+- [x] [Review][Defer] MSW profile birth-year check uses browser local time vs backend UTC+7 [mocks/handlers/profile.ts] — deferred (mock parity)
+
 ## Dev Notes
 
 ### Current state (read before changing anything)
@@ -664,4 +674,18 @@ integration planning. No backend changes touch these areas; the working tree cha
 - Story context created 2026-09-30 by the create-story workflow (Claude Opus 5.5). Ultimate context engine analysis
   completed - comprehensive developer guide created.
 
+- **2026-10-01, implemented outside the story flow:** built in commit `3e9c69e` as mock-off Phases 1, 4 and 5 of `.omc/plans/mock-off-full-backend.md`, not through bmad-dev-story. Task boxes are left unticked on purpose; this entry is the record. Reconciled by `sprint-change-proposal-2026-10-01.md`. Status → `review`.
+- Evidence: full verify 2026-10-01 (schemas 615, backend unit 2224, e2e 431 incl. Postgres suites, FE 744, typecheck and lint clean); real-stack smoke and gate G journeys passed. Read-only AC audit 2026-10-01 (targeted unit suites re-run green).
+- AC audit: Part A (profile) MET; Part B (email) MET except B5 (deviation below); Part C (admin) MET except the overrides below.
+- **Deliberate overrides (owner decision 2026-10-01, internal testing only):** C3/C4 return `0` placeholders for disputes and quality (those queues stay on MSW), and the overview counts missing-code reports (Q3). C7 `ADMIN_PILOT_SECTIONS` is not built because no screen is hidden; the pilot nav filter moves to IR.1.
+- **B5 deviation ACCEPTED (sprint-change-proposal-2026-10-01 §4.5):** `SENT` is committed separately from `processed_handlers`; a replay that finds `SENT` or `UNCONFIRMED` does not resend, and an ambiguous send needs operator resolution. Reason: an external email send cannot be atomic with a database transaction.
+- Open questions as the code resolved them: Q1/Q2 SMTP via nodemailer, local Mailpit, `UNCONFIRMED` for ambiguous sends · Q3 missing-code reports in the overview · Q5/Q6 `school`/`schoolYear` kept · Q8 production refuses a non-smtp adapter · Q9 generic notice emails.
+- Built beyond this story (traced to the plan, no story): forgot/reset password, session revoke reason (`AUTH_SESSION_REPLACED`), admin fraud-log, ledger and outbox views.
+- Open before `done`: e2e evidence for the profile and admin read routes in the BMAD review.
+
 ### File List
+
+Key files are listed in the AC audit; the complete list is `git show --stat 3e9c69e`.
+
+
+- 2026-10-01: bmad-code-review of `3e9c69e` done; review fixes and tests applied in worktree `funny-blackwell-1bdbaf` (uncommitted). Status → `done`.

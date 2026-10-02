@@ -330,3 +330,40 @@ Quan accepted the recommendations for E9-D1 (A), E9-D2 (A), E9-D3 (A) and E9-D4 
 - ~~**Admin moderation shows the raw topic value**~~ _Resolved by the Phase 2 review: the queue DTO returns `topic`/`deadlineAt` and the detail shows `topicLabel`._
 - **Escrow stranded after a QUOTA close** (product decision pending, review note 18): a completion counted toward the target that later becomes non-rewardable (dispute upheld, rejected response) keeps its Escrow draw — the QUOTA close refunded only what was left at close time and a QUOTA close cannot be reopened. Decide whether such a reversal refunds the Publisher or reopens the slot.
 - **Scan cursors are per-process** (low): `pending-release` / `starter-expiry` remember where the last run stopped in memory (review LOW-7); a restart or lease handoff rescans from the oldest item. Persist the cursor in `scheduler_job_leases` if a backlog ever starves.
+
+## Deferred from: mock-off real-stack smoke and gate G (2026-10-01)
+
+Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
+
+- **A cancelled attempt leaves its Response IN_PROGRESS** (by design): `ResponseStatus` has no abandoned value (see the comment in `cancelAttempt`). Readers must filter on the attempt status. Add an ABANDONED response status if publisher reads or analytics ever count IN_PROGRESS rows [apps/backend/src/modules/participation/infrastructure/prisma-participation.repository.ts].
+- **Locking then unlocking an account within ~30 s skips the lock email**: the outbox dispatch picks up the unlock before the lock email is sent. Decide whether the lock notice is still required [apps/backend/src/modules/users/application/user-admin.service.ts, apps/backend/src/modules/notifications/application/email-delivery.handler.ts].
+- **Seeded surveys have topic = null**: `seed-data.ts` predates `forms.topic`; add topics to the seed data [apps/backend/src/scripts/seed-data.ts].
+- **Wallet history: the original credit row keeps the "Chờ duyệt" badge after release** (UX): show the released state on the row, or show the release journal next to it.
+- **The hybrid quality mock answers ENOUGH_DATA/INTERNAL for a pending Google Forms survey**: demo data only; it goes away when Epic 10 replaces the mock.
+- **The admin survey review detail panel is cramped at ~800 px** (UX).
+- **Notification bodies are English on the real backend**: already recorded as the Story 9.6 / E9-D2 item; listed here only because hybrid testers see it now.
+
+## Deferred from: code review of IR.2a / IR.2b / IR.4a / IR.4b (2026-10-01)
+
+- IR.2a: CLOSED-survey panel does not release the IN_PROGRESS attempt (held until expiry/sweep).
+- IR.2a: QUOTA-full answer is thrown before the already-completed check in `startAttempt`.
+- IR.2a: unclean-attachment message names only the last file per question (`use-survey-runner.ts`).
+- IR.2a: HELD_IN_DISPUTE maps to the integrity-hold completion copy (disputes P2).
+- IR.2a: cancel leaves the Internal Response row IN_PROGRESS; no reader miscounts today.
+- IR.2b: a crash-looping/hanging outbox event is never dead-lettered (attempts incremented at claim; MAX check only in `fail()`).
+- IR.2b: UNSUPPORTED_SCHEMA_VERSION dead-letters on the first attempt (image-rollback window; Admin re-drive exists).
+- IR.2b: health stays `ok` with dead-lettered events; a renew DB error is recorded LEASE_LOST and resets the failure streak; an in-flight run can outlive the 10 s shutdown grace.
+- IR.2b: `storage-cleanup` never reports `hasMore` (one batch per hour).
+- IR.2b: deadline-close counts a form as failed when the post-commit notification throws; its ESCROW_RELEASED notice is never sent.
+- IR.2b: InternalRewardRequested for a non-SUBMITTED/VALIDATED Response is marked PROCESSED with no log or counter (disputes P2).
+- IR.2b: documented spec deviations to accept or revisit with IR.6 — per-process cursor (Task 6.2/7.1), concurrent jobs (Task 3.3), re-drive audit in identity_audit_log (Task 4.7).
+- IR.4a: submit validation accepts any finite number for rating/linear_scale and non-option single_choice; the analytics aggregator then counts those answers as skipped (pre-existing).
+- IR.4a: analytics count/scan is not snapshot-bound (a concurrent submit shifts the aggregated set by one row).
+- IR.4a: `versionIdsWithListedResponses` DISTINCT scan per analytics call (NFR-1 profile, OQ-22).
+- IR.4a: number buckets NaN/Infinity on extreme values; 6-hex code collisions above ~4k responses; default-version cursor INVALID_CURSOR for direct API callers; `collectResponsePages` drops fetched rows on a later-page failure; deep link beyond 2 000 responses shows not-found.
+- IR.4b: lock → unlock → lock before dispatch sends two lock emails.
+- IR.4b: zero-width-only displayName/school pass validation; no NFC normalisation.
+- IR.4b: MSW profile birth-year check uses browser local time vs backend UTC+7.
+- IR.2b: Postgres clock-boundary tests for pending-release (48 h) and starter-expiry (30 d) through the jobs (T9/T11), and a Postgres MAX_ATTEMPTS dead-letter assertion (T7) — not written; logic covered by unit specs.
+- IR.4b: C5 "<500 ms on the seeded pilot dataset" / `forms(status, updated_at)` index use not proven by a test — check in the smoke run.
+- IR.4b: SMTP sender spec does not assert the reduced nodemailer connection/greeting timeouts (transport is injected in tests).
