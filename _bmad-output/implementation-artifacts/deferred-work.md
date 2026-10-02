@@ -378,3 +378,11 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 ## Deferred from: IR.3 / IR.4 evidence (2026-10-02)
 
 - A revoked session on the guest-capable `POST /responses/:id/submit` degrades to guest and returns 403 PARTICIPANT_NOT_ELIGIBLE instead of 401 AUTH_SESSION_REVOKED; a client that keys re-login on 401 misses it (the runner's attempt read normally gets the 401 first) [apps/backend/src/modules/participation].
+
+## Deferred from: code review of IR.1 implementation (2026-10-02)
+
+- `tests/pilot-scope.test.mjs`: the "no deferred service call" check passes any file that mentions `PILOT_BUILD`, scans only `app/` and `components/`, and hard-codes 14 DEFERRED entries; there is no sweep for rendered `<Link>`s to hidden routes.
+- Shared publisher form schemas are stricter than the old frontend-local ones; full mock mode (`NEXT_PUBLIC_API_MOCKING=enabled`) fixtures were not re-validated against them (hybrid and disabled use the real backend).
+- Production env validator: `DATABASE_URL` default-credential check is a substring match on the whole URL; an `example*` prefix rule could reject a real SMTP username.
+- Product tours: a write after COMPLETED keeps status COMPLETED but overwrites `step` (pre-existing, now pinned by `product-tours.e2e-spec.ts`).
+- `deploy/.env.prod.example` now carries real-looking domains; an unedited copy produces plausible but wrong URLs.

@@ -21,6 +21,7 @@ import { LEDGER_REPOSITORY_PORT } from '../src/modules/economy/application/ports
 import { InMemoryLedgerRepository } from '../src/modules/economy/infrastructure/in-memory-ledger.repository';
 import { STARTER_POINTS_DATA_PROVIDER } from '../src/modules/economy/economy.module';
 import { InMemoryStarterPointsDataProvider } from '../src/modules/economy/infrastructure/in-memory-starter-points-data-provider';
+import { csrfTokenResponseSchema } from '@rescom/schemas';
 
 describe('Authentication E2E Tests (AC1 - AC8)', () => {
   let app: INestApplication;
@@ -437,6 +438,7 @@ describe('Authentication E2E Tests (AC1 - AC8)', () => {
         .expect(200);
 
       expect(csrfRes.headers['cache-control']).toBe('no-store');
+      csrfTokenResponseSchema.parse(csrfRes.body.data);
       expect(csrfRes.body.data.csrfToken).toBeDefined();
       const initialCsrf = csrfRes.body.data.csrfToken;
 
@@ -449,6 +451,7 @@ describe('Authentication E2E Tests (AC1 - AC8)', () => {
         .expect(200);
 
       expect(refreshRes.headers['cache-control']).toBe('no-store');
+      csrfTokenResponseSchema.parse(refreshRes.body.data);
       expect(refreshRes.body.data.csrfToken).toBeDefined();
       expect(refreshRes.body.data.csrfToken).not.toEqual(initialCsrf);
 

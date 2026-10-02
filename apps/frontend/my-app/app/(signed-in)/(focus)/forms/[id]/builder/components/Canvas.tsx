@@ -1,5 +1,6 @@
 "use client";
 
+import { PILOT_BUILD } from "@/lib/pilot-scope";
 import { useRef, useState, type RefObject } from "react";
 import Link from "next/link";
 import type { FormBlock } from "@rescom/schemas";
@@ -260,7 +261,7 @@ export function Canvas({ editor, formId, listRef, paletteDragging, paletteTarget
         )}
       </div>
 
-      {doc.blocks.length === 0 && doc.sections.length === 0 ? (
+      {!PILOT_BUILD && doc.blocks.length === 0 && doc.sections.length === 0 ? (
         <>
           <div className="flex items-center gap-3 text-caption text-ink-muted" aria-hidden="true">
             <span className="h-px flex-1 bg-line" />

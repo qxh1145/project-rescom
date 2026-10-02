@@ -1,12 +1,13 @@
 import {
-  formTopicEnum,
-  formStatusEnum,
-  formTypeEnum,
+  formDetailSchema,
+  formListSchema,
   parseFormDefinitionDraft,
+  pricingQuoteSchema,
+  type FormDetail,
+  type PricingQuote,
   type PublishFormInput,
   type UpdateFormDraftInput,
 } from "@rescom/schemas";
-import { z } from "zod";
 import { apiRequest } from "../api/client.ts";
 import {
   aiConversationSchema,
@@ -22,7 +23,7 @@ import { emptyDoc, normalizeDoc, toDraftDefinition, UNTITLED_FORM, type BuilderD
 /**
  * Form Builder endpoints.
  *
- * VERIFIED (`forms.controller.ts` + `packages/schemas/src/forms`):
+ * VERIFIED (`forms.controller.ts` + shared `@rescom/schemas` `publisher-form.schema`):
  * - `POST /forms` (`createFormDraftSchema`) → 201 `FormDetailDto`
  * - `GET /forms/:id` → `FormDetailDto` (owner or admin)
  * - `PATCH /forms/:id/draft` (`updateFormDraftSchema`, `clientUpdatedAt` optimistic lock) → `FormDetailDto`;
@@ -36,53 +37,10 @@ import { emptyDoc, normalizeDoc, toDraftDefinition, UNTITLED_FORM, type BuilderD
  * ASSUMED API CONTRACTS documented in `builder-ai.ts`.
  */
 
-export const builderFormSchema = z
-  .object({
-    id: z.string().uuid(),
-    type: formTypeEnum,
-    status: formStatusEnum,
-    title: z.string(),
-    description: z.string().nullable().optional(),
-    rewardPerResponse: z.number().int(),
-    expectedCompletions: z.number().int(),
-    estimatedDurationMinutes: z.number().int().nullable().optional(),
-    /** Plan 2.2 / Story IR.2b (`FormDetailDto`). */
-    topic: formTopicEnum.nullable().optional(),
-    deadlineAt: z.string().nullable().optional(),
-    currentVersion: z
-      .object({
-        versionNumber: z.number().int(),
-        schemaJson: z.unknown(),
-        targetingJson: z.unknown().nullable().optional(),
-      })
-      .passthrough(),
-    updatedAt: z.string(),
-  })
-  .passthrough();
-export type BuilderForm = z.infer<typeof builderFormSchema>;
-
-export const pricingQuoteSchema = z
-  .object({
-    type: formTypeEnum,
-    expectedCompletions: z.number().int(),
-    baseRewardPerResponse: z.number(),
-    effectiveRewardPerResponse: z.number(),
-    baseCost: z.number(),
-    effectiveCost: z.number(),
-    discountPercent: z.number(),
-    discountAmount: z.number(),
-    estimatedDurationMinutes: z.number().nullable(),
-    pricingBand: z
-      .object({ min: z.number(), max: z.number(), suggested: z.number(), durationBand: z.string() })
-      .nullable(),
-    bandCheck: z.enum(["EXEMPT", "DURATION_REQUIRED", "OUT_OF_BAND", "WITHIN_BAND"]),
-  })
-  .passthrough();
-export type PricingQuote = z.infer<typeof pricingQuoteSchema>;
-
-const recentFormsSchema = z
-  .object({ forms: z.array(z.object({ id: z.string(), title: z.string(), type: formTypeEnum }).passthrough()) })
-  .passthrough();
+export const builderFormSchema = formDetailSchema;
+export type BuilderForm = FormDetail;
+export { pricingQuoteSchema };
+export type { PricingQuote };
 
 const PLACEHOLDER_TITLES = new Set([UNTITLED_FORM, "Untitled Survey"]);
 
@@ -169,7 +127,7 @@ export function publishBuilderForm(formId: string, body: PublishFormInput): Prom
 }
 
 export async function listRecentForms(signal?: AbortSignal): Promise<{ id: string; title: string }[]> {
-  const result = await apiRequest("/forms?limit=5&type=INTERNAL", { schema: recentFormsSchema, signal });
+  const result = await apiRequest("/forms?limit=5&type=INTERNAL", { schema: formListSchema, signal });
   return result.forms.map((item) => ({ id: item.id, title: item.title }));
 }
 

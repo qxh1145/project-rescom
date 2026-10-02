@@ -1,5 +1,6 @@
 import { isApiError } from "../api/api-error.ts";
-import { apiRequest, setCsrfToken, type ResponseSchema } from "../api/client.ts";
+import { csrfTokenResponseSchema } from "@rescom/schemas";
+import { apiRequest, setCsrfToken } from "../api/client.ts";
 
 /**
  * Keeps the httpOnly access cookie alive while a signed-in screen is open.
@@ -59,16 +60,6 @@ function writeLastRefresh(value: number | null): void {
   }
 }
 
-const refreshResponseSchema: ResponseSchema<{ csrfToken: string }> = {
-  safeParse(value) {
-    const token =
-      typeof value === "object" && value !== null ? (value as { csrfToken?: unknown }).csrfToken : undefined;
-    return typeof token === "string" && token.length > 0
-      ? { success: true, data: { csrfToken: token } }
-      : { success: false };
-  },
-};
-
 let inFlight: Promise<void> | null = null;
 
 /**
@@ -78,7 +69,7 @@ let inFlight: Promise<void> | null = null;
  * the others wait for.
  */
 export function refreshSession(now: () => number = Date.now): Promise<void> {
-  inFlight ??= apiRequest("/auth/refresh", { method: "POST", schema: refreshResponseSchema })
+  inFlight ??= apiRequest("/auth/refresh", { method: "POST", schema: csrfTokenResponseSchema })
     .then(({ csrfToken }) => {
       setCsrfToken(csrfToken);
       writeLastRefresh(now());

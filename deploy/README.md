@@ -9,10 +9,14 @@ Trình duyệt ──HTTPS──> Caddy ──> Next.js (frontend, /api/* rewrit
 
 - Caddy tự xin và gia hạn chứng chỉ HTTPS (Let's Encrypt). Chỉ Caddy mở cổng 80/443.
 - Backend tự chạy `prisma migrate deploy` mỗi lần khởi động.
-- Frontend build với `NEXT_PUBLIC_API_MOCKING=hybrid`: 14 endpoint chưa làm (disputes, AI, …) vẫn
-  dùng dữ liệu minh hoạ, phần còn lại gọi backend thật.
+- Frontend build pilot (IR.1): `NEXT_PUBLIC_API_MOCKING=disabled` (không có MSW, chỉ gọi backend thật) và
+  `NEXT_PUBLIC_PILOT_BUILD=true` (ẩn các màn hình hoãn: độ tin cậy, khiếu nại, chất lượng khảo sát, xuất file,
+  so sánh phiên bản, streak/hạng/xếp hạng, AI builder, form khách `/f/[id]`). Xuất file chạy hoàn toàn ở trình duyệt nên cờ
+  pilot đã đủ để tắt. Cả hai đặt sẵn trong `docker-compose.prod.yml`; đổi `NEXT_PUBLIC_*`
+  thì phải build lại frontend (`up -d --build`).
+- Trình duyệt luôn gọi `/api` cùng origin (Next rewrite sang backend, AD-23); không có domain riêng cho API.
 
-Giá trị dùng trong tài liệu: domain app `rescom.io.vn`, domain file `s3.rescom.io.vn`,
+Giá trị dùng trong tài liệu: domain app `app.rescom.com.vn`, domain file `s3.rescom.com.vn`,
 thư mục trên VPS `/opt/rescom`. Thay `<user>` và `<IP-VPS>` bằng thông tin SSH của bạn.
 
 ---
@@ -24,7 +28,7 @@ thư mục trên VPS `/opt/rescom`. Thay `<user>` và `<IP-VPS>` bằng thông t
 | Cần có | Ghi chú |
 |---|---|
 | VPS Ubuntu, ≥ 4 GB RAM | ClamAV + build Next.js tốn RAM |
-| Domain trên Cloudflare | `rescom.io.vn` |
+| Domain trên Cloudflare | `rescom.com.vn` |
 | Tài khoản Brevo | Gửi email (SMTP). Domain phải ở trạng thái **Verified** |
 | OAuth client trên Google Auth Platform | Đăng nhập Google |
 
@@ -51,12 +55,12 @@ v=spf1 include:_spf.mx.cloudflare.net include:spf.brevo.com ~all
 
 Trong Google Cloud Console → **Google Auth Platform**:
 
-- **Branding**: Authorized domains thêm `rescom.io.vn`.
+- **Branding**: Authorized domains thêm `rescom.com.vn`.
 - **Audience**: External, trạng thái **Testing**, thêm Gmail của thành viên team vào **Test users**
   (chỉ những tài khoản này đăng nhập Google được).
 - **Clients** → Web application:
-  - Authorized JavaScript origins: `https://rescom.io.vn`
-  - Authorized redirect URIs: `https://rescom.io.vn/api/auth/google/callback`
+  - Authorized JavaScript origins: `https://app.rescom.com.vn`
+  - Authorized redirect URIs: `https://app.rescom.com.vn/api/auth/google/callback`
 
 ### 1.4. Chuẩn bị VPS
 
@@ -107,9 +111,9 @@ File này chứa toàn bộ secret, **bị gitignore** và không bao giờ đư
    |---|---|
    | `DATABASE_URL` | `postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@postgres:5432/<POSTGRES_DB>?schema=public&options=-c%20timezone%3DUTC` — host là `postgres`, cổng `5432`, user/mật khẩu **khớp** 2 dòng trên |
    | `POSTGRES_PASSWORD` | chỉ dùng hex (`openssl rand -hex`), vì nó nằm trong URL |
-   | `AUTH_FRONTEND_SUCCESS_URL` | `https://rescom.io.vn/auth/callback` (không có `/api`) |
-   | `AUTH_FRONTEND_ERROR_URL` | `https://rescom.io.vn/auth/error` |
-   | `GOOGLE_REDIRECT_URI` | `https://rescom.io.vn/api/auth/google/callback` (có `/api`) |
+   | `AUTH_FRONTEND_SUCCESS_URL` | `https://app.rescom.com.vn/auth/callback` (không có `/api`) |
+   | `AUTH_FRONTEND_ERROR_URL` | `https://app.rescom.com.vn/auth/error` |
+   | `GOOGLE_REDIRECT_URI` | `https://app.rescom.com.vn/api/auth/google/callback` (có `/api`) |
    | `TOPUP_BANK_BIN` | đúng mã BIN ngân hàng (MB Bank `970422`, Vietcombank `970436`) |
    | `SMTP_SECURE` / `SMTP_REQUIRE_TLS` | `false` / `true` (cổng 587 STARTTLS) |
    | Mọi giá trị | không có dấu cách thừa ở cuối dòng |
@@ -168,11 +172,11 @@ rescom exec backend cat .seed-credentials.local.md
 
 ### 1.9. Kiểm tra
 
-- [ ] `https://rescom.io.vn` mở được, có ổ khoá HTTPS
+- [ ] `https://app.rescom.com.vn` mở được, có ổ khoá HTTPS
 - [ ] Đăng ký tài khoản mới
 - [ ] "Quên mật khẩu" → nhận được email đặt lại mật khẩu (kiểm tra cả hộp thư Spam)
 - [ ] Đăng nhập bằng email/mật khẩu và bằng Google
-- [ ] Tạo khảo sát, upload file (kiểm tra cả `s3.rescom.io.vn`)
+- [ ] Tạo khảo sát, upload file (kiểm tra cả `s3.rescom.com.vn`)
 - [ ] Đăng nhập admin, duyệt khảo sát và top-up
 
 ---
@@ -282,6 +286,6 @@ Xong việc thì quay lại branch: `git checkout develop`.
 | Đăng nhập Google báo `redirect_uri_mismatch` | Redirect URI trên Google khác `GOOGLE_REDIRECT_URI` |
 | Đăng nhập Google báo `access_denied` | Gmail chưa nằm trong **Test users** |
 | Không nhận được email | Domain chưa Verified trên Brevo, SMTP key sai, hoặc thiếu SPF/DKIM; xem log backend |
-| Upload file lỗi CORS / 403 | `STORAGE_ENDPOINT` phải là `https://s3.rescom.io.vn`; DNS `s3` phải trỏ đúng VPS |
+| Upload file lỗi CORS / 403 | `STORAGE_ENDPOINT` phải là `https://s3.rescom.com.vn`; DNS `s3` phải trỏ đúng VPS |
 | Build bị kill / hết RAM | Kiểm tra swap: `free -h` |
 | Ổ đĩa đầy | `docker image prune -f` và `docker builder prune -f` |

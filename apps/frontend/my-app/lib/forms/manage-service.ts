@@ -1,11 +1,15 @@
 import { z } from "zod";
 import {
-  formCloseKindEnum,
+  createdFormVersionSchema as sharedCreatedFormVersionSchema,
+  deletedFormSchema,
+  formDetailSchema,
+  formDetailVersionSchema,
+  formInProgressAttemptsSchema,
   formRejectionSchema,
-  formStatusEnum,
-  formTypeEnum,
+  formSummarySchema,
   PUBLISHER_PROGRESS_RANGES,
   publisherProgressSchema,
+  type FormInProgressAttempts,
   type PublisherProgressDto,
   type PublisherProgressRange,
 } from "@rescom/schemas";
@@ -62,20 +66,8 @@ const managementExtensions = {
  * with `closeKind`, `completedCompletions`, `escrowLocked` since Phase 5 M2)
  * + ASSUMED management fields.
  */
-export const publisherFormSummarySchema = z.object({
-  id: z.string().min(1),
-  publisherId: z.string(),
-  type: formTypeEnum,
-  status: formStatusEnum,
-  title: z.string(),
-  description: z.string().nullable().optional(),
-  rewardPerResponse: count,
-  expectedCompletions: count,
-  estimatedDurationMinutes: z.number().nullable().optional(),
-  latestVersionNumber: z.number().int(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  closeKind: formCloseKindEnum.nullable().default(null),
+export const publisherFormSummarySchema = formSummarySchema.extend({
+  closeKind: formSummarySchema.shape.closeKind.default(null),
   ...managementExtensions,
 });
 export type PublisherFormSummary = z.infer<typeof publisherFormSummarySchema>;
@@ -93,27 +85,11 @@ export type PublisherFormList = z.infer<typeof publisherFormListSchema>;
  * VERIFIED `FormDetailDto` (`GET /forms/:id` → `forms.service.ts#getFormById`,
  * owner or Admin) + ASSUMED management fields and header facts.
  */
-export const publisherFormSchema = z.object({
-  id: z.string().min(1),
-  publisherId: z.string(),
-  type: formTypeEnum,
-  status: formStatusEnum,
-  title: z.string(),
-  description: z.string().nullable().optional(),
-  rewardPerResponse: count,
-  expectedCompletions: count,
-  estimatedDurationMinutes: z.number().nullable().optional(),
-  closeKind: formCloseKindEnum.nullable().default(null),
-  currentVersion: z
-    .object({
-      id: z.string(),
-      versionNumber: z.number().int(),
-      externalUrl: z.string().nullable().optional(),
-      schemaJson: z.object({ blocks: z.array(z.unknown()).optional() }).passthrough().nullable().optional(),
-    })
-    .passthrough(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+export const publisherFormSchema = formDetailSchema.extend({
+  closeKind: formDetailSchema.shape.closeKind.unwrap().default(null),
+  currentVersion: formDetailVersionSchema.extend({
+    schemaJson: z.object({ blocks: z.array(z.unknown()).optional() }).passthrough().nullable().optional(),
+  }),
   ...managementExtensions,
   /** ASSUMED: questions of the current version (Figma 17 "8 câu hỏi"); falls back to the block count. */
   questionCount: count.nullable().default(null),
@@ -122,14 +98,9 @@ export const publisherFormSchema = z.object({
 });
 export type PublisherForm = z.infer<typeof publisherFormSchema>;
 
-/** VERIFIED `FormInProgressAttemptsDto` (`GET /forms/:id/in-progress-attempts`, decision E5-D4). */
-export const inProgressAttemptsSchema = z.object({
-  formId: z.string(),
-  status: formStatusEnum,
-  inProgressAttempts: count,
-  reservationWindowMinutes: count,
-});
-export type InProgressAttempts = z.infer<typeof inProgressAttemptsSchema>;
+/** `GET /forms/:id/in-progress-attempts` (shared `formInProgressAttemptsSchema`, decision E5-D4). */
+export const inProgressAttemptsSchema = formInProgressAttemptsSchema;
+export type InProgressAttempts = FormInProgressAttempts;
 
 /** "Giờ / Ngày / Tuần / Tháng" of the "Lượt hoàn thành" chart (shared ranges). */
 export const PROGRESS_RANGES = PUBLISHER_PROGRESS_RANGES;
@@ -220,8 +191,6 @@ export function reopenPublisherForm(
   });
 }
 
-export const deletedFormSchema = z.object({ id: z.string() });
-
 /**
  * VERIFIED: `DELETE /forms/:id` — deletes a never-published draft for good
  * (409 `FORM_NOT_IN_DRAFT_STATUS` / `FORM_HAS_PUBLISHED_VERSIONS` otherwise).
@@ -230,8 +199,10 @@ export function deleteFormDraft(id: string): Promise<{ id: string }> {
   return apiRequest(formPath(id), { method: "DELETE", schema: deletedFormSchema });
 }
 
-/** VERIFIED `CreateFormVersionResultDto`: the form detail + attempts on the old version that were cut off. */
-export const createdFormVersionSchema = publisherFormSchema.extend({ interruptedAttempts: count.default(0) });
+/** `CreateFormVersionResultDto`: the form detail + attempts on the old version that were cut off. */
+export const createdFormVersionSchema = publisherFormSchema.extend({
+  interruptedAttempts: sharedCreatedFormVersionSchema.shape.interruptedAttempts.default(0),
+});
 export type CreatedFormVersion = z.infer<typeof createdFormVersionSchema>;
 
 /**

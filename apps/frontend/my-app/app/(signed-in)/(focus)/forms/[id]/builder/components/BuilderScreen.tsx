@@ -1,5 +1,6 @@
 "use client";
 
+import { PILOT_BUILD } from "@/lib/pilot-scope";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -83,7 +84,7 @@ export function BuilderScreen() {
 
   // 13b' "Mở trong Form Builder" → apply the AI draft once.
   const reviewApplied = useRef(false);
-  const wantsReview = searchParams.get("review") === "ai";
+  const wantsReview = !PILOT_BUILD && searchParams.get("review") === "ai";
   useEffect(() => {
     if (!wantsReview || !form || reviewApplied.current || editor.readOnly) return;
     reviewApplied.current = true;
@@ -341,7 +342,7 @@ export function BuilderScreen() {
             ) : (
               <div className="rounded-[16px] border-2 border-dashed border-line-strong bg-surface px-5 py-8 text-center">
                 <p className="text-lead font-extrabold text-ink">Form chưa có câu hỏi</p>
-                <p className="mt-1.5 text-body-sm text-ink-muted">Thêm câu đầu tiên hoặc để AI soạn bản nháp.</p>
+                <p className="mt-1.5 text-body-sm text-ink-muted">{PILOT_BUILD ? "Thêm câu hỏi đầu tiên." : "Thêm câu đầu tiên hoặc để AI soạn bản nháp."}</p>
               </div>
             )}
             <MobileBlockList editor={editor} onOpen={(id) => {
@@ -358,13 +359,15 @@ export function BuilderScreen() {
                   <Icon name="plus" size={18} />
                   Thêm câu hỏi
                 </button>
-                <Link
-                  href={`/forms/${formId}/builder/ai`}
-                  className="flex h-12 items-center justify-center gap-2 rounded-field border border-dashed border-line-strong bg-surface px-4 text-body-sm font-bold text-ink"
-                >
-                  <Icon name="sparkles" size={18} />
-                  AI
-                </Link>
+                {PILOT_BUILD ? null : (
+                  <Link
+                    href={`/forms/${formId}/builder/ai`}
+                    className="flex h-12 items-center justify-center gap-2 rounded-field border border-dashed border-line-strong bg-surface px-4 text-body-sm font-bold text-ink"
+                  >
+                    <Icon name="sparkles" size={18} />
+                    AI
+                  </Link>
+                )}
               </div>
             ) : null}
           </main>
@@ -400,7 +403,7 @@ export function BuilderScreen() {
           addSectionAtEnd();
           setSheetOpen(false);
         }}
-        onAiSuggest={() => void suggestIntoSheet()}
+        onAiSuggest={PILOT_BUILD ? undefined : () => void suggestIntoSheet()}
         aiBusy={sheetAiBusy}
         aiError={sheetOpen ? aiError : null}
       />

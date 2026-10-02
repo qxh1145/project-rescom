@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PILOT_BUILD } from "@/lib/pilot-scope";
 import { Avatar, initialsOf } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { DemoDataTag } from "@/components/ui/DemoDataTag";
@@ -42,11 +43,11 @@ export function ProfileCard({ data }: { data: AccountData }) {
               {view.tierName}
             </Link>
           ) : null}
-          <DemoDataTag className="mt-1.5" />
+          {PILOT_BUILD ? null : <DemoDataTag className="mt-1.5" />}
         </div>
       </div>
 
-      {engagement.error && !view ? (
+      {PILOT_BUILD ? null : engagement.error && !view ? (
         <p className="mt-5 flex flex-wrap items-center gap-x-2 text-caption text-ink-muted" role="alert">
           {ACCOUNT_MESSAGES.engagementLoadFailed}
           <Button variant="ghost" size="sm" className="-my-2" onClick={engagement.reload}>

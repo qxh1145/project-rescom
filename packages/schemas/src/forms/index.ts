@@ -19,3 +19,4 @@ export * from "./external-completion.schema";
 export * from "./audience-estimate.schema";
 export * from "./publisher-results.schema";
 export * from "./form-analytics.aggregate";
+export * from "./publisher-form.schema";

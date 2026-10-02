@@ -11,7 +11,9 @@ COPY packages/schemas packages/schemas
 COPY apps/frontend/my-app apps/frontend/my-app
 
 ARG NEXT_PUBLIC_API_MOCKING=disabled
+ARG NEXT_PUBLIC_PILOT_BUILD=
 ENV NEXT_PUBLIC_API_MOCKING=$NEXT_PUBLIC_API_MOCKING \
+    NEXT_PUBLIC_PILOT_BUILD=$NEXT_PUBLIC_PILOT_BUILD \
     NEXT_PUBLIC_API_URL=/api \
     NEXT_TELEMETRY_DISABLED=1
 # The /api rewrite target is read in next.config at build time too.

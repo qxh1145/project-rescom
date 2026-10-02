@@ -240,7 +240,7 @@ test("GET /forms/:id rejection uses the shared shape (reason, refundAmount, deci
     rewardPerResponse: 10,
     expectedCompletions: 10,
     closeKind: "MODERATION",
-    currentVersion: { id: "v", versionNumber: 1 },
+    currentVersion: { id: "v", formId: "7c2e3f40-5a6b-4c7d-8e9f-0a1b2c3d4f09", versionNumber: 1, isPublished: true, createdAt: "2026-09-20T00:00:00.000Z" },
     createdAt: "2026-09-20T00:00:00.000Z",
     updatedAt: "2026-09-21T00:00:00.000Z",
     closedAt: "2026-09-21T00:00:00.000Z",
@@ -588,7 +588,7 @@ test("createdFormVersionSchema: interruptedAttempts defaults to 0", () => {
     title: "T",
     rewardPerResponse: 10,
     expectedCompletions: 30,
-    currentVersion: { id: "v2", versionNumber: 2 },
+    currentVersion: { id: "v2", formId: "f1", versionNumber: 2, isPublished: false, createdAt: "2026-09-27T00:00:00.000Z" },
     createdAt: "2026-09-27T00:00:00.000Z",
     updatedAt: "2026-09-27T00:00:00.000Z",
   };

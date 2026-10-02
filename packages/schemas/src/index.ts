@@ -2,6 +2,7 @@ export * from "./auth/register.schema";
 export * from "./auth/login.schema";
 export * from "./auth/sanitized-user.schema";
 export * from "./auth/response-envelope.schema";
+export * from "./auth/csrf.schema";
 export * from "./auth/google-oauth.schema";
 export * from "./auth/password-reset.schema";
 export * from "./users";

@@ -68,6 +68,16 @@ function booleanEnv(defaultValue: boolean) {
     });
 }
 
+// IR.1 inventory section 3 items 5-6: the .env.example placeholders are long
+// enough to pass the length checks, so production refuses them by prefix.
+// `change_?me` also catches the CHANGE_ME* values of deploy/.env.prod.example.
+const PLACEHOLDER_SECRET_PATTERN = /^(replace_with_|change_?me|example)/i;
+const DEFAULT_CREDENTIAL_VALUES = ['minioadmin', 'rescom_password', 'change_me'];
+
+function isPlaceholderSecret(value: string | undefined): boolean {
+  return value !== undefined && PLACEHOLDER_SECRET_PATTERN.test(value.trim());
+}
+
 const TOPUP_PLACEHOLDER_ACCOUNT_NUMBER = '0000000000';
 const TOPUP_PLACEHOLDER_ACCOUNT_NAME = 'RESCOM DEMO';
 
@@ -435,6 +445,41 @@ export const envSchema = z
           path: ['TOPUP_BANK_ACCOUNT_NUMBER'],
           message:
             'Production requires the real top-up bank account (TOPUP_BANK_ACCOUNT_NUMBER and TOPUP_BANK_ACCOUNT_NAME)',
+        });
+      }
+
+      const placeholderSecrets: [string, string | undefined][] = [
+        ['JWT_SECRET', data.JWT_SECRET],
+        ['AUTH_SECRET_PROTECTION_KEY', data.AUTH_SECRET_PROTECTION_KEY],
+        ['COMPLETION_CODE_HMAC_SECRET', data.COMPLETION_CODE_HMAC_SECRET],
+        ['STORAGE_CAPABILITY_SECRET', data.STORAGE_CAPABILITY_SECRET],
+        ['GOOGLE_CLIENT_ID', data.GOOGLE_CLIENT_ID],
+        ['GOOGLE_CLIENT_SECRET', data.GOOGLE_CLIENT_SECRET],
+        ['STORAGE_ACCESS_KEY_ID', data.STORAGE_ACCESS_KEY_ID],
+        ['STORAGE_SECRET_ACCESS_KEY', data.STORAGE_SECRET_ACCESS_KEY],
+        ['SMTP_USERNAME', data.SMTP_USERNAME],
+        ['SMTP_PASSWORD', data.SMTP_PASSWORD],
+      ];
+      for (const [key, value] of placeholderSecrets) {
+        if (isPlaceholderSecret(value)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key} is a placeholder value (replace_with_*, change_me*/changeme*, example*); production requires a real secret`,
+          });
+        }
+      }
+
+      if (
+        DEFAULT_CREDENTIAL_VALUES.some((credential) =>
+          data.DATABASE_URL.toLowerCase().includes(credential),
+        )
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['DATABASE_URL'],
+          message:
+            'DATABASE_URL uses a default development credential; production requires its own database password',
         });
       }
 

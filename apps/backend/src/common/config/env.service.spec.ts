@@ -226,6 +226,110 @@ describe('EnvService', () => {
     });
   });
 
+  describe('IR.1: production refuses placeholder and default credentials', () => {
+    const productionEnv = {
+      ...validBaseEnv,
+      NODE_ENV: 'production',
+      TRUST_PROXY_HOPS: '1',
+      AUTH_SECRET_PROTECTION_KEY:
+        'super_secret_protection_key_at_least_32_chars!',
+      COMPLETION_CODE_HMAC_SECRET: 'real_completion_code_hmac_secret_32_chars!',
+      STORAGE_CAPABILITY_SECRET: 'real_storage_capability_secret_32_chars!',
+      GOOGLE_CLIENT_ID: 'real-client-id',
+      GOOGLE_CLIENT_SECRET: 'real-client-secret',
+      FRONTEND_ORIGINS: 'https://app.rescom.io',
+      GOOGLE_REDIRECT_URI: 'https://api.rescom.io/auth/google/callback',
+      AUTH_FRONTEND_SUCCESS_URL: 'https://app.rescom.io/callback',
+      AUTH_FRONTEND_ERROR_URL: 'https://app.rescom.io/error',
+      STORAGE_ACCESS_KEY_ID: 'production-storage-key',
+      STORAGE_SECRET_ACCESS_KEY: 'production-storage-secret',
+      TOPUP_BANK_ACCOUNT_NUMBER: '1234567890',
+      TOPUP_BANK_ACCOUNT_NAME: 'CONG TY RESCOM',
+      PARTICIPATION_RATE_LIMIT_POLICY_VERSION: 'participation-rate-limit-v1',
+      ...productionEmailEnv,
+    };
+
+    it('accepts a valid production configuration', () => {
+      expect(new EnvService(productionEnv).isProduction).toBe(true);
+    });
+
+    const placeholderCases: [string, string][] = [
+      [
+        'JWT_SECRET',
+        'replace_with_at_least_32_characters_secret_for_local_dev_only',
+      ],
+      ['JWT_SECRET', 'changeme_changeme_changeme_changeme_changeme'],
+      ['GOOGLE_CLIENT_ID', 'CHANGE_ME'],
+      ['SMTP_PASSWORD', 'CHANGE_ME'],
+      ['STORAGE_ACCESS_KEY_ID', 'CHANGE_ME_min_3_chars'],
+      ['JWT_SECRET', 'example_secret_example_secret_example_secret'],
+      [
+        'AUTH_SECRET_PROTECTION_KEY',
+        'replace_with_at_least_32_characters_key_for_protection_only',
+      ],
+      [
+        'COMPLETION_CODE_HMAC_SECRET',
+        'replace_with_at_least_32_characters_completion_code_key',
+      ],
+      [
+        'STORAGE_CAPABILITY_SECRET',
+        'replace_with_at_least_32_characters_storage_capability_key',
+      ],
+      ['GOOGLE_CLIENT_ID', 'replace_with_google_client_id'],
+      ['GOOGLE_CLIENT_SECRET', 'replace_with_google_client_secret'],
+      ['SMTP_USERNAME', 'replace_with_smtp_username'],
+      ['SMTP_PASSWORD', 'replace_with_smtp_password'],
+    ];
+
+    it.each(placeholderCases)('refuses placeholder %s (%s)', (key, value) => {
+      expect(() => new EnvService({ ...productionEnv, [key]: value })).toThrow(
+        new RegExp(`${key} is a placeholder value`),
+      );
+    });
+
+    it('accepts the same placeholders outside production', () => {
+      expect(
+        () =>
+          new EnvService({
+            ...validBaseEnv,
+            JWT_SECRET:
+              'replace_with_at_least_32_characters_secret_for_local_dev_only',
+          }),
+      ).not.toThrow();
+    });
+
+    it.each(['STORAGE_ACCESS_KEY_ID', 'STORAGE_SECRET_ACCESS_KEY'])(
+      'refuses default minioadmin %s',
+      (key) => {
+        expect(
+          () => new EnvService({ ...productionEnv, [key]: 'minioadmin' }),
+        ).toThrow(/object-storage credentials/);
+      },
+    );
+
+    it('refuses the default database password', () => {
+      expect(
+        () =>
+          new EnvService({
+            ...productionEnv,
+            DATABASE_URL:
+              'postgresql://rescom_admin:rescom_password@db:5432/rescom_db',
+          }),
+      ).toThrow(/DATABASE_URL uses a default development credential/);
+    });
+
+    it('refuses the unedited CHANGE_ME database password of the deploy template', () => {
+      expect(
+        () =>
+          new EnvService({
+            ...productionEnv,
+            DATABASE_URL:
+              'postgresql://rescom:CHANGE_ME_db_password_hex_only@postgres:5432/rescom',
+          }),
+      ).toThrow(/DATABASE_URL uses a default development credential/);
+    });
+  });
+
   describe('Story 6.6: top-up bank configuration', () => {
     it('provides safe development defaults', () => {
       const service = new EnvService(validBaseEnv);

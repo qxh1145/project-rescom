@@ -65,9 +65,9 @@ test("results scope flags have their internal-testing values (decisions of 2026-
   assert.equal(manage.PAUSE_SUPPORTED, false);
 });
 
-test("no screen is hidden: the deferred pages still render (no notFound guard)", () => {
+test("deferred pages render unless the pilot build hides them (notFound only behind PILOT_BUILD)", () => {
   for (const page of ["export/page.tsx", "quality/page.tsx", "complaints/[attemptId]/page.tsx", "versions/[versionNumber]/page.tsx"]) {
     const source = readFileSync(new URL(`../app/(signed-in)/(app)/forms/[id]/${page}`, import.meta.url), "utf8");
-    assert.doesNotMatch(source, /notFound\(/, page);
+    assert.doesNotMatch(source.replace("if (PILOT_BUILD) notFound();", ""), /notFound\(/, page);
   }
 });

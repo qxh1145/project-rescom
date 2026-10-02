@@ -1,3 +1,4 @@
+import { csrfTokenResponseSchema } from "@rescom/schemas";
 import { ApiError } from "./api-error.ts";
 import { apiUrl } from "./config.ts";
 import { SESSION_REPLACED_CODE, markSessionReplaced } from "../auth/session-notice.ts";
@@ -42,7 +43,7 @@ function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | undefined): 
   });
 }
 
-/** VERIFIED: GET /auth/csrf → `{ csrfToken }`. Guests get 401 `AUTH_UNAUTHORIZED`. */
+/** VERIFIED (shared `csrfTokenResponseSchema`): GET /auth/csrf → `{ csrfToken }`. Guests get 401 `AUTH_UNAUTHORIZED`. */
 async function fetchCsrfToken(): Promise<string> {
   let res: Response;
   try {
@@ -62,11 +63,11 @@ async function fetchCsrfToken(): Promise<string> {
       details: error?.details,
     });
   }
-  const token = payload?.data?.csrfToken;
-  if (typeof token !== "string") {
+  const parsed = csrfTokenResponseSchema.safeParse(payload?.data);
+  if (!parsed.success) {
     throw new ApiError({ kind: "malformed", status: res.status, message: "CSRF token unavailable" });
   }
-  return token;
+  return parsed.data.csrfToken;
 }
 
 /**

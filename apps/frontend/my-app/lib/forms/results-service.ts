@@ -1,5 +1,6 @@
 import {
   formBlockTypeEnum,
+  formVersionSummarySchema as sharedFormVersionSummarySchema,
   formTypeEnum,
   publisherFormVersionDetailSchema,
   publisherResponsesPageSchema,
@@ -91,14 +92,8 @@ export const formQualitySchema = z.object({
 });
 export type FormQuality = z.infer<typeof formQualitySchema>;
 
-/** VERIFIED `FormVersionSummaryDto` + ASSUMED optional stats (absent on today's backend). */
-export const formVersionSummarySchema = z.object({
-  id: z.string(),
-  formId: z.string(),
-  versionNumber: z.number().int().positive(),
-  isPublished: z.boolean(),
-  publishedAt: isoDate.nullable(),
-  createdAt: isoDate,
+/** `FormVersionSummaryDto` (shared `formVersionSummarySchema`) + ASSUMED optional stats (absent on today's backend). */
+export const formVersionSummarySchema = sharedFormVersionSummarySchema.extend({
   updatedAt: isoDate.nullable().optional(),
   submittedForReviewAt: isoDate.nullable().optional(),
   collectedFrom: isoDate.nullable().optional(),

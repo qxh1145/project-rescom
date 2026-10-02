@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { useProductTour } from "@/components/product-tour/TourProvider";
 import { Alert } from "@/components/ui/Alert";
+import { PILOT_BUILD } from "@/lib/pilot-scope";
 import { Icon } from "@/components/ui/Icon";
 import { Spinner } from "@/components/ui/Spinner";
 import { SUPPORT_MAILTO } from "@/lib/feedback/error-pages";
@@ -63,9 +64,11 @@ function AccountSidebar() {
           <NavLink href="/notifications" icon="bell">
             Thông báo
           </NavLink>
-          <NavLink href="/account/trust" icon="shield-check">
-            Dữ liệu &amp; quyền riêng tư
-          </NavLink>
+          {PILOT_BUILD ? null : (
+            <NavLink href="/account/trust" icon="shield-check">
+              Dữ liệu &amp; quyền riêng tư
+            </NavLink>
+          )}
           <NavLink href={SUPPORT_MAILTO} icon="help-circle">
             Trợ giúp
           </NavLink>

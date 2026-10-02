@@ -1,5 +1,6 @@
 "use client";
 
+import { PILOT_BUILD } from "@/lib/pilot-scope";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isApiError } from "@/lib/api/api-error";
 import {
@@ -231,6 +232,7 @@ export function useBuilderEditor(formId: string): BuilderEditor {
   );
 
   const applyAiFromConversation = useCallback(async () => {
+    if (PILOT_BUILD) return false;
     const conversation = await getAiConversation(formId);
     if (!conversation.draft) return false;
     const previous = stateRef.current.doc;

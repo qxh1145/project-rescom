@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { useAdminCounts } from "@/components/layout/admin/AdminShell";
 import { listOpenDisputeCases, type DisputeCase, type DisputeCaseKind } from "@/lib/admin/disputes-service";
-import { casesOfKind, defaultTab } from "@/lib/admin/disputes-view";
+import { DISPUTE_TABS, casesOfKind, defaultTab } from "@/lib/admin/disputes-view";
 import { useApiQuery } from "@/lib/api/use-api-query";
 import { useSessionLossRedirect } from "@/lib/session/use-session-loss";
 
@@ -26,7 +26,9 @@ export function useDisputeQueue() {
   // Until a tab is picked, the selected (linked) case decides which tab shows.
   const linkedKind =
     chosenTab === null && selectedId ? query.data?.items.find((item) => item.id === selectedId)?.kind : undefined;
-  const tab = chosenTab ?? linkedKind ?? defaultTab(query.data?.counts);
+  // A linked case of a kind the pilot build hides must not open its tab.
+  const shownKind = linkedKind && DISPUTE_TABS.some((t) => t.kind === linkedKind) ? linkedKind : undefined;
+  const tab = chosenTab ?? shownKind ?? defaultTab(query.data?.counts);
   const cases = useMemo(() => casesOfKind(query.data?.items ?? [], tab), [query.data, tab]);
   const selected = cases.find((item) => item.id === selectedId) ?? cases[0] ?? null;
 

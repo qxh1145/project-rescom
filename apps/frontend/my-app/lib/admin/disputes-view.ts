@@ -1,3 +1,4 @@
+import { PILOT_BUILD } from "../pilot-scope.ts";
 import { formatDayMonth, formatShortDateTime, formatTime } from "../format/date-time.ts";
 import { DISPUTE_REASON_LABELS } from "../forms/manage-messages.ts";
 import {
@@ -15,11 +16,14 @@ import {
  * reuses its anatomy and is ASSUMED.
  */
 
-export const DISPUTE_TABS: ReadonlyArray<{ kind: DisputeCaseKind; label: string }> = [
+const ALL_DISPUTE_TABS: ReadonlyArray<{ kind: DisputeCaseKind; label: string }> = [
   { kind: "ATTEMPT_DISPUTE", label: "Khiếu nại lượt làm" },
   { kind: "MISSING_CODE", label: "Báo thiếu mã" },
   { kind: "LOCKED_ATTEMPT", label: "Lượt bị khoá" },
 ];
+
+/** Pilot build: only the real "Báo thiếu mã" tab (disputes and locked attempts are mock-only). */
+export const DISPUTE_TABS = PILOT_BUILD ? ALL_DISPUTE_TABS.filter((tab) => tab.kind === "MISSING_CODE") : ALL_DISPUTE_TABS;
 
 /** ASSUMED empty states (not drawn). */
 export const EMPTY_TAB_COPY: Record<DisputeCaseKind, string> = {
@@ -36,9 +40,9 @@ export function casesOfKind(cases: readonly DisputeCase[], kind: DisputeCaseKind
     .sort((a, b) => urgency(a).localeCompare(urgency(b)));
 }
 
-/** First tab with work (Figma opens on "Khiếu nại lượt làm"). */
+/** First shown tab with work, else the first shown tab. */
 export function defaultTab(counts: Record<DisputeCaseKind, number> | undefined): DisputeCaseKind {
-  return DISPUTE_TABS.find((tab) => (counts?.[tab.kind] ?? 0) > 0)?.kind ?? "ATTEMPT_DISPUTE";
+  return DISPUTE_TABS.find((tab) => (counts?.[tab.kind] ?? 0) > 0)?.kind ?? DISPUTE_TABS[0].kind;
 }
 
 const HOUR_MS = 3_600_000;
