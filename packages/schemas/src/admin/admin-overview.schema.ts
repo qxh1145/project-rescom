@@ -21,7 +21,7 @@ const count = z.number().int().nonnegative();
 /**
  * - `surveys`: forms waiting in `MODERATION_QUEUE` (Duyệt khảo sát)
  * - `topUps`: `PENDING` top-up requests (Duyệt nạp điểm)
- * - `disputes`: open disputes + missing-code reports (0 on the real backend, see above)
+ * - `disputes`: open disputes + missing-code reports (missing-code reports only on the real backend, see above)
  * - `quality`: rewards held for quality review (0 on the real backend, see above)
  */
 export const adminQueueCountsSchema = z

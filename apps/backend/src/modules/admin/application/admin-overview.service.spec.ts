@@ -253,7 +253,7 @@ describe('AdminOverviewService', () => {
     expect(queries()).toBe(small);
   });
 
-  it('counts the real queues and answers 0 for the deferred ones', async () => {
+  it('counts the real queues (missing-code reports as disputes) and answers 0 for quality', async () => {
     forms.seed({
       id: '44444444-4444-4444-8444-444444444444',
       title: 'Queued',
@@ -273,12 +273,14 @@ describe('AdminOverviewService', () => {
       },
     ];
 
+    missingCodes.unresolved = 2;
+
     expect(
       adminQueueCountsSchema.parse(await service.getQueueCounts()),
     ).toEqual({
       surveys: 1,
       topUps: 1,
-      disputes: 0,
+      disputes: 2,
       quality: 0,
     });
   });

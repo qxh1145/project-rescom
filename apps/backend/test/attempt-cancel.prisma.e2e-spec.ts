@@ -388,7 +388,7 @@ describe('Cancel races on PostgreSQL (Story IR.2a)', () => {
             status: 'ABANDONED',
             closedReason: 'CANCELLED',
           });
-          expect(response.status).toBe('IN_PROGRESS');
+          expect(response.status).toBe('ABANDONED');
           expect(reward).toBeNull();
           // Decision E8-D6: the cancel released the open-attempt reservation.
           await expect(

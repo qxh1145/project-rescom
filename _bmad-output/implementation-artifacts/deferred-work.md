@@ -335,7 +335,7 @@ Quan accepted the recommendations for E9-D1 (A), E9-D2 (A), E9-D3 (A) and E9-D4 
 
 Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 
-- **A cancelled attempt leaves its Response IN_PROGRESS** (by design): `ResponseStatus` has no abandoned value (see the comment in `cancelAttempt`). Readers must filter on the attempt status. Add an ABANDONED response status if publisher reads or analytics ever count IN_PROGRESS rows [apps/backend/src/modules/participation/infrastructure/prisma-participation.repository.ts].
+- ~~**A cancelled attempt leaves its Response IN_PROGRESS**~~ _Resolved (2026-10-02): `ResponseStatus.ABANDONED` (migration `20261002090000_response_status_abandoned`); cancel, the lazy restart-abandon and the `reservation-expiry` job set the attempt's IN_PROGRESS Response to ABANDONED in the same transaction. ABANDONED is never a completion or a listed response._
 - **Locking then unlocking an account within ~30 s skips the lock email**: the outbox dispatch picks up the unlock before the lock email is sent. Decide whether the lock notice is still required [apps/backend/src/modules/users/application/user-admin.service.ts, apps/backend/src/modules/notifications/application/email-delivery.handler.ts].
 - **Seeded surveys have topic = null**: `seed-data.ts` predates `forms.topic`; add topics to the seed data [apps/backend/src/scripts/seed-data.ts].
 - **Wallet history: the original credit row keeps the "Chờ duyệt" badge after release** (UX): show the released state on the row, or show the release journal next to it.
@@ -349,7 +349,7 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 - IR.2a: QUOTA-full answer is thrown before the already-completed check in `startAttempt`.
 - IR.2a: unclean-attachment message names only the last file per question (`use-survey-runner.ts`).
 - IR.2a: HELD_IN_DISPUTE maps to the integrity-hold completion copy (disputes P2).
-- IR.2a: cancel leaves the Internal Response row IN_PROGRESS; no reader miscounts today.
+- ~~IR.2a: cancel leaves the Internal Response row IN_PROGRESS; no reader miscounts today.~~ _Resolved (2026-10-02): the Response becomes ABANDONED with the attempt._
 - IR.2b: a crash-looping/hanging outbox event is never dead-lettered (attempts incremented at claim; MAX check only in `fail()`).
 - IR.2b: UNSUPPORTED_SCHEMA_VERSION dead-letters on the first attempt (image-rollback window; Admin re-drive exists).
 - IR.2b: health stays `ok` with dead-lettered events; a renew DB error is recorded LEASE_LOST and resets the failure streak; an in-flight run can outlive the 10 s shutdown grace.
@@ -367,3 +367,10 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 - IR.2b: Postgres clock-boundary tests for pending-release (48 h) and starter-expiry (30 d) through the jobs (T9/T11), and a Postgres MAX_ATTEMPTS dead-letter assertion (T7) — not written; logic covered by unit specs.
 - IR.4b: C5 "<500 ms on the seeded pilot dataset" / `forms(status, updated_at)` index use not proven by a test — check in the smoke run.
 - IR.4b: SMTP sender spec does not assert the reduced nodemailer connection/greeting timeouts (transport is injected in tests).
+
+## Deferred from: code review (2026-10-02) — Response ABANDONED + admin missing-code reports
+
+- Admin missing-code list fetches only the 100 newest reports and ignores `nextCursor`; older reports are unreachable in the UI [apps/frontend/my-app/lib/admin/disputes-service.ts, MissingCodeReportList.tsx].
+- Hybrid mode loads real reports and mocked disputes with one `Promise.all`; one failed request blanks the whole disputes screen [apps/frontend/my-app/lib/admin/disputes-service.ts].
+- A report whose form title lookup misses shows "Khảo sát không xác định" with no survey id [apps/backend/src/modules/admin/application/admin-missing-code-reports.service.ts].
+- Tests: no reportedAt tie case for the keyset id tiebreak; survey/respondent null branches untested.

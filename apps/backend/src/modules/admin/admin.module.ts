@@ -33,6 +33,8 @@ import { ParticipationModule } from '../participation/participation.module';
 import { AdminOverviewController } from './presentation/admin-overview.controller';
 import { AdminFraudLogController } from './presentation/admin-fraud-log.controller';
 import { AdminLedgerController } from './presentation/admin-ledger.controller';
+import { AdminMissingCodeReportsController } from './presentation/admin-missing-code-reports.controller';
+import { AdminMissingCodeReportsService } from './application/admin-missing-code-reports.service';
 import { AdminOverviewService } from './application/admin-overview.service';
 import { AdminFraudLogService } from './application/admin-fraud-log.service';
 import { AdminLedgerService } from './application/admin-ledger.service';
@@ -82,6 +84,7 @@ import {
     AdminOverviewController,
     AdminFraudLogController,
     AdminLedgerController,
+    AdminMissingCodeReportsController,
   ],
   providers: [
     {
@@ -125,6 +128,20 @@ import {
         FORM_TITLE_LOOKUP_PORT,
         ADMIN_USER_DIRECTORY_PORT,
         { token: CLOCK, optional: true },
+      ],
+    },
+    {
+      provide: AdminMissingCodeReportsService,
+      useFactory: (
+        reports: MissingCodeReportStatsPort,
+        formTitles: FormTitleLookupPort,
+        profiles: UserProfileRepositoryPort,
+      ) =>
+        new AdminMissingCodeReportsService({ reports, formTitles, profiles }),
+      inject: [
+        MISSING_CODE_REPORT_STATS_PORT,
+        FORM_TITLE_LOOKUP_PORT,
+        USER_PROFILE_REPOSITORY_PORT,
       ],
     },
     {

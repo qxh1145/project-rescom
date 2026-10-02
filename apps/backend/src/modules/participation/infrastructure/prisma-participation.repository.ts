@@ -373,6 +373,20 @@ async function abandonExpiredAttemptsWith(
     },
     data: { status: 'ABANDONED', closedReason: 'EXPIRED', closedAt },
   });
+  // The Response of an abandoned attempt follows it (attempt-authoritative).
+  await client.response.updateMany({
+    where: {
+      status: 'IN_PROGRESS',
+      attempt: {
+        respondentId,
+        surveyId: formId,
+        status: 'ABANDONED',
+        closedReason: 'EXPIRED',
+        closedAt,
+      },
+    },
+    data: { status: 'ABANDONED' },
+  });
   return result.count;
 }
 
@@ -492,11 +506,9 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
     formId: string,
     cutoffDate: Date,
   ): Promise<number> {
-    return abandonExpiredAttemptsWith(
-      currentClient(this.prisma),
-      respondentId,
-      formId,
-      cutoffDate,
+    // Attempt and Response updates commit together (joins an ambient UoW).
+    return runInTransaction(this.prisma, (tx) =>
+      abandonExpiredAttemptsWith(tx, respondentId, formId, cutoffDate),
     );
   }
 
@@ -511,15 +523,23 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
         WHERE status = 'IN_PROGRESS' AND started_at < ${cutoff}
         ORDER BY started_at, id
         LIMIT ${limit}
-        FOR UPDATE SKIP LOCKED)
-      UPDATE survey_attempts sa
-         SET status = 'ABANDONED',
-             closed_reason = 'EXPIRED',
-             closed_at = ${now},
-             updated_at = ${now}
-        FROM due
-       WHERE sa.id = due.id AND sa.status = 'IN_PROGRESS'
-      RETURNING sa.id::text AS id
+        FOR UPDATE SKIP LOCKED),
+      closed AS (
+        UPDATE survey_attempts sa
+           SET status = 'ABANDONED',
+               closed_reason = 'EXPIRED',
+               closed_at = ${now},
+               updated_at = ${now}
+          FROM due
+         WHERE sa.id = due.id AND sa.status = 'IN_PROGRESS'
+        RETURNING sa.id),
+      responses_closed AS (
+        UPDATE responses r
+           SET status = 'ABANDONED', updated_at = ${now}
+          FROM closed
+         WHERE r.attempt_id = closed.id AND r.status = 'IN_PROGRESS'
+        RETURNING r.id)
+      SELECT closed.id::text AS id FROM closed
     `;
     return { abandonedIds: rows.map((row) => row.id) };
   }
@@ -751,7 +771,9 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
           response.status !== 'IN_PROGRESS' ||
           attempt.status === 'COMPLETED'
         ) {
-          return { outcome: 'ALREADY_SUBMITTED' as const };
+          return response.status === 'ABANDONED'
+            ? { outcome: 'NOT_SUBMITTABLE' as const }
+            : { outcome: 'ALREADY_SUBMITTED' as const };
         }
         if (attempt.status !== 'IN_PROGRESS') {
           return { outcome: 'NOT_SUBMITTABLE' as const };
@@ -1411,8 +1433,7 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
    * (`FOR UPDATE`) — the global lock order of start, submit and verify — so a
    * cancel never deadlocks with them. No user completion lock: a cancel only
    * removes a reservation, so the E8-D6 count can only go down. The Internal
-   * Response stays IN_PROGRESS (`ResponseStatus` has no abandoned value; the
-   * attempt is authoritative, AD-19).
+   * Response moves to ABANDONED in the same transaction.
    */
   async cancelAttempt(
     params: CancelAttemptParams,
@@ -1466,6 +1487,10 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
           `Survey attempt ${params.attemptId} changed while its row lock was held.`,
         );
       }
+      await tx.response.updateMany({
+        where: { attemptId: params.attemptId, status: 'IN_PROGRESS' },
+        data: { status: 'ABANDONED' },
+      });
       const updated = await tx.surveyAttempt.findUniqueOrThrow({
         where: { id: params.attemptId },
       });

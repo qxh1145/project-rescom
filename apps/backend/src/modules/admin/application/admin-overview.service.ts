@@ -57,14 +57,16 @@ export class AdminOverviewService {
   }
 
   async getQueueCounts(): Promise<AdminQueueCounts> {
-    const [forms, topUps] = await Promise.all([
+    const [forms, topUps, missingCodeReports] = await Promise.all([
       this.deps.queueStats.countByStatus(),
       this.deps.economyStats.pendingTopUpSummary(),
+      this.deps.missingCodeReports.countUnresolved(),
     ]);
     return {
       surveys: forms.queued,
       topUps: topUps.count,
-      disputes: 0,
+      // Disputes stay deferred (decision Q1); missing-code reports are real.
+      disputes: missingCodeReports,
       quality: 0,
     };
   }

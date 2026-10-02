@@ -59,6 +59,7 @@ enum ResponseStatus {
   VALIDATED
   DISPUTED
   REJECTED
+  ABANDONED
 }
 
 enum AttemptStatus {

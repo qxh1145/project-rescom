@@ -9,8 +9,8 @@ import { apiRequest } from "../api/client.ts";
  * `GET /admin/overview`, ADMIN only — one aggregate read for the dashboard:
  * - `pendingSurveys`: forms in `MODERATION_QUEUE`;
  * - `pendingTopUps`: `PENDING` top-up requests with their points and VND total;
- * - `openIssues`: open disputes + missing-code reports (0 on the real backend:
- *   disputes stay on MSW, decision Q1);
+ * - `openIssues`: open disputes + missing-code reports (disputes 0 on the real backend:
+ *   disputes stay on MSW, decision Q1; missing-code reports are real);
  * - `escrow`: sum of every ESCROW ledger balance and the PUBLISHED surveys;
  * - `todo`: the oldest item of each queue ("Việc cần làm · cũ nhất trước"),
  *   `moreCount` = other items waiting in that queue (the real backend emits

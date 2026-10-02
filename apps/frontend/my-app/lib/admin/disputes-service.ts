@@ -2,9 +2,12 @@ import { z } from "zod";
 import {
   completionCodeLimitResetResultSchema,
   disputeHoldOutcomeSchema,
+  missingCodeReportPageSchema,
   type CompletionCodeLimitResetResultDto,
+  type MissingCodeReport,
 } from "@rescom/schemas";
 import { apiRequest } from "../api/client.ts";
+import { isApiMockingEnabled, isHybridMocking } from "../api/config.ts";
 import { disputeReasonSchema } from "../forms/dispute-service.ts";
 
 /**
@@ -39,6 +42,11 @@ import { disputeReasonSchema } from "../forms/dispute-service.ts";
  *   respondent's Integrity Hold exists but falls short of the amount) or 409
  *   `DISPUTE_NO_HELD_POINTS` (ASSUMED, mock-only refinement: the respondent
  *   has no held points at all — nothing to refund, `disputeHoldRefusal`).
+ *
+ * VERIFIED: `GET /admin/missing-code-reports` (`missingCodeReportPageSchema`) lists the
+ * real unresolved missing-code reports, read only. Outside full-mock mode the
+ * "Báo thiếu mã" tab shows them (no actions); disputes and locked attempts stay on
+ * MSW (hybrid) or are empty (disabled).
  *
  * VERIFIED: `POST /admin/completion-code-limits/reset`
  * (`admin-completion-code-limit.controller.ts`, `completionCodeLimitResetRequestSchema`)
@@ -134,14 +142,31 @@ export const disputeCaseListSchema = z.object({
   /** OPEN cases per kind (tab counts). */
   counts: z.object({ ATTEMPT_DISPUTE: count, MISSING_CODE: count, LOCKED_ATTEMPT: count }),
 });
-export type DisputeCaseList = z.infer<typeof disputeCaseListSchema>;
+export type DisputeCaseList = z.infer<typeof disputeCaseListSchema> & {
+  /** Real missing-code reports (read only); set outside full-mock mode, where they replace the MISSING_CODE cases. */
+  missingCodeReports?: MissingCodeReport[];
+};
 
 /** ASSUMED: the admin note is sent to both parties (Figma "gửi email cho cả hai bên"). */
 export const DECISION_NOTE_MIN = 10;
 export const DECISION_NOTE_MAX = 1000;
 
-export function listOpenDisputeCases(signal?: AbortSignal): Promise<DisputeCaseList> {
-  return apiRequest("/admin/disputes?status=OPEN", { schema: disputeCaseListSchema, signal });
+export async function listOpenDisputeCases(signal?: AbortSignal): Promise<DisputeCaseList> {
+  const mocked = () => apiRequest("/admin/disputes?status=OPEN", { schema: disputeCaseListSchema, signal });
+  if (isApiMockingEnabled) return mocked();
+  const [reports, deferred] = await Promise.all([
+    apiRequest("/admin/missing-code-reports?limit=100", { schema: missingCodeReportPageSchema, signal }),
+    isHybridMocking ? mocked() : Promise.resolve(null),
+  ]);
+  return {
+    items: (deferred?.items ?? []).filter((item) => item.kind !== "MISSING_CODE"),
+    counts: {
+      ATTEMPT_DISPUTE: deferred?.counts.ATTEMPT_DISPUTE ?? 0,
+      LOCKED_ATTEMPT: deferred?.counts.LOCKED_ATTEMPT ?? 0,
+      MISSING_CODE: reports.total,
+    },
+    missingCodeReports: reports.items,
+  };
 }
 
 export function resolveDisputeCase(

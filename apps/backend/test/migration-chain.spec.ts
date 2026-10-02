@@ -195,6 +195,8 @@ describe('Prisma migration chain', () => {
       '20261001120600_admin_read_indexes',
       '20261001120700_admin_overview_indexes',
       '20261001120800_missing_code_report_index',
+      '20261002090000_response_status_abandoned',
+      '20261002090100_backfill_abandoned_responses',
     ];
 
     it('exist, in order, after the last Phase-1 migration', () => {
@@ -203,7 +205,17 @@ describe('Prisma migration chain', () => {
       ).toEqual(phaseMigrations);
     });
 
-    it.each(phaseMigrations)(
+    const backfillMigration = '20261002090100_backfill_abandoned_responses';
+
+    it('backfills only IN_PROGRESS Responses of ABANDONED attempts (idempotent)', () => {
+      const code = stripComments(readMigration(backfillMigration));
+      expect(code).toMatch(/SET "status" = 'ABANDONED'/);
+      expect(code).toMatch(/r\."status" = 'IN_PROGRESS'/);
+      expect(code).toMatch(/a\."status" = 'ABANDONED'/);
+      expect(code).not.toMatch(/\b(DELETE|INSERT|ALTER|DROP)\b/i);
+    });
+
+    it.each(phaseMigrations.filter((name) => name !== backfillMigration))(
       '%s is expand-only, unguarded and re-runnable',
       (name) => {
         const code = stripComments(readMigration(name));

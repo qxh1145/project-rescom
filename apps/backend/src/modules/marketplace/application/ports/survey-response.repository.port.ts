@@ -3,7 +3,12 @@ export const SURVEY_RESPONSE_REPOSITORY_PORT = Symbol(
 );
 
 export type SurveyResponseStatus =
-  'IN_PROGRESS' | 'SUBMITTED' | 'VALIDATED' | 'DISPUTED' | 'REJECTED';
+  | 'IN_PROGRESS'
+  | 'SUBMITTED'
+  | 'VALIDATED'
+  | 'DISPUTED'
+  | 'REJECTED'
+  | 'ABANDONED';
 
 export interface RecordResponseParams {
   formId: string;

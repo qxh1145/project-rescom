@@ -1133,10 +1133,10 @@ describe('Story IR.2a: SurveyRunnerReadService', () => {
       );
     });
 
-    it('keeps the Internal Response IN_PROGRESS (the attempt is authoritative)', async () => {
+    it('moves the Internal Response to ABANDONED with the attempt', async () => {
       const { attempt, response } = await seedAttempt();
       await service.cancelAttempt(attempt.id, ids.respondent);
-      expect(partRepo.responses.get(response!.id)?.status).toBe('IN_PROGRESS');
+      expect(partRepo.responses.get(response!.id)?.status).toBe('ABANDONED');
     });
 
     it.each([

@@ -1,3 +1,4 @@
+import { listMissingCodeReportsQuerySchema, missingCodeReportPageSchema } from "./missing-code-reports.schema";
 import {
   ADMIN_LEDGER_FILTER_KEY_PREFIXES,
   adminJournalListSchema,
@@ -200,5 +201,22 @@ describe("admin ledger contracts", () => {
   it("starts the Vietnam day at 17:00 UTC of the previous day", () => {
     expect(vietnamStartOfDay(new Date("2026-09-26T18:30:00.000Z")).toISOString()).toBe("2026-09-26T17:00:00.000Z");
     expect(vietnamStartOfDay(new Date("2026-09-26T16:59:59.000Z")).toISOString()).toBe("2026-09-25T17:00:00.000Z");
+  });
+});
+
+describe("missing-code report contracts", () => {
+  it("parses a page and keeps the query bounded", () => {
+    const item = {
+      attemptId: ID,
+      survey: { id: ID, title: "Khảo sát" },
+      respondent: { id: USER, displayName: null },
+      reason: null,
+      reportedAt: AT,
+      attemptStatus: "IN_PROGRESS",
+    };
+    expect(missingCodeReportPageSchema.parse({ items: [item], total: 1, nextCursor: null }).items).toHaveLength(1);
+    expect(missingCodeReportPageSchema.safeParse({ items: [{ ...item, extra: 1 }], total: 1, nextCursor: null }).success).toBe(false);
+    expect(listMissingCodeReportsQuerySchema.parse({}).limit).toBe(50);
+    expect(listMissingCodeReportsQuerySchema.safeParse({ limit: "101" }).success).toBe(false);
   });
 });

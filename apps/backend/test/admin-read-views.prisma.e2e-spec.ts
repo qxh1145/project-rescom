@@ -737,5 +737,23 @@ describe('Admin read views PostgreSQL integration', () => {
     await resetRow(resetBefore.id, new Date(reportedAt.getTime() - 60_000)); // reset before: still open
 
     await expect(reports.countUnresolved()).resolves.toBe(before + 3);
+
+    // The list shows the same unresolved set, newest first, keyset-paged.
+    const listed = (await reports.listUnresolved(null, 10_000)).filter(
+      (row) => row.surveyId === form.id,
+    );
+    expect(listed).toHaveLength(3);
+    expect(listed.map((row) => row.attemptStatus).sort()).toEqual([
+      'ABANDONED',
+      'IN_PROGRESS',
+      'LOCKED',
+    ]);
+    expect(listed[0]).toMatchObject({ reason: 'Không thấy mã' });
+    const first = (await reports.listUnresolved(null, 1))[0];
+    const next = await reports.listUnresolved(
+      { createdAt: first.reportedAt.toISOString(), id: first.attemptId },
+      1,
+    );
+    expect(next[0]?.attemptId).not.toBe(first.attemptId);
   });
 });

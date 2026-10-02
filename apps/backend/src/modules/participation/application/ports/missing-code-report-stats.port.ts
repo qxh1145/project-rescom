@@ -13,6 +13,20 @@ export const MISSING_CODE_REPORT_STATS_PORT = Symbol(
   'MISSING_CODE_REPORT_STATS_PORT',
 );
 
+export interface UnresolvedMissingCodeReport {
+  attemptId: string;
+  surveyId: string;
+  respondentId: string | null;
+  reason: string | null;
+  reportedAt: Date;
+  attemptStatus: string;
+}
+
 export interface MissingCodeReportStatsPort {
   countUnresolved(): Promise<number>;
+  /** Unresolved reports, newest first (ties by attempt id desc), keyset after `before`. */
+  listUnresolved(
+    before: { createdAt: string; id: string } | null,
+    limit: number,
+  ): Promise<UnresolvedMissingCodeReport[]>;
 }

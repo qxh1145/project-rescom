@@ -9,11 +9,11 @@ import { apiRequest } from "../api/client.ts";
  * call for the four work queues instead of four list requests on every admin page.
  * - `surveys`: forms waiting in `MODERATION_QUEUE` (Duyệt khảo sát)
  * - `topUps`: `PENDING` top-up requests (Duyệt nạp điểm)
- * - `disputes`: open disputes + missing-code reports (Khiếu nại & báo lỗi)
+ * - `disputes`: open disputes + missing-code reports (Khiếu nại & báo lỗi; real backend: missing-code reports only)
  * - `quality`: rewards held for quality review (Xét chất lượng)
  *
  * Disputes and quality reviews stay on MSW (decision Q1): the real backend
- * answers 0 for those two badges while their mock pages show sample cases.
+ * answers 0 for their parts of those badges while their mock pages show sample cases.
  */
 export { adminQueueCountsSchema };
 export type { AdminQueue, AdminQueueCounts } from "@rescom/schemas";

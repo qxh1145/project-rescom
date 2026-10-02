@@ -89,6 +89,31 @@ function expired(attempt: SurveyAttemptEntity): SurveyAttemptEntity {
 }
 
 export class InMemoryParticipationRepository implements ParticipationRepositoryPort {
+  /** Parity with the Prisma repository: an abandoned attempt's Response follows it. */
+  private abandonResponseOf(attemptId: string): void {
+    for (const res of this.responses.values()) {
+      if (res.attemptId === attemptId && res.status === 'IN_PROGRESS') {
+        this.responses.set(
+          res.id,
+          new ResponseEntity(
+            res.id,
+            res.formId,
+            res.formVersionId,
+            res.attemptId,
+            res.respondentId,
+            'ABANDONED',
+            res.answersJson,
+            res.ipAddress,
+            res.isGuest,
+            res.submittedAt,
+            res.createdAt,
+            new Date(),
+          ),
+        );
+      }
+    }
+  }
+
   public attempts = new Map<string, SurveyAttemptEntity>();
   public responses = new Map<string, ResponseEntity>();
   public integrityEvents: IntegrityEventEntity[] = [];
@@ -262,6 +287,7 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
         att.startedAt < cutoffDate
       ) {
         this.attempts.set(id, expired(att));
+        this.abandonResponseOf(id);
         count++;
       }
     }
@@ -295,6 +321,7 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
           closedAt: now,
         }),
       );
+      this.abandonResponseOf(att.id);
     }
     return { abandonedIds: due.map((att) => att.id) };
   }
@@ -367,6 +394,7 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
           att.startedAt < params.cutoffDate
         ) {
           this.attempts.set(id, expired(att));
+          this.abandonResponseOf(id);
         }
       }
       for (const att of this.attempts.values()) {
@@ -554,7 +582,9 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
       existingResponse.status !== 'IN_PROGRESS' ||
       existingAttempt.status === 'COMPLETED'
     ) {
-      return { outcome: 'ALREADY_SUBMITTED' };
+      return existingResponse.status === 'ABANDONED'
+        ? { outcome: 'NOT_SUBMITTABLE' }
+        : { outcome: 'ALREADY_SUBMITTED' };
     }
     if (existingAttempt.status !== 'IN_PROGRESS') {
       return { outcome: 'NOT_SUBMITTABLE' };
@@ -977,7 +1007,8 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
           (response) =>
             !response.isGuest &&
             response.respondentId !== null &&
-            response.status !== 'IN_PROGRESS',
+            response.status !== 'IN_PROGRESS' &&
+            response.status !== 'ABANDONED',
         )
         .map((response) => ({
           id: response.id,
@@ -1071,6 +1102,7 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
       closedAt: params.now,
     });
     this.attempts.set(cancelled.id, cancelled);
+    this.abandonResponseOf(cancelled.id);
     return { outcome: 'CANCELLED', attempt: cancelled };
   }
 }

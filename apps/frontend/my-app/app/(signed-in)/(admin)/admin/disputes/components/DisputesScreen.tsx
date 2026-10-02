@@ -9,6 +9,7 @@ import { disputeListErrorMessage } from "@/lib/admin/disputes-messages";
 import { EMPTY_TAB_COPY, queueChipLabel, resolvedMessage } from "@/lib/admin/disputes-view";
 import { useDisputeQueue } from "../hooks/use-dispute-queue";
 import { CaseDetail } from "./CaseDetail";
+import { MissingCodeReportList } from "./MissingCodeReportList";
 import { DISPUTE_PANEL_ID, DisputeTabs, disputeTabId } from "./DisputeTabs";
 import { RespondentCard } from "./RespondentCard";
 
@@ -57,6 +58,8 @@ export function DisputesScreen() {
               Thử lại
             </button>
           </Alert>
+        ) : queue.tab === "MISSING_CODE" && queue.reports ? (
+          <MissingCodeReportList reports={queue.reports} total={queue.counts?.MISSING_CODE ?? queue.reports.length} />
         ) : !selected ? (
           // ASSUMED empty state (not drawn).
           <section className="flex flex-col items-center gap-4 rounded-[22px] border border-line bg-surface px-6 py-12 text-center">

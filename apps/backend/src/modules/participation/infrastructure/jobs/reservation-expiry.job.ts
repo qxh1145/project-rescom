@@ -18,7 +18,7 @@ import { ParticipationRepositoryPort } from '../../application/ports/participati
  * by the time window, so quota numbers do not change; the durable effect is
  * the state transition. Loses cleanly to a submit or verification that holds
  * the attempt row (`FOR UPDATE SKIP LOCKED` + conditional update). Internal
- * Responses stay IN_PROGRESS (the attempt is authoritative, AD-19).
+ * Responses move to ABANDONED in the same statement.
  */
 export class ReservationExpiryJob implements ScheduledJob {
   readonly name = RESERVATION_EXPIRY_JOB.name;

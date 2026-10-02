@@ -36,6 +36,7 @@ export function useDisputeQueue() {
       setData((current) =>
         current
           ? {
+              ...current,
               items: current.items.filter((item) => item.id !== resolved.id),
               counts: { ...current.counts, [resolved.kind]: Math.max(0, current.counts[resolved.kind] - 1) },
             }
@@ -54,6 +55,8 @@ export function useDisputeQueue() {
 
   return {
     counts: query.data?.counts,
+    /** Real missing-code reports (read only); undefined in full-mock mode. */
+    reports: query.data?.missingCodeReports,
     cases,
     selected,
     tab,

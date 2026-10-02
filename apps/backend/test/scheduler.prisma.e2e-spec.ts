@@ -712,6 +712,20 @@ describe('Scheduler, Outbox dispatcher and system closes on PostgreSQL (IR.2b, p
         data: { startedAt: old },
       });
 
+      // An Internal-style Response on the expired attempt follows it.
+      const expiredRow = await prisma.surveyAttempt.findUniqueOrThrow({
+        where: { id: expiredAttempt.attemptId },
+      });
+      const expiredResponse = await prisma.response.create({
+        data: {
+          formId: survey.formId,
+          formVersionId: expiredRow.formVersionId,
+          attemptId: expiredAttempt.attemptId,
+          respondentId: expiredRow.respondentId,
+          ipAddress: '127.0.0.1',
+        },
+      });
+
       let releaseLock!: () => void;
       const lockHeld = new Promise<void>((resolve) => (releaseLock = resolve));
       let locked!: () => void;
@@ -753,6 +767,11 @@ describe('Scheduler, Outbox dispatcher and system closes on PostgreSQL (IR.2b, p
         closedReason: 'EXPIRED',
       });
       expect(byId.get(freshAttempt.attemptId)?.status).toBe('IN_PROGRESS');
+      await expect(
+        prisma.response.findUniqueOrThrow({
+          where: { id: expiredResponse.id },
+        }),
+      ).resolves.toMatchObject({ status: 'ABANDONED' });
     },
     60_000,
   );

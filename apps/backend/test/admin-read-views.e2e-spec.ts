@@ -273,7 +273,7 @@ describe('Admin read views (mock-off Phase 4) E2E', () => {
       expect(adminQueueCountsSchema.parse(counts.body.data)).toEqual({
         surveys: 1,
         topUps: 2,
-        disputes: 0,
+        disputes: 3,
         quality: 0,
       });
 
