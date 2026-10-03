@@ -14,7 +14,7 @@ context:
 
 # Story IR.5: Launch-Domain Closure and Local Integration Gate
 
-Status: review
+Status: done
 
 ## Story
 
@@ -88,7 +88,7 @@ Owner defaults for the open questions at the end of this file are assumed by the
   - [x] D1.2 Publisher + two admins: top-up request → admin A approves (admin A self-approval of own request refused) → create internal form → publish with escrow → admin B moderation approve → respondent completes → `GET /admin/ledger/journals` shows the escrow and reward journals; `fixtures/ledger-invariants.ts` logic (balance = Σ entries, zero-sum journals) re-checked by SQL at the end.
   - [x] D1.3 Output: a JSON + Markdown report (step, request, status, key ids, duration) written to `_bmad-output/implementation-artifacts/ir-5-g3/`. No passwords, cookies, tokens or seed credentials in the report.
 - [x] D2. Run every PG suite with its `*_TEST_DATABASE_URL` set (or `CI=1`) so none can skip; the report records `skipped = 0` for PG suites. Re-measure counts (the IR.3/IR.4 evidence counts predate `product-tours` and `admin-missing-code-reports`).
-- [x] D3. Revoked-session submit returns 403 `PARTICIPANT_NOT_ELIGIBLE` instead of 401 (deferred-work L378-380). Fix it so a revoked session yields 401 `SESSION_REVOKED`/the existing session-expiry code on the submit path, with one e2e assertion. If the fix touches more than the participation guard ordering, stop and record it as an accepted deviation instead.
+- [x] D3. [Accepted deviation] Revoked-session submit returns 403 `PARTICIPANT_NOT_ELIGIBLE` instead of 401 (deferred-work L378-380). Per story stop rule, fixing this requires altering public-route session handling beyond participation guard ordering; accepted as a recorded deviation (see pack §8 item 1) with behaviour unchanged.
 
 ### Part E: Deferred scope and production defaults (AC 5, IR.1 section 3 "verify at IR.5")
 
@@ -104,6 +104,22 @@ Owner defaults for the open questions at the end of this file are assumed by the
 
 - [x] F1. Write `_bmad-output/implementation-artifacts/ir-5-g3/ir-5-g3-evidence-<date>.md`: commit SHA, environment (compose services + image tags), exact commands, raw result counts (backend unit, e2e, PG suites with 0 skipped, real-storage suite, FE node tests, typecheck, lint, pilot build + bundle check), contract matrix (A4), D1 reports, E1 results, E2 statement, accepted deviations, open owner items.
 - [x] F2. Independent pass **[Q6]**: a fresh-context `bmad-code-review` (Sonnet) of the IR.5 diff plus a separate fresh-context verifier that re-runs the gate commands from F1 and checks each AC against the pack. Record reviewer, date, verdict and any failed item in the pack. A story status, `/health` or `/system/metrics` response alone is not evidence.
+
+### Review Findings
+
+Code review 2026-10-03 (bmad-code-review: Blind Hunter, Edge Case Hunter, Acceptance Auditor; Sonnet; full diff 1a8911c..605ae2f).
+
+- [x] [Review][Decision] AC1 scope for admin/top-up/moderation display fields — RESOLVED 2026-10-03 (Quan): accept as recorded deviation; becomes Patch 7 below — `users-service.ts` (name, activated, signInMethod, balance, attemptCount, fraudLog, profile), top-up (userName, userCreatedAt) and moderation (publisherName, publisherFraudLogCount, targetingJson.schools) are backend-unemitted response fields relabelled `ASSUMED (design)`, so `grep "ASSUMED API"` passes while AC1 ("none remains assumed") is unmet for them. Pack §8 item 4 narrows AC1 honestly, but the Completion Notes AC1 line reads as fully closed. Choose: extend Q2 (remove fields), accept as recorded deviation (relabel + narrow AC1 in notes), or implement in backend.
+- [x] [Review][Patch] Pack lacks the commit SHA required by F1 (§1 says "Section 9 records the commit"; it does not) [_bmad-output/implementation-artifacts/ir-5-g3/ir-5-g3-evidence-2026-10-03.md:7]
+- [x] [Review][Patch] Full backend e2e not re-run after repair loop 1; re-run on 605ae2f and record the count in pack §9 (AC6/Q6) [_bmad-output/implementation-artifacts/ir-5-g3/ir-5-g3-evidence-2026-10-03.md:175]
+- [x] [Review][Patch] `.env.prod.example` comment states Caddy restores CF-Connecting-IP into X-Forwarded-For as current fact; the Caddyfile does not (DNS-only: Caddy sets XFF to the peer) [deploy/.env.prod.example:22]
+- [x] [Review][Patch] Journey submit-replay check passes when both `journalId`s are undefined; require a journalId before comparing [scripts/ir5-journey.mjs:299]
+- [x] [Review][Patch] Bare `ASSUMED` left outside deferred files (A3.2); reword as a mirrored backend default [apps/frontend/my-app/lib/auth/session-refresh.ts:23]
+- [x] [Review][Patch] Task D3 is checked [x] though the behaviour is unchanged; mark it as an accepted deviation in the task line [_bmad-output/implementation-artifacts/ir-5-launch-domain-closure-local-integration-gate.md:91]
+- [x] [Review][Patch] (from Decision) Relabel admin/top-up/moderation backend-unemitted fields `ASSUMED API (display, owner item)` and narrow the AC1 Completion Notes line to the Q2 field list [apps/frontend/my-app/lib/admin/users-service.ts:23]
+- [x] [Review][Defer] Body-parser errors (malformed JSON 400, 413) carry no X-Request-Id / error.requestId because the middleware runs after the parser [apps/backend/src/app.module.ts] — deferred, low; revisit with Story 11.4 observability
+- [x] [Review][Defer] Outage-log scrub removes only literal storageKey/fileName, not URL-encoded forms or presigned URLs in SDK messages [apps/backend/src/modules/storage/application/storage.service.ts:956] — deferred, low; revisit with Story 11.4
+- [x] [Review][Defer] E3.2 hops=1 proven via test-local `express.set('trust proxy', 1)`, not the env -> main.ts path [apps/backend/test/auth-throttling.e2e-spec.ts:255] — deferred to the IR.6 two-client staging smoke (pack §8 item 10)
 
 ## Dev Notes
 
@@ -199,7 +215,7 @@ Claude Opus 5.5 (lead: D1/D2/E1/E2/F1, E1 proxy fix, integration). Two Sonnet ex
 - AC1:
   - New `contract-callsites` test: 101 calls, 83 matched, 18 allowlisted with reasons, 0 unmatched.
   - The generated contract matrix is in `ir-5-g3/`.
-  - Frontend-only Q2 fields removed; schemas are now the shared ones.
+  - Frontend-only Q2 fields removed; schemas are now the shared ones. Note: AC1 is closed specifically for the approved Q2 field list; admin, top-up and moderation display-only fields (`users-service`, `top-up-admin-service`, `moderation-service`) remain optional extensions pending owner decision (accepted deviation, pack §8 item 4).
 - AC2:
   - New `no-direct-mocks` test.
   - `pilot-scope` checks guards in the same function; it found and fixed 2 real gaps (`BuilderScreen`, `ProfileCard`).

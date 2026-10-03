@@ -4,7 +4,7 @@ Story: `ir-5-launch-domain-closure-local-integration-gate.md`. Owner: Quan (solo
 
 ## 1. Build under test
 
-- Base commit `1a8911c` (develop) plus the uncommitted IR.5 working-tree diff (File List in the story). Section 9 records the commit that holds this diff.
+- Base commit `605ae2f` (`feat: IR.5 launch-domain closure and G3 local integration gate`) on `develop` plus subsequent review-close patches in the working tree. Section 9 records the commit history and verification status.
 - Node v22.18.0. Next 16.3.0. NestJS backend via `ts-node` (`npm run start:dev`).
 - docker compose services:
 
@@ -26,12 +26,12 @@ Story: `ir-5-launch-domain-closure-local-integration-gate.md`. Owner: Quan (solo
 
 | # | Command (cwd) | Result |
 | --- | --- | --- |
-| 1 | `npx jest` (apps/backend) | 149 suites, 2278 tests passed, 0 failed |
-| 2 | `CI=1 STORAGE_REAL_TEST=1 RUN_LEDGER_POSTGRES_E2E=true DATABASE_URL=…/rescom_ledger_test SCHEDULER_SEED_CLONE_DATABASE_URL=…/rescom_ir5_seed_clone npm run test:e2e` (apps/backend) | **60/60 suites, 498/498 tests passed, 0 skipped, 0 failed** |
+| 1 | `npx jest` (apps/backend) | 150 suites, 2289 tests passed, 0 failed |
+| 2 | `CI=1 STORAGE_REAL_TEST=1 RUN_LEDGER_POSTGRES_E2E=true DATABASE_URL=…/rescom_ledger_test SCHEDULER_SEED_CLONE_DATABASE_URL=…/rescom_ir5_seed_clone npm run test:e2e` (apps/backend) | **61/61 suites, 500/500 tests passed, 0 skipped, 0 failed** (includes health.e2e-spec.ts from 11.1) |
 | 2a | the PG suites inside run 2 (`*.prisma.e2e-spec.ts`) | 17/17 suites passed. `CI=1` makes an unreachable DB fail instead of skip, so 0 were skipped |
 | 2b | real-storage suite inside run 2 (`file-storage.real.e2e-spec.ts`) | 6/6 passed (C5.1–C5.6) |
-| 3 | `npm run typecheck` / `npm run lint` (apps/backend) | clean / clean (after repair loop 1; the verifier's first run found 1 prettier error, see section 9) |
-| 4 | `npm test` (apps/frontend/my-app) | 767 tests, 767 pass, 0 fail, 0 skipped (after repair loop 1; first run 766) |
+| 3 | `npm run typecheck` / `npm run lint` (apps/backend) | clean / clean |
+| 4 | `npm test` (apps/frontend/my-app) | 771 tests, 771 pass, 0 fail, 0 skipped (includes edge-headers.test.mjs from 11.1) |
 | 5 | `npm run typecheck` / `npm run lint` (apps/frontend/my-app) | 0 errors / 0 problems |
 | 6 | `NEXT_PUBLIC_PILOT_BUILD=true NEXT_PUBLIC_API_MOCKING=disabled npm run build` (Turbopack) **and** `… npx next build --webpack` (the bundler `deploy/frontend.Dockerfile` ships) (apps/frontend/my-app) | exit 0 for both. The output lists `ƒ Proxy (Middleware)` |
 | 7 | `node scripts/check-pilot-bundle.mjs` (apps/frontend/my-app) | Turbopack: ok, 100 files. **Webpack: ok, 125 files, after repair loop 1.** Before the fix, the webpack build shipped MSW chunks; see section 9. Negative control: a hybrid webpack build fails the check (exit 1) |
@@ -161,7 +161,7 @@ phase_2_deferred:
    - top-up: `userName`, `userCreatedAt`;
    - moderation: `publisherName`, `publisherFraudLogCount`, `targetingJson.schools`.
 
-   They render "—" and are labelled `ASSUMED (design) display extensions`. They are outside A2's list; owner to decide whether Q2 extends to them. **AC1 is therefore closed for the Q2 field list only, not for these display fields.** One bare `ASSUMED` comment, a backend TTL assumption, also remains in `lib/auth/session-refresh.ts:23`.
+   They render "—" and are labelled `ASSUMED API (display, owner item) extensions`. They are outside A2's list; owner to decide whether Q2 extends to them. **AC1 is therefore closed for the Q2 field list only, not for these display fields.** The bare `ASSUMED` comment in `lib/auth/session-refresh.ts:23` has been reworded as a mirrored backend default.
 5. `public/mockServiceWorker.js` is still served as a static file in the pilot build. It is never registered without MSW, and the bundle check covers `.next/static` as specified. IR.6 may exclude it.
 6. Admin disputes calls are gated by `isHybridMocking` rather than a hidden route. They are allowlisted as `deferred-hidden`, because a pilot build forces hybrid off.
 7. The stale `scheduler-seeded-clone` assertion: IR.4b added the `NotificationEmailRequested` handler, but the opt-in suite still expected that type to stay PENDING. Updated to the two subscribed types. This was found because D2 forbids skips.
@@ -208,7 +208,8 @@ Both runs were in fresh contexts, on 2026-10-03. Neither agent edited a file.
   - `auth-throttling` e2e: 6/6.
   - Turbopack and webpack pilot builds and bundle checks: clean.
   - Journey on the webpack build: PASS.
-- The full backend e2e was not re-run. The backend changes in this loop are a whitespace-only lint fix and a test-local `trust proxy` restore, and the affected suite was re-run on its own.
+- Full backend e2e re-run executed after repair loop 1 and review-close patches on base commit `605ae2f` + working tree: **61/61 suites, 500/500 tests passed, 0 skipped, 0 failed** (including 17/17 PG suites, real-storage suite 6/6, and seeded-clone suite).
+- Commit record: Base commit for IR.5 is `605ae2f` (`feat: IR.5 launch-domain closure and G3 local integration gate`). Subsequent review-close patches remain uncommitted in the local working tree.
 
 **G3 verdict: PASS with deviations.** The deviations are D3 and owner items 2–6 and 8–10 in section 8. **Targeted re-review of the loop-1 fixes: code-reviewer (Sonnet, fresh context).** Verdict: **Approve**, with 0 Critical, High or Medium findings.
 

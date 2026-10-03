@@ -20,7 +20,7 @@ import { apiRequest } from "../api/client.ts";
  * VERIFIED `lockReason` (shared `adminUserSchema`, mock-off plan 4.6): the reason of
  * the latest lock, read from the identity audit log; null for active accounts.
  *
- * ASSUMED (design) display extensions, NOT emitted by the backend (its user carries only
+ * ASSUMED API (display, owner item) extensions, NOT emitted by the backend (its user carries only
  * id, email, role, status, dates and `lockReason`): the Figma columns below are optional,
  * so the VERIFIED payload parses and the screen shows "—". Outside IR.5 Q2.
  */

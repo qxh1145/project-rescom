@@ -390,3 +390,14 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 ## Deferred from: code review of IR.1, IR.3, IR.4 (2026-10-03)
 
 - "Verified" publisher-form contracts still carry frontend-only ASSUMED extension fields (`managementExtensions`, `questionCount`, optional version stats). Backend e2e suites parse with the shared base schemas only (`formDetailSchema` is passthrough), so these fields are not contract-tested. Close at IR.5 ("none remains `assumed`").
+
+## Deferred from: code review of ir-5-launch-domain-closure-local-integration-gate (2026-10-03)
+
+- Body-parser errors (malformed JSON 400, oversized 413) are raised before `requestIdMiddleware`, so they carry no `X-Request-Id` header or `error.requestId`. Low; revisit with Story 11.4 observability.
+- `StorageService.recordOutage` scrubs only literal `storageKey`/`fileName`; URL-encoded keys or presigned URLs inside SDK error messages would reach the `storage.*` log line. Low; revisit with Story 11.4.
+- E3.2 (rate-limit key at `TRUST_PROXY_HOPS=1`) is proven with a test-local `express.set('trust proxy', 1)`, not through env -> `main.ts`. Covered by the IR.6 two-client staging smoke (IR.5 pack section 8 item 10).
+
+## Deferred from: code review of 11-1-deployment-ready-backend-packaging (2026-10-03)
+
+- Placeholder `EDGE_KEY=CHANGE_ME` (or a short key) is not rejected: compose `${EDGE_KEY:?}` only rejects empty, Caddy compares strings. Add a pre-flight in the Story 11.3 deploy workflow that refuses `CHANGE_ME*` and keys shorter than 32 chars in `deploy/.env.prod`.
+- GCS S3-interoperability round trip unverified (AC 7) [11-1-deployment-ready-backend-packaging.md:123-127] — deferred to Story 11.2 (needs GCP bucket + HMAC credentials in trial project).

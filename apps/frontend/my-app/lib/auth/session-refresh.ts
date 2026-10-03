@@ -20,7 +20,7 @@ import { apiRequest, setCsrfToken } from "../api/client.ts";
  */
 
 /**
- * ASSUMED: backend `JWT_ACCESS_TTL_SECONDS` default (900 s, also its maximum in
+ * Mirrored backend default: `JWT_ACCESS_TTL_SECONDS` (900 s, also its maximum in
  * `env.schema.ts`). The API does not expose the TTL; update both together.
  */
 export const ACCESS_TOKEN_TTL_SECONDS = 900;

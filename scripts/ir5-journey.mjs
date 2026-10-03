@@ -296,6 +296,7 @@ async function journey() {
     headers: { "Idempotency-Key": submitKey },
     ids: (d) => ({ journalId: d.reward?.journalId }),
   });
+  if (!submitted.reward?.journalId) throw new Error("submit did not return a reward journalId");
   if (again.reward?.journalId !== submitted.reward?.journalId) throw new Error("submit replay posted a second reward journal");
   await respondent.call("outcome", "GET", `/attempts/${attempt.attemptId}/outcome`, {
     ids: (d) => ({ attemptStatus: d.attemptStatus }),
