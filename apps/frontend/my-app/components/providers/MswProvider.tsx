@@ -7,12 +7,13 @@ let workerStart: Promise<void> | null = null;
 
 /** Installs the in-page MSW interception once per page load; the module is never loaded when mocking is off. */
 function startWorker(): Promise<void> {
-  // Literal env checks (not the config flags) so the bundler drops the MSW chunk when disabled.
-  if (process.env.NEXT_PUBLIC_API_MOCKING !== "enabled" && process.env.NEXT_PUBLIC_API_MOCKING !== "hybrid") {
-    return Promise.resolve();
+  // Literal env checks (not the config flags) with the import() INSIDE the branch: webpack (the
+  // deploy build) keeps the MSW chunk after a constant early return; a dead branch is dropped.
+  if (process.env.NEXT_PUBLIC_API_MOCKING === "enabled" || process.env.NEXT_PUBLIC_API_MOCKING === "hybrid") {
+    workerStart ??= import("@/mocks/browser").then(({ startMocking }) => startMocking());
+    return workerStart;
   }
-  workerStart ??= import("@/mocks/browser").then(({ startMocking }) => startMocking());
-  return workerStart;
+  return Promise.resolve();
 }
 
 /**

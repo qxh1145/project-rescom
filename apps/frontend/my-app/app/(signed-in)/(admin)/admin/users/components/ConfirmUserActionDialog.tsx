@@ -18,7 +18,7 @@ interface ConfirmUserActionDialogProps {
   onClose: () => void;
 }
 
-/** ASSUMED (not drawn): confirmation before lock / unlock / role change. */
+/** ASSUMED (design) (not drawn): confirmation before lock / unlock / role change. */
 export function ConfirmUserActionDialog({
   open,
   title,

@@ -7,6 +7,7 @@ import {
   isQuestionFullError,
   isRetryableFinalize,
   isScannerOutage,
+  outageExhaustedMessage,
   questionFullMessage,
   uploadErrorMessage,
 } from "./file-upload.ts";
@@ -310,7 +311,7 @@ export class FileUploadController {
       name: previous?.name ?? file?.name ?? "",
       size: previous?.size ?? file?.size ?? 0,
       state: "failed",
-      message: retryExhausted ? UPLOAD_MESSAGES.scannerDown : uploadErrorMessage(failure),
+      message: retryExhausted ? outageExhaustedMessage(failure) : uploadErrorMessage(failure),
       objectId,
       retryFinalize,
       retryExhausted,

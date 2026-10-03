@@ -15,7 +15,7 @@ interface ConfirmDecisionDialogProps {
   onConfirm: () => void;
 }
 
-/** ASSUMED (not drawn): a decision moves points and emails both parties, so it is confirmed first. */
+/** ASSUMED (design) (not drawn): a decision moves points and emails both parties, so it is confirmed first. */
 export function ConfirmDecisionDialog({ action, note, busy, error, onCancel, onConfirm }: ConfirmDecisionDialogProps) {
   return (
     <Dialog

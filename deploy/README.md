@@ -41,8 +41,9 @@ Tạo 2 bản ghi **A**, cùng trỏ về IP VPS, để **DNS only (mây xám)**
 | `@` | IP VPS | DNS only |
 | `s3` | IP VPS | DNS only |
 
-> Không bật mây cam: Caddy cần nhận trực tiếp request để xin chứng chỉ, và `TRUST_PROXY_HOPS=2`
-> được tính cho đường đi không qua Cloudflare. Bật proxy sẽ làm rate-limit nhận sai IP.
+> Không bật mây cam: Caddy cần nhận trực tiếp request để xin chứng chỉ, và `TRUST_PROXY_HOPS=1`
+> (tin đúng một hop: Caddy) được tính cho đường đi không qua Cloudflare. Bật proxy mà chưa cấu hình
+> Caddy khôi phục `CF-Connecting-IP` vào `X-Forwarded-For` sẽ làm rate-limit nhận sai IP.
 
 Bản ghi email của Brevo (TXT `brevo-code`, DKIM, DMARC) và Cloudflare Email Routing (MX, SPF) thêm
 theo hướng dẫn của từng dịch vụ. Domain chỉ được có **một** bản ghi SPF, gộp lại thành:

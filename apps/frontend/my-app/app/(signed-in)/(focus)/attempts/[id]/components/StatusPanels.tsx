@@ -60,7 +60,7 @@ function useFocusOnMount<T extends HTMLElement>() {
   return ref;
 }
 
-/** ASSUMED (not in Figma): the attempt's reservation ran out. */
+/** ASSUMED (design) (not in Figma): the attempt's reservation ran out. */
 export function ExpiredPanel({ restartHref, onRestart }: { restartHref: string; onRestart: () => void }) {
   const headingRef = useFocusOnMount<HTMLHeadingElement>();
   return (
@@ -92,7 +92,7 @@ export function ExpiredPanel({ restartHref, onRestart }: { restartHref: string; 
 }
 
 /**
- * ASSUMED (not in Figma): the survey left PUBLISHED after this attempt
+ * ASSUMED (design) (not in Figma): the survey left PUBLISHED after this attempt
  * started (`survey.status` of GET /attempts/:id is DRAFT, MODERATION_QUEUE or
  * ESCROW_LOCKED) — the Publisher is preparing a new version. Decision E5-D4:
  * the pinned attempt can no longer be submitted, so it is cancelled and
@@ -142,7 +142,7 @@ export function FormUpdatedPanel({
 }
 
 /**
- * ASSUMED (not in Figma): the survey CLOSED after this attempt started. It
+ * ASSUMED (design) (not in Figma): the survey CLOSED after this attempt started. It
  * takes no answers and no new attempt, so there is nothing to restart.
  */
 export function SurveyClosedPanel() {

@@ -58,6 +58,11 @@ export interface SystemMetrics {
   memory: MemoryMetrics;
   /** Database connection metrics */
   database: DatabaseMetrics;
+  /** Story IR.5 C3: alertable storage / malware-scanner outage counter. */
+  storage?: {
+    /** Scanner outages + private-storage failures since process start. */
+    outagesSinceBoot: number;
+  };
   /**
    * Story IR.2b: scheduler jobs and Outbox backlog (`GET /system/metrics`
    * only; `SchedulerHealthSnapshot`). Absent without the SchedulerModule.

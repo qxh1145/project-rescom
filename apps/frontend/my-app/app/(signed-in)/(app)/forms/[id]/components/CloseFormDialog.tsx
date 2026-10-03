@@ -22,7 +22,7 @@ interface CloseFormDialogProps {
 }
 
 /**
- * "Đóng & hoàn điểm" confirmation — ASSUMED design (not drawn), same panel as
+ * "Đóng & hoàn điểm" confirmation — ASSUMED (design) design (not drawn), same panel as
  * 10b. Warns about respondents still taking the survey (VERIFIED
  * `GET /forms/:id/in-progress-attempts`, decision E5-D4). A survey that is not
  * live (waiting for review, or a re-versioned draft) gets the "Rút lại & hoàn

@@ -15,7 +15,7 @@ interface StarterExpiringSectionProps {
 
 /**
  * 15f "Điểm khởi đầu sắp hết hạn" — mobile 63:1877 (warning 63:1889 + "Khảo
- * sát nhanh cho bạn"). Desktop is not drawn: ASSUMED same blocks in the
+ * sát nhanh cho bạn"). Desktop is not drawn: ASSUMED (design) same blocks in the
  * content column, CTA auto-width and the quick list as a 3-column grid.
  */
 export function StarterExpiringSection({ view, quickSurveys, pendingId, onStart }: StarterExpiringSectionProps) {

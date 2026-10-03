@@ -20,17 +20,18 @@ import { apiRequest } from "../api/client.ts";
  * tracking, 10b reopen, 10c complaint) and the shared survey header of
  * `/forms/[id]/*`.
  *
- * Every ASSUMED field is optional with a neutral default, so the VERIFIED
- * backend response still parses before the backend adds them.
+ * Story IR.5 A2: only fields the backend emits remain (the frontend-only
+ * `pausedAt`, `hiddenFromMarketplace`, `audienceLabel`, top-level
+ * `publishedAt` and `questionCount` were removed); the optional ones keep a
+ * neutral default so an older response still parses.
  */
 
 const nullableIso = z.string().nullable().default(null);
 const count = z.number().int().nonnegative();
 
 /**
- * Management fields shared by `GET /forms` items and `GET /forms/:id`.
- * `completedCompletions` and `escrowLocked` are VERIFIED (Phase 5 M1/M2:
- * `FormSummaryDto` / `FormDetailDto`); the others are ASSUMED API CONTRACT.
+ * Management fields shared by `GET /forms` items and `GET /forms/:id`, all
+ * VERIFIED (`FormSummaryDto` / `FormDetailDto`, shared `formSummarySchema`).
  */
 const managementExtensions = {
   /** Completed participations so far (Figma "6/10"). */
@@ -43,15 +44,10 @@ const managementExtensions = {
   escrowLocked: count.nullable().default(null),
   /** `GET /forms/:id`: when the survey entered the moderation queue (null otherwise). */
   submittedAt: nullableIso,
-  publishedAt: nullableIso,
   /** Collection deadline ("hạn 05/10 · còn 9 ngày"). */
   deadlineAt: nullableIso,
   /** `GET /forms/:id`: when the survey closed (null unless CLOSED). */
   closedAt: nullableIso,
-  /** Hidden from Khám phá ("đã ẩn khỏi Khám phá"). */
-  hiddenFromMarketplace: z.boolean().default(false),
-  /** "Tạm dừng" (Figma 10a) — no backend state exists yet. */
-  pausedAt: nullableIso,
   /**
    * `GET /forms/:id` (shared `formRejectionSchema`): the Admin rejection of a
    * survey closed by moderation ("Bị từ chối · Đã hoàn 120 điểm"), from its
@@ -63,8 +59,8 @@ const managementExtensions = {
 
 /**
  * VERIFIED `FormSummaryDto` (`GET /forms` → `forms.service.ts#listForms`,
- * with `closeKind`, `completedCompletions`, `escrowLocked` since Phase 5 M2)
- * + ASSUMED management fields.
+ * with `closeKind`, `completedCompletions`, `escrowLocked` since Phase 5 M2),
+ * read with neutral defaults for the optional management fields.
  */
 export const publisherFormSummarySchema = formSummarySchema.extend({
   closeKind: formSummarySchema.shape.closeKind.default(null),
@@ -83,7 +79,7 @@ export type PublisherFormList = z.infer<typeof publisherFormListSchema>;
 
 /**
  * VERIFIED `FormDetailDto` (`GET /forms/:id` → `forms.service.ts#getFormById`,
- * owner or Admin) + ASSUMED management fields and header facts.
+ * owner or Admin), read with neutral defaults for the optional management fields.
  */
 export const publisherFormSchema = formDetailSchema.extend({
   closeKind: formDetailSchema.shape.closeKind.unwrap().default(null),
@@ -91,10 +87,6 @@ export const publisherFormSchema = formDetailSchema.extend({
     schemaJson: z.object({ blocks: z.array(z.unknown()).optional() }).passthrough().nullable().optional(),
   }),
   ...managementExtensions,
-  /** ASSUMED: questions of the current version (Figma 17 "8 câu hỏi"); falls back to the block count. */
-  questionCount: count.nullable().default(null),
-  /** ASSUMED: targeting summary (Figma 10a "Marketing, QTKD · 18–25 tuổi"). */
-  audienceLabel: z.string().nullable().default(null),
 });
 export type PublisherForm = z.infer<typeof publisherFormSchema>;
 

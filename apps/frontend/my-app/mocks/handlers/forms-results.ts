@@ -271,7 +271,7 @@ export const formsResultsHandlers: RequestHandler[] = [
     });
   }),
 
-  // VERIFIED: GET /forms/:id/versions (FormVersionSummaryDto[], ascending) + ASSUMED stats.
+  // VERIFIED: GET /forms/:id/versions (FormVersionSummaryDto[], ascending).
   http.get(apiUrl("/forms/:id/versions"), async ({ params }) => {
     const forced = await applyScenario("forms-results");
     if (forced) return forced;
@@ -279,24 +279,14 @@ export const formsResultsHandlers: RequestHandler[] = [
     if ("error" in owned) return owned.error;
     const { form } = owned;
     return ok(
-      versionsOf(form.id).map((version) => {
-        const count = responsesOf(form.id, version.versionNumber).length;
-        return {
-          id: version.id,
-          formId: version.formId,
-          versionNumber: version.versionNumber,
-          isPublished: version.isPublished,
-          publishedAt: version.publishedAt,
-          createdAt: version.createdAt,
-          updatedAt: version.updatedAt,
-          submittedForReviewAt: version.submittedForReviewAt,
-          collectedFrom: version.collectedFrom,
-          collectedUntil: version.collectedUntil,
-          responseCount: count,
-          questionCount: form.type === "INTERNAL" ? version.blocks.length : null,
-          qualityStatus: count >= QUALITY_MINIMUM_RESPONSES ? "ENOUGH_DATA" : "NOT_ENOUGH_DATA",
-        };
-      }),
+      versionsOf(form.id).map((version) => ({
+        id: version.id,
+        formId: version.formId,
+        versionNumber: version.versionNumber,
+        isPublished: version.isPublished,
+        publishedAt: version.publishedAt,
+        createdAt: version.createdAt,
+      })),
     );
   }),
 

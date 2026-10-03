@@ -58,7 +58,7 @@ export function SurveyMeta({ effort, reward }: { effort: string | null; reward: 
 }
 
 /**
- * "Đọc đầy đủ" content. ASSUMED: the full notice text is not in Figma; it
+ * "Đọc đầy đủ" content. ASSUMED (design): the full notice text is not in Figma; it
  * restates page 14 plus what happens on "Không đồng ý".
  */
 export function FullNoticeBody({ version }: { version: number }) {

@@ -68,7 +68,7 @@ export function DisputesScreen() {
             onLoadMore={queue.loadMoreReports}
           />
         ) : !selected ? (
-          // ASSUMED empty state (not drawn).
+          // ASSUMED (design) empty state (not drawn).
           <section className="flex flex-col items-center gap-4 rounded-[22px] border border-line bg-surface px-6 py-12 text-center">
             <Mascot name="cheer" height={120} />
             <p className="text-body font-semibold text-ink">{EMPTY_TAB_COPY[queue.tab]}</p>
@@ -76,7 +76,7 @@ export function DisputesScreen() {
         ) : (
           <>
             {queue.cases.length > 1 ? (
-              // ASSUMED: Figma draws one case per tab; several open cases get a chooser.
+              // ASSUMED (design): Figma draws one case per tab; several open cases get a chooser.
               <nav aria-label="Các mục đang chờ" className="flex flex-wrap gap-2">
                 {queue.cases.map((item) => {
                   const current = item.id === selected.id;

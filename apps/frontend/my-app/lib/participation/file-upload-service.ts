@@ -34,7 +34,9 @@ import {
  * 3. `POST /storage/uploads/:id/finalize` `{}` → `storedObjectDtoSchema`:
  *    CLEAN (scanned, attachable) or REJECTED (malware); 400
  *    `STORAGE_INVALID_FILE` (size/type/signature mismatch), 503
- *    `STORAGE_SCANNER_OUTAGE` (kept QUARANTINED: finalize again). A gateway
+ *    `STORAGE_SCANNER_OUTAGE` (kept QUARANTINED: finalize again) or 503
+ *    `STORAGE_UNAVAILABLE` (storage unreachable before the claim: the object
+ *    stays INITIATED, finalize again; same retry and copy rules). A gateway
  *    error or timeout (500/502/504, lost response) is resolved by polling
  *    `GET /storage/objects/:id/status`, never by uploading again.
  * 4. `DELETE /storage/objects/:id` removes an unattached upload (204).

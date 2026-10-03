@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Response } from 'express';
+import { currentRequestId } from './request-context';
 import { createErrorEnvelope } from './response.envelope';
 import {
   EmailAlreadyRegisteredException,
@@ -107,6 +108,7 @@ import {
   StorageObjectNotCleanException,
   StorageUnauthorizedAccessException,
   StorageScannerOutageException,
+  StorageUnavailableException,
   StorageQuestionFullException,
 } from '../../modules/storage/application/exceptions/storage.exceptions';
 import {
@@ -461,7 +463,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
         questionId: exception.questionId,
         maxFiles: exception.maxFiles,
       };
-    } else if (exception instanceof StorageScannerOutageException) {
+    } else if (
+      exception instanceof StorageScannerOutageException ||
+      exception instanceof StorageUnavailableException
+    ) {
       status = HttpStatus.SERVICE_UNAVAILABLE;
       code = exception.code;
       message = exception.message;
@@ -638,7 +643,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       }
     } else if (exception instanceof Error) {
       this.logger.error(
-        `Unhandled error: ${exception.message}`,
+        `Unhandled error [requestId=${currentRequestId() ?? 'none'}]: ${exception.message}`,
         exception.stack,
       );
       message =
@@ -646,7 +651,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
           ? 'An unexpected error occurred.'
           : exception.message;
     } else {
-      this.logger.error('Unhandled unknown exception', exception);
+      this.logger.error(
+        `Unhandled unknown exception [requestId=${currentRequestId() ?? 'none'}]`,
+        exception,
+      );
     }
 
     if (

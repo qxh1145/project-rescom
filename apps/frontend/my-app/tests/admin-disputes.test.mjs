@@ -302,7 +302,7 @@ test("missing-code credit: a second credit is refused and the escrow is debited 
   const respondentKeys = rules.ledgerItemsFromRows("respondent", respondent.rows).map((item) => item.idempotencyKey);
   assert.ok(respondentKeys.includes(`internal-reward:${attemptId}`));
   const [row] = history.toHistoryRows(items, new Date(NOW));
-  assert.deepEqual([row.title, row.amount, row.direction, row.note], ["Trả thưởng khảo sát", -10, "out", "Thói quen đọc sách của sinh viên"]);
+  assert.deepEqual([row.title, row.amount, row.direction, row.note], ["Trả thưởng khảo sát", -10, "out", "Khảo sát của bạn"]);
 
   // A short escrow throws and changes nothing.
   const poor = { wallet: { available: 0, pending: 0, escrow: 5, frozen: 0, integrityHold: 0 }, rows: [] };

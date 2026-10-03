@@ -22,7 +22,7 @@ const HELP_ID = "completion-code-help";
 /**
  * Figma 5 desktop (62:2): steps panel | code panel. Mobile (62:359): opened
  * card, code card, 48h note, sticky confirm. Wrong code (62:784, mobile only
- * drawn — desktop ASSUMED to show the same alert in the code panel).
+ * drawn — desktop ASSUMED (design) to show the same alert in the code panel).
  */
 export function CodeEntryScreen({ attempt, state, onReport }: CodeEntryScreenProps) {
   // Validated against the shared Google Forms allowlist (`externalSurveyUrlSchema`).

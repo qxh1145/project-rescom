@@ -13,7 +13,7 @@ const WEEKDAY_LONG = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ
 /**
  * - done: at least one survey that day (flame on #F2B705)
  * - missed: a past day without a survey (#EEF1F6 disc)
- * - today: today, not counted yet (ASSUMED — not drawn)
+ * - today: today, not counted yet (ASSUMED (design) — not drawn)
  * - upcoming: later this week (dashed ring, Figma "CN")
  */
 export type StreakDayState = "done" | "missed" | "today" | "upcoming";
@@ -62,7 +62,7 @@ export function streakStatusLine(streak: { longest: number; countedToday: boolea
 
 /**
  * Bottom CTA caption: Figma "Làm 1 khảo sát vào Chủ nhật để lên 2 ngày" when
- * today already counts; otherwise the survey has to happen today (ASSUMED copy).
+ * today already counts; otherwise the survey has to happen today (ASSUMED (design) copy).
  */
 export function nextStreakHint(streak: { current: number; countedToday: boolean }, today: string): string {
   if (streak.countedToday) {

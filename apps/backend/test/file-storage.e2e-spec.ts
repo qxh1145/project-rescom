@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, Logger } from '@nestjs/common';
 import request from 'supertest';
 import {
   listUploadsResponseSchema,
@@ -123,10 +123,22 @@ describe('Story 5.3: File Storage & Validation E2E Tests', () => {
     await app.close();
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   beforeEach(() => {
     storageRepo.clear();
     malwareScanner.setSimulateOutage(false);
   });
+
+  /** The structured `storage.*` error events StorageService logged. */
+  function storageLogEvents(logSpy: jest.SpyInstance): unknown[] {
+    return logSpy.mock.calls
+      .map(([message]) => String(message))
+      .filter((message) => message.startsWith('{"event":"storage.'))
+      .map((message) => JSON.parse(message));
+  }
 
   /** Guest browser call: allowed Origin, JSON body (AD-20, review P12). */
   function initiate(body: object) {
@@ -343,8 +355,26 @@ describe('Story 5.3: File Storage & Validation E2E Tests', () => {
       const { objectId, storageKey } = initRes.body.data;
       putPdf(storageKey, 1024);
 
-      // 2. Finalize -> 503 Service Unavailable
-      await finalize(objectId).expect(503);
+      // 2. Finalize -> 503 Service Unavailable, alertable and correlated
+      // (IR.5 C3/C6): one structured event carrying the response's request id.
+      const logSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+      const outage = await finalize(objectId).expect(503);
+      expect(outage.body.error.code).toBe('STORAGE_SCANNER_OUTAGE');
+      expect(outage.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+      expect(outage.body.error.requestId).toBe(outage.headers['x-request-id']);
+      expect(storageLogEvents(logSpy)).toEqual([
+        {
+          event: 'storage.scan_outage',
+          objectId,
+          requestId: outage.headers['x-request-id'],
+          reason: expect.any(String),
+        },
+      ]);
+      expect(JSON.stringify(storageLogEvents(logSpy))).not.toContain(
+        storageKey,
+      );
 
       // 3. Status check -> QUARANTINED / OUTAGE
       const statusRes = await request(app.getHttpServer())
@@ -360,6 +390,63 @@ describe('Story 5.3: File Storage & Validation E2E Tests', () => {
         .expect(403);
     });
   });
+  describe('IR.5 C2/C6: private storage outage fails closed', () => {
+    it('answers 503 STORAGE_UNAVAILABLE, keeps the object INITIATED and stays retryable', async () => {
+      const { objectId, storageKey } = (
+        await initiate(uploadInput()).expect(201)
+      ).body.data;
+      putPdf(storageKey, 1024);
+      const metadataSpy = jest
+        .spyOn(s3Service, 'getObjectMetadata')
+        .mockRejectedValueOnce(new Error('connect ECONNREFUSED 127.0.0.1:1'));
+      const logSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+
+      const res = await finalize(objectId)
+        .set('X-Request-Id', '7d5b0b32-6a43-4d63-9d7e-2f0e8f3a6c11')
+        .expect(503);
+
+      expect(metadataSpy).toHaveBeenCalledTimes(1);
+      expect(res.body.error.code).toBe('STORAGE_UNAVAILABLE');
+      // A well-formed inbound id is honoured end to end.
+      expect(res.headers['x-request-id']).toBe(
+        '7d5b0b32-6a43-4d63-9d7e-2f0e8f3a6c11',
+      );
+      expect(res.body.error.requestId).toBe(
+        '7d5b0b32-6a43-4d63-9d7e-2f0e8f3a6c11',
+      );
+      expect(storageLogEvents(logSpy)).toEqual([
+        {
+          event: 'storage.unavailable',
+          objectId,
+          requestId: '7d5b0b32-6a43-4d63-9d7e-2f0e8f3a6c11',
+          reason: expect.any(String),
+        },
+      ]);
+
+      const status = await request(app.getHttpServer())
+        .get(`/api/storage/objects/${objectId}/status`)
+        .expect(200);
+      expect(status.body.data.status).toBe('INITIATED');
+      await request(app.getHttpServer())
+        .get(`/api/storage/objects/${objectId}/download-url`)
+        .expect(403);
+
+      // Storage is back: the same object finalizes.
+      const retried = await finalize(objectId).expect(200);
+      expect(retried.body.data.status).toBe('CLEAN');
+    });
+
+    it('replaces a malformed inbound X-Request-Id', async () => {
+      const res = await finalize('00000000-0000-4000-8000-000000000000')
+        .set('X-Request-Id', 'not a uuid; DROP TABLE')
+        .expect(404);
+      expect(res.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+      expect(res.body.error.requestId).toBe(res.headers['x-request-id']);
+    });
+  });
+
   describe('Phase 7: full question and re-adoptable uploads', () => {
     it('refuses an upload past maxFiles with 409 STORAGE_QUESTION_FULL and details', async () => {
       for (let i = 0; i < 10; i += 1) {

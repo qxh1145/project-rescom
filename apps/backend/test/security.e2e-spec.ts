@@ -138,6 +138,7 @@ describe('Security & API Foundation E2E Tests (Story 1.6)', () => {
         error: {
           code: 'RATE_LIMIT_EXCEEDED',
           message: 'Too many requests. Please try again later.',
+          requestId: throttled.headers['x-request-id'],
         },
         meta: {},
       });

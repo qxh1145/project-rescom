@@ -13,7 +13,6 @@ import {
   changeVerb,
   draftCaption,
   publishedCaption,
-  qualityStatusLabel,
   type VersionChange,
 } from "@/lib/forms/results-versions";
 import { ResultsEmpty, ResultsError, ResultsLoading } from "../../responses/components/ResultsStatus";
@@ -102,17 +101,6 @@ function Changes({
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-1 rounded-control bg-surface-muted px-3.5 py-3">
-      <span className="text-[12px] font-semibold text-ink-muted">{label}</span>
-      <span className="text-[20px] font-extrabold text-ink">{value}</span>
-    </div>
-  );
-}
-
-const dash = (value: number | null | undefined) => (value === null || value === undefined ? "—" : String(value));
-
 /** Figma 17a "Lịch sử phiên bản": draft on top (changes vs the published one), published versions locked. */
 export function VersionsScreen() {
   const { id } = useParams<{ id: string }>();
@@ -157,11 +145,6 @@ export function VersionsScreen() {
                       </>
                     }
                   />
-                  <div className="grid grid-cols-3 gap-2 lg:gap-3">
-                    <Stat label="Câu trả lời" value={dash(version.responseCount)} />
-                    <Stat label="Số câu hỏi" value={dash(version.questionCount)} />
-                    <Stat label="Chất lượng" value={version.qualityStatus ? qualityStatusLabel(version.qualityStatus) : "—"} />
-                  </div>
                 </li>
               ) : (
                 <li
@@ -198,16 +181,6 @@ export function VersionsScreen() {
                       onRetry={reloadChanges}
                     />
                   ) : null}
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    <Tag tone="neutral" className="text-[13px] text-ink-strong">
-                      Chất lượng: {qualityStatusLabel(version.qualityStatus ?? null).toLowerCase()}
-                    </Tag>
-                    <span className="text-caption text-ink-muted">
-                      {version.responseCount
-                        ? `${version.responseCount} câu trả lời trên v${version.versionNumber}.`
-                        : `Chưa có câu trả lời nào trên v${version.versionNumber}.`}
-                    </span>
-                  </div>
                 </li>
               ),
             )}

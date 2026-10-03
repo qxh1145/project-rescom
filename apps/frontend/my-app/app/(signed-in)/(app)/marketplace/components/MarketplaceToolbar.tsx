@@ -148,7 +148,7 @@ export function MarketplaceToolbar({ filters, setFilters, resetFilters }: Market
         </button>
       </div>
 
-      {/* ASSUMED: mobile filter sheet (not drawn) — same controls as the desktop sidebar. */}
+      {/* ASSUMED (design): mobile filter sheet (not drawn) — same controls as the desktop sidebar. */}
       <Dialog open={filtersOpen} onClose={() => setFiltersOpen(false)} labelledBy="marketplace-filters-title" width={480}>
         <div className="flex flex-col gap-6 p-6">
           <div className="flex items-center justify-between gap-3">

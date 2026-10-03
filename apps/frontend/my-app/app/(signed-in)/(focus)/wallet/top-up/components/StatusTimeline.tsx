@@ -24,7 +24,7 @@ function Marker({ state }: { state: TimelineStep["state"] }) {
     );
   }
   if (state === "failed") {
-    // ASSUMED: rejection is not drawn in Figma 14c.
+    // ASSUMED (design): rejection is not drawn in Figma 14c.
     return (
       <span className="inline-flex size-7 items-center justify-center rounded-full bg-danger text-primary-foreground">
         <Icon name="x" size={16} />

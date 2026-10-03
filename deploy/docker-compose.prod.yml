@@ -44,7 +44,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       minio-init: { condition: service_completed_successfully }
-      clamav: { condition: service_started }
+      clamav: { condition: service_healthy }
 
   postgres:
     image: postgres:15-alpine
@@ -93,8 +93,21 @@ services:
   clamav:
     image: clamav/clamav-debian:stable
     restart: always
+    environment:
+      # clamd's own default (25M) is below the 50 MB upload limit; larger
+      # INSTREAM payloads would be refused as an outage (IR.5 C4, DF9).
+      CLAMD_CONF_StreamMaxLength: 100M
     volumes:
       - clamav_data:/var/lib/clamav
+    healthcheck:
+      # clamdcheck.sh (shipped in the image) pings clamd on 3310. Loading
+      # the signature database takes minutes on a cold volume, hence the
+      # long start_period; the backend waits for it (depends_on above).
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 360s
 
 volumes:
   pgdata:

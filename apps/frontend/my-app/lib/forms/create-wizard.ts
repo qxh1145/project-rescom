@@ -297,7 +297,7 @@ export function audienceSummaryLine(draft: GoogleFormWizardDraft): string {
 // Step 3 · số mẫu & điểm (FR-14 band, escrow = sample × reward)
 // ---------------------------------------------------------------------------
 
-/** ASSUMED: "Hạn thu thập" choices (Figma 9c "14 ngày · đến 10/10/2026"). */
+/** ASSUMED (design): "Hạn thu thập" choices (Figma 9c "14 ngày · đến 10/10/2026"). */
 export const COLLECTION_DAY_CHOICES = [7, 14, 30] as const;
 export const DEFAULT_COLLECTION_DAYS = 14;
 

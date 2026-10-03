@@ -20,9 +20,9 @@ import { apiRequest } from "../api/client.ts";
  * VERIFIED `lockReason` (shared `adminUserSchema`, mock-off plan 4.6): the reason of
  * the latest lock, read from the identity audit log; null for active accounts.
  *
- * ASSUMED API CONTRACT extensions (the backend user carries only id, email, role,
- * status, dates and `lockReason`): the Figma columns below are optional, so the
- * VERIFIED payload still parses and the screen shows "—" for what is missing.
+ * ASSUMED (design) display extensions, NOT emitted by the backend (its user carries only
+ * id, email, role, status, dates and `lockReason`): the Figma columns below are optional,
+ * so the VERIFIED payload parses and the screen shows "—". Outside IR.5 Q2.
  */
 
 export const ADMIN_USERS_PAGE_SIZE = 20;

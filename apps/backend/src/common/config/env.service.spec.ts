@@ -11,7 +11,9 @@ describe('EnvService', () => {
     FRONTEND_ORIGINS: 'http://localhost:3000,http://127.0.0.1:3000',
   };
   // Story IR.4b B-T4: production refuses to start without SMTP email.
+  // IR.5 E3.1: production also requires the scheduler, so it rides along.
   const productionEmailEnv = {
+    SCHEDULER_ENABLED: 'true',
     EMAIL_DELIVERY_MODE: 'smtp',
     EMAIL_FROM: 'Rescom <no-reply@rescom.io>',
     EMAIL_APP_BASE_URL: 'https://app.rescom.io',
@@ -654,6 +656,39 @@ describe('EnvService', () => {
         ).toBe(expected);
       },
     );
+
+    it('refuses SCHEDULER_ENABLED=false (or unset) in production (IR.5 E3.1)', () => {
+      const production = {
+        ...validBaseEnv,
+        NODE_ENV: 'production',
+        TRUST_PROXY_HOPS: '1',
+        AUTH_SECRET_PROTECTION_KEY:
+          'super_secret_protection_key_at_least_32_chars!',
+        COMPLETION_CODE_HMAC_SECRET:
+          'real_completion_code_hmac_secret_32_chars!',
+        STORAGE_CAPABILITY_SECRET: 'real_storage_capability_secret_32_chars!',
+        GOOGLE_CLIENT_ID: 'real-client-id',
+        GOOGLE_CLIENT_SECRET: 'real-client-secret',
+        FRONTEND_ORIGINS: 'https://app.rescom.io',
+        GOOGLE_REDIRECT_URI: 'https://api.rescom.io/auth/google/callback',
+        AUTH_FRONTEND_SUCCESS_URL: 'https://app.rescom.io/callback',
+        AUTH_FRONTEND_ERROR_URL: 'https://app.rescom.io/error',
+        STORAGE_ACCESS_KEY_ID: 'production-storage-key',
+        STORAGE_SECRET_ACCESS_KEY: 'production-storage-secret',
+        TOPUP_BANK_ACCOUNT_NUMBER: '1234567890',
+        TOPUP_BANK_ACCOUNT_NAME: 'CONG TY RESCOM',
+        PARTICIPATION_RATE_LIMIT_POLICY_VERSION: 'participation-rate-limit-v1',
+        ...productionEmailEnv,
+      };
+      expect(new EnvService(production).schedulerEnabled).toBe(true);
+      expect(
+        () => new EnvService({ ...production, SCHEDULER_ENABLED: 'false' }),
+      ).toThrow(/SCHEDULER_ENABLED must be true in production/);
+      const { SCHEDULER_ENABLED: _unset, ...unset } = production;
+      expect(() => new EnvService(unset)).toThrow(
+        /SCHEDULER_ENABLED must be true in production/,
+      );
+    });
 
     it('rejects an invalid flag and out-of-range bounds', () => {
       expect(

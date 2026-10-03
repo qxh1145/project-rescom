@@ -22,7 +22,6 @@ function entry(journalId, accountClass, amount, key, extra = {}) {
     idempotencyKey: key,
     createdAt: extra.createdAt ?? "2026-09-26T08:10:00.000Z",
     reversesJournalId: extra.reversesJournalId ?? null,
-    surveyTitle: extra.surveyTitle,
   };
 }
 
@@ -60,13 +59,12 @@ test("wallet history rows (Figma 7)", async (t) => {
       [
         entry(journal, "PENDING", 18, "external-completion:attempt-1", {
           createdAt,
-          surveyTitle: "Thói quen dùng AI trong học tập của sinh viên IT",
         }),
       ],
       NOW,
     );
     assert.equal(row.title, "Thưởng khảo sát");
-    assert.equal(row.note, "Thói quen dùng AI trong học tập của sinh viên IT");
+    assert.equal(row.note, "Khảo sát");
     assert.equal(row.pendingHoursLeft, 31);
     assert.equal(history.statusLabel(row), "Chờ duyệt · còn 31 giờ");
     assert.equal(history.nextPendingReleaseHours([row]), 31);
@@ -161,13 +159,13 @@ test("wallet history: direction follows the caller's own entries", async (t) => 
   await t.test("a publisher's survey payout (only their Ký quỹ entry) is spending", () => {
     for (const key of ["internal-reward:response-1", "external-completion:attempt-9", "integrity-hold:response-2"]) {
       const [row] = history.toHistoryRows(
-        [entry(uuid(), "ESCROW", -12, key, { surveyTitle: "Khảo sát của tôi", description: "Survey reward credit: response-1" })],
+        [entry(uuid(), "ESCROW", -12, key, { description: "Survey reward credit: response-1" })],
         NOW,
       );
       assert.equal(row.direction, "out", key);
       assert.equal(row.amount, -12, key);
       assert.equal(row.title, "Trả thưởng khảo sát", key);
-      assert.equal(row.note, "Khảo sát của tôi", key);
+      assert.equal(row.note, "Khảo sát của bạn", key);
       assert.equal(row.bucket, "ESCROW", key);
       assert.equal(row.pendingHoursLeft, null, key);
       assert.equal(row.pendingDue, false, key);
@@ -367,18 +365,13 @@ test("mock ledger (MSW) is backend-shaped: the release is its own journal", () =
   assert.equal(rows[2].pendingHoursLeft, null);
 });
 
-test("wallet view schema accepts the verified DTO with and without surveyTitle", () => {
+test("wallet view schema is the shared DTO: parses a verified response, rejects an inconsistent total", () => {
   const base = {
     balance: { available: 112, pending: 18, escrow: 0, frozen: 0, integrityHold: 0, total: 130 },
     accounts: [],
   };
   const item = entry(uuid(), "PENDING", 18, "external-completion:a");
-  delete item.surveyTitle;
   assert.equal(walletViewSchema.safeParse({ ...base, transactions: [item] }).success, true);
-  assert.equal(
-    walletViewSchema.safeParse({ ...base, transactions: [{ ...item, surveyTitle: "Khảo sát" }] }).success,
-    true,
-  );
   assert.equal(
     walletViewSchema.safeParse({ ...base, balance: { ...base.balance, total: 1 }, transactions: [] }).success,
     false,

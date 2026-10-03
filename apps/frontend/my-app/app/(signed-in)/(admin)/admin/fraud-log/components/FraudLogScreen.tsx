@@ -95,7 +95,7 @@ export function FraudLogScreen({ urlUserId }: { urlUserId: string | null }) {
       <section aria-label="Nhật ký vi phạm" className="mt-4 rounded-[22px] border border-line bg-surface px-6 pt-3 pb-3.5">
         <FraudLogTable items={items} loading={state.loading} />
         {state.hasMore ? (
-          // ASSUMED (not drawn): 100 entries per page, newest first.
+          // ASSUMED (design) (not drawn): 100 entries per page, newest first.
           <div className="flex flex-col items-center gap-3 border-t border-line-subtle pt-3">
             {state.loadMoreFailed ? (
               <Alert tone="danger" className="w-full">
@@ -134,7 +134,7 @@ export function FraudLogScreen({ urlUserId }: { urlUserId: string | null }) {
         );
       })}
       {state.data && repeatAccounts.length === 0 ? (
-        // ASSUMED: policy note when no account is flagged (copy from the overview, 62:4179).
+        // ASSUMED (design): policy note when no account is flagged (copy from the overview, 62:4179).
         <p className="mt-4 text-caption-relaxed text-ink-muted">
           Hệ thống chỉ gắn cờ tài khoản vi phạm lặp lại. Khoá tài khoản luôn do Admin quyết định.
         </p>

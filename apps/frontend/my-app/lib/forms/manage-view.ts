@@ -48,21 +48,19 @@ interface ListRowFacts extends StatusFacts {
   createdAt: string;
   deadlineAt: string | null;
   closedAt: string | null;
-  hiddenFromMarketplace: boolean;
 }
 
 /**
  * Desktop row subtitle (Figma 63:177, 63:188, 63:202):
  * "Google Forms · gửi 26/09 19:30", "Google Forms · hạn 05/10 · còn 9 ngày",
- * "Form Builder · kết thúc 22/09 · đã ẩn khỏi Khám phá".
+ * "Form Builder · kết thúc 22/09".
  */
 export function listRowMeta(form: ListRowFacts, now: number): string {
   const source = sourceLabel(form.type);
   switch (statusViewOf(form)) {
     case "PENDING_REVIEW":
       return `${source} · gửi ${formatShortDateTime(form.submittedAt ?? form.createdAt)}`;
-    case "RUNNING":
-    case "PAUSED": {
+    case "RUNNING": {
       const days = daysUntil(form.deadlineAt, now);
       return days === null
         ? `${source} · không giới hạn thời gian`
@@ -71,7 +69,7 @@ export function listRowMeta(form: ListRowFacts, now: number): string {
     case "FULL":
     case "ENDED": {
       const ended = form.closedAt ? ` · kết thúc ${formatDayMonth(form.closedAt)}` : "";
-      return `${source}${ended}${form.hiddenFromMarketplace ? " · đã ẩn khỏi Khám phá" : ""}`;
+      return `${source}${ended}`;
     }
     case "DRAFT":
     case "REJECTED":
@@ -83,22 +81,19 @@ interface HeaderFacts extends StatusFacts {
   type: FormTypeEnum;
   rewardPerResponse: number;
   estimatedDurationMinutes?: number | null;
-  questionCount: number | null;
-  audienceLabel: string | null;
   closedAt: string | null;
   currentVersion: { schemaJson?: { blocks?: unknown[] } | null };
 }
 
-/** Question count: the ASSUMED `questionCount`, else the current version's blocks. */
-export function questionCountOf(form: Pick<HeaderFacts, "questionCount" | "currentVersion">): number | null {
-  if (form.questionCount !== null) return form.questionCount;
+/** Question count: the block count of the current version (the backend sends no separate count). */
+export function questionCountOf(form: Pick<HeaderFacts, "currentVersion">): number | null {
   const blocks = form.currentVersion.schemaJson?.blocks;
   return blocks && blocks.length > 0 ? blocks.length : null;
 }
 
 /**
  * Survey header meta line. Desktop (Figma 10a / 17):
- * "Google Forms · 8 phút · 10 điểm/lượt · Marketing, QTKD · 18–25 tuổi",
+ * "Google Forms · 8 phút · 10 điểm/lượt",
  * "Form Builder · 8 câu hỏi · 6 phút · 12 điểm/lượt · kết thúc 22/09/2026".
  * `short` = mobile subtitle "Google Forms · 8 phút · 10 điểm/lượt".
  */
@@ -109,7 +104,6 @@ export function headerMeta(form: HeaderFacts, short = false): string {
   if (form.estimatedDurationMinutes) parts.push(`${form.estimatedDurationMinutes} phút`);
   parts.push(`${form.rewardPerResponse} điểm/lượt`);
   if (!short) {
-    if (form.audienceLabel) parts.push(form.audienceLabel);
     const view = statusViewOf(form);
     if ((view === "FULL" || view === "ENDED") && form.closedAt) parts.push(`kết thúc ${formatFullDate(form.closedAt)}`);
   }

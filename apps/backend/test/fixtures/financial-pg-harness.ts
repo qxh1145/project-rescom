@@ -34,6 +34,8 @@ export const databaseUrl =
   explicitUrl ??
   'postgresql://rescom_admin:rescom_password@localhost:5433/rescom_financial_test?schema=public';
 
+const defaultDatabaseUrl = databaseUrl;
+
 /** An unreachable DB is a hard failure when the URL is explicit or in CI. */
 export const requireDb = Boolean(explicitUrl || process.env.CI);
 
@@ -44,7 +46,7 @@ if (!new URL(databaseUrl).pathname.slice(1).endsWith('_test')) {
 }
 
 /** Synchronous reachability probe, so `it.skip` can be chosen up front. */
-export function probeDatabase(): boolean {
+export function probeDatabase(url: string = databaseUrl): boolean {
   try {
     execFileSync(
       process.execPath,
@@ -56,7 +58,7 @@ export function probeDatabase(): boolean {
       ],
       {
         cwd: backendDir,
-        env: { ...process.env, PROBE_URL: databaseUrl },
+        env: { ...process.env, PROBE_URL: url },
         stdio: 'pipe',
         timeout: 30_000,
       },
@@ -90,7 +92,18 @@ export interface Harness {
   close(): Promise<void>;
 }
 
-export async function bootHarness(): Promise<Harness> {
+export interface BootOptions {
+  /** A different scratch database (must end in `_test`), e.g. the real-storage suite's. */
+  databaseUrl?: string;
+  /** Extra EnvService values, e.g. an unreachable MALWARE_SCANNER_PORT. */
+  env?: Record<string, unknown>;
+}
+
+export async function bootHarness(options: BootOptions = {}): Promise<Harness> {
+  const databaseUrl = options.databaseUrl ?? defaultDatabaseUrl;
+  if (!new URL(databaseUrl).pathname.slice(1).endsWith('_test')) {
+    throw new Error('The harness only runs against a database ending in _test');
+  }
   const prismaCli = require.resolve('prisma/build/index.js', {
     paths: [backendDir],
   });
@@ -118,6 +131,7 @@ export async function bootHarness(): Promise<Harness> {
     JWT_ACCESS_TTL_SECONDS: 900,
     BCRYPT_ROUNDS: 12,
     FRONTEND_ORIGINS: ALLOWED_ORIGIN,
+    ...options.env,
   });
   const moduleFixture = await Test.createTestingModule({
     imports: [AppModule],

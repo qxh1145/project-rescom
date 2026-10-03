@@ -160,9 +160,14 @@ describe('Scheduler on a clone of the seeded dev database (IR.2b, plan 0.3)', ()
       expect(after.notifications.REWARD_EARNED ?? 0).toBe(
         (before.notifications.REWARD_EARNED ?? 0) + newRewardJournals,
       );
-      // Unsubscribed types: untouched (never claimed).
+      // Unsubscribed types: untouched (never claimed). Subscribed: the reward
+      // handler and the IR.4b email-delivery handler.
+      const subscribed = [
+        'InternalRewardRequested',
+        'NotificationEmailRequested',
+      ];
       for (const row of after.outbox.filter(
-        (r) => r.eventType !== 'InternalRewardRequested',
+        (r) => !subscribed.includes(r.eventType),
       )) {
         expect(row.status).toBe('PENDING');
         expect(row.attempts).toBe(0);

@@ -95,7 +95,7 @@ export function rejectionImpactWarning(survey: { isResubmission: boolean; versio
   return `Đây là phiên bản chỉnh sửa v${survey.versionNumber} của một khảo sát đã từng được duyệt. Từ chối sẽ đóng vĩnh viễn toàn bộ khảo sát — kể cả phiên bản đã duyệt trước đó${previous} — và người đăng không thể mở lại.`;
 }
 
-/** ASSUMED confirmation copy after a decision (not drawn in Figma). */
+/** ASSUMED (design) confirmation copy after a decision (not drawn in Figma). */
 export function approvedNotice(title: string): string {
   return `Đã duyệt “${title}”. Khảo sát đã lên Khám phá và người đăng đã được báo.`;
 }

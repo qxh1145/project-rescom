@@ -49,7 +49,7 @@ function AdminFrame({ children }: { children: ReactNode }) {
 
   return (
     <AdminCountsContext.Provider value={value}>
-      {/* ASSUMED: the console is drawn at 1440 only; below lg the sidebar stacks on top. */}
+      {/* ASSUMED (design): the console is drawn at 1440 only; below lg the sidebar stacks on top. */}
       <div className="flex min-h-dvh flex-col bg-surface-muted lg:flex-row">
         <AdminSidebar counts={data} />
         <div className="flex min-w-0 flex-1 flex-col">{children}</div>
@@ -104,7 +104,7 @@ function AdminSidebar({ counts }: { counts: AdminQueueCounts | undefined }) {
 }
 
 /**
- * ASSUMED: Figma 11 draws no account block; the admin's email and "Đăng xuất"
+ * ASSUMED (design): Figma 11 draws no account block; the admin's email and "Đăng xuất"
  * sit at the bottom of the sidebar (a row under the nav below lg).
  */
 function AdminAccount() {

@@ -152,7 +152,6 @@ export function syncPublisherForm(draft: MockFormDraft): void {
     createdAt: draft.createdAt,
     publishedAt: null,
     closedAt: null,
-    hiddenFromMarketplace: true,
     rejection: null,
     ...summary,
   });
@@ -248,9 +247,7 @@ export function ensureDemoRunningForm(ownerEmail: string): void {
     form.completedCompletions = completed;
     form.publishedAt = hoursAgo(24 * 2);
     form.deadlineAt = hoursAgo(-24 * 7);
-    form.hiddenFromMarketplace = false;
     form.questionCount = blocks.length;
-    form.audienceLabel = "Mọi sinh viên";
   });
   demoRunningForms.update((all) => {
     all[ownerEmail] = draft.id;

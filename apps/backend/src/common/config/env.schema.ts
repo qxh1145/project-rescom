@@ -72,7 +72,11 @@ function booleanEnv(defaultValue: boolean) {
 // enough to pass the length checks, so production refuses them by prefix.
 // `change_?me` also catches the CHANGE_ME* values of deploy/.env.prod.example.
 const PLACEHOLDER_SECRET_PATTERN = /^(replace_with_|change_?me|example)/i;
-const DEFAULT_CREDENTIAL_VALUES = ['minioadmin', 'rescom_password', 'change_me'];
+const DEFAULT_CREDENTIAL_VALUES = [
+  'minioadmin',
+  'rescom_password',
+  'change_me',
+];
 
 function isPlaceholderSecret(value: string | undefined): boolean {
   return value !== undefined && PLACEHOLDER_SECRET_PATTERN.test(value.trim());
@@ -402,6 +406,18 @@ export const envSchema = z
           path: ['TRUST_PROXY_HOPS'],
           message:
             'TRUST_PROXY_HOPS must explicitly trust the production reverse proxy',
+        });
+      }
+
+      // IR.5 E3.1 (AD-5 amendment): the single production replica owns the
+      // scheduler and Outbox dispatcher; without it nothing matures, expires
+      // or sends email.
+      if (!data.SCHEDULER_ENABLED) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['SCHEDULER_ENABLED'],
+          message:
+            'SCHEDULER_ENABLED must be true in production: the single API replica owns the scheduler and Outbox dispatcher',
         });
       }
 

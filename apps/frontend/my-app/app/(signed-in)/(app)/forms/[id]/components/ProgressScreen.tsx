@@ -67,7 +67,7 @@ function MobileStatusActions({ form, view }: { form: PublisherForm; view: Publis
   const id = encodeURIComponent(form.id);
   const button =
     "inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-field border border-line-strong bg-surface text-label font-bold text-ink disabled:opacity-60";
-  if (view === "RUNNING" || view === "PAUSED") {
+  if (view === "RUNNING") {
     return (
       <div className="mt-3.5 flex gap-2">
         {canEditLive(form) ? (

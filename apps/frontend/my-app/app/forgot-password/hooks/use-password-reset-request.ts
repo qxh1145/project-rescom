@@ -11,7 +11,7 @@ export type PasswordResetResult =
   | { ok: false; error: AuthErrorMessage };
 
 /**
- * Sends `POST /auth/password/forgot` (ASSUMED API CONTRACT) for 15b (first
+ * Sends `POST /auth/password/forgot` (VERIFIED, `auth.controller.ts`) for 15b (first
  * request) and 15c ("Gửi lại email"). Validation uses the shared email rule.
  */
 export function usePasswordResetRequest() {

@@ -78,9 +78,9 @@ export type CodeLockReason = "attempt" | "account-limit";
 export type GoogleFormScreen =
   | { kind: "redirect"; href: string }
   | { kind: "form" }
-  /** Figma 5c (`attempt`) or the ASSUMED account+version limit screen. */
+  /** Figma 5c (`attempt`) or the ASSUMED (design) account+version limit screen. */
   | { kind: "locked"; reason: CodeLockReason }
-  /** ASSUMED (not drawn): the 30-minute reservation ran out or the attempt was cancelled. */
+  /** ASSUMED (design) (not drawn): the 30-minute reservation ran out or the attempt was cancelled. */
   | { kind: "closed"; reason: "expired" | "cancelled" };
 
 export function screenForAttempt(

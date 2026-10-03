@@ -150,6 +150,12 @@ test("upload failures read in Vietnamese; only a scanner outage retries finalize
   assert.match(rules.uploadErrorMessage(new ApiError({ kind: "http", status: 429, message: "x", retryAfterSeconds: 9 })), /9 giây/);
   assert.equal(rules.uploadErrorMessage(new Error("boom")), rules.UPLOAD_MESSAGES.generic);
   assert.equal(rules.isRetryableFinalize(http(503, "STORAGE_SCANNER_OUTAGE")), true);
+  // IR.5 C2: storage unreachable before the scan (503 STORAGE_UNAVAILABLE) is retried like a scanner outage, with its own copy.
+  assert.equal(rules.uploadErrorMessage(http(503, rules.STORAGE_UNAVAILABLE_CODE)), rules.UPLOAD_MESSAGES.storageUnavailable);
+  assert.equal(rules.isRetryableFinalize(http(503, rules.STORAGE_UNAVAILABLE_CODE)), true);
+  assert.equal(rules.isScannerOutage(http(503, rules.STORAGE_UNAVAILABLE_CODE)), true);
+  assert.equal(rules.outageExhaustedMessage(http(503, rules.STORAGE_UNAVAILABLE_CODE)), rules.UPLOAD_MESSAGES.storageDown);
+  assert.equal(rules.outageExhaustedMessage(http(503, "STORAGE_SCANNER_OUTAGE")), rules.UPLOAD_MESSAGES.scannerDown);
   assert.equal(rules.isRetryableFinalize(http(400, "STORAGE_INVALID_FILE")), false);
   for (const status of [500, 502, 504]) assert.equal(rules.isRetryableFinalize(http(status, null)), true);
   assert.match(rules.uploadErrorMessage(new ApiError({ kind: "http", status: 409, code: "STORAGE_QUESTION_FULL", message: "x", details: { questionId: "q", maxFiles: 2 } })), /tối đa 2 tệp.*xoá bớt/);
@@ -237,6 +243,20 @@ test("pipeline failures keep the stage and the object to retry or delete", async
       },
     }),
     (error) => error.stage === "scanning" && error.objectId === objectId && rules.isRetryableFinalize(error.failure),
+  );
+  await assert.rejects(
+    service.uploadQuestionFile({ attemptId: randomUUID(), block, file }, {
+      initiate: initiated,
+      put,
+      finalize: async () => {
+        throw http(503, rules.STORAGE_UNAVAILABLE_CODE);
+      },
+    }),
+    (error) =>
+      error.stage === "scanning" &&
+      error.objectId === objectId &&
+      rules.isRetryableFinalize(error.failure) &&
+      rules.uploadErrorMessage(error.failure) === rules.UPLOAD_MESSAGES.storageUnavailable,
   );
   await assert.rejects(
     service.uploadQuestionFile({ attemptId: randomUUID(), block, file }, {

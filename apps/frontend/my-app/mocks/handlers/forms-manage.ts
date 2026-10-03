@@ -69,11 +69,8 @@ function managementFields(form: MockPublisherForm) {
     completedCompletions: form.completedCompletions,
     escrowLocked: form.escrowLocked,
     submittedAt: form.submittedAt,
-    publishedAt: form.publishedAt,
     deadlineAt: form.deadlineAt,
     closedAt: form.closedAt,
-    hiddenFromMarketplace: form.hiddenFromMarketplace,
-    pausedAt: form.pausedAt ?? null,
     // Shared `formRejectionSchema` (backend `SurveyModerationDecision`); the mock store keeps its own names.
     rejection: form.rejection
       ? { reason: form.rejection.reason, refundAmount: form.rejection.refundedPoints, decidedAt: form.rejection.rejectedAt ?? form.closedAt ?? form.createdAt }
@@ -83,9 +80,9 @@ function managementFields(form: MockPublisherForm) {
 }
 
 const lastUpdate = (form: MockPublisherForm) =>
-  form.pausedAt ?? form.closedAt ?? form.publishedAt ?? form.submittedAt ?? form.createdAt;
+  form.closedAt ?? form.publishedAt ?? form.submittedAt ?? form.createdAt;
 
-/** VERIFIED `FormSummaryDto` + ASSUMED management fields. */
+/** VERIFIED `FormSummaryDto` (shared `formSummarySchema`). */
 function toSummary(form: MockPublisherForm, publisherId: string) {
   return {
     id: form.id,
@@ -138,7 +135,7 @@ function createdFieldsOf(form: MockPublisherForm) {
 }
 
 /**
- * VERIFIED `FormDetailDto` + ASSUMED management fields. Exported so another
+ * VERIFIED `FormDetailDto`. Exported so another
  * `GET /forms/:id` handler (e.g. the Form Builder's, registered earlier) can
  * spread it and keep the survey header fields.
  */
@@ -160,8 +157,6 @@ export function toDetail(form: MockPublisherForm, publisherId: string) {
       publishedAt: form.publishedAt,
       createdAt: form.createdAt,
     },
-    questionCount: form.questionCount ?? null,
-    audienceLabel: form.audienceLabel ?? null,
   };
 }
 
@@ -319,8 +314,6 @@ export const formsManageHandlers: RequestHandler[] = [
       draft.closedAt = nowIso();
       draft.closeKind = "OWNER";
       draft.escrowLocked = 0;
-      draft.hiddenFromMarketplace = true;
-      draft.pausedAt = null;
     });
     if (findSurvey(form.id)) updateSurvey(form.id, (survey) => void (survey.status = "CLOSED"));
     return ok(toDetail(updated ?? form, user.id));
@@ -381,7 +374,6 @@ export const formsManageHandlers: RequestHandler[] = [
       draft.expectedCompletions += added;
       draft.escrowLocked += cost;
       draft.closedAt = null;
-      draft.hiddenFromMarketplace = false;
       if (deadlineAt !== undefined) draft.deadlineAt = deadlineAt;
     });
     if (findSurvey(form.id)) {
@@ -432,8 +424,6 @@ export const formsManageHandlers: RequestHandler[] = [
     const updated = updatePublisherForm(form.id, (draft) => {
       draft.status = "DRAFT";
       draft.versionNumber = versionNumber;
-      draft.pausedAt = null;
-      draft.hiddenFromMarketplace = true;
       draft.submittedAt = null;
     });
     // The builder answers `GET /forms/:id` from its own draft: move it to vN+1 too.

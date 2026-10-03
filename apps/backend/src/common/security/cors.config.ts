@@ -23,6 +23,7 @@ export function createCorsOptions(envService: EnvService): CorsOptions {
     ],
     exposedHeaders: [
       'Retry-After',
+      'X-Request-Id',
       'X-RateLimit-Limit',
       'X-RateLimit-Remaining',
       'X-RateLimit-Reset',

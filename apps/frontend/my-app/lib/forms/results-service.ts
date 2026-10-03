@@ -1,6 +1,6 @@
 import {
   formBlockTypeEnum,
-  formVersionSummarySchema as sharedFormVersionSummarySchema,
+  formVersionSummarySchema,
   formTypeEnum,
   publisherFormVersionDetailSchema,
   publisherResponsesPageSchema,
@@ -19,7 +19,7 @@ import { apiRequest } from "../api/client.ts";
  * |---|---|
  * | `GET /forms/:id/responses[?versionNumber&cursor&limit]` | VERIFIED (Story IR.4a, shared `publisherResponsesPageSchema`) — one keyset page of one version, newest first |
  * | `GET /forms/:id/quality[?versionNumber=]` | ASSUMED API CONTRACT — survey quality (policy `survey-quality-v1`); stays on MSW (Epic 10 deferred) |
- * | `GET /forms/:id/versions` | VERIFIED (`forms.controller.ts` → `FormVersionSummaryDto[]`, ascending); the stats fields are ASSUMED optional extensions |
+ * | `GET /forms/:id/versions` | VERIFIED (`forms.controller.ts` → `FormVersionSummaryDto[]`, ascending; shared `formVersionSummarySchema`) |
  * | `GET /forms/:id/versions/:versionId` | VERIFIED (Story IR.4a, shared `publisherFormVersionDetailSchema`) — one version with its blocks |
  *
  * Responses, analytics, progress and version detail are owner only: anybody
@@ -92,16 +92,7 @@ export const formQualitySchema = z.object({
 });
 export type FormQuality = z.infer<typeof formQualitySchema>;
 
-/** `FormVersionSummaryDto` (shared `formVersionSummarySchema`) + ASSUMED optional stats (absent on today's backend). */
-export const formVersionSummarySchema = sharedFormVersionSummarySchema.extend({
-  updatedAt: isoDate.nullable().optional(),
-  submittedForReviewAt: isoDate.nullable().optional(),
-  collectedFrom: isoDate.nullable().optional(),
-  collectedUntil: isoDate.nullable().optional(),
-  responseCount: z.number().int().nonnegative().nullable().optional(),
-  questionCount: z.number().int().nonnegative().nullable().optional(),
-  qualityStatus: z.enum(["ENOUGH_DATA", "NOT_ENOUGH_DATA"]).nullable().optional(),
-});
+/** `FormVersionSummaryDto` (shared `formVersionSummarySchema`): id, number, `isPublished`, `publishedAt`, `createdAt`. */
 export type FormVersionSummary = z.infer<typeof formVersionSummarySchema>;
 
 /** Loose block shape: a draft may still hold incomplete blocks. */

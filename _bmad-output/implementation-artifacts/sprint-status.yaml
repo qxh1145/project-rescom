@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: "2026-08-16 17:09:30"
-last_updated: "2026-10-03 12:00:00"
+last_updated: "2026-10-03 14:00:00"
 project: "project-rescom"
 project_key: "NOKEY"
 tracking_system: "file-system"
@@ -116,7 +116,7 @@ development_status:
   ir-4-publisher-financial-moderation-journeys-without-mocks: done  # code-reviewed 2026-10-03; audit + notification linkage now asserted
   ir-4a-publisher-progress-response-viewing: done  # code-reviewed 2026-10-01 (bmad-code-review), fixes in worktree funny-blackwell-1bdbaf
   ir-4b-profile-update-email-delivery-admin-overview: done  # code-reviewed 2026-10-01 (bmad-code-review), fixes in worktree funny-blackwell-1bdbaf
-  ir-5-launch-domain-closure-local-integration-gate: backlog
+  ir-5-launch-domain-closure-local-integration-gate: review  # dev 2026-10-03; G3 PASS with deviations (ir-5-g3/ pack); owner items open
   ir-6-staging-integration-acceptance-go-no-go-evidence: backlog
   epic-ir-retrospective: optional
   # Added 2026-09-26 by sprint-change-proposal-2026-09-26 (pilot hosting, Architecture AD-23)

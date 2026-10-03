@@ -1,7 +1,7 @@
 import { isApiError } from "../api/api-error.ts";
 
 /**
- * Vietnamese copy for "Khiếu nại & báo lỗi" failures. Codes: ASSUMED case
+ * Vietnamese copy for "Khiếu nại & báo lỗi" failures. Codes: ASSUMED (design) case
  * codes of `disputes-service.ts`, ledger codes of `resolveDisputeHold`
  * (`economy.exceptions.ts`), `VALIDATION_ERROR` of the VERIFIED reset route.
  */

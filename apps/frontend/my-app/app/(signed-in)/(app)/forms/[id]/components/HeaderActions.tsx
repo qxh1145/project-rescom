@@ -19,16 +19,16 @@ const PRIMARY = `${BASE} h-11 border-primary bg-primary text-primary-foreground 
 /**
  * Header actions by status — Figma 10a (Google Forms, running: Mở Google Form ·
  * Tạm dừng · Đóng & hoàn điểm) and 17 (Form Builder, full: Mở lại thêm mẫu ·
- * Xuất dữ liệu). Other combinations are ASSUMED from those two. "Tạm dừng"
+ * Xuất dữ liệu). Other combinations are ASSUMED (design) from those two. "Tạm dừng"
  * is not offered: no PAUSED state exists (IR.4a AC6); "Rút lại & hoàn
  * điểm" covers a survey waiting for review and a re-versioned draft (M7).
- * "Chỉnh sửa" (ASSUMED placement) re-versions a running Form Builder survey.
+ * "Chỉnh sửa" (ASSUMED (design) placement) re-versions a running Form Builder survey.
  */
 export function HeaderActions({ form, className = "", tourTarget }: { form: PublisherForm; className?: string; tourTarget?: string }) {
   const { requestClose, requestEdit } = useFormActions();
   const view = statusViewOf(form);
   const id = encodeURIComponent(form.id);
-  const live = view === "RUNNING" || view === "PAUSED";
+  const live = view === "RUNNING";
   const ended = view === "FULL" || view === "ENDED";
   const externalUrl = form.type === "EXTERNAL" ? form.currentVersion.externalUrl : null;
 

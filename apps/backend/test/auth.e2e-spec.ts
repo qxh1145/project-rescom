@@ -175,6 +175,7 @@ describe('Authentication E2E Tests (AC1 - AC8)', () => {
             code: 'AUTH_INVALID_REGISTRATION_INPUT',
             message: expect.any(String),
             details: expect.anything(),
+            requestId: expect.any(String),
           },
           meta: {},
         });
@@ -210,6 +211,7 @@ describe('Authentication E2E Tests (AC1 - AC8)', () => {
         error: {
           code: 'AUTH_EMAIL_ALREADY_REGISTERED',
           message: 'An account with this email already exists.',
+          requestId: expect.any(String),
         },
         meta: {},
       });
@@ -308,6 +310,7 @@ describe('Authentication E2E Tests (AC1 - AC8)', () => {
           error: {
             code: 'AUTH_INVALID_CREDENTIALS',
             message: 'Invalid email or password.',
+            requestId: expect.any(String),
           },
           meta: {},
         });
@@ -327,6 +330,7 @@ describe('Authentication E2E Tests (AC1 - AC8)', () => {
           code: 'AUTH_INVALID_LOGIN_INPUT',
           message: expect.any(String),
           details: expect.anything(),
+          requestId: expect.any(String),
         },
         meta: {},
       });

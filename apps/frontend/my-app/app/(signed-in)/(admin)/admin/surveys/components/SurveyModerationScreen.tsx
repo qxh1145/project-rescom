@@ -64,7 +64,7 @@ export function SurveyModerationScreen() {
   );
 }
 
-/** ASSUMED empty state (not drawn in Figma). */
+/** ASSUMED (design) empty state (not drawn in Figma). */
 function EmptyQueue({ onReload, reloading }: { onReload: () => void; reloading: boolean }) {
   return (
     <section className="flex flex-col items-start gap-3 rounded-[22px] border border-line bg-surface p-7">

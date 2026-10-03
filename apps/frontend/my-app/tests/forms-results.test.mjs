@@ -436,14 +436,13 @@ test("diffVersions lists added, changed and removed questions", () => {
 
 test("draft/base selection and captions", () => {
   const summaries = [
-    { id: "a", formId: "f", versionNumber: 1, isPublished: true, publishedAt: "2026-09-15T01:00:00Z", createdAt: "2026-09-13T13:00:00Z", collectedFrom: "2026-09-15T01:00:00Z", collectedUntil: "2026-09-22T14:14:00Z" },
-    { id: "b", formId: "f", versionNumber: 2, isPublished: false, publishedAt: null, createdAt: "2026-09-24T03:00:00Z", updatedAt: "2026-09-26T14:30:00Z", submittedForReviewAt: null },
+    { id: "a", formId: "f", versionNumber: 1, isPublished: true, publishedAt: "2026-09-15T01:00:00Z", createdAt: "2026-09-13T13:00:00Z" },
+    { id: "b", formId: "f", versionNumber: 2, isPublished: false, publishedAt: null, createdAt: "2026-09-24T03:00:00Z" },
   ];
   const { draft, base } = versions.draftAndBase(summaries);
   assert.equal(draft.id, "b");
   assert.equal(base.id, "a");
-  assert.equal(versions.draftCaption(draft), "Sửa lần cuối 26/09 21:30 · chưa gửi duyệt");
-  assert.equal(versions.publishedCaption(base), "Xuất bản 15/09 · thu thập 15/09–22/09");
+  assert.equal(versions.draftCaption(draft), "Tạo 24/09 10:00");
+  assert.equal(versions.publishedCaption(base), "Xuất bản 15/09");
   assert.deepEqual(versions.draftAndBase([summaries[0]]), { draft: null, base: null });
-  assert.equal(versions.qualityStatusLabel("ENOUGH_DATA"), "Đủ dữ liệu");
 });

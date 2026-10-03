@@ -28,7 +28,7 @@ export function ResultsError({ message, onRetry }: { message: string; onRetry: (
   );
 }
 
-/** ASSUMED: empty states are not drawn for 5C; built from the Figma empty-state pattern (mascot + title + hint). */
+/** ASSUMED (design): empty states are not drawn for 5C; built from the Figma empty-state pattern (mascot + title + hint). */
 export function ResultsEmpty({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
   return (
     <section className="flex flex-col items-center gap-3 rounded-[22px] border border-line bg-surface px-6 py-12 text-center">

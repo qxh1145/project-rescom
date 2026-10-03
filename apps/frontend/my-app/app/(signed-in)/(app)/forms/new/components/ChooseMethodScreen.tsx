@@ -61,7 +61,7 @@ function Pill({ tone, children }: { tone: "amber" | "green" | "neutral"; childre
 
 /**
  * `/forms/new` — Figma 9 "Tạo khảo sát · chọn cách tạo" (63:2400, mobile).
- * Desktop not drawn: ASSUMED the same content in a centered column with the
+ * Desktop not drawn: ASSUMED (design) the same content in a centered column with the
  * two cards side by side.
  */
 export function ChooseMethodScreen() {

@@ -18,7 +18,7 @@ function ResetPasswordFallback() {
 
 /**
  * Plan 5.4 `/reset-password?token=…` (the link of the reset email). Not drawn
- * in Figma: same split layout, hero and card as 15b "Quên mật khẩu" (ASSUMED).
+ * in Figma: same split layout, hero and card as 15b "Quên mật khẩu" (ASSUMED (design)).
  */
 export default function ResetPasswordPage() {
   return (

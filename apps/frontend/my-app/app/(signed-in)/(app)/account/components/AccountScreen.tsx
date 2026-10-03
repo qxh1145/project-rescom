@@ -22,7 +22,7 @@ import { ProfileCard } from "./ProfileCard";
 
 /**
  * Figma 15g "Tài khoản" — mobile 63:1426 (card + settings list), desktop
- * 63:483 (`AccountDesktop`). Rows without a drawn destination (ASSUMED):
+ * 63:483 (`AccountDesktop`). Rows without a drawn destination (ASSUMED (design)):
  * Google → password confirmation + VERIFIED link/start (`GoogleLinkDialog`),
  * Mật khẩu → 15 "Quên mật khẩu", Thiết bị and Dữ liệu chất lượng are
  * information only, Trợ giúp → support email.

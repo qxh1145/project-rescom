@@ -201,7 +201,7 @@ export function getGoogleLinkErrorMessage(error: unknown): AuthErrorMessage {
 }
 
 /**
- * 15e body copy. `at` is when the other device signed in (ASSUMED `?at=` signal,
+ * 15e body copy. `at` is when the other device signed in (ASSUMED (design) `?at=` signal,
  * see `readSessionReplacedNotice`); without it the time is left out.
  */
 export function sessionReplacedMessage(at: Date | null): string {

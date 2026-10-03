@@ -19,6 +19,7 @@ import { AUTH_COOKIE_NAME } from '../src/modules/auth/presentation/cookie-option
 import { LedgerService } from '../src/modules/economy/application/ledger.service';
 import { PrismaLedgerRepository } from '../src/modules/economy/infrastructure/prisma-ledger.repository';
 import { randomUUID } from 'crypto';
+import { walletDetailsSchema } from '@rescom/schemas';
 
 describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
   let app: INestApplication;
@@ -491,6 +492,8 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
         .set('Origin', ALLOWED_ORIGIN);
 
       expect(res.status).toBe(200);
+      // IR.5 A3.1: the frontend wallet schema is this shared one.
+      walletDetailsSchema.parse(res.body.data);
       expect(res.body.data).toBeDefined();
       expect(res.body.data.balance).toBeDefined();
       expect(typeof res.body.data.balance.available).toBe('number');
@@ -545,6 +548,7 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
 
       expect(res.status).toBe(200);
       const data = res.body.data;
+      walletDetailsSchema.parse(data);
       expect(data.balance.available).toBeGreaterThanOrEqual(300);
       expect(data.balance.total).toBe(
         data.balance.available +

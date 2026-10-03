@@ -41,7 +41,7 @@ export function QualityScreen() {
           Đang tải câu trả lời cần xem…
         </p>
       ) : items.length === 0 || !selected ? (
-        // ASSUMED empty state (not drawn).
+        // ASSUMED (design) empty state (not drawn).
         <section className="flex flex-col items-center gap-3 rounded-[22px] border border-line bg-surface px-6 py-12 text-center">
           <Mascot name="cheer" height={120} />
           <h2 className="text-[17px] font-extrabold text-ink">{QUALITY_EMPTY_TITLE}</h2>

@@ -71,7 +71,7 @@ export function UsersTable({ data, loading, error, onRetry, selectedId, onSelect
               : null}
             {!loading && !error && items.length === 0 ? (
               <tr>
-                {/* ASSUMED: empty state not drawn. */}
+                {/* ASSUMED (design): empty state not drawn. */}
                 <td colSpan={5} className="px-2 py-10 text-center text-body-sm text-ink-muted">
                   Không có người dùng nào khớp bộ lọc.
                 </td>
@@ -123,7 +123,7 @@ export function UsersTable({ data, loading, error, onRetry, selectedId, onSelect
         </table>
       </div>
       {totalPages > 1 ? (
-        // ASSUMED: pager not drawn (Figma shows one page).
+        // ASSUMED (design): pager not drawn (Figma shows one page).
         <nav aria-label="Phân trang người dùng" className="mt-3 flex items-center justify-end gap-3 border-t border-line-subtle pt-3">
           <span className="text-body-sm text-ink-muted">
             Trang {page}/{totalPages}

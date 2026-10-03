@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from './common/config/config.module';
 import { PrismaModule } from './common/database/prisma.module';
@@ -19,6 +19,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { ModerationModule } from './modules/moderation/moderation.module';
 import { ProductToursModule } from './modules/product-tours/product-tours.module';
 import { UserProfileHttpModule } from './modules/users/user-profile-http.module';
+import { requestIdMiddleware } from './common/http/request-id.middleware';
 
 @Module({
   imports: [
@@ -48,4 +49,13 @@ import { UserProfileHttpModule } from './modules/users/user-profile-http.module'
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  /**
+   * Module-level (not `main.ts`) so every Nest app built from AppModule,
+   * including the e2e test apps, gets a request id. Runs after the body
+   * parser, which keeps the AsyncLocalStorage context intact for handlers.
+   */
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(requestIdMiddleware).forRoutes('*');
+  }
+}

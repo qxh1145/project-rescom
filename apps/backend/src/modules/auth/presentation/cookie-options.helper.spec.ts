@@ -15,6 +15,7 @@ import {
 
 // Story IR.4b B-T4: production refuses to start without SMTP email.
 const PRODUCTION_EMAIL_ENV = {
+  SCHEDULER_ENABLED: 'true', // IR.5 E3.1: production requires the scheduler
   EMAIL_DELIVERY_MODE: 'smtp',
   EMAIL_FROM: 'Rescom <no-reply@rescom.io>',
   EMAIL_APP_BASE_URL: 'https://app.rescom.io',

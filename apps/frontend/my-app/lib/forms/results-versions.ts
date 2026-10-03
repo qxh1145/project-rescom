@@ -88,23 +88,12 @@ export function draftAndBase(versions: readonly FormVersionSummary[]): {
   return { draft, base };
 }
 
-/** "Sửa lần cuối 26/09 21:30 · chưa gửi duyệt" */
+/** "Tạo 24/09 10:00" (the backend sends no edit or review timestamps). */
 export function draftCaption(version: FormVersionSummary): string {
-  const edited = version.updatedAt ?? version.createdAt;
-  const review = version.submittedForReviewAt
-    ? `đã gửi duyệt ${formatDayMonth(version.submittedForReviewAt)}`
-    : "chưa gửi duyệt";
-  return `Sửa lần cuối ${formatShortDateTime(edited)} · ${review}`;
+  return `Tạo ${formatShortDateTime(version.createdAt)}`;
 }
 
-/** "Xuất bản 15/09 · thu thập 15/09–22/09" */
+/** "Xuất bản 15/09" */
 export function publishedCaption(version: FormVersionSummary): string {
-  const published = version.publishedAt ? `Xuất bản ${formatDayMonth(version.publishedAt)}` : "Đã xuất bản";
-  if (!version.collectedFrom) return published;
-  const until = version.collectedUntil ? formatDayMonth(version.collectedUntil) : "nay";
-  return `${published} · thu thập ${formatDayMonth(version.collectedFrom)}–${until}`;
-}
-
-export function qualityStatusLabel(status: FormVersionSummary["qualityStatus"]): string {
-  return status === "ENOUGH_DATA" ? "Đủ dữ liệu" : "Chưa đủ dữ liệu";
+  return version.publishedAt ? `Xuất bản ${formatDayMonth(version.publishedAt)}` : "Đã xuất bản";
 }

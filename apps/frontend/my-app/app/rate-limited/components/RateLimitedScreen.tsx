@@ -16,7 +16,7 @@ interface RateLimitedScreenProps {
 
 /**
  * Figma 18.4 "Tạm dừng vì làm quá nhiều" — desktop 63:6102, mobile 63:6141.
- * `reason: "session"` reuses the layout with neutral copy (ASSUMED, not drawn):
+ * `reason: "session"` reuses the layout with neutral copy (ASSUMED (design), not drawn):
  * any request may have tripped the throttler, not only survey participation.
  */
 export function RateLimitedScreen({ reason, retryAfterSeconds, retryPath }: RateLimitedScreenProps) {
@@ -84,7 +84,7 @@ export function RateLimitedScreen({ reason, retryAfterSeconds, retryPath }: Rate
       actions={
         <>
           {done ? (
-            // ASSUMED (not drawn): once the pause is over the primary action becomes "Thử lại".
+            // ASSUMED (design) (not drawn): once the pause is over the primary action becomes "Thử lại".
             <Link href={retryPath} className={errorActionClassName("primary")}>
               Thử lại
             </Link>

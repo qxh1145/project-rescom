@@ -1,4 +1,4 @@
-/** Vietnamese copy for the notification panel and page (Figma 14d). Empty states are ASSUMED (not drawn). */
+/** Vietnamese copy for the notification panel and page (Figma 14d). Empty states are ASSUMED (design) (not drawn). */
 export const NOTIFICATION_MESSAGES = {
   loadFailed: "Không tải được thông báo.",
   loadMoreFailed: "Không tải thêm được thông báo. Vui lòng thử lại.",

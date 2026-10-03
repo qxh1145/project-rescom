@@ -21,7 +21,7 @@ const MY_SURVEYS_HREF = "/forms";
  * `POST /forms/external` response kept in sessionStorage by the wizard: the
  * backend discloses it once and refuses a rotation while the survey is in
  * moderation (409 `FORM_IN_MODERATION`), so without it the screen explains
- * that the code is no longer shown (ASSUMED state, not drawn).
+ * that the code is no longer shown (ASSUMED (design) state, not drawn).
  */
 export function SubmittedScreen() {
   const { id } = useParams<{ id: string }>();
@@ -191,7 +191,7 @@ function PasteStep({ index, children }: { index: number; children: ReactNode }) 
   );
 }
 
-/** ASSUMED (not drawn): the code was already shown, or this tab never received it. */
+/** ASSUMED (design) (not drawn): the code was already shown, or this tab never received it. */
 function CodeGoneView({ formId }: { formId: string }) {
   return (
     <div className="mx-auto flex w-full max-w-120 flex-1 flex-col items-center gap-4 px-5 pt-16 pb-10 text-center">

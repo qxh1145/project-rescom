@@ -8,7 +8,7 @@ import { useNotificationFeed } from "@/lib/notifications/use-notification-feed";
 const PAGE_SIZE = 20;
 
 /**
- * Figma 14d "Trung tâm thông báo" (62:2117, mobile). Desktop is ASSUMED: the
+ * Figma 14d "Trung tâm thông báo" (62:2117, mobile). Desktop is ASSUMED (design): the
  * header panel's content (62:1862) as a 640px card under the app header.
  */
 export function NotificationsScreen() {

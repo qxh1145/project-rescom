@@ -46,7 +46,7 @@ export type RunnerPhase = "answering" | "submitting" | "offline" | "expired";
 
 const AUTOSAVE_DELAY_MS = 600;
 const UPLOAD_IN_PROGRESS = "Tệp đang được tải lên. Vui lòng đợi tải xong.";
-/** ASSUMED (not in Figma): "sắp hết giờ giữ chỗ" notice 5 minutes before `expiresAt`. */
+/** ASSUMED (design) (not in Figma): "sắp hết giờ giữ chỗ" notice 5 minutes before `expiresAt`. */
 export const EXPIRY_WARNING_MS = 5 * 60 * 1000;
 const FREE_TEXT = new Set<FormBlock["type"]>(["text", "textarea", "number"]);
 const FOCUSABLE = "input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled])";

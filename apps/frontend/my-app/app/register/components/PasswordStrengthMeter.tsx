@@ -4,7 +4,7 @@ import {
   type PasswordStrengthLevel,
 } from "@/lib/auth/password-strength";
 
-/** Level → segment fill and label color. Only "Khá mạnh" (green) is drawn in Figma; others ASSUMED. */
+/** Level → segment fill and label color. Only "Khá mạnh" (green) is drawn in Figma; others ASSUMED (design). */
 const TONES: Record<PasswordStrengthLevel, { bar: string; label: string }> = {
   0: { bar: "bg-line", label: "" },
   1: { bar: "bg-danger", label: "text-danger" },

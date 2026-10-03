@@ -154,7 +154,15 @@ describe('Auth throttling E2E (plan 0.1)', () => {
 
   function expectRateLimited(res: request.Response): void {
     expect(res.status).toBe(429);
-    expect(res.body).toEqual(RATE_LIMITED_BODY);
+    // IR.5 C1: the envelope carries the same correlation id as the header.
+    expect(res.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+    expect(res.body).toEqual({
+      ...RATE_LIMITED_BODY,
+      error: {
+        ...RATE_LIMITED_BODY.error,
+        requestId: res.headers['x-request-id'],
+      },
+    });
     expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
   }
 
@@ -237,6 +245,31 @@ describe('Auth throttling E2E (plan 0.1)', () => {
       );
     }
     expectRateLimited(await forgot());
+  });
+
+  it('keys the auth bucket on the client IP from X-Forwarded-For at TRUST_PROXY_HOPS=1 (IR.5 E3.2)', async () => {
+    // What main.ts does with EnvService.trustProxyHops: Cloudflare -> Caddy
+    // (restores CF-Connecting-IP into X-Forwarded-For) -> NestJS = one hop.
+    const express = app.getHttpAdapter().getInstance();
+    const previous = express.get('trust proxy');
+    express.set('trust proxy', 1);
+    const forgot = (forwardedFor: string) =>
+      request(app.getHttpServer())
+        .post('/auth/password/forgot')
+        .set('X-Forwarded-For', forwardedFor)
+        .set('Content-Type', 'application/json')
+        .send({ email: 'nobody@example.com' });
+
+    // The entry the trusted proxy appended is the client; anything a caller
+    // put in front of it is ignored, so varying it never opens a new bucket.
+    for (let i = 0; i < AUTH_LIMIT; i++) {
+      await forgot(`10.9.9.${i}, 203.0.113.7`).expect(202);
+    }
+    expectRateLimited(await forgot('10.9.9.99, 203.0.113.7'));
+
+    // A different client IP behind the same proxy has its own bucket.
+    await forgot('198.51.100.20').expect(202);
+    express.set('trust proxy', previous);
   });
 
   it('gives two signed-in users behind the same IP independent default buckets', async () => {

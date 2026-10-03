@@ -153,8 +153,7 @@ function titleFromDescription(description: string | null): string | null {
 }
 
 function notesOf(kind: HistoryKind, entry: WalletTransaction, payout: boolean): { note: string; shortNote: string } {
-  const survey = entry.surveyTitle ?? null;
-  if (payout) return { note: survey ?? "Khảo sát của bạn", shortNote: survey ?? "Khảo sát của bạn" };
+  if (payout) return { note: "Khảo sát của bạn", shortNote: "Khảo sát của bạn" };
   switch (kind) {
     case "STARTER_GRANT":
       return { note: "Tài khoản mới", shortNote: "Tài khoản mới" };
@@ -163,12 +162,12 @@ function notesOf(kind: HistoryKind, entry: WalletTransaction, payout: boolean): 
     case "STARTER_EXPIRY":
       return { note: "Quá 30 ngày chưa hoàn thành khảo sát đầu tiên", shortNote: "Quá 30 ngày" };
     case "SURVEY_REWARD":
-      return { note: survey ?? "Khảo sát", shortNote: survey ?? "Khảo sát" };
+      return { note: "Khảo sát", shortNote: "Khảo sát" };
     case "REWARD_RELEASE":
-      return { note: survey ?? "Chờ duyệt → Khả dụng", shortNote: survey ?? "Chờ duyệt → Khả dụng" };
+      return { note: "Chờ duyệt → Khả dụng", shortNote: "Chờ duyệt → Khả dụng" };
     case "DISPUTE_HOLD":
     case "DISPUTE_RESOLUTION":
-      return { note: survey ?? "Khiếu nại khảo sát", shortNote: survey ?? "Khiếu nại" };
+      return { note: "Khiếu nại khảo sát", shortNote: "Khiếu nại" };
     case "TOP_UP": {
       const reference = entry.description?.match(/RESCOM[A-Z0-9]+/)?.[0];
       const note = reference ? `Chuyển khoản ${reference}` : "Chuyển khoản ngân hàng";
@@ -176,13 +175,13 @@ function notesOf(kind: HistoryKind, entry: WalletTransaction, payout: boolean): 
     }
     case "SURVEY_ESCROW":
     case "ESCROW_REFUND": {
-      const title = survey ?? titleFromDescription(entry.description) ?? "Khảo sát của bạn";
+      const title = titleFromDescription(entry.description) ?? "Khảo sát của bạn";
       return { note: title, shortNote: title };
     }
     case "REVERSAL":
       return { note: "Hoàn tác một giao dịch trước", shortNote: "Hoàn tác" };
     default:
-      return { note: survey ?? "", shortNote: survey ?? "" };
+      return { note: "", shortNote: "" };
   }
 }
 
@@ -349,7 +348,7 @@ export interface BucketPresentation {
 
 /**
  * Status pill per account (Figma 7: Chờ duyệt amber, Khả dụng teal, Đóng băng
- * green). Ký quỹ / Đang giữ are not drawn in the history — ASSUMED tones.
+ * green). Ký quỹ / Đang giữ are not drawn in the history — ASSUMED (design) tones.
  */
 export function bucketPresentation(bucket: LedgerAccountClass): BucketPresentation {
   switch (bucket) {
@@ -368,7 +367,7 @@ export function bucketPresentation(bucket: LedgerAccountClass): BucketPresentati
   }
 }
 
-/** ASSUMED copy (not drawn): a matured pending reward waiting for its release journal. */
+/** ASSUMED (design) copy (not drawn): a matured pending reward waiting for its release journal. */
 export const PENDING_DUE_LABEL = "Sắp vào Khả dụng";
 
 /**

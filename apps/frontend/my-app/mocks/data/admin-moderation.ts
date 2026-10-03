@@ -107,7 +107,6 @@ function seedForm(
     publishedAt: null,
     deadlineAt: null,
     closedAt: null,
-    hiddenFromMarketplace: true,
     rejection: null,
     versionNumber: 1,
     questionCount: questionCount ?? null,
@@ -328,7 +327,6 @@ export function approveModeration(form: MockPublisherForm, admin: MockSessionUse
     updatePublisherForm(form.id, (draft) => {
       draft.status = "PUBLISHED";
       draft.publishedAt = nowIso();
-      draft.hiddenFromMarketplace = false;
       draft.deadlineAt = deadlineOf(draft, extras);
     }) ?? form;
   syncBuilderDraft(form.id, { status: "PUBLISHED" });
@@ -369,8 +367,6 @@ export function rejectModeration(form: MockPublisherForm, admin: MockSessionUser
       draft.closedAt = rejectedAt;
       draft.rejection = { reason, refundedPoints, rejectedAt };
       draft.escrowLocked = 0;
-      draft.hiddenFromMarketplace = true;
-      draft.pausedAt = null;
     }) ?? form;
   syncBuilderDraft(form.id, { status: "CLOSED", escrowLocked: 0 });
   const decision = saveDecision(rejected, admin, {

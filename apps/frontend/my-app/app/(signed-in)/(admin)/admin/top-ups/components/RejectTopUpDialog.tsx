@@ -26,7 +26,7 @@ interface RejectTopUpDialogProps {
 }
 
 /**
- * "Từ chối…" confirmation — ASSUMED design (not drawn), same panel as the
+ * "Từ chối…" confirmation — ASSUMED (design) design (not drawn), same panel as the
  * other confirm dialogs. The reason is required (backend
  * `rejectTopUpRequestSchema`: 5–500 characters) and is sent to the user.
  * Mounted only while open, so each opening starts with an empty reason.

@@ -55,7 +55,7 @@ export function statCardsOf(overview: AdminOverview): StatCardView[] {
         ? `${overview.openIssues.missingCodeReports} báo thiếu mã`
         : `${overview.openIssues.disputes} khiếu nại · ${overview.openIssues.missingCodeReports} báo thiếu mã`,
       captionTone: "muted",
-      // Figma draws the open-issue count in dark red; ASSUMED ink when nothing is open.
+      // Figma draws the open-issue count in dark red; ASSUMED (design) ink when nothing is open.
       valueTone: issues > 0 ? "danger" : "ink",
       href: "/admin/disputes",
     },

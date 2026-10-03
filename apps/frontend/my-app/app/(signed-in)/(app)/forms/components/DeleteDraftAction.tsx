@@ -9,7 +9,7 @@ import { formActionErrorMessage } from "@/lib/forms/manage-messages";
 import { deleteFormDraft, type PublisherFormSummary } from "@/lib/forms/manage-service";
 
 /**
- * "Xoá" of a never-published draft on a list row — ASSUMED design (not
+ * "Xoá" of a never-published draft on a list row — ASSUMED (design) design (not
  * drawn), same panel as "Rút lại". VERIFIED `DELETE /forms/:id`; a draft has
  * no Escrow, so nothing is refunded. The list reloads once it is gone.
  */

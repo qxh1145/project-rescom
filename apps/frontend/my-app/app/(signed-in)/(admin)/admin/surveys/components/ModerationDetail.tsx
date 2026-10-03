@@ -208,7 +208,7 @@ function StatusTag({ survey }: { survey: ModerationPreview }) {
   return <Tag>Không còn chờ duyệt</Tag>;
 }
 
-/** ASSUMED (not drawn): a survey opened by link after it was decided. */
+/** ASSUMED (design) (not drawn): a survey opened by link after it was decided. */
 function DecisionSummary({ survey }: { survey: ModerationPreview }) {
   const { decision } = survey;
   let text = "Khảo sát này không còn trong hàng chờ duyệt.";

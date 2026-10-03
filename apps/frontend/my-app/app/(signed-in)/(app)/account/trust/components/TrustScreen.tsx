@@ -23,7 +23,7 @@ const LEVEL: Record<ReliabilitySummary["level"], { pill: string; title: string }
 
 const CONFIDENCE: Record<ReliabilitySummary["confidence"], string> = { LOW: "thấp", MEDIUM: "trung bình", HIGH: "cao" };
 
-/** Figma "Đạt" teal, "Không đánh giá" neutral; REVIEW / PENDING amber (ASSUMED). */
+/** Figma "Đạt" teal, "Không đánh giá" neutral; REVIEW / PENDING amber (ASSUMED (design)). */
 const RESULT: Record<ReliabilityResult, { label: string; className: string }> = {
   PASSED: { label: "Đạt", className: "bg-tone-teal-bg text-tone-teal-fg" },
   REVIEW: { label: "Cần xem thêm", className: "bg-tone-amber-bg text-tone-amber-fg" },

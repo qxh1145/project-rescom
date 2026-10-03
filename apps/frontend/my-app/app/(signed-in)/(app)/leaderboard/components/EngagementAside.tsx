@@ -9,7 +9,7 @@ import { TierTimeline } from "../../_engagement/TierTimeline";
 /**
  * Desktop right column of 16b (63:3233–63:3270): "Chuỗi của bạn", the compact
  * "Hạng thành viên" timeline and the tier note. The streak card and the tier
- * heading link to /account/streak and /account/tier (ASSUMED — not drawn).
+ * heading link to /account/streak and /account/tier (ASSUMED (design) — not drawn).
  */
 export function EngagementAside({ summary }: { summary: EngagementSummary }) {
   const progress = nextTierProgress(summary.tier.level, summary.stats.completedSurveys);

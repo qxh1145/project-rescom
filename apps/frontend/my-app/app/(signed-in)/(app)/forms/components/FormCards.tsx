@@ -23,7 +23,6 @@ function CardBody({ row, now }: { row: MyFormRow; now: number }) {
         </>
       );
     case "RUNNING":
-    case "PAUSED":
       return (
         <>
           <div className="mt-2.5 flex items-baseline justify-between gap-3 text-caption">
@@ -72,14 +71,13 @@ function CardBody({ row, now }: { row: MyFormRow; now: number }) {
   }
 }
 
-/** Top-right note of a card: "Còn 9 ngày" (63:1341), "Đã ẩn khỏi Khám phá" (63:1354). */
+/** Top-right note of a card: "Còn 9 ngày" (63:1341). */
 function cornerNote(row: MyFormRow, now: number): string | null {
   const { form, view } = row;
-  if (view === "RUNNING" || view === "PAUSED") {
+  if (view === "RUNNING") {
     const days = daysUntil(form.deadlineAt, now);
     return days === null ? null : `Còn ${days} ngày`;
   }
-  if ((view === "FULL" || view === "ENDED") && form.hiddenFromMarketplace) return "Đã ẩn khỏi Khám phá";
   return null;
 }
 

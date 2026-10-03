@@ -25,7 +25,7 @@ const ALL_DISPUTE_TABS: ReadonlyArray<{ kind: DisputeCaseKind; label: string }> 
 /** Pilot build: only the real "Báo thiếu mã" tab (disputes and locked attempts are mock-only). */
 export const DISPUTE_TABS = PILOT_BUILD ? ALL_DISPUTE_TABS.filter((tab) => tab.kind === "MISSING_CODE") : ALL_DISPUTE_TABS;
 
-/** ASSUMED empty states (not drawn). */
+/** ASSUMED (design) empty states (not drawn). */
 export const EMPTY_TAB_COPY: Record<DisputeCaseKind, string> = {
   ATTEMPT_DISPUTE: "Không có khiếu nại lượt làm nào đang chờ.",
   MISSING_CODE: "Không có báo cáo thiếu mã nào đang chờ.",
@@ -96,7 +96,7 @@ export function urgencyLabel(item: DisputeCase, now: number): string {
   }
 }
 
-/** ASSUMED queue chip when a tab holds several cases (Figma draws one): "#7F3A · còn 31 giờ". */
+/** ASSUMED (design) queue chip when a tab holds several cases (Figma draws one): "#7F3A · còn 31 giờ". */
 export function queueChipLabel(item: DisputeCase, now: number): string {
   if (item.kind === "ATTEMPT_DISPUTE") {
     const hours = hoursLeft(item.reviewEndsAt, now);
@@ -105,7 +105,7 @@ export function queueChipLabel(item: DisputeCase, now: number): string {
   return `${item.respondent.code} · ${formatShortDateTime(item.createdAt)}`;
 }
 
-/** Confirmation shown after a decision (ASSUMED copy). */
+/** Confirmation shown after a decision (ASSUMED (design) copy). */
 export function resolvedMessage(item: DisputeCase, outcome: DisputeCaseOutcome): string {
   const code = item.respondent.code;
   const points = `${item.amount} điểm`;
@@ -331,7 +331,7 @@ function resetAction(code: string, survey: string): CaseAction {
   };
 }
 
-/** Figma 11c note under the respondent card (disputes); ASSUMED for the other kinds. */
+/** Figma 11c note under the respondent card (disputes); ASSUMED (design) for the other kinds. */
 export function sideNoteOf(kind: DisputeCaseKind): string {
   return kind === "ATTEMPT_DISPUTE"
     ? "Chấp nhận khiếu nại chỉ trả điểm của lượt này. Khoá tài khoản là quyết định riêng, hệ thống không tự khoá."

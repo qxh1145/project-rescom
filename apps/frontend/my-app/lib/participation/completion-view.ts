@@ -7,10 +7,10 @@ import type {
 /**
  * Which completion screen to show for a finished attempt:
  * - `available` — Figma 6 "+12 điểm vào Khả dụng" (in-Rescom, SHADOW/ADVISORY);
- * - `pending`   — Google Forms: "+18 điểm vào Chờ duyệt 48 giờ" (ASSUMED copy, page 5);
+ * - `pending`   — Google Forms: "+18 điểm vào Chờ duyệt 48 giờ" (ASSUMED (design) copy, page 5);
  * - `held`      — Figma 17c "Điểm đang giữ để xét" (ENFORCED Integrity Hold);
- * - `no-reward` — NO_REWARD: nothing was credited (ASSUMED neutral copy);
- * - `reversed`  — REVERSED: the credited reward was taken back (ASSUMED neutral copy).
+ * - `no-reward` — NO_REWARD: nothing was credited (ASSUMED (design) neutral copy);
+ * - `reversed`  — REVERSED: the credited reward was taken back (ASSUMED (design) neutral copy).
  */
 export type CompletionKind = "available" | "pending" | "held" | "no-reward" | "reversed";
 

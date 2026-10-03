@@ -19,7 +19,7 @@ interface CancelAttemptDialogProps {
 
 const TITLE_ID = "cancel-attempt-title";
 
-/** "Huỷ lượt làm" confirmation (ASSUMED, not drawn) → `POST /attempts/:id/cancel`. */
+/** "Huỷ lượt làm" confirmation (ASSUMED (design), not drawn) → `POST /attempts/:id/cancel`. */
 export function CancelAttemptDialog({ attemptId, open, onClose, onCancelled, onCompleted }: CancelAttemptDialogProps) {
   const { refresh } = useSession();
   const [busy, setBusy] = useState(false);

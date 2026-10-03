@@ -36,7 +36,7 @@ function cardsOf(summary: AdminLedgerSummary | undefined): Card[] {
     {
       label: "Đã hoàn hôm nay",
       value: value(summary?.refundedToday.points),
-      // ASSUMED copy: Figma "1 khảo sát bị từ chối"; a refund also happens when a publisher closes a survey early.
+      // ASSUMED (design) copy: Figma "1 khảo sát bị từ chối"; a refund also happens when a publisher closes a survey early.
       caption: summary ? `${summary.refundedToday.surveys} khảo sát được hoàn ký quỹ` : "Đang tải…",
       tone: "teal",
     },

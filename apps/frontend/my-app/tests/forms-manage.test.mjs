@@ -17,7 +17,6 @@ function facts(overrides = {}) {
   return {
     status: "PUBLISHED",
     rejection: null,
-    pausedAt: null,
     completedCompletions: 0,
     expectedCompletions: 10,
     escrowLocked: 0,
@@ -43,9 +42,9 @@ test("Figma 10 pills: backend statuses map to Chờ duyệt / Đang chạy / Đ�
   assert.deepEqual(labels, ["Chờ duyệt", "Đang chạy", "Đủ mẫu", "Bị từ chối"]);
 });
 
-test("status view covers legacy ESCROW_LOCKED, paused, early close and plain drafts", () => {
+test("status view covers legacy ESCROW_LOCKED, early close and plain drafts", () => {
   assert.equal(status.statusViewOf(facts({ status: "ESCROW_LOCKED" })), "PENDING_REVIEW");
-  assert.equal(status.statusViewOf(facts({ pausedAt: "2026-09-26T00:00:00.000Z" })), "PAUSED");
+  assert.equal(status.statusViewOf(facts()), "RUNNING");
   assert.equal(status.statusViewOf(facts({ status: "CLOSED", completedCompletions: 3 })), "ENDED");
   assert.equal(status.statusViewOf(facts({ status: "DRAFT" })), "DRAFT");
   assert.equal(status.statusViewOf(facts({ status: "CLOSED", expectedCompletions: 0 })), "ENDED");
@@ -65,10 +64,10 @@ test("a moderation rejection (CLOSED + MODERATION) is Bị từ chối, never Đ
   assert.deepEqual(status.aggregateStats([rejected]), { running: 0, pendingReview: 0, escrowLocked: 0, completed: 0 });
 });
 
-test("filter tabs: rejected and drafts only under Tất cả, paused counts as Đang chạy", () => {
+test("filter tabs: rejected and drafts only under Tất cả", () => {
   assert.equal(status.matchesFilter("REJECTED", "all"), true);
   assert.equal(status.matchesFilter("REJECTED", "ended"), false);
-  assert.equal(status.matchesFilter("PAUSED", "running"), true);
+  assert.equal(status.matchesFilter("RUNNING", "running"), true);
   assert.equal(status.matchesFilter("PENDING_REVIEW", "pending"), true);
   assert.equal(status.matchesFilter("FULL", "ended"), true);
   assert.equal(status.matchesFilter("RUNNING", "ended"), false);
@@ -260,14 +259,12 @@ test("survey header meta lines (Figma 10a / 17)", () => {
     ...facts(),
     rewardPerResponse: 10,
     estimatedDurationMinutes: 8,
-    questionCount: null,
-    audienceLabel: "Marketing, QTKD · 18–25 tuổi",
     closedAt: null,
     currentVersion: { schemaJson: { blocks: [] } },
   };
   assert.equal(
     view.headerMeta({ ...base, type: "EXTERNAL" }),
-    "Google Forms · 8 phút · 10 điểm/lượt · Marketing, QTKD · 18–25 tuổi",
+    "Google Forms · 8 phút · 10 điểm/lượt",
   );
   assert.equal(view.headerMeta({ ...base, type: "EXTERNAL" }, true), "Google Forms · 8 phút · 10 điểm/lượt");
   assert.equal(
@@ -279,8 +276,7 @@ test("survey header meta lines (Figma 10a / 17)", () => {
       expectedCompletions: 20,
       rewardPerResponse: 12,
       estimatedDurationMinutes: 6,
-      questionCount: 8,
-      audienceLabel: null,
+      currentVersion: { schemaJson: { blocks: Array.from({ length: 8 }, (_, index) => ({ id: `b${index}` })) } },
       closedAt: "2026-09-22T05:00:00.000Z",
     }),
     "Form Builder · 8 câu hỏi · 6 phút · 12 điểm/lượt · kết thúc 22/09/2026",
@@ -292,7 +288,7 @@ test("complaint form needs an issue and a 10+ character description", () => {
   assert.deepEqual(messages.validateDisputeDraft({ reason: "LOW_EFFORT", description: "  Trả lời abc cho mọi câu  " }), {});
 });
 
-test("the VERIFIED FormSummaryDto parses without the ASSUMED management fields", () => {
+test("the VERIFIED FormSummaryDto parses without the optional management fields", () => {
   const parsed = service.publisherFormSummarySchema.parse({
     id: "7c2e3f40-5a6b-4c7d-8e9f-0a1b2c3d4f01",
     publisherId: "11111111-1111-4111-8111-111111111111",
@@ -312,7 +308,8 @@ test("the VERIFIED FormSummaryDto parses without the ASSUMED management fields",
   assert.equal(parsed.escrowLocked, null);
   assert.equal(parsed.rejection, null);
   assert.equal(parsed.closeKind, null);
-  assert.equal(parsed.hiddenFromMarketplace, false);
+  assert.equal("hiddenFromMarketplace" in parsed, false);
+  assert.equal("pausedAt" in parsed, false);
 });
 
 test("Phase 5 M2: the backend summary fields parse (closeKind, completedCompletions, escrowLocked)", () => {
@@ -569,10 +566,9 @@ test("Google Forms surveys are never copied through the builder", async () => {
   assert.equal(calls.length, 0);
 });
 
-test("Chỉnh sửa: only a running or paused Form Builder survey re-versions (POST /forms/:id/versions needs PUBLISHED)", () => {
+test("Chỉnh sửa: only a running Form Builder survey re-versions (POST /forms/:id/versions needs PUBLISHED)", () => {
   const internal = (overrides) => ({ ...facts(overrides), type: "INTERNAL" });
   assert.equal(status.canEditLive(internal({ status: "PUBLISHED" })), true);
-  assert.equal(status.canEditLive(internal({ status: "PUBLISHED", pausedAt: "2026-09-27T00:00:00.000Z" })), true);
   assert.equal(status.canEditLive({ ...facts({ status: "PUBLISHED" }), type: "EXTERNAL" }), false);
   assert.equal(status.canEditLive(internal({ status: "DRAFT" })), false);
   assert.equal(status.canEditLive(internal({ status: "MODERATION_QUEUE" })), false);
@@ -617,7 +613,6 @@ test("plan 2.3 / IR.2b: system closes in the status pill and the reopen rules", 
   const facts = {
     status: "CLOSED",
     rejection: null,
-    pausedAt: null,
     completedCompletions: 3,
     expectedCompletions: 10,
   };

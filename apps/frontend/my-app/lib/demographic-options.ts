@@ -146,7 +146,7 @@ export const INTEREST_OPTIONS = [
 export const STUDENT_OCCUPATIONS: readonly string[] = ["Sinh viên đại học", "Học viên sau đại học"];
 
 /**
- * Figma 12.6 draws the four FPT campuses for the query "FPT". ASSUMED: the
+ * Figma 12.6 draws the four FPT campuses for the query "FPT". ASSUMED (design): the
  * rest of the catalog (no backend list yet); any other school is typed in.
  */
 export const SCHOOL_OPTIONS = [

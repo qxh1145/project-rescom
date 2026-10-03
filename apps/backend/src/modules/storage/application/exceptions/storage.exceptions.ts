@@ -50,6 +50,22 @@ export class StorageScannerOutageException extends Error {
 }
 
 /**
+ * Story IR.5 C2.1: private storage could not be reached before the upload was
+ * claimed. The object stays INITIATED, so finalize is retryable; fails closed
+ * (nothing is attached or downloadable) as a 503.
+ */
+export class StorageUnavailableException extends Error {
+  readonly code = 'STORAGE_UNAVAILABLE';
+
+  constructor(
+    message = 'Private storage is temporarily unavailable. Retry the upload finalization shortly.',
+  ) {
+    super(message);
+    this.name = 'StorageUnavailableException';
+  }
+}
+
+/**
  * The question already holds `maxFiles` live uploads (mock-off Phase 7): a
  * stable code so the runner can tell the respondent to remove a file — or
  * list and re-adopt the attempt's uploads (`GET storage/uploads`) — instead

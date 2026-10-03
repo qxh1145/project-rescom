@@ -382,7 +382,11 @@ describe('Story IR.2a: survey runner reads (e2e)', () => {
       const unknown = await get(`/surveys/${randomUUID()}`);
       expect(draft.status).toBe(404);
       expect(draft.body.error.code).toBe('SURVEY_NOT_FOUND');
-      expect(unknown.body.error).toEqual(draft.body.error);
+      // Same error for both (no enumeration); only the per-request id differs.
+      expect({ ...unknown.body.error, requestId: undefined }).toEqual({
+        ...draft.body.error,
+        requestId: undefined,
+      });
 
       const malformed = await get('/surveys/not-a-uuid');
       expect(malformed.status).toBe(400);

@@ -146,6 +146,8 @@ export function attachmentOf(object: {
 /** Client-side codes: the browser PUT to the presigned URL failed / finalize returned REJECTED. */
 export const STORAGE_PUT_FAILED_CODE = "STORAGE_PUT_FAILED";
 export const STORAGE_OBJECT_REJECTED_CODE = "STORAGE_OBJECT_REJECTED";
+/** 503 from finalize (IR.5 C2): object storage is unreachable before the scan starts; the object stays INITIATED, finalize again. */
+export const STORAGE_UNAVAILABLE_CODE = "STORAGE_UNAVAILABLE";
 /** Client-side code: finalize did not answer in time and the status still reads "scanning". */
 export const STORAGE_SCAN_PENDING_CODE = "STORAGE_SCAN_PENDING";
 
@@ -154,6 +156,8 @@ export const UPLOAD_MESSAGES = {
   storageFailed: "Không tải được tệp lên kho lưu trữ. Vui lòng thử lại.",
   invalidFile: "Tệp không được chấp nhận (sai định dạng, quá dung lượng hoặc nội dung không khớp). Hãy chọn tệp khác.",
   scannerOutage: "Hệ thống quét virus đang tạm gián đoạn. Tệp đã được giữ lại an toàn — hãy thử lại sau ít phút.",
+  storageUnavailable: "Kho lưu trữ tệp đang tạm gián đoạn. Hãy thử lại sau ít phút, tệp của bạn chưa bị mất.",
+  storageDown: "Kho lưu trữ tệp vẫn chưa hoạt động lại. Hãy thử lại sau hoặc nộp bài mà không đính kèm nếu câu này không bắt buộc.",
   scannerDown:
     "Hệ thống quét virus vẫn chưa hoạt động lại. Hãy bỏ tệp này và nộp bài sau, hoặc báo người đăng khảo sát nếu câu này bắt buộc.",
   rejected: "Tệp bị từ chối vì không vượt qua kiểm tra an toàn. Hãy chọn tệp khác.",
@@ -183,6 +187,8 @@ export function uploadErrorMessage(error: unknown): string {
       return UPLOAD_MESSAGES.invalidFile;
     case "STORAGE_SCANNER_OUTAGE":
       return UPLOAD_MESSAGES.scannerOutage;
+    case STORAGE_UNAVAILABLE_CODE:
+      return UPLOAD_MESSAGES.storageUnavailable;
     case "STORAGE_UNAUTHORIZED":
     case "STORAGE_OBJECT_NOT_FOUND":
       return UPLOAD_MESSAGES.notAllowed;
@@ -199,20 +205,26 @@ export function uploadErrorMessage(error: unknown): string {
   }
 }
 
+/** Copy once `MAX_OUTAGE_RETRIES` finalize retries hit a scanner or storage outage. */
+export function outageExhaustedMessage(error: unknown): string {
+  return isApiError(error) && error.code === STORAGE_UNAVAILABLE_CODE ? UPLOAD_MESSAGES.storageDown : UPLOAD_MESSAGES.scannerDown;
+}
+
 /**
  * Failures after which only finalize is retried (the bytes are already in
- * storage): a scanner outage (503), a proxy/gateway error or timeout
+ * storage): a scanner or storage outage (503), a proxy/gateway error or timeout
  * (500/502/504) or a lost response, and a scan still running.
  */
 export function isRetryableFinalize(error: unknown): boolean {
   if (!isApiError(error)) return false;
   if (error.kind === "network") return true;
-  if (error.code === "STORAGE_SCANNER_OUTAGE" || error.code === STORAGE_SCAN_PENDING_CODE) return true;
+  if (error.code === "STORAGE_SCANNER_OUTAGE" || error.code === STORAGE_UNAVAILABLE_CODE || error.code === STORAGE_SCAN_PENDING_CODE) return true;
   return error.status === 500 || error.status === 502 || error.status === 503 || error.status === 504;
 }
 
+/** A scanner or storage outage (503): counted against `MAX_OUTAGE_RETRIES`. */
 export function isScannerOutage(error: unknown): boolean {
-  return isApiError(error) && (error.code === "STORAGE_SCANNER_OUTAGE" || error.status === 503);
+  return isApiError(error) && (error.code === "STORAGE_SCANNER_OUTAGE" || error.code === STORAGE_UNAVAILABLE_CODE || error.status === 503);
 }
 
 export function isQuestionFullError(error: unknown): boolean {

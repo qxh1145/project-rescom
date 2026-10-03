@@ -23,7 +23,7 @@ import { ErrorStatus, LoadingStatus } from "../../../_engagement/QueryStatus";
 const DAY_DISC: Record<StreakDayState, string> = {
   done: "bg-rating text-ink",
   missed: "bg-line-subtle",
-  // ASSUMED (not drawn): today, not counted yet.
+  // ASSUMED (design) (not drawn): today, not counted yet.
   today: "border-2 border-rating bg-surface",
   upcoming: "border-2 border-dashed border-line-strong",
 };
@@ -59,7 +59,7 @@ function WeekRow({ summary, today }: { summary: EngagementSummary; today: string
 }
 
 /**
- * Figma 16a "Chuỗi ngày" (63:4629, mobile). Desktop is derived (ASSUMED): the
+ * Figma 16a "Chuỗi ngày" (63:4629, mobile). Desktop is derived (ASSUMED (design)): the
  * same cards in a 720px column under the app header, CTA inline instead of a
  * bottom bar.
  */
@@ -115,7 +115,7 @@ export function StreakScreen() {
               <Icon name="chevron-right" size={18} className="text-line-strong" />
             </Link>
 
-            {/* Mobile: bottom bar above the tab bar (Figma 63:4670). Desktop: inline (ASSUMED). */}
+            {/* Mobile: bottom bar above the tab bar (Figma 63:4670). Desktop: inline (ASSUMED (design)). */}
             <div className="fixed inset-x-0 bottom-[calc(62px+env(safe-area-inset-bottom))] z-20 border-t border-line bg-surface px-4 pt-[11px] pb-4 lg:static lg:mt-2 lg:border-0 lg:bg-transparent lg:p-0">
               <p className="text-center text-caption text-ink-muted">{nextStreakHint(summary.streak, today)}</p>
               <Link

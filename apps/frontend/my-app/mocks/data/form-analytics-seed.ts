@@ -292,11 +292,9 @@ export function analyticsPublisherForms(now = Date.now()): MockPublisherForm[] {
       publishedAt: new Date(rx.publishedAt).toISOString(),
       deadlineAt: null,
       closedAt: new Date(rx.closedAt).toISOString(),
-      hiddenFromMarketplace: true,
       rejection: null,
       versionNumber: 1,
       closeKind: "OWNER",
-      audienceLabel: "Mọi người dùng RESCOM",
       questionCount: RESCOM_EXPERIENCE_BLOCKS.length,
     },
     {
@@ -317,11 +315,9 @@ export function analyticsPublisherForms(now = Date.now()): MockPublisherForm[] {
       publishedAt: new Date(gs.publishedAt).toISOString(),
       deadlineAt: new Date(gs.deadlineAt).toISOString(),
       closedAt: null,
-      hiddenFromMarketplace: false,
       rejection: null,
       versionNumber: 1,
       closeKind: null,
-      audienceLabel: "Mọi sinh viên",
       questionCount: GROUP_STUDY_BLOCKS.length,
     },
   ];

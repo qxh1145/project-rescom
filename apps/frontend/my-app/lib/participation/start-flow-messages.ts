@@ -11,7 +11,7 @@ export const START_FLOW_MESSAGES = {
       ? `Bạn đã đạt giới hạn ${input.limit} khảo sát trong ${input.windowMinutes} phút (tính cả ${input.inProgress} khảo sát đang làm dở). Hãy hoàn thành khảo sát đang mở, hoặc thử lại sau ${input.retryAfter}.`
       : `Bạn đã hoàn thành tối đa ${input.limit} khảo sát trong ${input.windowMinutes} phút. Hãy thử lại sau ${input.retryAfter}.`,
   /**
-   * 409 COMPLETION_CODE_LIMIT_REACHED on start (decision E5-D1). ASSUMED copy,
+   * 409 COMPLETION_CODE_LIMIT_REACHED on start (decision E5-D1). ASSUMED (design) copy,
    * same meaning as the Google Forms "account-limit" screen.
    */
   codeLimitReached:

@@ -2,7 +2,7 @@ import { isApiError, type ApiError } from "../api/api-error.ts";
 
 /**
  * Vietnamese copy of the onboarding flow. The interests message is Figma
- * 12.10' (63:1097); the others are ASSUMED (not drawn).
+ * 12.10' (63:1097); the others are ASSUMED (design) (not drawn).
  */
 export const ONBOARDING_MESSAGES = {
   nameRequired: "Nhập tên bạn muốn Rescom dùng.",
@@ -50,7 +50,7 @@ export function isValidationError(error: unknown): error is ApiError {
 
 /**
  * Done screen when the survey was saved but `PATCH /users/me/profile` failed
- * (ASSUMED copy). The birth year is not named: its age was saved with the
+ * (ASSUMED (design) copy). The birth year is not named: its age was saved with the
  * survey and the profile falls back to it. A refused answer points to "Sửa"
  * (the same patch would be refused again), anything else to "Thử lại".
  */

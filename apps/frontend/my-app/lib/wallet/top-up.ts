@@ -11,7 +11,7 @@ import {
  * Packages: Figma draws 100 / 200 / 500 points. The shared schema's
  * `TOP_UP_PRESET_AMOUNTS` (100, 250, 500, 1000) is not used by any backend
  * rule, and 250 would break Figma's "bội số của 100", so the UI follows
- * Figma (ASSUMED).
+ * Figma (ASSUMED (design)).
  */
 export const TOP_UP_PACKAGES = [100, 200, 500] as const;
 
@@ -66,7 +66,7 @@ export function checkTopUpPoints(input: string): TopUpAmountCheck {
 
 /**
  * Amount to copy for the bank app: digits only ("20000"), which every
- * banking app accepts (ASSUMED; Figma shows "20.000đ").
+ * banking app accepts (ASSUMED (design); Figma shows "20.000đ").
  */
 export function copyableVnd(amount: number): string {
   return String(amount);
@@ -82,7 +82,7 @@ export interface TimelineStep {
 
 /**
  * Figma 14c timeline "Đã gửi yêu cầu → Admin đang đối chiếu → Cộng N điểm".
- * APPROVED / REJECTED are not drawn (ASSUMED copy): approved completes every
+ * APPROVED / REJECTED are not drawn (ASSUMED (design) copy): approved completes every
  * step; rejected fails the review step with the admin's reason.
  */
 export function topUpTimeline(request: Pick<TopUpRequestDto, "amount" | "status" | "rejectionReason">, sentDetail: string): TimelineStep[] {

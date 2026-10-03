@@ -1,6 +1,6 @@
 import { isApiError } from "../api/api-error.ts";
 
-/** Vietnamese copy of the admin "Tổng quan" (ASSUMED — not drawn). */
+/** Vietnamese copy of the admin "Tổng quan" (ASSUMED (design) — not drawn). */
 
 export function overviewLoadErrorMessage(error: unknown): string {
   if (isApiError(error) && error.kind === "network") {

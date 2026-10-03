@@ -183,7 +183,6 @@ export const formsCreateHandlers: RequestHandler[] = [
       // Story IR.2b: the wizard's collection deadline.
       deadlineAt: dto.deadlineAt ?? null,
       closedAt: null,
-      hiddenFromMarketplace: true,
       rejection: null,
       versionNumber: 1,
     });

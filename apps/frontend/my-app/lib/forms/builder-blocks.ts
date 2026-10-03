@@ -409,7 +409,7 @@ export function removeSection(doc: BuilderDoc, sectionId: string): BuilderDoc {
 // --- Summary / effort ---
 
 /**
- * ASSUMED effort per question type (seconds) for "khoảng N phút": Figma 13a
+ * ASSUMED (design) effort per question type (seconds) for "khoảng N phút": Figma 13a
  * reads "6 câu · khoảng 5 phút" for its six questions; the backend only
  * stores `metadata.expectedEffortSeconds`.
  */

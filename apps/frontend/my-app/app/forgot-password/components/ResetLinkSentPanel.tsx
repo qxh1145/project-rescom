@@ -15,7 +15,7 @@ const readEmail = () => readPendingEmail("password-reset");
 const noEmailOnServer = () => null;
 
 /**
- * 15c "Kiểm tra hộp thư" — Figma `63:2089` (mobile; desktop card ASSUMED).
+ * 15c "Kiểm tra hộp thư" — Figma `63:2089` (mobile; desktop card ASSUMED (design)).
  * The copy never confirms that the account exists. Without a remembered email
  * (page opened directly) the generic copy is shown and "Gửi lại email" goes
  * back to the form.

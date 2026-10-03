@@ -34,7 +34,7 @@ export function ProfileCard({ data }: { data: AccountData }) {
         <div className="flex min-w-0 flex-col items-start">
           <p className="max-w-full truncate text-[19px] font-extrabold text-ink">{session.displayName}</p>
           <p className="mt-1 max-w-full truncate text-caption text-ink-muted">{session.user?.email}</p>
-          {view ? (
+          {view && !PILOT_BUILD ? (
             <Link
               href="/account/tier"
               className="mt-1 inline-flex h-6 items-center gap-1 rounded-field bg-tone-green-bg px-2.25 text-[12px] font-bold text-tone-green-fg hover:brightness-95"

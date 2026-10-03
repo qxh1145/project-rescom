@@ -18,13 +18,13 @@ const COPY: Record<AttemptEndedVariant, { tag: string; title: string; body: stri
     title: "Mã hoàn thành sai 3 lần",
     body: "Để tránh gian lận, Rescom tạm khoá lượt làm khảo sát này. Nếu bạn đã làm thật nhưng form không hiện mã hoặc mã không khớp, hãy báo Admin — Admin sẽ kiểm tra và mở lại cho bạn.",
   },
-  // ASSUMED (not drawn): 409 COMPLETION_CODE_LIMIT_REACHED, 6 wrong codes on this survey version.
+  // ASSUMED (design) (not drawn): 409 COMPLETION_CODE_LIMIT_REACHED, 6 wrong codes on this survey version.
   "account-limit": {
     tag: "Đã hết lượt nhập mã",
     title: "Bạn đã nhập sai mã quá nhiều lần",
     body: "Rescom tạm dừng nhập mã cho khảo sát này trên tài khoản của bạn. Nếu bạn đã làm thật, hãy báo Admin — Admin sẽ kiểm tra và mở lại cho bạn.",
   },
-  // ASSUMED (not drawn).
+  // ASSUMED (design) (not drawn).
   expired: {
     tag: "Lượt làm đã hết hạn",
     title: "Hết 30 phút giữ chỗ",
@@ -37,7 +37,7 @@ const COPY: Record<AttemptEndedVariant, { tag: string; title: string; body: stri
   },
 };
 
-/** Figma 5c (mobile 62:67; desktop ASSUMED: same column, centered) and its ASSUMED siblings. */
+/** Figma 5c (mobile 62:67; desktop ASSUMED (design): same column, centered) and its ASSUMED (design) siblings. */
 export function AttemptEndedScreen({ variant, onReport }: AttemptEndedScreenProps) {
   const copy = COPY[variant];
   return (

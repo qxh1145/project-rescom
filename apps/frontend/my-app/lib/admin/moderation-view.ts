@@ -106,7 +106,7 @@ export function checklistFor(type: FormTypeEnum) {
   return REVIEW_CHECKLIST.filter((item) => !item.types || item.types.includes(type));
 }
 
-/** Figma 11a' "Lý do chính" (the last one needs a note — ASSUMED). */
+/** Figma 11a' "Lý do chính" (the last one needs a note — ASSUMED (design)). */
 export const REJECTION_REASONS: readonly { id: string; label: string; needsNote?: boolean }[] = [
   { id: "login-required", label: "Form yêu cầu đăng nhập, người ngoài không mở được" },
   { id: "missing-code", label: "Thiếu mã hoàn thành ở trang cảm ơn" },

@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { backendRoutes, routeKey, where } from "./helpers/backend-routes.mjs";
 
 /**
  * Route-diff gate (mock-off plan 0.4): every endpoint the MSW handlers serve
@@ -12,50 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const { ROUTE_ALLOWLIST } = await import("../mocks/route-allowlist.ts");
 
-const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
-const BACKEND_SRC = fileURLToPath(new URL("../../../backend/src/", import.meta.url));
 const MSW_HANDLERS = fileURLToPath(new URL("../mocks/handlers/", import.meta.url));
-
-const where = (file, line) => `${relative(REPO_ROOT, file)}:${line}`;
-
-/** `METHOD /path`, ignoring `:param` names and duplicate or trailing slashes. */
-function routeKey(method, path) {
-  const clean = `/${path}`
-    .replace(/\/{2,}/g, "/")
-    .replace(/(.)\/$/, "$1")
-    .replace(/:[A-Za-z_]\w*/g, ":param");
-  return `${method.toUpperCase()} ${clean}`;
-}
-
-/** A route decorator at the start of a line; `@Controller([...])` may span lines. */
-const DECORATOR = /^[ \t]*@(Controller|Get|Post|Patch|Put|Delete)\(([^)]*)\)/gm;
-
-/** `()` → "", `('x')` → "x", `(['x', 'api/x'])` → "x" (the alias without `api/`). */
-function decoratorPath(args, location) {
-  if (args.trim() === "") return "";
-  const literal = args.match(/^\s*\[?\s*(['"])(.*?)\1/s);
-  if (!literal) throw new Error(`route-diff: unsupported decorator argument (${args.trim()}) at ${location}`);
-  return literal[2];
-}
-
-/** `METHOD /path` → `file:line` for every NestJS route (`*.controller.ts`). */
-function backendRoutes() {
-  const routes = new Map();
-  for (const name of readdirSync(BACKEND_SRC, { recursive: true }).sort()) {
-    if (!name.endsWith(".controller.ts")) continue;
-    const file = join(BACKEND_SRC, name);
-    const source = readFileSync(file, "utf8");
-    let prefix = null;
-    for (const match of source.matchAll(DECORATOR)) {
-      const location = where(file, source.slice(0, match.index).split("\n").length);
-      const path = decoratorPath(match[2], location);
-      if (match[1] === "Controller") prefix = path;
-      else if (prefix === null) throw new Error(`route-diff: @${match[1]} before any @Controller at ${location}`);
-      else routes.set(routeKey(match[1], `${prefix}/${path}`), location);
-    }
-  }
-  return routes;
-}
 
 /** `http.<method>(apiUrl("<path>")`, the path possibly a template literal. */
 const HANDLER = /\bhttp\.(get|post|patch|put|delete)\(\s*apiUrl\(\s*(["'`])(.*?)\2\s*\)/;

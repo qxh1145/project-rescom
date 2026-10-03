@@ -20,7 +20,8 @@ import { apiRequest } from "../api/client.ts";
  * - `POST /admin/moderation/surveys/:formId/reject` `{ formVersionId, reason }` → CLOSED,
  *   escrow refunded, SURVEY_REJECTED notification to the publisher
  *
- * ASSUMED API CONTRACT extensions (optional, so the real backend still parses):
+ * ASSUMED (design) display extensions, NOT emitted by the backend (optional, so the real
+ * backend response parses):
  * - `publisherName` — Figma "Người đăng: Linh N." (the DTO only has the email)
  * - `publisherFraudLogCount` — Figma "0 vi phạm FraudLog"
  * - (`deadlineAt` and `topic` are VERIFIED since IR.2b / plan 2.2)

@@ -24,8 +24,8 @@ import { apiRequest } from "../api/client.ts";
  * `FORBIDDEN`, 404 `TOPUP_NOT_FOUND`, 409 `TOPUP_ALREADY_REVIEWED`
  * (`details.currentStatus`).
  *
- * ASSUMED API CONTRACT (optional, so the verified response still parses):
- * `userName` and `userCreatedAt` — Figma shows "Trần Minh" and "tài khoản từ
+ * ASSUMED (design) display extensions, NOT emitted by the backend (optional, so the
+ * verified response parses): `userName` and `userCreatedAt` — Figma shows "Trần Minh" and "tài khoản từ
  * 12/09", the backend only joins the user's email.
  */
 export const adminTopUpSchema = adminTopUpRequestSchema.extend({

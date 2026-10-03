@@ -19,7 +19,7 @@ export interface NotificationPresentation {
 }
 
 export const NOTIFICATION_PRESENTATION: Record<NotificationType, NotificationPresentation> = {
-  // Figma "Khảo sát đã đủ mẫu" (62:2168). ASSUMED: approval/fill events share it.
+  // Figma "Khảo sát đã đủ mẫu" (62:2168). ASSUMED (design): approval/fill events share it.
   SURVEY_APPROVED: { icon: "target", tone: "teal", href: "/forms" },
   SURVEY_REJECTED: { icon: "x-circle", tone: "danger", href: "/forms" },
   // Figma "Khiếu nại được chấp nhận" (62:2132): points returned to the survey's escrow.
@@ -32,7 +32,7 @@ export const NOTIFICATION_PRESENTATION: Record<NotificationType, NotificationPre
   // Figma "Yêu cầu nạp điểm chưa được duyệt" (62:2185). No target: the copy asks to contact support.
   // WARNING also carries the starter-points expiry: see `notificationPresentation(type, message)`.
   WARNING: { icon: "bank", tone: "danger", href: null },
-  // Story IR.4b B3 (ASSUMED, not drawn): the rejection replaces the top-up WARNING; the wallet shows the request.
+  // Story IR.4b B3 (ASSUMED (design), not drawn): the rejection replaces the top-up WARNING; the wallet shows the request.
   TOPUP_REJECTED: { icon: "bank", tone: "danger", href: "/wallet" },
   ACCOUNT_LOCKED: { icon: "lock", tone: "danger", href: null },
   ACCOUNT_UNLOCKED: { icon: "unlock", tone: "green", href: null },
@@ -55,7 +55,7 @@ export function warningTopicOf(message: string): WarningTopic {
 
 const WARNING_PRESENTATION: Record<WarningTopic, NotificationPresentation> = {
   "top-up": NOTIFICATION_PRESENTATION.WARNING,
-  // ASSUMED (not drawn): the wallet shows the expired Đóng băng points.
+  // ASSUMED (design) (not drawn): the wallet shows the expired Đóng băng points.
   "starter-expiry": { icon: "lock", tone: "danger", href: "/wallet" },
   // ASSUMED: a neutral warning icon when the message says neither.
   other: { icon: "alert-circle", tone: "amber", href: null },
@@ -81,7 +81,7 @@ export function notificationPresentation(type: string, message = ""): Notificati
 
 /**
  * Vietnamese title per type, for backend messages (one English sentence with
- * no " — "). ASSUMED copy except where Figma 14d draws it.
+ * no " — "). ASSUMED (design) copy except where Figma 14d draws it.
  */
 export const NOTIFICATION_TITLES: Record<NotificationType, string> = {
   SURVEY_APPROVED: "Khảo sát đã được duyệt",

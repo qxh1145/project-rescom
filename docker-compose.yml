@@ -83,16 +83,29 @@ services:
 
   # The Alpine-based clamav/clamav image is amd64-only; the Debian-based image
   # is multi-arch (amd64, arm64), so it also runs natively on Apple Silicon.
-  # Default StreamMaxLength is 100M, above the 50 MB upload limit.
+  # clamd's default StreamMaxLength is only 25M, so it is set explicitly (100M)
+  # above the 50 MB upload limit: an oversized INSTREAM would otherwise be
+  # refused and treated as a scanner outage (IR.5 C4).
   clamav:
     image: clamav/clamav-debian:stable
     container_name: rescom_clamav
     restart: always
+    environment:
+      CLAMD_CONF_StreamMaxLength: 100M
     # Loopback only, like MinIO and Mailpit.
     ports:
       - "127.0.0.1:3310:3310"
     volumes:
       - rescom_clamav_data:/var/lib/clamav
+    healthcheck:
+      # clamdcheck.sh (shipped in the image) pings clamd on 3310. Loading
+      # the signature database takes minutes on a cold volume, hence the
+      # long start_period (the prod backend waits for it: deploy/).
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 360s
 
 volumes:
   rescom_pgdata:

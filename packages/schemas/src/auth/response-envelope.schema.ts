@@ -5,6 +5,8 @@ export const apiErrorSchema = z.object({
   code: z.string(),
   message: z.string(),
   details: z.any().optional(),
+  /** Story IR.5 C1: correlation id, same value as the `X-Request-Id` header. */
+  requestId: z.string().optional(),
 });
 
 export type ApiError = z.infer<typeof apiErrorSchema>;

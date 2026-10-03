@@ -184,6 +184,7 @@ export function BuilderScreen() {
   };
 
   const regenerate = async () => {
+    if (PILOT_BUILD) return;
     setRegenerating(true);
     setAiError(null);
     try {
@@ -198,6 +199,7 @@ export function BuilderScreen() {
   };
 
   const suggestIntoSheet = async () => {
+    if (PILOT_BUILD) return;
     setSheetAiBusy(true);
     setAiError(null);
     try {

@@ -49,7 +49,7 @@ function CurrentTierCard({ summary }: { summary: EngagementSummary }) {
             />
           </div>
           <p className="mt-1.5 text-caption">
-            {/* Level 1 → 2 also needs the profile (ASSUMED copy); otherwise Figma "Còn 18 khảo sát nữa." */}
+            {/* Level 1 → 2 also needs the profile (ASSUMED (design) copy); otherwise Figma "Còn 18 khảo sát nữa." */}
             {summary.tier.level === 1
               ? `${progress.next.requirement}.`
               : progress.remaining > 0
@@ -58,7 +58,7 @@ function CurrentTierCard({ summary }: { summary: EngagementSummary }) {
           </p>
         </>
       ) : (
-        // ASSUMED (not drawn): top tier.
+        // ASSUMED (design) (not drawn): top tier.
         <p className="mt-3 text-body-sm leading-normal">Bạn đang ở hạng cao nhất.</p>
       )}
     </section>
@@ -66,7 +66,7 @@ function CurrentTierCard({ summary }: { summary: EngagementSummary }) {
 }
 
 /**
- * Figma 16 "Hạng thành viên" (63:4981, mobile). Desktop is derived (ASSUMED):
+ * Figma 16 "Hạng thành viên" (63:4981, mobile). Desktop is derived (ASSUMED (design)):
  * the same cards in a 720px column under the app header.
  */
 export function TierScreen() {

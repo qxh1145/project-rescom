@@ -1,0 +1,764 @@
+{
+  "run": "ir5-2026-10-03T05-41-03-664Z",
+  "base": "http://localhost:3000",
+  "database": "rescom_ir5_check",
+  "startedAt": "2026-10-03T05:41:03.665Z",
+  "steps": [
+    {
+      "actor": "publisher",
+      "step": "register (email)",
+      "request": "POST /api/auth/register",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 353,
+      "requestId": "5fb53bd6-7c29-4203-a108-51f034504482",
+      "ids": {
+        "userId": "0368dc02-06ee-46f7-ab1c-5b116fec0a38"
+      }
+    },
+    {
+      "actor": "publisher",
+      "step": "csrf token",
+      "request": "GET /api/auth/csrf",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 9,
+      "requestId": "2a4b903f-5116-47b4-bee2-79a588b819b0"
+    },
+    {
+      "actor": "publisher",
+      "step": "scratch-DB role → PUBLISHER",
+      "request": "SQL",
+      "status": 0,
+      "ok": true,
+      "ms": 0
+    },
+    {
+      "actor": "publisher",
+      "step": "login",
+      "request": "POST /api/auth/login",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 273,
+      "requestId": "d31b78ee-8976-4b07-8f44-50609153528e"
+    },
+    {
+      "actor": "publisher",
+      "step": "csrf token",
+      "request": "GET /api/auth/csrf",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "390e5be1-51c6-4348-b229-17a51a3b2c0c"
+    },
+    {
+      "actor": "publisher",
+      "step": "demographics onboarding",
+      "request": "POST /api/demographics/survey",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 33,
+      "requestId": "c40cb33b-98e3-4859-9010-7018f2ef3fdc"
+    },
+    {
+      "actor": "admin A",
+      "step": "register (email)",
+      "request": "POST /api/auth/register",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 295,
+      "requestId": "1029fd3c-b171-4c6b-a92a-19da2dc906a0",
+      "ids": {
+        "userId": "ce223a3d-5d6b-4589-9bc0-aa68b3790745"
+      }
+    },
+    {
+      "actor": "admin A",
+      "step": "csrf token",
+      "request": "GET /api/auth/csrf",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "ad633957-25f1-492a-9f28-5349d5fa8089"
+    },
+    {
+      "actor": "admin A",
+      "step": "scratch-DB role → ADMIN",
+      "request": "SQL",
+      "status": 0,
+      "ok": true,
+      "ms": 0
+    },
+    {
+      "actor": "admin A",
+      "step": "login",
+      "request": "POST /api/auth/login",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 295,
+      "requestId": "24853477-a3b2-48ed-b49a-cec3841cca16"
+    },
+    {
+      "actor": "admin A",
+      "step": "csrf token",
+      "request": "GET /api/auth/csrf",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "f8a4c919-3896-4424-ace0-fb81bfbd3786"
+    },
+    {
+      "actor": "admin A",
+      "step": "demographics onboarding",
+      "request": "POST /api/demographics/survey",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 20,
+      "requestId": "92b95bb7-1737-4ad7-8fd3-abe1b2fc47c5"
+    },
+    {
+      "actor": "admin B",
+      "step": "register (email)",
+      "request": "POST /api/auth/register",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 284,
+      "requestId": "3236195b-add8-432f-aa3c-8b0b59807697",
+      "ids": {
+        "userId": "b2228d89-1c6a-4046-a0d4-8dabf18086fe"
+      }
+    },
+    {
+      "actor": "admin B",
+      "step": "csrf token",
+      "request": "GET /api/auth/csrf",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 4,
+      "requestId": "0ed81e4b-a540-45fa-83f2-2005a98373a1"
+    },
+    {
+      "actor": "admin B",
+      "step": "scratch-DB role → ADMIN",
+      "request": "SQL",
+      "status": 0,
+      "ok": true,
+      "ms": 0
+    },
+    {
+      "actor": "admin B",
+      "step": "login",
+      "request": "POST /api/auth/login",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 264,
+      "requestId": "0cb74370-593d-4e56-88a7-b42ca688b5a1"
+    },
+    {
+      "actor": "admin B",
+      "step": "csrf token",
+      "request": "GET /api/auth/csrf",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 5,
+      "requestId": "2651fb72-72d6-45cf-a712-df8c03bd1f5c"
+    },
+    {
+      "actor": "admin B",
+      "step": "demographics onboarding",
+      "request": "POST /api/demographics/survey",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 19,
+      "requestId": "e68bd3ab-6d2d-468b-8520-f1e8484d78ed"
+    },
+    {
+      "actor": "respondent",
+      "step": "register (email)",
+      "request": "POST /api/auth/register",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 279,
+      "requestId": "9c9af3eb-4b99-49ae-a4ba-1fd5ecbdcfed",
+      "ids": {
+        "userId": "77d067ad-234a-4b3a-88e6-b03d2e6d18a1"
+      }
+    },
+    {
+      "actor": "respondent",
+      "step": "csrf token",
+      "request": "GET /api/auth/csrf",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 4,
+      "requestId": "0db4e05e-3c1b-449a-a4b3-68a5cd360f59"
+    },
+    {
+      "actor": "respondent",
+      "step": "demographics onboarding",
+      "request": "POST /api/demographics/survey",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 14,
+      "requestId": "80cb9590-c507-40d4-9775-92fa342f4933"
+    },
+    {
+      "actor": "admin A",
+      "step": "admin A requests own top-up",
+      "request": "POST /api/economy/top-ups",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 8,
+      "requestId": "85c9b15d-34a8-4ac6-8810-125346ad2d5d",
+      "ids": {
+        "topUpId": "5bd9be39-1385-4166-b072-ba10ba1dd1d6"
+      }
+    },
+    {
+      "actor": "admin A",
+      "step": "admin A self-approval refused",
+      "request": "POST /api/admin/top-ups/:id/approve",
+      "status": 403,
+      "expected": 403,
+      "ok": true,
+      "ms": 9,
+      "requestId": "8a74aebd-8d1c-467c-a063-d89a92fee79d",
+      "errorCode": "TOPUP_SELF_REVIEW_FORBIDDEN"
+    },
+    {
+      "actor": "publisher",
+      "step": "publisher top-up request",
+      "request": "POST /api/economy/top-ups",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 5,
+      "requestId": "0806188e-d0d0-470e-8f9b-7f7e0520a86e",
+      "ids": {
+        "topUpId": "27d95b27-2f51-4f0d-a643-f5046f01e52d"
+      }
+    },
+    {
+      "actor": "admin A",
+      "step": "admin A approves top-up",
+      "request": "POST /api/admin/top-ups/:id/approve",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 19,
+      "requestId": "de86a165-a26f-49fa-8155-c2a421f66b16"
+    },
+    {
+      "actor": "admin A",
+      "step": "admin A approve replay (idempotent)",
+      "request": "POST /api/admin/top-ups/:id/approve",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 7,
+      "requestId": "6ba7bddb-973e-48e0-9100-34079c4e53e7"
+    },
+    {
+      "actor": "publisher",
+      "step": "create internal form",
+      "request": "POST /api/forms",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 10,
+      "requestId": "68197cb5-654d-406e-9334-35fa8a129688",
+      "ids": {
+        "formId": "6335cda7-2a4c-4545-9d89-ee9e6650e604"
+      }
+    },
+    {
+      "actor": "publisher",
+      "step": "publish with escrow",
+      "request": "POST /api/forms/:id/publish",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 24,
+      "requestId": "252af202-4552-4e48-bdf2-3929ccd2fece",
+      "ids": {
+        "formVersionId": "0c666f1f-df68-4bf8-98eb-3713da0df66c",
+        "status": "MODERATION_QUEUE"
+      }
+    },
+    {
+      "actor": "admin B",
+      "step": "admin B moderation approve",
+      "request": "POST /api/admin/moderation/surveys/:id/approve",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 19,
+      "requestId": "75076ccc-9a15-492e-90c2-78e437586ae9"
+    },
+    {
+      "actor": "respondent",
+      "step": "marketplace feed",
+      "request": "GET /api/marketplace/feed",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 9,
+      "requestId": "a3549d37-400c-4d28-b88c-e95ab08edc7a"
+    },
+    {
+      "actor": "respondent",
+      "step": "survey summary",
+      "request": "GET /api/surveys/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "75f0f693-2119-4140-a84c-e4051950ac54"
+    },
+    {
+      "actor": "respondent",
+      "step": "start attempt",
+      "request": "POST /api/surveys/:id/attempts",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 31,
+      "requestId": "55e6f8f1-a910-4ff2-8756-866161124d13",
+      "ids": {
+        "attemptId": "d9cb0846-d1a2-4455-bca4-f7fe5fd5774d",
+        "responseId": "8c48ebf6-5422-4283-b9bf-8fb450b0752b",
+        "formVersionId": "0c666f1f-df68-4bf8-98eb-3713da0df66c"
+      }
+    },
+    {
+      "actor": "respondent",
+      "step": "pinned form read",
+      "request": "GET /api/attempts/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 8,
+      "requestId": "80d5dd81-7b21-4bb6-8fbc-18bd691bafa9"
+    },
+    {
+      "actor": "respondent",
+      "step": "upload initiate (presign)",
+      "request": "POST /api/storage/uploads/initiate",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 12,
+      "requestId": "091f7375-b5de-4edc-8db1-607d3818d269",
+      "ids": {
+        "objectId": "ee0e69c7-5af7-410d-8076-2c1d7246110b"
+      }
+    },
+    {
+      "actor": "respondent",
+      "step": "browser PUT to presigned URL (MinIO, out-of-API)",
+      "request": "PUT <presigned>",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 5
+    },
+    {
+      "actor": "respondent",
+      "step": "finalize (scan → CLEAN)",
+      "request": "POST /api/storage/uploads/:id/finalize",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 54,
+      "requestId": "f1bceac2-cf22-4795-9f73-1a2294a488be",
+      "ids": {
+        "objectId": "ee0e69c7-5af7-410d-8076-2c1d7246110b",
+        "status": "CLEAN"
+      }
+    },
+    {
+      "actor": "respondent",
+      "step": "submit",
+      "request": "POST /api/responses/:id/submit",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 181,
+      "requestId": "25f3260d-d0e4-473a-af81-bc85052f2d0e",
+      "ids": {
+        "status": "VALIDATED",
+        "reward": "SETTLED",
+        "journalId": "ad66303e-7ad1-41b7-b6d8-d00c0e71dc8e"
+      }
+    },
+    {
+      "actor": "respondent",
+      "step": "submit replay, same key (idempotent)",
+      "request": "POST /api/responses/:id/submit",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 14,
+      "requestId": "3eb65547-72b6-4464-9bc1-de4a86721a19",
+      "ids": {
+        "journalId": "ad66303e-7ad1-41b7-b6d8-d00c0e71dc8e"
+      }
+    },
+    {
+      "actor": "respondent",
+      "step": "outcome",
+      "request": "GET /api/attempts/:id/outcome",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 14,
+      "requestId": "470826c6-45f5-4140-b899-05f05d07b575",
+      "ids": {
+        "attemptStatus": "COMPLETED"
+      }
+    },
+    {
+      "actor": "respondent",
+      "step": "wallet",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 14,
+      "requestId": "929b838a-9209-441a-bd7c-eb71e8b23216",
+      "ids": {
+        "available": 110,
+        "pending": 0
+      }
+    },
+    {
+      "actor": "respondent",
+      "step": "notifications",
+      "request": "GET /api/notifications",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 5,
+      "requestId": "814c48fd-cb60-4281-b761-f6f1a6fee7f7",
+      "ids": {
+        "count": 2
+      }
+    },
+    {
+      "actor": "admin A",
+      "step": "admin ledger journals",
+      "request": "GET /api/admin/ledger/journals",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 13,
+      "requestId": "3f5b9354-5e50-44b4-bee2-7f3aa996a9a4",
+      "ids": {
+        "journals": 41
+      }
+    },
+    {
+      "actor": "sql",
+      "step": "escrow, reward and top-up journals: exactly one each, zero-sum",
+      "request": "SQL",
+      "status": 0,
+      "ok": true,
+      "ms": 0,
+      "ids": {
+        "publish": 1,
+        "internal-reward": 1,
+        "topup-approval": 1,
+        "zeroSum": true
+      }
+    },
+    {
+      "actor": "sql",
+      "step": "ledger invariants (whole scratch DB)",
+      "request": "SQL",
+      "status": 0,
+      "ok": true,
+      "ms": 0,
+      "ids": {
+        "unbalancedJournals": 0,
+        "driftedAccounts": 0,
+        "negativeUserAccounts": 0,
+        "duplicateKeys": 0
+      }
+    }
+  ],
+  "routes": [
+    {
+      "actor": "respondent",
+      "route": "/account/trust",
+      "status": 404,
+      "expected": 404,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/account/streak",
+      "status": 404,
+      "expected": 404,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/account/tier",
+      "status": 404,
+      "expected": 404,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/leaderboard",
+      "status": 404,
+      "expected": 404,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/forms/6d084fb4-a842-4330-ac56-da33550655b7/complaints/f5e48c2e-ad6f-4d0b-8c39-9c94bf9c28b6",
+      "status": 404,
+      "expected": 404,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/forms/cb632b8d-1bdf-4d7b-b1bd-eab0e4d80441/quality",
+      "status": 404,
+      "expected": 404,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/forms/92070887-3061-41df-a94f-dbd50565b6af/export",
+      "status": 404,
+      "expected": 404,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/admin/quality",
+      "status": 404,
+      "expected": 404,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/forms/new/builder/ai",
+      "status": 404,
+      "expected": 404,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/forms/ceee06ad-dedc-4adc-b9f0-96875cba768a/builder/ai",
+      "status": 404,
+      "expected": 404,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/f/a31caad1-3027-4a58-a9cf-0d093f9b0e9d",
+      "status": 404,
+      "expected": 404,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/marketplace",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/wallet/top-up",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/notifications",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/account",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/account/profile",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/onboarding",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "publisher",
+      "route": "/forms",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "publisher",
+      "route": "/forms/new",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "publisher",
+      "route": "/forms/new/builder",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "publisher",
+      "route": "/forms/new/google-form",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "admin A",
+      "route": "/admin",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "admin A",
+      "route": "/admin/surveys",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "admin A",
+      "route": "/admin/top-ups",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "admin A",
+      "route": "/admin/transactions",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "admin A",
+      "route": "/admin/users",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "admin A",
+      "route": "/admin/disputes",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "admin A",
+      "route": "/admin/fraud-log",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "guest",
+      "route": "/",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "guest",
+      "route": "/login",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "guest",
+      "route": "/register",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "guest",
+      "route": "/forgot-password",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "guest",
+      "route": "/privacy",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "guest",
+      "route": "/terms",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "respondent",
+      "route": "/dashboard",
+      "status": 307,
+      "expected": 307,
+      "ok": true
+    }
+  ],
+  "passed": true,
+  "finishedAt": "2026-10-03T05:41:22.590Z"
+}

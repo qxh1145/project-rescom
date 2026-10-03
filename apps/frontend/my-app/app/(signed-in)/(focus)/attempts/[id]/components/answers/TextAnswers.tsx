@@ -5,7 +5,7 @@ import type { NumberBlock, TextBlock, TextareaBlock } from "@rescom/schemas";
 import { Textarea } from "@/components/ui/Textarea";
 import { fieldClassName } from "@/components/ui/TextField";
 
-/** Free-text answers (not drawn in Figma 4 — ASSUMED: page 8 input/textarea styles). */
+/** Free-text answers (not drawn in Figma 4 — ASSUMED (design): page 8 input/textarea styles). */
 
 interface BaseProps {
   inputId: string;

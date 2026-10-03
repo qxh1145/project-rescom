@@ -66,7 +66,7 @@ function hasUnsavedLocalEdits(formId: string): boolean {
 
 /**
  * Builder steps 2 "Đối tượng" and 3 "Số mẫu & điểm" → publish.
- * ASSUMED layout: Figma page 13 only draws step 1; these steps follow the
+ * ASSUMED (design) layout: Figma page 13 only draws step 1; these steps follow the
  * builder header and 13a's price hint. Publishing = `PATCH /forms/:id/draft`
  * (targeting, sample size, reward, duration) → `GET /forms/:id/pricing-quote`
  * → `POST /forms/:id/publish` (escrow reserved, status MODERATION_QUEUE).

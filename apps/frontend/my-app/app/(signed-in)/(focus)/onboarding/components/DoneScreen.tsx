@@ -35,7 +35,7 @@ interface DoneScreenProps {
  * "12 · Hoàn tất" — Figma draws goal "Cả hai" (desktop 62:1927, mobile 62:1998).
  * ASSUMED for the other cases: "Làm khảo sát, tích điểm" shows step 1 only;
  * an already activated user (`nextStep: COMPLETED`) sees a plain "next" card.
- * The unsaved-profile alert and its "Thử lại" / "Sửa" are ASSUMED too (not drawn).
+ * The unsaved-profile alert and its "Thử lại" / "Sửa" are ASSUMED (design) too (not drawn).
  */
 export function DoneScreen({
   name,

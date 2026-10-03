@@ -18,13 +18,13 @@ export function CompletionDesktopHeader() {
   );
 }
 
-/** ASSUMED (not drawn): no "+N điểm" claim when nothing was credited or the reward was reversed. */
+/** ASSUMED (design) (not drawn): no "+N điểm" claim when nothing was credited or the reward was reversed. */
 const NO_POINTS_COPY = {
   "no-reward": "Lượt này không được cộng điểm",
   reversed: "Điểm thưởng của lượt này đã bị thu hồi",
 } as const;
 
-/** "+12 điểm vào Khả dụng" (Figma 62:1796 / 62:2051) — pending wording for Google Forms (ASSUMED, page 5). */
+/** "+12 điểm vào Khả dụng" (Figma 62:1796 / 62:2051) — pending wording for Google Forms (ASSUMED (design), page 5). */
 export function RewardPill({ amount, kind }: { amount: number; kind: Exclude<CompletionKind, "held"> }) {
   if (kind === "no-reward" || kind === "reversed") {
     return (

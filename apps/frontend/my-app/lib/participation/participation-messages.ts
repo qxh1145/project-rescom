@@ -16,13 +16,13 @@ function rateLimited(error: unknown): string {
     : "Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút.";
 }
 
-/** "Đồng ý và bắt đầu" got an error answer while recording the acceptance (ASSUMED copy). */
+/** "Đồng ý và bắt đầu" got an error answer while recording the acceptance (ASSUMED (design) copy). */
 export const CONSENT_NOT_RECORDED_MESSAGE = "Chưa ghi nhận được sự đồng ý. Vui lòng thử lại.";
 
-/** 409 INTEGRITY_CONSENT_VERSION_MISMATCH: a newer notice is in force (ASSUMED copy). */
+/** 409 INTEGRITY_CONSENT_VERSION_MISMATCH: a newer notice is in force (ASSUMED (design) copy). */
 export const CONSENT_NOTICE_UPDATED_MESSAGE = "Thông báo dữ liệu vừa được cập nhật. Hãy đọc lại rồi đồng ý.";
 
-/** `GET /integrity/consent` answered with an error (ASSUMED copy). */
+/** `GET /integrity/consent` answered with an error (ASSUMED (design) copy). */
 export const CONSENT_STATUS_UNAVAILABLE_MESSAGE = "Không tải được thông báo dữ liệu. Vui lòng thử lại.";
 
 /**

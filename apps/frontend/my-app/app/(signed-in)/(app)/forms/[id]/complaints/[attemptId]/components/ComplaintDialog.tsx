@@ -140,7 +140,7 @@ function ComplaintForm({
 }
 
 /**
- * Figma 10c "Khiếu nại lượt làm" (62:1720, mobile sheet). Desktop ASSUMED:
+ * Figma 10c "Khiếu nại lượt làm" (62:1720, mobile sheet). Desktop ASSUMED (design):
  * the same content in the centered 576px dialog used by 10b. The dispute
  * route stays on MSW (`PUBLISHER_DISPUTES_ENABLED`, Story 8.5 deferred): the
  * progress contract no longer lists the 48h attempts, so the attempt comes

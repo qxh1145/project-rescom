@@ -9,6 +9,8 @@ import {
   StoredObjectDto,
 } from '@rescom/schemas';
 import { EnvService } from '../../../common/config/env.service';
+import { currentRequestId } from '../../../common/http/request-context';
+import { recordStorageOutage } from '../../../common/system/storage-outage-counter';
 import { StoredObjectEntity } from '../domain/stored-object.entity';
 import {
   StorageInvalidFileException,
@@ -16,11 +18,13 @@ import {
   StorageObjectNotFoundException,
   StorageQuestionFullException,
   StorageScannerOutageException,
+  StorageUnavailableException,
 } from './exceptions/storage.exceptions';
 import { MalwareScannerPort } from './ports/malware-scanner.port';
 import {
   ObjectPreconditionFailedError,
   ObjectStoragePort,
+  StoredObjectMetadata,
 } from './ports/object-storage.port';
 import {
   FileUploadPolicy,
@@ -77,6 +81,7 @@ export interface StorageCleanupResult {
 
 export interface StorageServiceLogger {
   warn(message: string): void;
+  error(message: string): void;
 }
 
 export class StorageService {
@@ -271,10 +276,18 @@ export class StorageService {
     }
 
     // Pre-claim checks leave the object unclaimed so the client can re-PUT.
-    const metadata = await this.objectStorage.getObjectMetadata(
-      current.bucket,
-      current.storageKey,
-    );
+    let metadata: StoredObjectMetadata | null;
+    try {
+      metadata = await this.objectStorage.getObjectMetadata(
+        current.bucket,
+        current.storageKey,
+      );
+    } catch (error) {
+      // Storage unreachable before the claim: the row stays INITIATED, so a
+      // retry after recovery is a plain finalize (IR.5 C2.1).
+      this.recordOutage('storage.unavailable', current, error);
+      throw new StorageUnavailableException();
+    }
     if (!metadata) {
       throw new StorageInvalidFileException(
         'Uploaded object was not found in private storage.',
@@ -346,6 +359,7 @@ export class StorageService {
         throw error;
       }
       // Read, scanner or copy failure after the claim: fail closed (AD-22).
+      this.recordOutage('storage.scan_outage', object, error);
       object.markScanOutage(
         'scanner-error',
         error instanceof Error ? error.message : 'Malware scanner failed',
@@ -669,6 +683,7 @@ export class StorageService {
       object.fileName,
     );
     if (scanResult.isOutage) {
+      this.recordOutage('storage.scan_outage', object, scanResult.reason);
       object.markScanOutage(
         scanResult.scanPolicy,
         scanResult.reason || 'Malware scanner unavailable',
@@ -923,6 +938,32 @@ export class StorageService {
     } catch {
       // Best effort: the state transition already happened and is what counts.
     }
+  }
+
+  /**
+   * IR.5 C3: one alertable structured error event per outage plus the
+   * `/system/metrics` counter. By object id and request id only: never the
+   * storage key or file name, which are also scrubbed from the reason.
+   */
+  private recordOutage(
+    event: 'storage.scan_outage' | 'storage.unavailable',
+    object: StoredObjectEntity,
+    cause: unknown,
+  ): void {
+    recordStorageOutage();
+    let reason =
+      cause instanceof Error ? cause.message : String(cause ?? 'unknown');
+    for (const secret of [object.storageKey, object.fileName]) {
+      if (secret) reason = reason.split(secret).join('[redacted]');
+    }
+    this.logger?.error(
+      JSON.stringify({
+        event,
+        objectId: object.id,
+        requestId: currentRequestId() ?? null,
+        reason: reason.slice(0, 300),
+      }),
+    );
   }
 
   /**

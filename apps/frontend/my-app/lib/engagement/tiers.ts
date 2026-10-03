@@ -11,7 +11,7 @@ export interface Tier {
   perk: string;
   /**
    * The same benefit as a verb phrase after "để …" ("Làm thêm 18 khảo sát để
-   * được ưu tiên hiển thị trên Khám phá."). ASSUMED copy.
+   * được ưu tiên hiển thị trên Khám phá."). ASSUMED (design) copy.
    */
   unlockPhrase: string;
   /** Completed surveys needed; null for tiers gated by something else. */

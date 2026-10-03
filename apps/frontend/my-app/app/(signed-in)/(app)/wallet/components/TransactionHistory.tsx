@@ -33,7 +33,7 @@ function mobileFilterOf(filter: HistoryFilter): Exclude<HistoryFilter, "top-up">
   return filter === "top-up" ? "all" : filter;
 }
 
-/** Amount / label color per pill tone; spending (−) stays ink (ASSUMED, not drawn). */
+/** Amount / label color per pill tone; spending (−) stays ink (ASSUMED (design), not drawn). */
 const TONE_TEXT: Record<BucketPresentation["tone"], string> = {
   amber: "text-tone-amber-fg",
   teal: "text-tone-teal-fg",
@@ -72,7 +72,7 @@ interface TransactionHistoryProps {
   rows: HistoryRow[];
   filter: HistoryFilter;
   onFilterChange: (filter: HistoryFilter) => void;
-  /** Older entries exist ("Tải thêm", ASSUMED: not drawn). */
+  /** Older entries exist ("Tải thêm", ASSUMED (design): not drawn). */
   hasMore: boolean;
   onLoadMore: () => void;
   loadingMore: boolean;
@@ -97,7 +97,7 @@ function LoadMore({ hasMore, onLoadMore, loadingMore, loadMoreFailed }: Omit<Tra
 
 /**
  * Figma 7 "Lịch sử giao dịch" — desktop table in a card (62:301), mobile
- * list (62:1110). Empty states and "Tải thêm" are not drawn (ASSUMED).
+ * list (62:1110). Empty states and "Tải thêm" are not drawn (ASSUMED (design)).
  */
 export function TransactionHistory({ rows: allRows, filter, onFilterChange, ...more }: TransactionHistoryProps) {
   const hasHistory = allRows.length > 0 || more.hasMore;

@@ -18,7 +18,6 @@ function ProgressCell({ row }: { row: MyFormRow }) {
         </p>
       );
     case "RUNNING":
-    case "PAUSED":
       return (
         <div className="flex max-w-[252px] flex-col gap-2">
           <p className="text-body-sm font-bold text-ink">
