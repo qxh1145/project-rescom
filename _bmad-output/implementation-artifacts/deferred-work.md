@@ -386,3 +386,7 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 - Production env validator: `DATABASE_URL` default-credential check is a substring match on the whole URL; an `example*` prefix rule could reject a real SMTP username.
 - Product tours: a write after COMPLETED keeps status COMPLETED but overwrites `step` (pre-existing, now pinned by `product-tours.e2e-spec.ts`).
 - `deploy/.env.prod.example` now carries real-looking domains; an unedited copy produces plausible but wrong URLs.
+
+## Deferred from: code review of IR.1, IR.3, IR.4 (2026-10-03)
+
+- "Verified" publisher-form contracts still carry frontend-only ASSUMED extension fields (`managementExtensions`, `questionCount`, optional version stats). Backend e2e suites parse with the shared base schemas only (`formDetailSchema` is passthrough), so these fields are not contract-tested. Close at IR.5 ("none remains `assumed`").

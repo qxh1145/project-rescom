@@ -23,3 +23,14 @@ export const PILOT_HIDDEN_ROUTES: ReadonlyArray<{ route: string; guard: string }
   { route: "/forms/[id]/builder/ai", guard: "(signed-in)/(focus)/forms/[id]/builder/ai/page.tsx" },
   { route: "/f/[id]", guard: "f/[id]/layout.tsx" },
 ];
+
+/** A pilot build must never serve MSW demo data (`enabled`/`hybrid`); importing this from next.config.ts fails `next build`. */
+export function assertPilotMockingDisabled(pilot: boolean, mocking: string | undefined): void {
+  if (pilot && (mocking === "enabled" || mocking === "hybrid")) {
+    throw new Error(
+      `NEXT_PUBLIC_PILOT_BUILD=true requires NEXT_PUBLIC_API_MOCKING=disabled (got "${mocking}").`,
+    );
+  }
+}
+
+assertPilotMockingDisabled(PILOT_BUILD, process.env.NEXT_PUBLIC_API_MOCKING);

@@ -3,7 +3,7 @@ import {
   Harness,
   bootHarness,
   databaseUrl,
-  explicitUrl,
+  requireDb,
   internalDraftBody,
   probeDatabase,
 } from './fixtures/financial-pg-harness';
@@ -29,10 +29,10 @@ describe('Survey moderation on PostgreSQL (Story IR.4)', () => {
   let h: Harness;
 
   if (!dbAvailable) {
-    if (explicitUrl) {
+    if (requireDb) {
       it('reaches FINANCIAL_TEST_DATABASE_URL', () => {
         throw new Error(
-          `FINANCIAL_TEST_DATABASE_URL is set but ${databaseUrl} is unreachable.`,
+          `FINANCIAL_TEST_DATABASE_URL is set (or CI) but ${databaseUrl} is unreachable.`,
         );
       });
     } else {
@@ -102,6 +102,22 @@ describe('Survey moderation on PostgreSQL (Story IR.4)', () => {
     return { decisions, audits, notifications };
   }
 
+  /** The single notification must be the decision's own event (type + source key). */
+  async function expectNotification(
+    publisherId: string,
+    formVersionId: string,
+    type: 'SURVEY_APPROVED' | 'SURVEY_REJECTED',
+  ) {
+    const rows = await h.prisma.notification.findMany({
+      where: { userId: publisherId },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      type,
+      dedupeKey: `moderation:${formVersionId}`,
+    });
+  }
+
   liveIt(
     'two admins approving one survey concurrently record one decision, one audit event and one notification',
     async () => {
@@ -132,6 +148,12 @@ describe('Survey moderation on PostgreSQL (Story IR.4)', () => {
       });
       expect(form.status).toBe('PUBLISHED');
       expect(await accountBalance(owner.id, 'ESCROW')).toBe(400);
+      const decision = await h.prisma.surveyModerationDecision.findFirstOrThrow(
+        { where: { formId } },
+      );
+      expect(decision.outcome).toBe('APPROVED');
+      expect([adminA.id, adminB.id]).toContain(decision.adminId);
+      await expectNotification(owner.id, formVersionId, 'SURVEY_APPROVED');
     },
     60_000,
   );
@@ -156,6 +178,13 @@ describe('Survey moderation on PostgreSQL (Story IR.4)', () => {
         { where: { formId } },
       );
       expect(decision.outcome).toBe(a.status === 200 ? 'APPROVED' : 'REJECTED');
+      expect(decision.adminId).toBe(a.status === 200 ? adminA.id : adminB.id);
+      if (a.status !== 200) expect(decision.reason).toBe(REASON);
+      await expectNotification(
+        owner.id,
+        formVersionId,
+        a.status === 200 ? 'SURVEY_APPROVED' : 'SURVEY_REJECTED',
+      );
       expect(await sideEffects(formId, owner.id)).toEqual({
         decisions: 1,
         audits: 1,
@@ -193,8 +222,10 @@ describe('Survey moderation on PostgreSQL (Story IR.4)', () => {
         outcome: 'REJECTED',
         adminId: adminA.id,
         refundAmount: 400,
+        reason: REASON,
       });
       expect(decision.refundJournalId).not.toBeNull();
+      await expectNotification(owner.id, formVersionId, 'SURVEY_REJECTED');
       expect(await sideEffects(formId, owner.id)).toEqual({
         decisions: 1,
         audits: 1,

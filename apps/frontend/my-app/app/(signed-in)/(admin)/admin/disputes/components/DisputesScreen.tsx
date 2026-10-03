@@ -59,7 +59,14 @@ export function DisputesScreen() {
             </button>
           </Alert>
         ) : queue.tab === "MISSING_CODE" && queue.reports ? (
-          <MissingCodeReportList reports={queue.reports} total={queue.counts?.MISSING_CODE ?? queue.reports.length} />
+          <MissingCodeReportList
+            reports={queue.reports}
+            total={queue.counts?.MISSING_CODE ?? queue.reports.length}
+            hasMore={queue.hasMoreReports}
+            loadingMore={queue.loadingMoreReports}
+            loadMoreError={queue.moreReportsError}
+            onLoadMore={queue.loadMoreReports}
+          />
         ) : !selected ? (
           // ASSUMED empty state (not drawn).
           <section className="flex flex-col items-center gap-4 rounded-[22px] border border-line bg-surface px-6 py-12 text-center">

@@ -113,10 +113,10 @@ describe('Respondent journey on PostgreSQL, no mocks (Story IR.3)', () => {
   }
 
   if (!dbAvailable) {
-    if (explicitUrl) {
+    if (explicitUrl || process.env.CI) {
       it('reaches JOURNEY_TEST_DATABASE_URL', () => {
         throw new Error(
-          `JOURNEY_TEST_DATABASE_URL is set but ${databaseUrl} is unreachable.`,
+          `JOURNEY_TEST_DATABASE_URL is set (or CI) but ${databaseUrl} is unreachable.`,
         );
       });
     } else {

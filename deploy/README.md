@@ -157,18 +157,19 @@ rescom logs -f backend
 Backend chạy được khi log có dòng Nest khởi động xong và không có lỗi env/migration.
 `minio-init` hiện `Exited (0)` là bình thường (nó chỉ tạo bucket rồi thoát).
 
-### 1.8. Tạo dữ liệu và tài khoản test
+### 1.8. Tạo tài khoản Admin
+
+**Không chạy seed** trên staging/production và không đặt `SEED_ALLOW_PRODUCTION` (seed tạo tài khoản demo
+với mật khẩu mặc định). Thay vào đó:
+
+1. Đăng ký **ít nhất hai** tài khoản thật qua `https://app.rescom.com.vn` (đăng ký bình thường, xác minh email).
+2. Nâng cả hai lên `ADMIN` trực tiếp trong DB (thay email cho đúng):
 
 ```bash
-rescom exec -e SEED_ALLOW_PRODUCTION=true backend npm run seed
+rescom exec -T postgres sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB" -c "UPDATE users SET role = '"'"'ADMIN'"'"' WHERE email IN ('"'"'admin1@example.com'"'"', '"'"'admin2@example.com'"'"');"'
 ```
 
-Mật khẩu các tài khoản seed được ghi vào file trong container. Lấy ra ngay và cất ở nơi an toàn
-(file sẽ mất khi container được tạo lại):
-
-```bash
-rescom exec backend cat .seed-credentials.local.md
-```
+Kết quả phải là `UPDATE 2`. Đăng xuất rồi đăng nhập lại để phiên nhận quyền mới.
 
 ### 1.9. Kiểm tra
 

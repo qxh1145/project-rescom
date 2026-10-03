@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"grep -rn \\\"CREATE INDEX\\\\|CREATE UNIQUE INDEX\\\" apps/backend/prisma/migrations apps/backend/prisma/sql | rtk grep -iE \\\"forms|fraud_logs|integrity_incidents|survey_feedback|outbox|users|to...",
-  "error": "Exit code 1\napps/backend/prisma/migrations/20260927040000_reconcile_db_push_tables/migration.sql:642:CREATE UNIQUE INDEX IF NOT EXISTS \"fraud_logs_dedupe_key_key\" ON \"fraud_logs\"(\"dedupe_key\");\napps/backend/prisma/migrations/20260927040000_reconcile_db_push_tables/migration.sql:646:CREATE UNIQUE INDEX IF NOT EXISTS \"outbox_events_idempotency_key_key\" ON \"outbox_events\"(\"idempotency_key\");\napps/backend/prisma/migrations/20260927040000_reconcile_db_push_tables/migration.sql:648:CREATE INDEX IF NOT...",
-  "timestamp": "2026-09-30T15:50:58.926Z",
-  "retry_count": 14
-}

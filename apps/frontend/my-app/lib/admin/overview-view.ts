@@ -1,3 +1,4 @@
+import { PILOT_BUILD } from "../pilot-scope.ts";
 import { formatShortDateTime, vietnamDateTimeParts } from "../format/date-time.ts";
 import { formatPoints, formatVnd } from "../wallet/top-up.ts";
 import type { AdminOverview, AdminTodoItem, FlaggedAccount } from "./overview-service.ts";
@@ -28,7 +29,8 @@ export interface StatCardView {
 
 /** The four link cards (62:4126 → 62:4138). */
 export function statCardsOf(overview: AdminOverview): StatCardView[] {
-  const issues = overview.openIssues.disputes + overview.openIssues.missingCodeReports;
+  // Pilot: the real backend has no disputes; show and count missing-code reports only.
+  const issues = (PILOT_BUILD ? 0 : overview.openIssues.disputes) + overview.openIssues.missingCodeReports;
   return [
     {
       label: "Khảo sát chờ duyệt",
@@ -49,7 +51,9 @@ export function statCardsOf(overview: AdminOverview): StatCardView[] {
     {
       label: "Khiếu nại & báo lỗi mở",
       value: String(issues),
-      caption: `${overview.openIssues.disputes} khiếu nại · ${overview.openIssues.missingCodeReports} báo thiếu mã`,
+      caption: PILOT_BUILD
+        ? `${overview.openIssues.missingCodeReports} báo thiếu mã`
+        : `${overview.openIssues.disputes} khiếu nại · ${overview.openIssues.missingCodeReports} báo thiếu mã`,
       captionTone: "muted",
       // Figma draws the open-issue count in dark red; ASSUMED ink when nothing is open.
       valueTone: issues > 0 ? "danger" : "ink",

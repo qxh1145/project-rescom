@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"grep -rn \\\"formVersions\\\\|syncPublisherForm\\\\|escrowLocked\\\\|completedCompletions\\\\|formResponses\\\\|formTracking\\\\|updateTracking\\\" mocks lib --include=*.ts | grep -v \\\"^mocks/data/form-ac...",
-  "error": "Exit code 1\n(eval):1: no matches found: --include=*.ts",
-  "timestamp": "2026-09-27T15:29:12.561Z",
-  "retry_count": 1
-}

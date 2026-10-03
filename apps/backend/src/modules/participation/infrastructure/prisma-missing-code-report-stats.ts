@@ -30,6 +30,8 @@ export class PrismaMissingCodeReportStats implements MissingCodeReportStatsPort 
     before: { createdAt: string; id: string } | null,
     limit: number,
   ): Promise<UnresolvedMissingCodeReport[]> {
+    // `missing_code_reported_at` is TIMESTAMP(3) holding UTC: the ISO cursor
+    // cast to `timestamp` drops its `Z`, independent of the session TimeZone.
     const rows = await this.prisma.$queryRaw<
       Array<{
         id: string;
@@ -56,7 +58,7 @@ export class PrismaMissingCodeReportStats implements MissingCodeReportStatsPort 
         )
         AND (${before === null}
           OR (a.missing_code_reported_at, a.id)
-             < (${before?.createdAt ?? null}::timestamptz, ${before?.id ?? null}::uuid))
+             < (${before?.createdAt ?? null}::timestamp, ${before?.id ?? null}::uuid))
       ORDER BY a.missing_code_reported_at DESC, a.id DESC
       LIMIT ${limit}
     `;

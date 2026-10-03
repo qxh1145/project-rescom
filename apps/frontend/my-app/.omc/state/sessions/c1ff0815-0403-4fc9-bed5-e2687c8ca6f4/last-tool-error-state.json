@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd /Users/quan/HocTap/Vibecode/project-rescom/apps/backend; grep -rn \\\"credentials\\\" src/scripts/seed.ts | head -5; ls -a | rtk grep -i cred; ls ../../ | rtk grep -i cred\",\"description\":\"L...",
-  "error": "Exit code 1\nsrc/scripts/seed.ts:89:  process.env.SEED_CREDENTIALS_FILE ?? '.seed-credentials.local.md',\nsrc/scripts/seed.ts:876:  '# RESCOM seed credentials (LOCAL ONLY — do not commit or share)';\nsrc/scripts/seed.ts:886:/** Fails before any account exists when the credentials file is not writable. */\nsrc/scripts/seed.ts:894:function credentialsTable(accounts: SeedAccount[]): string[] {\nsrc/scripts/seed.ts:929:    ...credentialsTable(accounts),\n.seed-credentials.local.md",
-  "timestamp": "2026-10-01T12:40:23.150Z",
-  "retry_count": 1
-}

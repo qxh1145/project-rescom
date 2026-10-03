@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"grep -rn \\\"eventType\\\" --include='*.ts' . | grep -v spec | grep -oE \\\"'[A-Z][A-Za-z]+'\\\" | sort | uniq -c | sort -rn | head -40; echo ---; grep -rln \\\"OUTBOX_HANDLERS\\\\|OutboxEventHandler\\...",
-  "error": "Exit code 1\n   3 'InternalRewardRequested'\n   2 'IntegrityAssessmentRequested'\n   2 'ExternalCompletionCodeMissingReported'\n   1 'SurveyFeedbackSubmitted'\n---",
-  "timestamp": "2026-10-02T03:25:49.753Z",
-  "retry_count": 1
-}

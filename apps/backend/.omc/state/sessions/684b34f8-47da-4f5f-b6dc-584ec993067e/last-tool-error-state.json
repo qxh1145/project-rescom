@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd /Users/quan/HocTap/Vibecode/project-rescom/apps/frontend/my-app && rtk read app/forms/pricing-band.ts && grep -rn \\\"describePricingBand\\\" --include=*.ts --include=*.tsx --include=*.mjs ...",
-  "error": "Exit code 1\nimport {\n  checkPublishRewardBand,\n  type FormTypeEnum,\n  type RewardPricingRange,\n} from \"@rescom/schemas\";\n\n/**\n * Publisher-facing copy for the FR-14 reward pricing band (code-review\n * decision E6-D2). The band is picked from the estimated completion time and\n * enforced by the backend when a survey is published; drafts stay editable,\n * so this only warns while editing and blocks the publish action.\n */\nexport interface PricingBandHint {\n  tone: \"info\" | \"warning\" | \"error\";\n  m...",
-  "timestamp": "2026-09-26T12:28:46.530Z",
-  "retry_count": 1
-}

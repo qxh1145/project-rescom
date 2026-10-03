@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd /Users/quan/HocTap/Vibecode/project-rescom && grep -rnE \\\"responses\\\\?(quality|q=|page)\\\" apps/frontend/my-app/app apps/frontend/my-app/lib apps/frontend/my-app/components apps/frontend...",
-  "error": "Exit code 1",
-  "timestamp": "2026-09-27T16:08:42.432Z",
-  "retry_count": 2
-}

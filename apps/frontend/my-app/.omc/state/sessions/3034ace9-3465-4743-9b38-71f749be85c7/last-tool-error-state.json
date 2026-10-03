@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd /Users/quan/HocTap/Vibecode/project-rescom/apps/frontend/my-app; rtk read next.config.ts; curl -s localhost:3000/login | grep -o \\\"mock[^\\\\\\\"]\\\\{0,40\\\\}\\\" | head -3; rtk ls -la node_mod...",
-  "error": "Exit code 1\nimport type { NextConfig } from \"next\";\n\nimport path from \"path\";\n\nconst nextConfig: NextConfig = {\n  transpilePackages: [\"@rescom/schemas\"],\n  turbopack: {\n    root: path.resolve(__dirname, \"../../..\"),\n  },\n  async rewrites() {\n    const apiBaseUrl = process.env.RESCOM_API_URL ?? \"http://localhost:4000\";\n    return [\n      {\n        source: \"/api/:path*\",\n        destination: `${apiBaseUrl.replace(/\\/$/, \"\")}/:path*`,\n      },\n    ];\n  },\n};\n\nexport default nextConfig;\nls: node_mod...",
-  "timestamp": "2026-10-01T10:52:06.086Z",
-  "retry_count": 1
-}

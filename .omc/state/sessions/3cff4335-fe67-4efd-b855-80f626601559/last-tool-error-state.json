@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"rtk docker exec rescom_postgres psql -U postgres -d rescom -Atc \\\"select 'users',count(*) from users union all select 'forms',count(*) from forms union all select 'journals',count(*) from ...",
-  "error": "Exit code 2\npsql: error: connection to server on socket \"/var/run/postgresql/.s.PGSQL.5432\" failed: FATAL:  role \"postgres\" does not exist",
-  "timestamp": "2026-09-30T17:14:48.262Z",
-  "retry_count": 1
-}

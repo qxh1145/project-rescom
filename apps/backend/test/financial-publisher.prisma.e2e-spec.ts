@@ -3,7 +3,7 @@ import {
   Harness,
   bootHarness,
   databaseUrl,
-  explicitUrl,
+  requireDb,
   internalDraftBody,
   probeDatabase,
 } from './fixtures/financial-pg-harness';
@@ -29,10 +29,10 @@ describe('Publisher and financial journeys on PostgreSQL (Story IR.4)', () => {
   let h: Harness;
 
   if (!dbAvailable) {
-    if (explicitUrl) {
+    if (requireDb) {
       it('reaches FINANCIAL_TEST_DATABASE_URL', () => {
         throw new Error(
-          `FINANCIAL_TEST_DATABASE_URL is set but ${databaseUrl} is unreachable.`,
+          `FINANCIAL_TEST_DATABASE_URL is set (or CI) but ${databaseUrl} is unreachable.`,
         );
       });
     } else {
@@ -162,6 +162,19 @@ describe('Publisher and financial journeys on PostgreSQL (Story IR.4)', () => {
           }),
         ).toBe(1);
         expect(await accountBalance(owner.id, 'USER_AVAILABLE')).toBe(500);
+        const reviewed = await h.prisma.topUpRequest.findUniqueOrThrow({
+          where: { id: topUpId },
+        });
+        expect(reviewed.status).toBe('APPROVED');
+        expect([adminA.id, adminB.id]).toContain(reviewed.adminId);
+        expect(reviewed.reviewedAt).toBeInstanceOf(Date);
+        const notice = await h.prisma.notification.findFirstOrThrow({
+          where: { userId: owner.id },
+        });
+        expect(notice).toMatchObject({
+          type: 'TOPUP_SUCCESS',
+          dedupeKey: `topup-approval:${topUpId}`,
+        });
         expect(
           await h.prisma.outboxEvent.count({
             where: { aggregateId: topUpId, eventType: 'AdminTopUpApproved' },

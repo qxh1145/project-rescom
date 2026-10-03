@@ -115,7 +115,7 @@ describe('IR.4 empty states (e2e)', () => {
   });
 
   it('a Publisher with no surveys gets an empty forms list', async () => {
-    const publisher = await actor('empty-publisher@fpt.edu.vn', 'RESPONDENT');
+    const publisher = await actor('empty-publisher@fpt.edu.vn', 'PUBLISHER');
     const res = await get('/forms', publisher).expect(200);
     expect(res.body.data.forms).toEqual([]);
     expect(res.body.data.total).toBe(0);

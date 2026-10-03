@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd /Users/quan/HocTap/Vibecode/project-rescom/apps/frontend/my-app && grep -rn \\\"isAttemptAlreadyClosed\\\" app lib tests | head; rtk grep -n \\\"TODO\\\\|console.log\\\\|debugger\\\" lib/random-uui...",
-  "error": "Exit code 1\nlib/participation/external-service.ts:100:export function isAttemptAlreadyClosed(error: unknown): boolean {\ntests/external-code.test.mjs:23:const { isAttemptAlreadyClosed, newCancelIdempotencyKey } = await import(\"../lib/participation/external-service.ts\");\ntests/external-code.test.mjs:278:  assert.equal(isAttemptAlreadyClosed(httpError(409, \"ATTEMPT_NOT_IN_PROGRESS\", { status: \"COMPLETED\", closedReason: null })), true);\ntests/external-code.test.mjs:279:  assert.equal(isAttemptAlread...",
-  "timestamp": "2026-10-01T03:37:14.246Z",
-  "retry_count": 2
-}

@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd /Users/quan/HocTap/Vibecode/project-rescom/.claude/worktrees/funny-blackwell-1bdbaf/apps/backend/src/modules; sed -n 1,20p marketplace/application/marketplace.service.ts | grep -n impor...",
-  "error": "Exit code 1",
-  "timestamp": "2026-10-01T15:25:31.639Z",
-  "retry_count": 1
-}

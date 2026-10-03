@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd /Users/quan/HocTap/Vibecode/project-rescom && cat apps/frontend/my-app/lib/forms/manage-status.ts | head -150; grep -rn \\\"@Patch\\\\|@Put\\\\|@Post\\\" apps/backend/src --include=*.controller...",
-  "error": "Exit code 1\nimport { isOwnerReopenableClose, type FormCloseKind, type FormStatusEnum, type FormTypeEnum } from \"@rescom/schemas\";\n\n/**\n * \"Khảo sát của tôi\" status rules (Figma 10 · 63:127 / 63:1300). Pure module:\n * the backend `formStatusEnum` plus the survey's facts decide the pill, the\n * filter tab and the row actions.\n */\n\n/** What the Publisher sees; several backend states share one pill. */\nexport type PublisherStatusView =\n  | \"REJECTED\" // CLOSED by moderation (legacy: DRAFT + rejectio...",
-  "timestamp": "2026-09-27T13:09:51.256Z",
-  "retry_count": 1
-}

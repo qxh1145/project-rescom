@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"python3 -c \\\"import numpy, scipy; print(numpy.__version__, scipy.__version__)\\\"; rtk curl -s -o /dev/null -w \\\"%{http_code}\\\\n\\\" \\\"https://fonts.googleapis.com/css2?family=Fraunces:ital,wg...",
-  "error": "Exit code 1\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    import numpy, scipy; print(numpy.__version__, scipy.__version__)\n    ^^^^^^^^^^^^^^^^^^^\nModuleNotFoundError: No module named 'numpy'\n200\n/Users/quan/HocTap/Vibecode/project-rescom/.gitignore  2.0K",
-  "timestamp": "2026-10-01T10:59:21.983Z",
-  "retry_count": 1
-}

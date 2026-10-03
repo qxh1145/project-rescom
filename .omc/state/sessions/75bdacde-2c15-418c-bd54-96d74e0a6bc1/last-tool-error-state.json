@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"ls -la /Users/quan/Work/important/ | rtk grep -i ssh-rescom; rtk read ~/.ssh/config 2>/dev/null\",\"description\":\"Locate the generated key files\"}",
-  "error": "Exit code 1\n-rw-r--r--@ 1 quan  staff   105 Oct  1 20:33 .~lock.ssh-rescom.txt .pub#\n-rw-r--r--  1 quan  staff     0 Oct  1 20:33 ssh-rescom.txt\n-rw-------  1 quan  staff   464 Oct  1 20:33 ssh-rescom.txt \n-rw-r--r--@ 1 quan  staff   105 Oct  1 20:33 ssh-rescom.txt .pub",
-  "timestamp": "2026-10-01T13:35:54.877Z",
-  "retry_count": 1
-}

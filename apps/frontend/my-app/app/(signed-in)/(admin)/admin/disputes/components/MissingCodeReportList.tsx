@@ -8,7 +8,21 @@ import { formatShortDateTime } from "@/lib/format/date-time";
  * Real "Báo thiếu mã" reports (`GET /admin/missing-code-reports`), read only:
  * the Admin can look at the user but no decision is offered here.
  */
-export function MissingCodeReportList({ reports, total }: { reports: readonly MissingCodeReport[]; total: number }) {
+export function MissingCodeReportList({
+  reports,
+  total,
+  hasMore,
+  loadingMore,
+  loadMoreError,
+  onLoadMore,
+}: {
+  reports: readonly MissingCodeReport[];
+  total: number;
+  hasMore: boolean;
+  loadingMore: boolean;
+  loadMoreError: boolean;
+  onLoadMore: () => void;
+}) {
   if (reports.length === 0) {
     return (
       <p className="rounded-[22px] border border-line bg-surface px-6 py-12 text-center text-body font-semibold text-ink">
@@ -41,10 +55,23 @@ export function MissingCodeReportList({ reports, total }: { reports: readonly Mi
           </li>
         ))}
       </ul>
-      {total > reports.length ? (
-        <p className="text-caption text-ink-muted">
-          Đang hiển thị {reports.length} báo cáo mới nhất trong tổng số {total}.
-        </p>
+      {total > reports.length || hasMore ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-caption text-ink-muted">
+            Đang hiển thị {reports.length} báo cáo trong tổng số {total}.
+          </p>
+          {hasMore ? (
+            <button
+              type="button"
+              onClick={onLoadMore}
+              disabled={loadingMore}
+              className="text-caption font-bold text-primary hover:underline disabled:opacity-60"
+            >
+              {loadingMore ? "Đang tải…" : "Xem thêm"}
+            </button>
+          ) : null}
+          {loadMoreError ? <span className="text-caption text-danger-strong">Không tải được, thử lại.</span> : null}
+        </div>
       ) : null}
     </section>
   );

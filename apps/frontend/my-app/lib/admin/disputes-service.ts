@@ -145,7 +145,14 @@ export const disputeCaseListSchema = z.object({
 export type DisputeCaseList = z.infer<typeof disputeCaseListSchema> & {
   /** Real missing-code reports (read only); set outside full-mock mode, where they replace the MISSING_CODE cases. */
   missingCodeReports?: MissingCodeReport[];
+  /** Cursor of the next page of `missingCodeReports`, or null when the list is complete. */
+  missingCodeReportsNextCursor?: string | null;
 };
+
+export function listMissingCodeReports(cursor?: string | null, signal?: AbortSignal) {
+  const query = cursor ? `?limit=100&cursor=${encodeURIComponent(cursor)}` : "?limit=100";
+  return apiRequest(`/admin/missing-code-reports${query}`, { schema: missingCodeReportPageSchema, signal });
+}
 
 /** ASSUMED: the admin note is sent to both parties (Figma "gửi email cho cả hai bên"). */
 export const DECISION_NOTE_MIN = 10;
@@ -155,7 +162,7 @@ export async function listOpenDisputeCases(signal?: AbortSignal): Promise<Disput
   const mocked = () => apiRequest("/admin/disputes?status=OPEN", { schema: disputeCaseListSchema, signal });
   if (isApiMockingEnabled) return mocked();
   const [reports, deferred] = await Promise.all([
-    apiRequest("/admin/missing-code-reports?limit=100", { schema: missingCodeReportPageSchema, signal }),
+    listMissingCodeReports(null, signal),
     isHybridMocking ? mocked() : Promise.resolve(null),
   ]);
   return {
@@ -166,6 +173,7 @@ export async function listOpenDisputeCases(signal?: AbortSignal): Promise<Disput
       MISSING_CODE: reports.total,
     },
     missingCodeReports: reports.items,
+    missingCodeReportsNextCursor: reports.nextCursor,
   };
 }
 

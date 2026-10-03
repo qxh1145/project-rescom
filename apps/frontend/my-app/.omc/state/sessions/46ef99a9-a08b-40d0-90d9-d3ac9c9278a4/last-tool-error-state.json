@@ -1,7 +1,0 @@
-{
-  "tool_name": "mcp__Claude_Browser__browser_batch",
-  "tool_input_preview": "{\"actions\":[{\"name\":\"javascript_tool\",\"input\":{\"action\":\"javascript_exec\",\"text\":\"location.reload(); \"}},{\"name\":\"computer\",\"input\":{\"action\":\"wait\",\"duration\":4}},{\"name\":\"computer\",\"input\":{\"action\"...",
-  "error": "[javascript_tool:javascript_exec] undefined\n\n\nTab Context:\n- Executed on tabId: seed\n- Available tabs:\n  • tabId seed: \"Hoàn tất hồ sơ — Rescom\" (\"http://localhost:3000/onboarding?required=1\")\n- Viewport: emulating 375x812 (you set this; reset it with preset \"desktop\" when you finish testing; the app also clears it when your turn ends or the pane's width changes)\n[computer:wait] waited 4s\n\n\nTab Context:\n- Executed on tabId: seed\n- Available tabs:\n  • tabId seed: \"Hoàn tất hồ sơ — Rescom\" (\"http:...",
-  "timestamp": "2026-09-27T09:00:31.297Z",
-  "retry_count": 1
-}

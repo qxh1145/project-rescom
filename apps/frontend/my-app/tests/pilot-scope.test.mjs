@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 process.env.NEXT_PUBLIC_PILOT_BUILD = "true";
 
 const appRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
-const { PILOT_BUILD, PILOT_HIDDEN_ROUTES } = await import("../lib/pilot-scope.ts");
+const { PILOT_BUILD, PILOT_HIDDEN_ROUTES, assertPilotMockingDisabled } = await import("../lib/pilot-scope.ts");
 const { ADMIN_NAV } = await import("../components/layout/admin/admin-nav.ts");
 const { DESKTOP_NAV, MOBILE_NAV } = await import("../components/layout/app/nav-items.ts");
 const { DISPUTE_TABS } = await import("../lib/admin/disputes-view.ts");
@@ -55,7 +55,7 @@ test("nav configs contain no hidden route", () => {
     assert.deepEqual(hrefs.filter((href) => re.test(href)), [], route);
   }
   assert.deepEqual(
-    ADMIN_NAV.filter((item) => item.queue === "disputes" || item.queue === "quality"),
+    ADMIN_NAV.filter((item) => item.queue === "quality"),
     [],
     "hidden queue badges",
   );
@@ -94,4 +94,12 @@ test("no pilot-visible screen calls a DEFERRED_KEEP_MOCK service", () => {
       assert.match(source, /PILOT_BUILD/, `${file} calls ${fn} without a PILOT_BUILD guard`);
     }
   }
+});
+
+test("a pilot build refuses enabled/hybrid API mocking", () => {
+  for (const mode of ["enabled", "hybrid"]) {
+    assert.throws(() => assertPilotMockingDisabled(true, mode), /NEXT_PUBLIC_API_MOCKING/, mode);
+  }
+  assert.doesNotThrow(() => assertPilotMockingDisabled(true, "disabled"));
+  assert.doesNotThrow(() => assertPilotMockingDisabled(false, "hybrid"));
 });

@@ -1,7 +1,0 @@
-{
-  "tool_name": "mcp__Claude_Browser__javascript_tool",
-  "tool_input_preview": "{\"tabId\":\"tab-1\",\"action\":\"javascript_exec\",\"text\":\"const out = [];\\n__t.clickText('Trường Đại học FPT – Hà Nội'); await __t.wait(200);\\nfor (let i = 0; i < 5; i += 1) { __t.clickText('Tiếp tục'); awa...",
-  "error": "javascript_tool failed: ReferenceError: __t is not defined\n    at <anonymous>:2:1",
-  "timestamp": "2026-10-01T02:50:55.707Z",
-  "retry_count": 1
-}

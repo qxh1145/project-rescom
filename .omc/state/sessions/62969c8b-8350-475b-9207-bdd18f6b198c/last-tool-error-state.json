@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"rtk ls -a .vercel apps/frontend/my-app/.vercel 2>/dev/null; rtk read .vercel/project.json apps/frontend/my-app/.vercel/project.json 2>/dev/null; rtk read packages/schemas/tsconfig.json; ls...",
-  "error": "Exit code 1\n{\n  \"compilerOptions\": {\n    \"module\": \"commonjs\",\n    \"declaration\": true,\n    \"removeComments\": true,\n    \"emitDecoratorMetadata\": true,\n    \"experimentalDecorators\": true,\n    \"allowSyntheticDefaultImports\": true,\n    \"target\": \"ES2022\",\n    \"sourceMap\": true,\n    \"outDir\": \"./dist\",\n    \"rootDir\": \"./src\",\n    \"strict\": true,\n    \"esModuleInterop\": true,\n    \"skipLibCheck\": true,\n    \"forceConsistentCasingInFileNames\": true,\n    \"types\": []\n  },\n  \"include\": [\"src/**/*\"],\n  \"excl...",
-  "timestamp": "2026-09-27T08:11:47.578Z",
-  "retry_count": 1
-}

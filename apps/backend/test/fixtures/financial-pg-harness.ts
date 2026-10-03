@@ -34,6 +34,9 @@ export const databaseUrl =
   explicitUrl ??
   'postgresql://rescom_admin:rescom_password@localhost:5433/rescom_financial_test?schema=public';
 
+/** An unreachable DB is a hard failure when the URL is explicit or in CI. */
+export const requireDb = Boolean(explicitUrl || process.env.CI);
+
 if (!new URL(databaseUrl).pathname.slice(1).endsWith('_test')) {
   throw new Error(
     'FINANCIAL_TEST_DATABASE_URL must target a dedicated database ending in _test',

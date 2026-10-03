@@ -1,4 +1,5 @@
 import { execFileSync } from 'child_process';
+import { readFileSync } from 'fs';
 import { randomUUID } from 'crypto';
 import * as path from 'path';
 import {
@@ -147,6 +148,7 @@ describe('Admin read views PostgreSQL integration', () => {
     await prisma.completionCodeLimitReset.deleteMany({
       where: { formVersion: { formId: { in: ids } } },
     });
+    await prisma.response.deleteMany({ where: { formId: { in: ids } } });
     await prisma.surveyAttempt.deleteMany({ where: { surveyId: { in: ids } } });
     await prisma.form.deleteMany({ where: { id: { in: ids } } });
   }
@@ -749,11 +751,62 @@ describe('Admin read views PostgreSQL integration', () => {
       'LOCKED',
     ]);
     expect(listed[0]).toMatchObject({ reason: 'Không thấy mã' });
-    const first = (await reports.listUnresolved(null, 1))[0];
+    const [first, second] = await reports.listUnresolved(null, 2);
     const next = await reports.listUnresolved(
       { createdAt: first.reportedAt.toISOString(), id: first.attemptId },
       1,
     );
-    expect(next[0]?.attemptId).not.toBe(first.attemptId);
+    expect(second).toBeDefined();
+    expect(next[0]).toEqual(second);
   });
+
+  liveIt(
+    'backfill migration abandons IN_PROGRESS responses of ABANDONED attempts only',
+    async () => {
+      const publisher = await createUser('PUBLISHER');
+      const form = await createForm(publisher.id, 'PUBLISHED');
+      const versionId = form.versions[0].id;
+      const seed = async (status: 'ABANDONED' | 'IN_PROGRESS') => {
+        const respondent = await createUser();
+        const attempt = await prisma.surveyAttempt.create({
+          data: {
+            respondentId: respondent.id,
+            surveyId: form.id,
+            formVersionId: versionId,
+            status,
+          },
+        });
+        return prisma.response.create({
+          data: {
+            formId: form.id,
+            formVersionId: versionId,
+            attemptId: attempt.id,
+            respondentId: respondent.id,
+            status: 'IN_PROGRESS',
+            ipAddress: '127.0.0.1',
+          },
+        });
+      };
+      const abandoned = await seed('ABANDONED');
+      const open = await seed('IN_PROGRESS');
+
+      await prisma.$executeRawUnsafe(
+        readFileSync(
+          path.join(
+            backendDir,
+            'prisma/migrations/20261002090100_backfill_abandoned_responses/migration.sql',
+          ),
+          'utf8',
+        ),
+      );
+
+      const statuses = await prisma.response.findMany({
+        where: { id: { in: [abandoned.id, open.id] } },
+        select: { id: true, status: true },
+      });
+      const byId = new Map(statuses.map((row) => [row.id, row.status]));
+      expect(byId.get(abandoned.id)).toBe('ABANDONED');
+      expect(byId.get(open.id)).toBe('IN_PROGRESS');
+    },
+  );
 });
