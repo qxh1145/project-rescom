@@ -176,4 +176,39 @@ describe('Clean Architecture Boundary Validation (AC8)', () => {
 
     expect(violations).toEqual([]);
   });
+
+  it('keeps the backend portable: no @google-cloud/* packages or imports (Story 11.1 AC9)', () => {
+    const repoRoot = path.resolve(__dirname, '../../..');
+    const skipped = new Set(['node_modules', '.next', 'dist']);
+    const manifests = (dir: string): string[] =>
+      fs
+        .readdirSync(dir, { withFileTypes: true })
+        .filter((entry) => !skipped.has(entry.name))
+        .flatMap((entry) => {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) return manifests(fullPath);
+          return entry.name === 'package.json' ? [fullPath] : [];
+        });
+
+    const packageFiles = ['apps', 'packages'].flatMap((root) =>
+      fs.existsSync(path.join(repoRoot, root))
+        ? manifests(path.join(repoRoot, root))
+        : [],
+    );
+    expect(packageFiles.length).toBeGreaterThan(0);
+
+    const offenders = packageFiles.flatMap((file) => {
+      const pkg = JSON.parse(fs.readFileSync(file, 'utf-8'));
+      return Object.keys({ ...pkg.dependencies, ...pkg.devDependencies })
+        .filter((name) => name.startsWith('@google-cloud/'))
+        .map((name) => `${path.relative(repoRoot, file)}: ${name}`);
+    });
+    const importers = getFiles(srcDir)
+      .filter((file) =>
+        fs.readFileSync(file, 'utf-8').includes('@google-cloud/'),
+      )
+      .map((file) => path.relative(srcDir, file));
+
+    expect([...offenders, ...importers]).toEqual([]);
+  });
 });

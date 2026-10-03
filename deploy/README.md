@@ -1,5 +1,16 @@
 # Hướng dẫn deploy RESCOM (1 VPS)
 
+> **Hai bộ file trong `deploy/`:**
+>
+> - **Internal testing (tài liệu này):** `docker-compose.internal.yml`, `Caddyfile.internal`, `.env.internal`
+>   — mọi thứ (kể cả Postgres, MinIO, frontend) chạy trên một VPS.
+> - **Pilot AD-23 (Google Cloud, Story 11.1):** `docker-compose.prod.yml`, `Caddyfile`, `.env.prod.example`
+>   — VM chỉ chạy `caddy`, `api`, `clamav`; DB là Cloud SQL, file ở Cloud Storage, frontend ở Vercel.
+>   Hạ tầng là Story 11.2, CI/CD là Story 11.3. Xem phần cuối tài liệu.
+>
+> VPS đã deploy trước khi đổi tên: chạy một lần `mv deploy/.env.prod deploy/.env.internal`,
+> sửa alias `rescom` (mục 1.5), rồi `rescom up -d --build`.
+
 Toàn bộ hệ thống chạy trên một VPS bằng Docker Compose:
 
 ```
@@ -12,7 +23,7 @@ Trình duyệt ──HTTPS──> Caddy ──> Next.js (frontend, /api/* rewrit
 - Frontend build pilot (IR.1): `NEXT_PUBLIC_API_MOCKING=disabled` (không có MSW, chỉ gọi backend thật) và
   `NEXT_PUBLIC_PILOT_BUILD=true` (ẩn các màn hình hoãn: độ tin cậy, khiếu nại, chất lượng khảo sát, xuất file,
   so sánh phiên bản, streak/hạng/xếp hạng, AI builder, form khách `/f/[id]`). Xuất file chạy hoàn toàn ở trình duyệt nên cờ
-  pilot đã đủ để tắt. Cả hai đặt sẵn trong `docker-compose.prod.yml`; đổi `NEXT_PUBLIC_*`
+  pilot đã đủ để tắt. Cả hai đặt sẵn trong `docker-compose.internal.yml`; đổi `NEXT_PUBLIC_*`
   thì phải build lại frontend (`up -d --build`).
 - Trình duyệt luôn gọi `/api` cùng origin (Next rewrite sang backend, AD-23); không có domain riêng cho API.
 
@@ -90,16 +101,16 @@ sudo mkdir -p /opt/rescom && sudo chown $USER /opt/rescom && git clone -b develo
 Tạo alias cho lệnh compose (chạy một lần):
 
 ```bash
-echo "alias rescom='docker compose -f /opt/rescom/deploy/docker-compose.prod.yml --env-file /opt/rescom/deploy/.env.prod'" >> ~/.bashrc && source ~/.bashrc
+echo "alias rescom='docker compose -f /opt/rescom/deploy/docker-compose.internal.yml --env-file /opt/rescom/deploy/.env.internal'" >> ~/.bashrc && source ~/.bashrc
 ```
 
 Các lệnh `rescom ...` bên dưới đều dùng alias này.
 
-### 1.6. File cấu hình `deploy/.env.prod`
+### 1.6. File cấu hình `deploy/.env.internal`
 
 File này chứa toàn bộ secret, **bị gitignore** và không bao giờ được commit.
 
-1. Trên máy của bạn: `cp deploy/.env.prod.example deploy/.env.prod`, rồi điền mọi `CHANGE_ME`.
+1. Trên máy của bạn: `cp deploy/.env.internal.example deploy/.env.internal`, rồi điền mọi `CHANGE_ME`.
 2. Sinh secret (chạy một lần, copy kết quả vào file):
 
    ```bash
@@ -122,17 +133,17 @@ File này chứa toàn bộ secret, **bị gitignore** và không bao giờ đư
 4. Upload lên VPS:
 
    ```bash
-   scp deploy/.env.prod <user>@<IP-VPS>:/opt/rescom/deploy/.env.prod
+   scp deploy/.env.internal <user>@<IP-VPS>:/opt/rescom/deploy/.env.internal
    ```
 
    ```bash
-   ssh <user>@<IP-VPS> "chmod 600 /opt/rescom/deploy/.env.prod"
+   ssh <user>@<IP-VPS> "chmod 600 /opt/rescom/deploy/.env.internal"
    ```
 
 > **Không dán secret vào chat, issue hay tin nhắn.** Cần cho người khác xem file thì in bản đã che:
 >
 > ```bash
-> sed -E 's/^(DATABASE_URL|[A-Z_]*(PASSWORD|SECRET|KEY))=.*/\1=***/' deploy/.env.prod
+> sed -E 's/^(DATABASE_URL|[A-Z_]*(PASSWORD|SECRET|KEY))=.*/\1=***/' deploy/.env.internal
 > ```
 >
 > Secret nào đã lộ thì phải tạo lại.
@@ -208,7 +219,7 @@ Push code lên GitHub, rồi trên VPS:
 cd /opt/rescom && git pull && rescom up -d --build && docker image prune -f
 ```
 
-- `.env.prod` không bị ảnh hưởng (gitignored).
+- `.env.internal` không bị ảnh hưởng (gitignored).
 - Web gián đoạn vài giây đến 1 phút khi container được thay.
 - Migration mới được áp dụng tự động khi backend khởi động.
 - Nếu lần cập nhật có thư mục mới trong `apps/backend/prisma/migrations/` → **backup DB trước**
@@ -223,9 +234,9 @@ cd /opt/rescom && git fetch && git checkout <tên-branch> && git pull && rescom 
 > Migration chỉ chạy tiến, không lùi. Quay về branch cũ hơn thì DB vẫn giữ cấu trúc mới và code cũ
 > có thể lỗi. Nên chỉ deploy từ một branch cố định (ví dụ `develop` hoặc `main`).
 
-### 2.4. Đổi cấu hình `.env.prod`
+### 2.4. Đổi cấu hình `.env.internal`
 
-Sửa trên VPS (`nano /opt/rescom/deploy/.env.prod`) hoặc sửa trên máy rồi `scp` lại, sau đó:
+Sửa trên VPS (`nano /opt/rescom/deploy/.env.internal`) hoặc sửa trên máy rồi `scp` lại, sau đó:
 
 ```bash
 rescom up -d
@@ -291,3 +302,32 @@ Xong việc thì quay lại branch: `git checkout develop`.
 | Upload file lỗi CORS / 403 | `STORAGE_ENDPOINT` phải là `https://s3.rescom.com.vn`; DNS `s3` phải trỏ đúng VPS |
 | Build bị kill / hết RAM | Kiểm tra swap: `free -h` |
 | Ổ đĩa đầy | `docker image prune -f` và `docker builder prune -f` |
+
+---
+
+## Phần 3 — Pilot AD-23 (Google Cloud, Story 11.1)
+
+VM chỉ chạy 3 container: `caddy` (cổng 80/443), `api` (NestJS, cổng 4000 nội bộ), `clamav`.
+Postgres là Cloud SQL (IP private), file ở Cloud Storage (API S3 + HMAC key), frontend ở Vercel.
+Không có dữ liệu nghiệp vụ trên ổ VM: mất VM thì tạo VM mới và deploy lại image.
+
+```
+Trình duyệt ─> Vercel (app.rescom.com.vn, rewrite /api) ─> Cloudflare (api.rescom.com.vn) ─> Caddy ─> api:4000
+```
+
+- Vercel đặt `RESCOM_API_URL=https://api.rescom.com.vn` và `RESCOM_EDGE_KEY` (server-only, **không** `NEXT_PUBLIC_`).
+  `proxy.ts` gửi key này cùng IP thật của người dùng; Caddy trả 403 cho mọi request không có key (trừ `/health/*`).
+  `EDGE_KEY` trong `deploy/.env.prod` phải bằng `RESCOM_EDGE_KEY`; đổi thì đổi cả hai.
+- Chứng chỉ: Cloudflare Origin CA, đặt ở `deploy/certs/origin.pem` và `origin-key.pem` (gitignored), SSL mode Full (strict).
+- Image không tự chạy migration. Thứ tự deploy:
+
+```bash
+docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod run --rm api npx prisma migrate deploy
+```
+
+```bash
+docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod up -d
+```
+
+- Kiểm tra: `GET /health/live` (process sống) và `GET /health/ready` (DB + ClamAV; trả 503 nếu một trong hai lỗi).
+- Tạo hạ tầng (Cloud SQL, bucket, firewall chỉ nhận Cloudflare, Vercel, OAuth): Story 11.2. CI/CD, rollback: Story 11.3.

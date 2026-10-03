@@ -137,6 +137,8 @@ Desktop.ini
 
 # Production deploy secrets and local backups
 deploy/.env.prod
+deploy/.env.internal
+deploy/certs/
 deploy/backups/
 
 # OMC runtime state (plans/notepads stay tracked)

@@ -1,16 +1,71 @@
-# Automatic HTTPS (Let's Encrypt). Both DNS A records must point at the VPS first.
-
-# App: Next.js serves the UI and proxies /api/* to the backend (same-origin cookies + CSRF).
-{$APP_DOMAIN} {
-	encode zstd gzip
-	reverse_proxy frontend:3000
+# AD-23 pilot API edge (Story 11.1). Chain: browser -> Vercel (app.rescom.com.vn, /api rewrite)
+# -> Cloudflare (public API edge, SSL Full (strict)) -> this Caddy -> NestJS api:4000 (private).
+#
+# Client IP: Cloudflare only sees Vercel's egress address, so the frontend proxy (proxy.ts) sends
+# the real client in X-Rescom-Client-Ip together with the shared X-Rescom-Edge-Key. Caddy reads
+# the client header only when the TCP peer is in TRUSTED_PROXY_RANGES (Cloudflare), rejects calls
+# without the key, and hands NestJS exactly one X-Forwarded-For entry; with TRUST_PROXY_HOPS=1
+# Express `req.ip` (rate limits, logs) is that client.
+{
+	servers {
+		trusted_proxies static {$TRUSTED_PROXY_RANGES}
+		client_ip_headers X-Rescom-Client-Ip
+	}
 }
 
-# Browsers PUT/GET presigned URLs here. Host is preserved, so signatures made for
-# https://{$S3_DOMAIN} by the backend stay valid.
-{$S3_DOMAIN} {
-	request_body {
-		max_size 60MB
+{$API_DOMAIN} {
+	# Cloudflare Origin CA certificate (Story 11.2), mounted read-only from deploy/certs/.
+	tls /certs/origin.pem /certs/origin-key.pem
+	encode zstd gzip
+	# JSON access log with client_ip; secrets, tokens and session material never reach it.
+	log {
+		output stdout
+		format filter {
+			wrap json
+			request>uri query {
+				replace code "[REDACTED]"
+				replace state "[REDACTED]"
+				replace token "[REDACTED]"
+			}
+			request>headers>X-Rescom-Edge-Key delete
+			request>headers>Cookie delete
+			request>headers>Authorization delete
+			resp_headers>Set-Cookie delete
+		}
 	}
-	reverse_proxy minio:9000
+	# Uploads go straight to storage via presigned URLs; API bodies are small.
+	request_body {
+		max_size 10MB
+	}
+
+	# Uptime monitor and deploy smoke (Stories 11.3/11.4) need no key; health bodies leak nothing.
+	handle /health/* {
+		reverse_proxy api:4000 {
+			header_up X-Forwarded-For {client_ip}
+			header_up -X-Rescom-Edge-Key
+			header_up -X-Rescom-Client-Ip
+		}
+	}
+
+	# Missing client IP on keyed request: fail closed to prevent collapsing callers into Cloudflare peer IP
+	@missing_client_ip {
+		header X-Rescom-Edge-Key {$EDGE_KEY}
+		not header X-Rescom-Client-Ip ?*
+	}
+	handle @missing_client_ip {
+		respond "Missing client IP" 400
+	}
+
+	@edge header X-Rescom-Edge-Key {$EDGE_KEY}
+	handle @edge {
+		reverse_proxy api:4000 {
+			header_up X-Forwarded-For {client_ip}
+			header_up -X-Rescom-Edge-Key
+			header_up -X-Rescom-Client-Ip
+		}
+	}
+
+	handle {
+		respond 403
+	}
 }

@@ -1,0 +1,17 @@
+## AC8 local image pins + AC9 no provider SDK
+docker-compose.yml:9:    image: postgres:15-alpine
+docker-compose.yml:27:    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
+docker-compose.yml:52:    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z@sha256:cfc83108c3abb371f8fb84d99c1fdc88f8c237e022409b0081fb7c0a3be634dd
+docker-compose.yml:75:    image: axllent/mailpit:v1.31.3
+docker-compose.yml:90:    image: clamav/clamav-debian:stable
+deploy/docker-compose.prod.yml:12:    image: caddy:2.11.6-alpine
+deploy/docker-compose.prod.yml:38:    image: ${API_IMAGE:-ghcr.io/qxh1145/rescom-api}:${API_TAG:?}
+deploy/docker-compose.prod.yml:51:    image: clamav/clamav-debian:1.5.4
+deploy/docker-compose.internal.yml:13:    image: caddy:2-alpine
+deploy/docker-compose.internal.yml:53:    image: postgres:15-alpine
+deploy/docker-compose.internal.yml:67:    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
+deploy/docker-compose.internal.yml:81:    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z@sha256:cfc83108c3abb371f8fb84d99c1fdc88f8c237e022409b0081fb7c0a3be634dd
+deploy/docker-compose.internal.yml:97:    image: clamav/clamav-debian:stable
+
+$ grep -r "@google-cloud/" (package.json files, apps/backend/src)
+none (guard test: apps/backend/test/architecture.spec.ts)

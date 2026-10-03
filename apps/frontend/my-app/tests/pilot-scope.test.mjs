@@ -71,7 +71,10 @@ test("the guard helper checks the same function, not the whole file (it is not v
 test("proxy.ts 404s exactly the hidden routes (IR.5 E1)", () => {
   // Read, not imported: proxy.ts uses the `@/` alias and next/server.
   const matcherBlock = read("proxy.ts").match(/matcher:\s*\[([\s\S]*?)\]/)?.[1] ?? "";
-  const matcher = [...matcherBlock.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  const all = [...matcherBlock.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  // Story 11.1: `/api/:path*` is matched for the edge headers, never 404ed.
+  assert.ok(all.includes("/api/:path*"));
+  const matcher = all.filter((route) => route !== "/api/:path*");
   const normalize = (route) => route.replace(/\[[^\]]+\]|:[^/]+/g, ":p");
   assert.deepEqual(matcher.map(normalize).sort(), PILOT_HIDDEN_ROUTES.map(({ route }) => normalize(route)).sort());
   assert.match(read("proxy.ts"), /if \(!PILOT_BUILD\) return NextResponse\.next\(\);/);

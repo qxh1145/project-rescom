@@ -1,108 +1,63 @@
-# Production stack for one VPS. Only Caddy publishes ports (80/443).
-#   cp deploy/.env.prod.example deploy/.env.prod   # fill every value
-#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod up -d --build
-name: rescom
-
-x-minio-credentials: &minio-credentials
-  MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:?}
-  MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:?}
+# AD-23 pilot stack on the Google Cloud VM (Story 11.1): caddy, api, clamav only.
+# Database = Cloud SQL (private IP, DATABASE_URL); storage = Cloud Storage via its S3 API (STORAGE_*);
+# frontend = Vercel. No business data lives in a container volume: a lost VM is replaced by
+# provisioning a new one and redeploying the image. Only Caddy publishes ports.
+#   cp deploy/.env.prod.example deploy/.env.prod   # fill every value, chmod 600
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod run --rm api npx prisma migrate deploy
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod up -d
+name: rescom-pilot
 
 services:
   caddy:
-    image: caddy:2-alpine
-    restart: always
+    image: caddy:2.11.6-alpine
+    restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
       - "443:443/udp"
     environment:
-      APP_DOMAIN: ${APP_DOMAIN:?}
-      S3_DOMAIN: ${S3_DOMAIN:?}
+      API_DOMAIN: ${API_DOMAIN:?}
+      EDGE_KEY: ${EDGE_KEY:?}
+      TRUSTED_PROXY_RANGES: ${TRUSTED_PROXY_RANGES:?}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+      # Caddy state only (no business data).
       - caddy_data:/data
       - caddy_config:/config
-    depends_on: [frontend, minio]
+    healthcheck:
+      # Admin API, loopback only.
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      api: { condition: service_healthy }
 
-  frontend:
-    build:
-      context: ..
-      dockerfile: deploy/frontend.Dockerfile
-      args:
-        # IR.1 pilot: real backend only (no MSW), deferred screens hidden at build time.
-        NEXT_PUBLIC_API_MOCKING: disabled
-        NEXT_PUBLIC_PILOT_BUILD: "true"
-    restart: always
-    depends_on: [backend]
-
-  backend:
+  api:
+    image: ${API_IMAGE:-ghcr.io/qxh1145/rescom-api}:${API_TAG:?}
     build:
       context: ..
       dockerfile: deploy/backend.Dockerfile
-    restart: always
-    env_file: .env.prod
+    restart: unless-stopped
+    # The VM uses deploy/.env.prod; API_ENV_FILE only redirects local smoke runs.
+    env_file: ${API_ENV_FILE:-.env.prod}
+    # No published port: Caddy reaches api:4000 on the compose network. The image's
+    # HEALTHCHECK probes /health/live; deploys wait on /health/ready (Story 11.3).
     depends_on:
-      postgres: { condition: service_healthy }
-      minio-init: { condition: service_completed_successfully }
       clamav: { condition: service_healthy }
 
-  postgres:
-    image: postgres:15-alpine
-    restart: always
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:?}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
-      POSTGRES_DB: ${POSTGRES_DB:?}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      retries: 12
-
-  minio:
-    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
-    restart: always
-    command: server /data
-    environment:
-      <<: *minio-credentials
-      MINIO_API_CORS_ALLOW_ORIGIN: https://${APP_DOMAIN:?}
-    volumes:
-      - minio_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
-      interval: 5s
-      retries: 12
-
-  minio-init:
-    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z@sha256:cfc83108c3abb371f8fb84d99c1fdc88f8c237e022409b0081fb7c0a3be634dd
-    restart: "no"
-    depends_on:
-      minio: { condition: service_healthy }
-    environment:
-      <<: *minio-credentials
-      STORAGE_BUCKET: ${STORAGE_BUCKET:?}
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        set -e
-        mc alias set rescom http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
-        mc mb --ignore-existing "rescom/$${STORAGE_BUCKET}"
-        mc anonymous set none "rescom/$${STORAGE_BUCKET}"
-
   clamav:
-    image: clamav/clamav-debian:stable
-    restart: always
+    image: clamav/clamav-debian:1.5.4
+    restart: unless-stopped
     environment:
-      # clamd's own default (25M) is below the 50 MB upload limit; larger
-      # INSTREAM payloads would be refused as an outage (IR.5 C4, DF9).
+      # clamd's own default (25M) is below the 50 MB upload limit (IR.5 C4, DF9).
       CLAMD_CONF_StreamMaxLength: 100M
     volumes:
+      # Signature cache only; re-downloadable, not business data.
       - clamav_data:/var/lib/clamav
     healthcheck:
-      # clamdcheck.sh (shipped in the image) pings clamd on 3310. Loading
-      # the signature database takes minutes on a cold volume, hence the
-      # long start_period; the backend waits for it (depends_on above).
+      # Loading signatures takes minutes on a cold volume, hence start_period.
       test: ["CMD", "clamdcheck.sh"]
       interval: 30s
       timeout: 10s
@@ -110,8 +65,6 @@ services:
       start_period: 360s
 
 volumes:
-  pgdata:
-  minio_data:
-  clamav_data:
   caddy_data:
   caddy_config:
+  clamav_data:

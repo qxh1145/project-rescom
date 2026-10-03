@@ -7,13 +7,13 @@
 set -eu
 
 DIR=$(cd "$(dirname "$0")" && pwd)
-# Read single keys; .env.prod is not shell-safe (e.g. EMAIL_FROM has < >).
-get() { grep -E "^$1=" "$DIR/.env.prod" | tail -n1 | cut -d= -f2-; }
+# Read single keys; .env.internal is not shell-safe (e.g. EMAIL_FROM has < >).
+get() { grep -E "^$1=" "$DIR/.env.internal" | tail -n1 | cut -d= -f2-; }
 POSTGRES_USER=$(get POSTGRES_USER); POSTGRES_DB=$(get POSTGRES_DB)
-COMPOSE="docker compose -f $DIR/docker-compose.prod.yml --env-file $DIR/.env.prod"
+COMPOSE="docker compose -f $DIR/docker-compose.internal.yml --env-file $DIR/.env.internal"
 OUT="$DIR/backups"
 REMOTE="${RCLONE_REMOTE:-$(get RCLONE_REMOTE)}"
-: "${REMOTE:?set RCLONE_REMOTE in .env.prod, e.g. b2:rescom-backup}"
+: "${REMOTE:?set RCLONE_REMOTE in .env.internal, e.g. b2:rescom-backup}"
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 mkdir -p "$OUT/db" "$OUT/objects"
 

@@ -6,11 +6,15 @@
 !**/.env.example
 **/*.tsbuildinfo
 .git
-.omc
+**/.omc
 .claude
 _bmad
 _bmad-output
 brag-output
 docs
 deploy/.env.prod
+deploy/.env.internal
+deploy/certs
+**/*.local.md
+**/coverage
 deploy/backups

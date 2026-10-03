@@ -1,5 +1,5 @@
 # generated: 2026-08-16 17:09:30
-# last_updated: 2026-08-16 17:09:30
+# last_updated: 2026-10-03
 # project: project-rescom
 # project_key: NOKEY
 # tracking_system: file-system
@@ -116,12 +116,12 @@ development_status:
   ir-4-publisher-financial-moderation-journeys-without-mocks: done  # code-reviewed 2026-10-03; audit + notification linkage now asserted
   ir-4a-publisher-progress-response-viewing: done  # code-reviewed 2026-10-01 (bmad-code-review), fixes in worktree funny-blackwell-1bdbaf
   ir-4b-profile-update-email-delivery-admin-overview: done  # code-reviewed 2026-10-01 (bmad-code-review), fixes in worktree funny-blackwell-1bdbaf
-  ir-5-launch-domain-closure-local-integration-gate: review  # dev 2026-10-03; G3 PASS with deviations (ir-5-g3/ pack); owner items open
+  ir-5-launch-domain-closure-local-integration-gate: done  # code-reviewed 2026-10-03; G3 PASS with deviations (ir-5-g3/ pack); owner items open
   ir-6-staging-integration-acceptance-go-no-go-evidence: backlog
   epic-ir-retrospective: optional
   # Added 2026-09-26 by sprint-change-proposal-2026-09-26 (pilot hosting, Architecture AD-23)
-  epic-11: backlog
-  11-1-deployment-ready-backend-packaging: backlog
+  epic-11: in-progress
+  11-1-deployment-ready-backend-packaging: done  # code-reviewed 2026-10-03; AC7 GCS run deferred to 11.2 (Q3); evidence in 11-1-evidence/
   11-2-google-cloud-pilot-infrastructure-provisioning: backlog
   11-3-ci-cd-pipeline-with-rollback: backlog
   11-4-observability-alerting-backup-restore-drill: backlog

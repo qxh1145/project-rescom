@@ -1,0 +1,6 @@
+Datasource "db": PostgreSQL database "rescom_pkg_check", schema "public" at "host.docker.internal:5433"
+
+34 migrations found in prisma/migrations
+
+
+No pending migrations to apply.
