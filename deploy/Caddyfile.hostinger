@@ -1,0 +1,16 @@
+# Automatic HTTPS via Let's Encrypt for Hostinger VPS (Option 2: Frontend on Vercel)
+
+{$API_DOMAIN} {
+	encode zstd gzip
+	request_body {
+		max_size 10MB
+	}
+	reverse_proxy backend:4000
+}
+
+{$S3_DOMAIN} {
+	request_body {
+		max_size 60MB
+	}
+	reverse_proxy minio:9000
+}
