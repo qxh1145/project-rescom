@@ -1,6 +1,7 @@
 import {
   FORM_TOPICS,
   FORM_TOPIC_SEARCH_TERMS,
+  LEGACY_FORM_TOPICS,
   checkFormDeadline,
   formDeadlineAtSchema,
   formTopicEnum,
@@ -15,6 +16,12 @@ describe("form topics (plan 2.2)", () => {
       expect(formTopicEnum.parse(topic)).toBe(topic);
     }
     expect(formTopicEnum.safeParse("Kinh tế").success).toBe(false);
+    expect(formTopicEnum.safeParse("HEALTH").success).toBe(false);
+  });
+
+  it("every pre-2026-10-05 topic maps to a current one", () => {
+    for (const topic of Object.values(LEGACY_FORM_TOPICS)) expect(FORM_TOPICS).toContain(topic);
+    expect(LEGACY_FORM_TOPICS.HEALTH).toBe("MENTAL_HEALTH");
   });
 
   it("normalizes Vietnamese text for search", () => {
@@ -33,7 +40,8 @@ describe("form topics (plan 2.2)", () => {
     expect(matchesSurveySearch(survey, "marketing")).toBe(false);
     expect(matchesSurveySearch({ title: "A", topic: null }, "khac")).toBe(false);
     expect(matchesSurveySearch({ title: "A", topic: "OTHER" }, "khác")).toBe(true);
-    expect(matchesSurveySearch({ title: "A", topic: "STUDENT_LIFE" }, "student life")).toBe(true);
+    expect(matchesSurveySearch({ title: "A", topic: "MENTAL_HEALTH" }, "suc khoe tinh than")).toBe(true);
+    expect(matchesSurveySearch({ title: "A", topic: "AI" }, "trí tuệ")).toBe(true);
   });
 });
 

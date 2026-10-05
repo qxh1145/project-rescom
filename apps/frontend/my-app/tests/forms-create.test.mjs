@@ -204,7 +204,9 @@ test("Google Forms wizard · request and storage", async (t) => {
       wizard.TOPIC_OPTIONS.map((option) => option.value),
       [...FORM_TOPICS],
     );
-    assert.equal(wizard.topicLabel("IT"), "Công nghệ thông tin");
+    assert.equal(wizard.topicLabel("IT"), "Công nghệ & Lập trình");
+    assert.equal(wizard.topicLabel("DESIGN"), "Nghệ thuật & Âm nhạc");
+    assert.equal(wizard.normalizeWizardTopic("HEALTH"), "MENTAL_HEALTH");
     assert.equal(wizard.topicLabel(null), null);
     const local = memoryStorage();
     local.setItem("rescom:create-gform-draft:legacy", JSON.stringify({ ...draft(), topic: "Kinh tế" }));
@@ -215,10 +217,10 @@ test("Google Forms wizard · request and storage", async (t) => {
         title: "T",
         rewardPerResponse: 10,
         expectedCompletions: 5,
-        topic: "HEALTH",
+        topic: "MENTAL_HEALTH",
         currentVersion: { externalUrl: "https://forms.gle/x" },
       }).topic,
-      "HEALTH",
+      "MENTAL_HEALTH",
     );
   });
 

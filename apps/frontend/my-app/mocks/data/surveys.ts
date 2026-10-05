@@ -114,7 +114,7 @@ function seed(): MockSurvey[] {
       expectedCompletions: 150,
       completedCompletions: 130,
       estimatedEffortSeconds: 10 * 60,
-      topic: "SOCIAL_SCIENCES",
+      topic: "SCHOOL_PSYCHOLOGY",
       publisherName: "Nhóm Tâm lý K18",
       externalUrl: null,
       publishedAt: hoursAgo(120),

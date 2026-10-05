@@ -344,7 +344,7 @@ export function analyticsRespondentSurveys(now = Date.now()): MockSurvey[] {
       expectedCompletions: GROUP_STUDY_EXPECTED,
       completedCompletions: 0,
       estimatedEffortSeconds: GROUP_STUDY_EFFORT_SECONDS,
-      topic: "SOCIAL_SCIENCES",
+      topic: "SCHOOL_PSYCHOLOGY",
       publisherName: DEMO_PUBLISHER_NAME,
       externalUrl: null,
       publishedAt: new Date(gs.publishedAt).toISOString(),
