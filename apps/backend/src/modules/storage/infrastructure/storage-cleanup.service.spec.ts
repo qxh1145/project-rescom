@@ -1,8 +1,9 @@
 import { Logger } from '@nestjs/common';
+import { StorageCleanupService } from './storage-cleanup.service';
 import {
-  STORAGE_CLEANUP_INTERVAL_MS,
-  StorageCleanupService,
-} from './storage-cleanup.service';
+  JobRunContext,
+  ScheduledJobRegistry,
+} from '../../../common/scheduler/scheduled-job';
 import { StorageService } from '../application/storage.service';
 import { StoredObjectEntity } from '../domain/stored-object.entity';
 import { InMemoryStorageRepository } from './in-memory-storage.repository';
@@ -26,8 +27,6 @@ describe('StorageCleanupService (P11)', () => {
   });
 
   afterEach(() => {
-    cleanup.onModuleDestroy();
-    jest.useRealTimers();
     jest.restoreAllMocks();
   });
 
@@ -36,7 +35,11 @@ describe('StorageCleanupService (P11)', () => {
       new Error('database unavailable'),
     );
 
-    await expect(cleanup.runCleanup()).resolves.toBeUndefined();
+    await expect(cleanup.runCleanup()).resolves.toEqual({
+      expiredCount: 0,
+      purgedCount: 0,
+      failedCount: 1,
+    });
     expect(errorSpy).toHaveBeenCalledWith(
       'Storage cleanup run failed: database unavailable',
     );
@@ -125,22 +128,54 @@ describe('StorageCleanupService (P11)', () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
-  it('runs from the interval without leaking a rejection', async () => {
-    jest.useFakeTimers();
-    storageService.cleanupExpired.mockRejectedValue(new Error('boom'));
-    const unhandled = jest.fn();
-    process.on('unhandledRejection', unhandled);
+  describe('as the `storage-cleanup` scheduled job (Story IR.2b Task 13)', () => {
+    const ctx = (now: Date): JobRunContext => ({
+      runId: 'run-1',
+      now,
+      owner: 'owner',
+      fencingToken: '1',
+      shouldContinue: async () => true,
+      logger: { log() {}, warn() {}, error() {}, debug() {} },
+    });
 
-    try {
-      cleanup.onModuleInit();
-      await jest.advanceTimersByTimeAsync(STORAGE_CLEANUP_INTERVAL_MS);
-      await Promise.resolve();
+    it('registers itself with the scheduler instead of its own timer', () => {
+      const registry = new ScheduledJobRegistry();
+      const job = new StorageCleanupService(
+        storageService as unknown as StorageService,
+        registry,
+      );
+      job.onModuleInit();
 
-      expect(storageService.cleanupExpired).toHaveBeenCalledTimes(1);
+      expect(registry.get('storage-cleanup')).toBe(job);
+      expect(job.intervalMs).toBe(60 * 60 * 1000);
+      expect(job.leaseTtlMs).toBe(15 * 60 * 1000);
+    });
+
+    it('passes the run time and reports counts only', async () => {
+      const now = new Date('2026-10-01T10:00:00.000Z');
+      storageService.cleanupExpired.mockResolvedValue({
+        expired: 3,
+        purged: 1,
+        failures: [{ objectId: 'object-1', reason: 'storage unavailable' }],
+        purgeFailures: [],
+        purgeBatchFailure: null,
+      });
+
+      await expect(cleanup.run(ctx(now))).resolves.toEqual({
+        status: 'PARTIAL',
+        counts: { expiredCount: 3, purgedCount: 1, failedCount: 1 },
+        hasMore: false,
+      });
+      expect(storageService.cleanupExpired).toHaveBeenCalledWith(now);
+    });
+
+    it('a failed run is reported FAILED to the runner (review LOW-6)', async () => {
+      storageService.cleanupExpired.mockRejectedValue(new Error('boom'));
+
+      await expect(cleanup.run(ctx(new Date()))).rejects.toMatchObject({
+        code: 'ALL_ITEMS_FAILED',
+      });
       expect(errorSpy).toHaveBeenCalledWith('Storage cleanup run failed: boom');
-      expect(unhandled).not.toHaveBeenCalled();
-    } finally {
-      process.off('unhandledRejection', unhandled);
-    }
+    });
   });
 });

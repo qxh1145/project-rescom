@@ -4,11 +4,10 @@ import type { ReactNode } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import type { AttemptDetails } from "@/lib/participation/attempts-service";
+import type { AttemptDetails, AttemptPinnedForm } from "@/lib/participation/attempts-service";
 import { pageRangeLabel } from "@/lib/participation/survey-form";
 import { formatClock } from "@/lib/participation/completion-view";
 import { formatEffortMinutes } from "@/lib/participation/effort-minutes";
-import type { SurveyForm } from "@/lib/participation/survey-form-service";
 import { useSurveyRunner } from "../hooks/use-survey-runner";
 import { QuestionCard } from "./QuestionCard";
 import { DesktopSurveyHeader, MobileSurveyHeader, PaceNotice, RewardCard, SectionNav } from "./SurveyChrome";
@@ -18,8 +17,9 @@ import { ExpiredPanel, SubmitFailedPanel } from "./StatusPanels";
  * Figma 4 "Làm khảo sát trong RESCOM": desktop 62:158 (720px questions +
  * 300px sidebar), mobile 62:732 (sticky header and action bar), 4b 62:1019
  * (submit failed offline). Desktop 4b and the expired state are ASSUMED.
+ * `form` is the attempt's PINNED version (`GET /attempts/:id`).
  */
-export function SurveyRunnerView({ attempt, form }: { attempt: AttemptDetails; form: SurveyForm }) {
+export function SurveyRunnerView({ attempt, form }: { attempt: AttemptDetails; form: AttemptPinnedForm }) {
   const run = useSurveyRunner(attempt, form);
   const { layout, page } = run;
   const total = layout.total;
@@ -153,6 +153,7 @@ export function SurveyRunnerView({ attempt, form }: { attempt: AttemptDetails; f
                     error={run.errors[block.id]}
                     onChange={(value) => run.setAnswer(block, value)}
                     onBlur={() => run.blurAnswer(block)}
+                    upload={block.type === "file_upload" ? run.uploadControls(block) : undefined}
                   />
                 ))}
               </fieldset>
@@ -170,11 +171,7 @@ export function SurveyRunnerView({ attempt, form }: { attempt: AttemptDetails; f
           </div>
 
           <aside className="hidden w-[300px] shrink-0 flex-col gap-4 lg:flex">
-            <RewardCard
-              reward={reward}
-              effort={formatEffortMinutes(attempt.survey.estimatedEffortSeconds)}
-              publisher={attempt.survey.publisherName}
-            />
+            <RewardCard reward={reward} effort={formatEffortMinutes(attempt.survey.estimatedEffortSeconds)} />
             {layout.sections.length > 1 ? (
               <SectionNav
                 sections={layout.sections}

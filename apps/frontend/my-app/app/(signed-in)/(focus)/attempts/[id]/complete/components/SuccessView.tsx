@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Mascot } from "@/components/brand/Mascot";
 import { Button, buttonClassName } from "@/components/ui/Button";
 import type { SurveyFeedbackStatusDto } from "@rescom/schemas";
-import type { CompletionView } from "@/lib/participation/completion-view";
+import type { CompletionKind, CompletionView } from "@/lib/participation/completion-view";
 import { useFeedbackForm } from "../hooks/use-feedback-form";
 import { ActivationCard, CompletionDesktopHeader, RewardPill } from "./CompletionParts";
 import { FEEDBACK_FORM_ID, FeedbackDoneCard, FeedbackFormCard } from "./FeedbackPanel";
@@ -24,7 +24,7 @@ export function SuccessView({
 }: {
   attemptId: string;
   surveyTitle: string;
-  view: CompletionView & { kind: "available" | "pending" };
+  view: CompletionView & { kind: Exclude<CompletionKind, "held"> };
   feedbackStatus: SurveyFeedbackStatusDto | null;
 }) {
   const form = useFeedbackForm(attemptId, feedbackStatus);

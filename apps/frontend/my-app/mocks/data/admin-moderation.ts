@@ -16,6 +16,7 @@ import {
 import { updateNotifications } from "./notifications";
 import { surveys, type MockSurvey } from "./surveys";
 import { FRAUD_SEED_USER_IDS, fraudSummaryOf } from "./admin-fraud-log";
+import { normalizeWizardTopic } from "@/lib/forms/topics";
 
 /**
  * Phase 6 · Duyệt khảo sát (Figma 11a 62:3406, 11a' 62:2868). The queue is
@@ -106,7 +107,6 @@ function seedForm(
     publishedAt: null,
     deadlineAt: null,
     closedAt: null,
-    hiddenFromMarketplace: true,
     rejection: null,
     versionNumber: 1,
     questionCount: questionCount ?? null,
@@ -226,6 +226,8 @@ export function toModerationQueueItem(form: MockPublisherForm) {
     // ASSUMED response extension, composed from the same append-only FraudLog store.
     publisherFraudLogCount: fraudSummaryOf(publisherId).count14d,
     deadlineAt: deadlineOf(form, extras),
+    // Plan 2.2: VERIFIED `moderationQueueItemSchema.topic` (shared value).
+    topic: normalizeWizardTopic(extras.topic) || null,
   };
 }
 
@@ -267,7 +269,8 @@ export function publishPublisherFormToCatalog(form: MockPublisherForm): MockSurv
     expectedCompletions: form.expectedCompletions,
     completedCompletions: form.completedCompletions,
     estimatedEffortSeconds: form.estimatedEffortSeconds,
-    topic: extras.topic ?? "Khác",
+    // Plan 2.2: catalog topics are shared `FORM_TOPICS` values.
+    topic: normalizeWizardTopic(extras.topic) || "OTHER",
     publisherName: owner?.name ?? extras.publisherName ?? form.ownerEmail,
     externalUrl: form.externalUrl,
     publishedAt: form.publishedAt ?? nowIso(),
@@ -324,7 +327,6 @@ export function approveModeration(form: MockPublisherForm, admin: MockSessionUse
     updatePublisherForm(form.id, (draft) => {
       draft.status = "PUBLISHED";
       draft.publishedAt = nowIso();
-      draft.hiddenFromMarketplace = false;
       draft.deadlineAt = deadlineOf(draft, extras);
     }) ?? form;
   syncBuilderDraft(form.id, { status: "PUBLISHED" });
@@ -365,8 +367,6 @@ export function rejectModeration(form: MockPublisherForm, admin: MockSessionUser
       draft.closedAt = rejectedAt;
       draft.rejection = { reason, refundedPoints, rejectedAt };
       draft.escrowLocked = 0;
-      draft.hiddenFromMarketplace = true;
-      draft.pausedAt = null;
     }) ?? form;
   syncBuilderDraft(form.id, { status: "CLOSED", escrowLocked: 0 });
   const decision = saveDecision(rejected, admin, {

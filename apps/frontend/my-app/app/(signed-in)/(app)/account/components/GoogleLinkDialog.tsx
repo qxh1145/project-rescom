@@ -21,7 +21,7 @@ interface GoogleLinkDialogProps {
 }
 
 /**
- * "Google · Liên kết" on the account page (ASSUMED, not drawn): confirms the
+ * "Google · Liên kết" on the account page (ASSUMED (design), not drawn): confirms the
  * Rescom password, then VERIFIED `POST /auth/google/link/start
  * { currentPassword }` (signed-in session + CSRF, `google-oauth.controller.ts`)
  * answers `{ authorizationUrl }` and the browser leaves for Google, which

@@ -1,6 +1,7 @@
 import {
   Session,
   SessionProps,
+  SessionRevokeReason,
   RefreshCredential,
   RefreshCredentialProps,
 } from '../../domain/session.entity';
@@ -13,6 +14,7 @@ export interface ReplaceUserSessionInput {
 }
 
 export interface SessionRepositoryPort {
+  /** Revokes the account's other active sessions with reason `REPLACED` (plan 5.6). */
   replaceUserSession(
     userId: string,
     input: ReplaceUserSessionInput,
@@ -31,12 +33,14 @@ export interface SessionRepositoryPort {
     auditRecord: CreateIdentityAuditRecord,
   ): Promise<void>;
 
+  /** Plan 5.6: records `revokedAt` and `reason` with the revocation. */
   revokeSession(
     sessionId: string,
+    reason: SessionRevokeReason,
     auditRecord?: CreateIdentityAuditRecord,
   ): Promise<void>;
 
-  revokeAllByUserId(userId: string): Promise<void>;
+  revokeAllByUserId(userId: string, reason: SessionRevokeReason): Promise<void>;
 
   updateCsrfDigest(sessionId: string, newCsrfDigest: string): Promise<void>;
 }

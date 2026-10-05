@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 import path from "path";
 
+// Side effect: throws (fails the build) when a pilot build has API mocking on.
+import "./lib/pilot-scope";
+
 const nextConfig: NextConfig = {
   transpilePackages: ["@rescom/schemas"],
   turbopack: {

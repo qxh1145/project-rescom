@@ -18,7 +18,6 @@ function ProgressCell({ row }: { row: MyFormRow }) {
         </p>
       );
     case "RUNNING":
-    case "PAUSED":
       return (
         <div className="flex max-w-[252px] flex-col gap-2">
           <p className="text-body-sm font-bold text-ink">
@@ -35,8 +34,8 @@ function ProgressCell({ row }: { row: MyFormRow }) {
     case "REJECTED":
       return (
         <p className="text-body-sm font-semibold text-tone-teal-fg">
-          {/* ASSUMED `rejection` may be absent (backend list DTO): the escrow is refunded either way. */}
-          {form.rejection ? `Đã hoàn ${form.rejection.refundedPoints} điểm` : "Đã hoàn ký quỹ"}
+          {/* `rejection` is on `GET /forms/:id` only, not on list items: the escrow is refunded either way. */}
+          {form.rejection ? `Đã hoàn ${form.rejection.refundAmount} điểm` : "Đã hoàn ký quỹ"}
         </p>
       );
     default:

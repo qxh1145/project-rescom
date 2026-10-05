@@ -93,7 +93,7 @@ export function FeedbackFormCard({
   );
 }
 
-/** ASSUMED (not in Figma): after sending, or when no rating is possible. */
+/** ASSUMED (design) (not in Figma): after sending, or when no rating is possible. */
 export function FeedbackDoneCard({ sent }: { sent: boolean }) {
   return (
     <section className="flex flex-col gap-3 rounded-[18px] border border-line bg-surface px-[18px] py-5 lg:rounded-card lg:px-8 lg:py-8">

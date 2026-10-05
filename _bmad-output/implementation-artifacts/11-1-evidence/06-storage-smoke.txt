@@ -1,0 +1,15 @@
+## AC7 storage smoke, MinIO 2026-10-03T06:42:30Z
+### host (ts-node, dev env)
+endpoint=http://localhost:9000 bucket=rescom-private-storage key=smoke/9bb2eef6-16bb-439e-99fe-f7c95621f187.txt
+presigned PUT checksum params: none
+PUT 200
+GET 200 sha256 match=true
+STORAGE SMOKE PASS
+### inside the production image (NODE_ENV=production, smoke env)
+endpoint=http://host.docker.internal:9000 bucket=rescom-private-storage key=smoke/5d880551-ad24-42ea-8eca-921d973b62cb.txt
+presigned PUT checksum params: none
+PUT 200
+GET 200 sha256 match=true
+STORAGE SMOKE PASS
+### Google Cloud Storage: NOT RUN (no bucket/HMAC key yet, story Q3). Command once available:
+STORAGE_ENDPOINT=https://storage.googleapis.com STORAGE_REGION=auto STORAGE_BUCKET=<bucket> STORAGE_ACCESS_KEY_ID=<hmac id> STORAGE_SECRET_ACCESS_KEY=<hmac secret> npx ts-node src/scripts/storage-smoke.ts

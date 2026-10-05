@@ -10,6 +10,7 @@ import {
   DURATION_BANDS,
   TITLE_MAX_LENGTH,
   TOPIC_OPTIONS,
+  normalizeWizardTopic,
   checkGoogleFormsUrl,
   durationBandOf,
   rewardRangeOf,
@@ -101,7 +102,7 @@ export function InfoStep({ draft, errors, update }: InfoStepProps) {
           placeholder="Chọn chủ đề"
           options={TOPIC_OPTIONS}
           value={draft.topic}
-          onChange={(event) => update({ topic: event.target.value })}
+          onChange={(event) => update({ topic: normalizeWizardTopic(event.target.value) })}
         />
         <Textarea
           id="gform-description"

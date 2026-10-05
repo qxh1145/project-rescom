@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ledgerAccountClassSchema } from './ledger-account.schema';
+import { asciiToBase64Url, base64UrlToAscii } from './starter-points.schema';
 
 export const rewardPolicyModeSchema = z.enum(['SHADOW', 'ADVISORY', 'ENFORCED']);
 export type RewardPolicyMode = z.infer<typeof rewardPolicyModeSchema>;
@@ -51,9 +52,55 @@ export const MATURED_PENDING_RELEASE_MAX_LIMIT = 500;
  * (FR-24 scan, Epic 6 review P2). `cutoffDate` is clamped server-side to
  * now − 48 h, so it can only narrow the scan.
  */
+/**
+ * Story IR.2b Task 6.2: keyset position `(createdAt, journalId)` in the FR-24
+ * maturity scan, so persistently failing credits cannot block newer mature
+ * ones. Opaque base64url token, server-issued only (same scheme as the
+ * starter expiry cursor).
+ */
+const maturedReleaseCursorSchema = z
+  .object({
+    createdAt: z.string().datetime(),
+    journalId: z.string().uuid(),
+  })
+  .strict();
+export type MaturedReleaseCursor = z.infer<typeof maturedReleaseCursorSchema>;
+
+export function encodeMaturedReleaseCursor(cursor: MaturedReleaseCursor): string {
+  return asciiToBase64Url(
+    JSON.stringify({ createdAt: cursor.createdAt, journalId: cursor.journalId }),
+  );
+}
+
+/** The cursor in a token, or `null` unless the token is exactly one we issue. */
+export function decodeMaturedReleaseCursor(
+  token: string,
+): MaturedReleaseCursor | null {
+  const json = base64UrlToAscii(token);
+  if (json === null) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  const parsed = maturedReleaseCursorSchema.safeParse(value);
+  if (!parsed.success) return null;
+  return encodeMaturedReleaseCursor(parsed.data) === token ? parsed.data : null;
+}
+
+export const maturedReleaseCursorTokenSchema = z
+  .string()
+  .max(256, 'Invalid release cursor')
+  .refine((token) => decodeMaturedReleaseCursor(token) !== null, {
+    message: 'Invalid release cursor',
+  });
+
 export const releaseMaturedPendingRewardsSchema = z
   .object({
     cutoffDate: z.string().datetime().optional(),
+    /** `nextCursor` of the previous batch; omit to scan from the oldest credit. */
+    after: maturedReleaseCursorTokenSchema.optional(),
     limit: z
       .number()
       .int()

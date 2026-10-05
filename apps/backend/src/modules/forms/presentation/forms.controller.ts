@@ -57,8 +57,21 @@ export class FormsController {
   async createDraft(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateFormDraftInput,
+    // Optional: a retry with the same key returns the same draft (Phase 6).
+    @Headers('idempotency-key') idempotencyKey?: string,
   ) {
-    const created = await this.formsService.createDraft(user.id, dto);
+    let key: string | undefined;
+    if (idempotencyKey !== undefined) {
+      const parsed = idempotencyKeySchema.safeParse(idempotencyKey);
+      if (!parsed.success) {
+        throw new BadRequestException({
+          code: 'INVALID_IDEMPOTENCY_KEY',
+          message: parsed.error.errors[0]?.message ?? 'Invalid Idempotency-Key',
+        });
+      }
+      key = parsed.data;
+    }
+    const created = await this.formsService.createDraft(user.id, dto, key);
     return createSuccessEnvelope(created, {
       message: 'Form draft created successfully',
     });

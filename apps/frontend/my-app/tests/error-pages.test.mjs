@@ -7,6 +7,7 @@ const {
   formatCountdown,
   formatIncidentCode,
   formatMaintenanceEnd,
+  parseRateLimitReason,
   parseRetryAfterSeconds,
   randomIncidentCode,
   resolveReturnPath,
@@ -47,6 +48,16 @@ test("countdownAnnouncement changes once per minute", () => {
   assert.equal(countdownAnnouncement(1104), countdownAnnouncement(1081));
   assert.notEqual(countdownAnnouncement(1081), countdownAnnouncement(1080));
   assert.equal(countdownAnnouncement(0), "Bạn có thể nhận khảo sát mới ngay bây giờ.");
+  // A throttled session check says nothing about surveys.
+  assert.equal(countdownAnnouncement(0, "session"), "Bạn có thể thử lại ngay bây giờ.");
+  assert.equal(countdownAnnouncement(1104, "session"), countdownAnnouncement(1104));
+});
+
+test("parseRateLimitReason: only `session` switches /rate-limited to the neutral copy", () => {
+  assert.equal(parseRateLimitReason("session"), "session");
+  for (const raw of [undefined, null, "", "participation", "SESSION", "other"]) {
+    assert.equal(parseRateLimitReason(raw), "participation", String(raw));
+  }
 });
 
 test("formatMaintenanceEnd formats HH:mm in Vietnam time", () => {

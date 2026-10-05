@@ -1,31 +1,25 @@
-import { z } from "zod";
 import {
   walletBalanceSchema,
   walletDetailsSchema,
   walletTransactionItemSchema,
   type WalletBalanceDto,
+  type WalletDetailsDto,
+  type WalletTransactionItemDto,
 } from "@rescom/schemas";
 import { apiRequest, type ResponseSchema } from "../api/client.ts";
 
 /**
- * One ledger entry of `GET /economy/wallet` (VERIFIED
- * `walletTransactionItemSchema`) plus `surveyTitle`.
- *
- * ASSUMED API CONTRACT: `surveyTitle` — Figma 7 shows the survey title of
- * reward rows ("Khảo sát / ghi chú"), but the backend only returns the
- * journal `description` (English, with the attempt id). Optional so the
- * verified backend response still parses; the history then falls back to a
- * generic note (`wallet-history.ts`).
+ * One ledger entry of `GET /economy/wallet` (VERIFIED, shared
+ * `walletTransactionItemSchema`). The backend returns only the journal
+ * `description` (English, with the attempt id), no survey title: reward rows
+ * show a generic note (`wallet-history.ts`).
  */
-export const walletTransactionSchema = walletTransactionItemSchema.extend({
-  surveyTitle: z.string().min(1).nullable().optional(),
-});
-export type WalletTransaction = z.infer<typeof walletTransactionSchema>;
+export const walletTransactionSchema = walletTransactionItemSchema;
+export type WalletTransaction = WalletTransactionItemDto;
 
-export const walletViewSchema = walletDetailsSchema.extend({
-  transactions: z.array(walletTransactionSchema),
-});
-export type WalletView = z.infer<typeof walletViewSchema>;
+/** `GET /economy/wallet` (VERIFIED, shared `walletDetailsSchema`). */
+export const walletViewSchema = walletDetailsSchema;
+export type WalletView = WalletDetailsDto;
 
 /** Figma 7 "Lịch sử giao dịch" page size (backend default 50, clamps to 1…100). */
 export const WALLET_HISTORY_LIMIT = 50;

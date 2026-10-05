@@ -20,8 +20,8 @@ function createMockStorage() {
 }
 
 test("Complete Respondent Journey End-to-End Tests", async (t) => {
-  const { mockRepository } = await import("../lib/mock/repository.ts");
-  const { setMockStorage, saveAttempt } = await import("../lib/mock/store.ts");
+  const { mockRepository } = await import("../mocks/legacy/repository.ts");
+  const { setMockStorage, saveAttempt } = await import("../mocks/legacy/store.ts");
 
   let storage;
 

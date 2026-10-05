@@ -21,6 +21,7 @@ import {
 } from '@rescom/schemas';
 import {
   LedgerRepositoryPort,
+  MaturedCreditCursor,
   PostJournalTransactionOptions,
 } from './ports/ledger-repository.port';
 import { LedgerAccountEntity } from '../domain/ledger-account.entity';
@@ -1748,6 +1749,7 @@ export class LedgerService {
   async findMaturedPendingCredits(params: {
     cutoff: Date;
     limit: number;
+    after?: MaturedCreditCursor;
   }): Promise<LedgerJournalEntity[]> {
     return this.ledgerRepo.findMaturedPendingCredits(params);
   }

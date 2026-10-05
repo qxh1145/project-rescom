@@ -11,6 +11,7 @@ import {
 } from "@rescom/schemas";
 import { z } from "zod";
 import { validateForPublish, type BuilderDoc } from "./builder-blocks.ts";
+import { collectionDaysLabel, collectionDeadlineAt } from "./create-wizard.ts";
 
 /**
  * Publish settings (builder steps 2 "Đối tượng" and 3 "Số mẫu & điểm") and
@@ -146,6 +147,61 @@ export const PUBLISH_READINESS_NOTICE: Record<Exclude<PublishReadiness, "ready">
   unsaved: "Form còn thay đổi chưa lưu trên máy này. Quay lại Form Builder để lưu và kiểm tra trước khi gửi duyệt.",
   invalid: "Form chưa đủ điều kiện gửi duyệt. Quay lại Form Builder để sửa các câu được đánh dấu.",
 };
+
+/**
+ * Story IR.2b review LOW-17: "Hạn thu thập" of the builder's publish step.
+ * `keep` is offered only while the stored deadline is still comfortably ahead
+ * (≥ 2 h: the backend needs ≥ 1 h at publish), so a draft whose deadline is
+ * about to pass is never stuck — the Publisher picks a new one or none.
+ */
+export type BuilderDeadlineChoice = "keep" | "7" | "14" | "30" | "none";
+
+const KEEP_DEADLINE_MIN_LEAD_MS = 2 * 60 * 60 * 1000;
+
+export function builderDeadlineChoices(
+  stored: string | null | undefined,
+  now: Date = new Date(),
+): { value: BuilderDeadlineChoice; label: string }[] {
+  const storedTime = stored ? Date.parse(stored) : NaN;
+  const keep =
+    Number.isFinite(storedTime) && storedTime - now.getTime() >= KEEP_DEADLINE_MIN_LEAD_MS
+      ? [{ value: "keep" as const, label: `Giữ hạn hiện tại (${DEADLINE_DATE.format(new Date(storedTime))})` }]
+      : [];
+  return [
+    ...keep,
+    { value: "7", label: collectionDaysLabel(7, now) },
+    { value: "14", label: collectionDaysLabel(14, now) },
+    { value: "30", label: collectionDaysLabel(30, now) },
+    { value: "none", label: "Không giới hạn thời gian" },
+  ];
+}
+
+/** Default choice: keep a usable stored deadline; a draft without one stays without one. */
+export function defaultBuilderDeadlineChoice(
+  stored: string | null | undefined,
+  now: Date = new Date(),
+): BuilderDeadlineChoice {
+  if (!stored) return "none";
+  return builderDeadlineChoices(stored, now)[0].value === "keep" ? "keep" : "14";
+}
+
+/** The `deadlineAt` sent with the draft save before publishing. */
+export function builderDeadlineAt(
+  choice: BuilderDeadlineChoice,
+  stored: string | null | undefined,
+  now: Date = new Date(),
+): string | null {
+  if (choice === "none") return null;
+  if (choice === "keep") return stored ?? null;
+  return collectionDeadlineAt(Number(choice), now);
+}
+
+const DEADLINE_DATE = new Intl.DateTimeFormat("vi-VN", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  timeZone: "Asia/Ho_Chi_Minh",
+});
 
 export const GENDER_LABELS: Record<Gender, string> = {
   MALE: "Nam",

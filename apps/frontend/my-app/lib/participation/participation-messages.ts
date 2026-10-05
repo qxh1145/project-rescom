@@ -16,14 +16,24 @@ function rateLimited(error: unknown): string {
     : "Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút.";
 }
 
-/** "Đồng ý và bắt đầu" could not record the acceptance (ASSUMED consent route). */
-export const CONSENT_NOT_RECORDED_MESSAGE = "Chưa ghi nhận được sự đồng ý. Kiểm tra kết nối rồi thử lại.";
+/** "Đồng ý và bắt đầu" got an error answer while recording the acceptance (ASSUMED (design) copy). */
+export const CONSENT_NOT_RECORDED_MESSAGE = "Chưa ghi nhận được sự đồng ý. Vui lòng thử lại.";
 
+/** 409 INTEGRITY_CONSENT_VERSION_MISMATCH: a newer notice is in force (ASSUMED (design) copy). */
+export const CONSENT_NOTICE_UPDATED_MESSAGE = "Thông báo dữ liệu vừa được cập nhật. Hãy đọc lại rồi đồng ý.";
+
+/** `GET /integrity/consent` answered with an error (ASSUMED (design) copy). */
+export const CONSENT_STATUS_UNAVAILABLE_MESSAGE = "Không tải được thông báo dữ liệu. Vui lòng thử lại.";
+
+/**
+ * `GET /attempts/:id` failed. The pinned questions come with the attempt, so
+ * 404 ATTEMPT_NOT_FOUND (unknown, guest or another account's attempt) is the
+ * only "not found".
+ */
 export function loadAttemptErrorMessage(error: unknown): string {
   if (!isApiError(error)) return "Không tải được khảo sát. Vui lòng thử lại.";
   if (error.kind === "network") return NETWORK;
   if (error.status === 404) return "Không tìm thấy lượt làm khảo sát này.";
-  if (error.code === "PUBLIC_FORM_ACCESS_DISABLED") return "Khảo sát này chưa mở cho bạn làm trong Rescom.";
   return "Không tải được khảo sát. Vui lòng thử lại.";
 }
 
@@ -32,6 +42,8 @@ const SUBMIT_MESSAGES: Record<string, string> = {
   RESPONSE_NOT_FOUND: "Không tìm thấy lượt làm này. Hãy mở lại khảo sát từ trang Khám phá.",
   SURVEY_ALREADY_COMPLETED: "Bài này đã được nộp trước đó.",
   SURVEY_NOT_AVAILABLE: "Khảo sát đã đóng, bài chưa được ghi nhận.",
+  // A file answer is not a CLEAN upload of this attempt for that question (Phase 7).
+  UNCLEAN_ATTACHMENT: "Một tệp tải lên chưa được xác minh an toàn hoặc đã bị xoá. Hãy xoá tệp đó, tải lại rồi nộp bài.",
 };
 
 export function submitSurveyErrorMessage(error: unknown): string {

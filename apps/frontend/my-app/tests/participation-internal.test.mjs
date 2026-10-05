@@ -5,6 +5,7 @@ const form = await import("../lib/participation/survey-form.ts");
 const draft = await import("../lib/participation/answer-draft.ts");
 const completion = await import("../lib/participation/completion-view.ts");
 const messages = await import("../lib/participation/participation-messages.ts");
+const consent = await import("../lib/participation/consent-service.ts");
 const { ApiError } = await import("../lib/api/api-error.ts");
 
 function choice(id, order, labels, extra = {}) {
@@ -100,14 +101,58 @@ test("submit payload: form order, trimmed text, option order, empty answers drop
     q8: "",
     stale: "old draft key",
   });
-  assert.deepEqual(payload, [
-    { blockId: "q1", value: "Năm 1" },
-    { blockId: "q2", value: ["Shopee", "Tiki"] },
-    { blockId: "q4", value: 4 },
-    { blockId: "q5", value: 300 },
-    { blockId: "q6", value: "ổn" },
-  ]);
+  // A record by block id (`internalFormSubmissionInputSchema`), in form order.
+  assert.deepEqual(payload, { q1: "Năm 1", q2: ["Shopee", "Tiki"], q4: 4, q5: 300, q6: "ổn" });
+  assert.deepEqual(Object.keys(payload), ["q1", "q2", "q4", "q5", "q6"]);
   assert.equal(form.countAnswered(blocks, { q1: "Năm 1", q2: [], q6: " " }), 1);
+});
+
+const fileQ = {
+  id: "file1",
+  order: 8,
+  type: "file_upload",
+  title: "Ảnh minh chứng",
+  required: true,
+  maxFileSizeMb: 5,
+  allowedMimeTypes: ["image/*"],
+  maxFiles: 2,
+};
+const attachment = (n) => ({
+  objectId: `00000000-0000-4000-8000-00000000000${n}`,
+  fileName: `anh-${n}.png`,
+  fileSize: 1024 * n,
+  mimeType: "image/png",
+  status: "CLEAN",
+});
+
+test("file_upload answers: required, CLEAN attachments only, at most maxFiles (Phase 7)", () => {
+  assert.equal(form.validateAnswer(fileQ, undefined), "Vui lòng tải lên ít nhất một tệp.");
+  assert.equal(form.validateAnswer(fileQ, []), "Vui lòng tải lên ít nhất một tệp.");
+  assert.equal(form.validateAnswer({ ...fileQ, required: false }, []), null);
+  assert.equal(form.validateAnswer(fileQ, [attachment(1)]), null);
+  assert.equal(form.validateAnswer(fileQ, [attachment(1), attachment(2)]), null);
+  assert.equal(form.validateAnswer(fileQ, [attachment(1), attachment(2), attachment(3)]), "Chỉ được tải tối đa 2 tệp.");
+  // Not finalized / not an upload: never accepted as an answer.
+  assert.match(form.validateAnswer(fileQ, [{ ...attachment(1), status: "QUARANTINED" }]), /chưa hợp lệ/);
+  assert.match(form.validateAnswer(fileQ, [{ name: "a.png", size: 1, type: "image/png" }]), /chưa hợp lệ/);
+  assert.match(form.validateAnswer(fileQ, "a.png"), /chưa hợp lệ/);
+});
+
+test("file_upload answers go into the submit record as CLEAN attachments", async () => {
+  const { internalFormSubmissionInputSchema, validateAnswersAgainstFormDefinition } = await import("@rescom/schemas");
+  const payload = form.toSubmissionAnswers([q1, fileQ], {
+    q1: "Năm 2",
+    file1: [{ ...attachment(1), extra: "dropped" }],
+  });
+  assert.deepEqual(payload, { q1: "Năm 2", file1: [attachment(1)] });
+  // The exact body the backend parses and validates (the array form cannot carry files).
+  assert.equal(
+    internalFormSubmissionInputSchema.safeParse({ attemptId: "00000000-0000-4000-8000-0000000000aa", answers: payload }).success,
+    true,
+  );
+  assert.equal(validateAnswersAgainstFormDefinition([q1, fileQ], payload).isValid, true);
+  // A stale non-attachment value is never sent.
+  assert.deepEqual(form.toSubmissionAnswers([fileQ], { file1: [{ name: "x" }] }), {});
 });
 
 test("answer telemetry event types never depend on content", () => {
@@ -172,8 +217,13 @@ test("draft storage: corrupt or foreign data is discarded; storage failures are 
 });
 
 test("completion view: outcome, then stashed submission, then the attempt", () => {
-  const internal = { type: "INTERNAL", status: "SUBMITTED", submittedAt: "2026-09-26T07:32:00.000Z", survey: { rewardPerResponse: 12 } };
-  const external = { ...internal, type: "EXTERNAL", status: "PENDING_REVIEW", survey: { rewardPerResponse: 18 } };
+  const internal = { type: "INTERNAL", submittedAt: "2026-09-26T07:32:00.000Z", survey: { rewardPerResponse: 12 } };
+  const external = { ...internal, type: "EXTERNAL", survey: { rewardPerResponse: 18 } };
+  const outcomeOf = (state, amount, activated = false) => ({
+    reward: { state, amount },
+    starterUnlock: { activatedByThisAttempt: activated },
+    submittedAt: null,
+  });
 
   assert.deepEqual(completion.resolveCompletionView(internal, null, null), {
     kind: "available",
@@ -186,14 +236,78 @@ test("completion view: outcome, then stashed submission, then the attempt", () =
     completion.resolveCompletionView(internal, null, { reward: { status: "HELD_IN_INTEGRITY", amount: 12 }, submittedAt: "x" }).kind,
     "held",
   );
-  const outcome = { reward: { status: "SETTLED", amount: 12 }, accountActivated: true, submittedAt: null };
-  const view = completion.resolveCompletionView(internal, outcome, { reward: { status: "HELD_IN_INTEGRITY", amount: 12 }, submittedAt: "s" });
+  const view = completion.resolveCompletionView(internal, outcomeOf("AVAILABLE", 12, true), {
+    reward: { status: "HELD_IN_INTEGRITY", amount: 12 },
+    submittedAt: "s",
+  });
   assert.equal(view.kind, "available", "the outcome route wins over the stash");
   assert.equal(view.activated, true);
   assert.equal(view.submittedAt, "s");
 
+  // Every reward.state of GET /attempts/:id/outcome (owner decision Q2: the edge states fall back by
+  // type, except NO_REWARD / REVERSED, which never claim "+N điểm").
+  const kinds = Object.fromEntries(
+    ["AVAILABLE", "PENDING", "HELD_IN_INTEGRITY", "HELD_IN_DISPUTE", "REVERSED", "AWAITING_SETTLEMENT", "NO_REWARD", "NOT_COMPLETED"].map(
+      (state) => [
+        state,
+        [
+          completion.resolveCompletionView(internal, outcomeOf(state, 0), null).kind,
+          completion.resolveCompletionView(external, outcomeOf(state, 0), null).kind,
+        ],
+      ],
+    ),
+  );
+  assert.deepEqual(kinds, {
+    AVAILABLE: ["available", "available"],
+    PENDING: ["pending", "pending"],
+    HELD_IN_INTEGRITY: ["held", "held"],
+    HELD_IN_DISPUTE: ["held", "held"],
+    REVERSED: ["reversed", "reversed"],
+    AWAITING_SETTLEMENT: ["available", "pending"],
+    NO_REWARD: ["no-reward", "no-reward"],
+    NOT_COMPLETED: ["available", "pending"],
+  });
+  // The credited amount wins over the advertised one; a pending or held reward activates nothing.
+  assert.equal(completion.resolveCompletionView(external, outcomeOf("PENDING", 15), null).amount, 15);
+  assert.equal(completion.resolveCompletionView(external, outcomeOf("AWAITING_SETTLEMENT", 0), null).amount, 18);
+  assert.equal(completion.resolveCompletionView(internal, outcomeOf("HELD_IN_INTEGRITY", 12, true), null).activated, false);
+  // A reversed or missing reward activates nothing, whatever the stash said.
+  const settled = { reward: { status: "SETTLED", amount: 12 }, submittedAt: "s" };
+  for (const state of ["REVERSED", "NO_REWARD"]) {
+    const neutral = completion.resolveCompletionView(internal, outcomeOf(state, 12, true), settled);
+    assert.equal(neutral.kind, state === "REVERSED" ? "reversed" : "no-reward", state);
+    assert.equal(neutral.activated, false, state);
+  }
+
   assert.equal(completion.formatShortDateTime("2026-09-26T07:32:00.000Z"), "26/09 14:32");
   assert.equal(completion.formatClock("2026-09-26T07:31:00.000Z"), "14:31");
+});
+
+test("consent: only a missing response is tolerated; HTTP errors are shown", () => {
+  const network = new ApiError({ kind: "network", message: "offline" });
+  const notFound = new ApiError({ kind: "http", status: 404, code: "NOT_FOUND", message: "x" });
+  const outdated = new ApiError({ kind: "http", status: 409, code: "INTEGRITY_CONSENT_VERSION_MISMATCH", message: "x" });
+  assert.equal(consent.isConsentUnreachable(network), true);
+  assert.equal(consent.isConsentUnreachable(notFound), false, "a 404 is no longer a missing route");
+  assert.equal(consent.isConsentUnreachable(outdated), false);
+  assert.equal(consent.isConsentNoticeOutdated(outdated), true);
+  assert.equal(consent.isConsentNoticeOutdated(notFound), false);
+
+  assert.equal(consent.hasAcceptedCurrentNotice({ currentVersion: 2, acceptedVersion: 1, acceptedAt: "2026-10-01T08:00:00.000Z" }), false);
+  assert.equal(consent.hasAcceptedCurrentNotice({ currentVersion: 1, acceptedVersion: 1, acceptedAt: "2026-10-01T08:00:00.000Z" }), true);
+  assert.equal(consent.hasAcceptedCurrentNotice(null), false);
+  assert.equal(consent.FALLBACK_NOTICE_VERSION, 1);
+});
+
+test("attempt load errors: a 404 is the attempt, never the public form route", () => {
+  assert.equal(
+    messages.loadAttemptErrorMessage(new ApiError({ kind: "http", status: 404, code: "ATTEMPT_NOT_FOUND", message: "x" })),
+    "Không tìm thấy lượt làm khảo sát này.",
+  );
+  assert.equal(
+    messages.loadAttemptErrorMessage(new ApiError({ kind: "http", status: 403, code: "PUBLIC_ACCESS_DISABLED", message: "x" })),
+    "Không tải được khảo sát. Vui lòng thử lại.",
+  );
 });
 
 test("submit error helpers", () => {

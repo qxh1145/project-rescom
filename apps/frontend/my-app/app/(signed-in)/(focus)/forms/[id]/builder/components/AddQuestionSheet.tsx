@@ -13,7 +13,8 @@ interface AddQuestionSheetProps {
   sectionLabel: string | null;
   onAdd: (type: FormBlockType) => void;
   onAddSection: () => void;
-  onAiSuggest: () => void;
+  /** Omitted in the pilot build (AI builder is deferred). */
+  onAiSuggest?: () => void;
   aiBusy: boolean;
   aiError: string | null;
 }
@@ -39,19 +40,21 @@ export function AddQuestionSheet({ open, onClose, sectionLabel, onAdd, onAddSect
         <IconButton icon="x" label="Đóng" onClick={onClose} />
       </div>
 
-      <button
-        type="button"
-        onClick={onAiSuggest}
-        disabled={aiBusy}
-        aria-busy={aiBusy || undefined}
-        className="mt-3.5 flex w-full items-center gap-3 rounded-[14px] bg-tone-blue-bg px-3.5 py-3 text-left disabled:opacity-70"
-      >
-        {aiBusy ? <Spinner className="size-5.5 text-tone-blue-fg" /> : <Icon name="sparkles" size={22} className="text-tone-blue-fg" />}
-        <span>
-          <span className="block text-body font-extrabold text-tone-blue-fg">Để AI gợi ý câu hỏi</span>
-          <span className="block text-caption text-ink-strong">Dựa trên tên và các câu đã có</span>
-        </span>
-      </button>
+      {onAiSuggest ? (
+        <button
+          type="button"
+          onClick={onAiSuggest}
+          disabled={aiBusy}
+          aria-busy={aiBusy || undefined}
+          className="mt-3.5 flex w-full items-center gap-3 rounded-[14px] bg-tone-blue-bg px-3.5 py-3 text-left disabled:opacity-70"
+        >
+          {aiBusy ? <Spinner className="size-5.5 text-tone-blue-fg" /> : <Icon name="sparkles" size={22} className="text-tone-blue-fg" />}
+          <span>
+            <span className="block text-body font-extrabold text-tone-blue-fg">Để AI gợi ý câu hỏi</span>
+            <span className="block text-caption text-ink-strong">Dựa trên tên và các câu đã có</span>
+          </span>
+        </button>
+      ) : null}
       {aiError ? (
         <p role="alert" className="mt-2 text-caption text-danger">
           {aiError}

@@ -1,27 +1,41 @@
 import { HttpResponse, http, type RequestHandler } from "msw";
 import {
+  ATTEMPT_NOT_FOUND_CODE,
+  INTEGRITY_CONSENT_NOTICE_VERSION,
+  INTEGRITY_CONSENT_VERSION_MISMATCH_CODE,
+  SURVEY_NOT_FOUND_CODE,
   TIME_BARRIER_POLICY_VERSION,
   TIME_BARRIER_SECONDS_PER_QUESTION,
+  acceptIntegrityConsentInputSchema,
   computeInternalTimeBarrier,
   internalFormSubmissionInputSchema,
   submitSurveyFeedbackInputSchema,
   validateAnswersAgainstFormDefinition,
+  type AttemptOutcomeDto,
+  type AttemptRewardDto,
+  type AttemptRewardState,
+  type IntegrityConsentDto,
+  type SurveySummaryDto,
 } from "@rescom/schemas";
-import { apiUrl } from "@/lib/api/config";
-import { attempts, findAttempt, updateAttempt, type MockAttempt } from "../data/attempts";
-import { creditSurveyReward, holdSurveyReward, releaseDuePendingRewards, rewardOutcomeOf } from "../data/economy";
+import { apiUrl, isHybridMocking } from "@/lib/api/config";
+import { activeReservationCount, attempts, findAttempt, updateAttempt, type MockAttempt } from "../data/attempts";
+import { creditSurveyReward, holdSurveyReward, releaseDuePendingRewards, transactionsOf } from "../data/economy";
+import { PENDING_REVIEW_MS, type MockTransaction } from "../data/economy-rules";
 import { acceptConsent, consentOf, reliabilityOf, saveFeedback, surveyFeedback } from "../data/integrity";
 import { updateNotifications } from "../data/notifications";
 import { publicFormOf, surveyContentOf } from "../data/survey-content";
-import { findSurvey, markSurveyCompleted, updateSurvey } from "../data/surveys";
-import { getMockSessionUser } from "../db/session";
+import { findSurvey, markSurveyCompleted, updateSurvey, type MockSurvey } from "../data/surveys";
+import { getMockSessionUser, type MockSessionUser } from "../db/session";
 import { mockId, nowIso } from "../db/store";
 import { fail, missingCsrf, ok, unauthorized } from "../envelope";
+import { HYBRID_MEMBER } from "../hybrid";
 import { applyScenario, getActiveScenario } from "../scenarios";
+import { attachSubmittedFiles } from "./storage";
 
 /**
  * Phase 3B — taking a survey inside Rescom (Figma 4, 6, 14, 17c, 17d).
  * VERIFIED routes mirror `participation.controller.ts`,
+ * `survey-runner.controller.ts`, `integrity-consent.controller.ts`,
  * `survey-feedback.controller.ts` and `public-forms.controller.ts`; ASSUMED
  * ones are documented in `lib/participation/*-service.ts`.
  * Scenarios: `?msw=submit-offline` (submit → network error, 4b),
@@ -42,6 +56,74 @@ function validationFailed(message: string, details: unknown) {
 
 const isFinished = (attempt: MockAttempt) => attempt.status === "COMPLETED";
 
+/** `surveySummarySchema`: public facts only (no publisher, targeting or link). */
+function surveySummaryOf(survey: MockSurvey): SurveySummaryDto {
+  return {
+    id: survey.id,
+    title: survey.title,
+    description: survey.description,
+    type: survey.type,
+    status: survey.status,
+    rewardPerResponse: survey.rewardPerResponse,
+    estimatedEffortSeconds: survey.estimatedEffortSeconds,
+    expectedCompletions: survey.expectedCompletions,
+    completedCompletions: survey.completedCompletions,
+    remainingSlots: Math.max(
+      0,
+      survey.expectedCompletions - survey.completedCompletions - activeReservationCount(survey.id),
+    ),
+  };
+}
+
+function rewardWithoutJournal(state: AttemptRewardState): AttemptRewardDto {
+  return { state, amount: 0, targetAccountClass: null, journalId: null, creditedAt: null, releasesAt: null };
+}
+
+/** `attemptRewardSchema` from the attempt's wallet row (the mock's credit journal). */
+function rewardOf(row: MockTransaction | undefined): AttemptRewardDto {
+  if (!row) return rewardWithoutJournal("NO_REWARD");
+  const journal = { amount: row.amount, journalId: row.id, creditedAt: row.createdAt };
+  switch (row.status) {
+    case "PENDING":
+      return {
+        state: "PENDING",
+        ...journal,
+        targetAccountClass: "PENDING",
+        releasesAt: row.releasesAt ?? new Date(Date.parse(row.createdAt) + PENDING_REVIEW_MS).toISOString(),
+      };
+    case "HELD":
+      return { state: "HELD_IN_INTEGRITY", ...journal, targetAccountClass: "INTEGRITY_HOLD", releasesAt: null };
+    case "REVERSED":
+      return { state: "REVERSED", ...journal, targetAccountClass: null, releasesAt: null };
+    default:
+      return { state: "AVAILABLE", ...journal, targetAccountClass: "USER_AVAILABLE", releasesAt: null };
+  }
+}
+
+/** `attemptOutcomeSchema`: the reward row of the attempt and the starter unlock it triggered. */
+function attemptOutcomeOf(user: MockSessionUser, attempt: MockAttempt): AttemptOutcomeDto {
+  const rows = transactionsOf(user);
+  const unlock = rows.find((row) => row.kind === "STARTER_UNLOCK" && row.attemptId === attempt.attemptId);
+  const starterUnlock = unlock
+    ? { activatedByThisAttempt: true, amount: unlock.amount, activatedAt: unlock.createdAt }
+    : { activatedByThisAttempt: false, amount: null, activatedAt: null };
+  return {
+    attemptId: attempt.attemptId,
+    attemptStatus: attempt.status,
+    submittedAt: attempt.submittedAt,
+    reward: isFinished(attempt)
+      ? rewardOf(rows.find((row) => row.kind === "SURVEY_REWARD" && row.attemptId === attempt.attemptId))
+      : rewardWithoutJournal("NOT_COMPLETED"),
+    accountActivated: starterUnlock.activatedByThisAttempt,
+    starterUnlock,
+  };
+}
+
+/** `integrityConsentSchema`, with the notice version in force (`INTEGRITY_CONSENT_NOTICE_VERSION`). */
+function consentStatusOf(userId: string): IntegrityConsentDto {
+  return { ...consentOf(userId), currentVersion: INTEGRITY_CONSENT_NOTICE_VERSION };
+}
+
 function pushNotification(userId: string, type: "REWARD_EARNED" | "REWARD_PENDING" | "ACCOUNT_ACTIVATED", message: string) {
   updateNotifications(userId, (items) => {
     items.unshift({ id: mockId(), type, message, isRead: false, createdAt: nowIso(), readAt: null });
@@ -49,27 +131,18 @@ function pushNotification(userId: string, type: "REWARD_EARNED" | "REWARD_PENDIN
 }
 
 export const internalParticipationHandlers: RequestHandler[] = [
-  // ASSUMED API CONTRACT: GET /surveys/:id — the one public survey summary
+  // VERIFIED: GET /surveys/:id (`survey-runner.controller.ts`, public) → surveySummarySchema
   // (consent card + 18.7 "Khảo sát đã đủ người"). No session needed.
   http.get(apiUrl("/surveys/:id"), async ({ params }) => {
     const forced = await applyScenario("public-surveys");
     if (forced) return forced;
     const survey = findSurvey(String(params.id));
-    if (!survey) return fail(404, "SURVEY_NOT_FOUND", "Survey not found.");
-    return ok({
-      id: survey.id,
-      title: survey.title,
-      type: survey.type,
-      status: survey.status,
-      rewardPerResponse: survey.rewardPerResponse,
-      estimatedEffortSeconds: survey.estimatedEffortSeconds,
-      expectedCompletions: survey.expectedCompletions,
-      completedCompletions: survey.completedCompletions,
-      publisherName: survey.publisherName,
-    });
+    // Unknown and closed surveys are one 404 (strict, decision IR.2a Q7).
+    if (!survey || survey.status !== "PUBLISHED") return fail(404, SURVEY_NOT_FOUND_CODE, "Survey not found.");
+    return ok(surveySummaryOf(survey));
   }),
 
-  // VERIFIED: GET /public/forms/:id → publicFormDetailsSchema (+ ASSUMED `sections`).
+  // VERIFIED: GET /public/forms/:id → publicFormDetailsSchema (guest route `/f/:id` only).
   http.get(apiUrl("/public/forms/:id"), async ({ params }) => {
     const forced = await applyScenario("participation");
     if (forced) return forced;
@@ -79,13 +152,13 @@ export const internalParticipationHandlers: RequestHandler[] = [
     return ok(publicFormOf(survey, content));
   }),
 
-  // ASSUMED API CONTRACT: GET|POST /integrity/consent (consent-service.ts).
+  // VERIFIED: GET|POST /integrity/consent (`integrity-consent.controller.ts`) → integrityConsentSchema.
   http.get(apiUrl("/integrity/consent"), async () => {
     const forced = await applyScenario("integrity");
     if (forced) return forced;
     const user = await getMockSessionUser();
     if (!user) return unauthorized();
-    return ok(consentOf(user.id));
+    return ok(consentStatusOf(user.id));
   }),
 
   http.post(apiUrl("/integrity/consent"), async ({ request }) => {
@@ -95,12 +168,16 @@ export const internalParticipationHandlers: RequestHandler[] = [
     if (!user) return unauthorized();
     const csrf = missingCsrf(request);
     if (csrf) return csrf;
-    const body = (await readJson(request)) as { noticeVersion?: unknown } | null;
-    const version = body?.noticeVersion;
-    if (typeof version !== "number" || !Number.isInteger(version) || version < 1) {
-      return validationFailed("noticeVersion must be a positive integer", { noticeVersion: version });
+    const body = acceptIntegrityConsentInputSchema.safeParse(await readJson(request));
+    if (!body.success) return validationFailed(body.error.errors[0]?.message ?? "Validation failed", body.error.format());
+    if (body.data.noticeVersion !== INTEGRITY_CONSENT_NOTICE_VERSION) {
+      return fail(409, INTEGRITY_CONSENT_VERSION_MISMATCH_CODE, "Only the current integrity notice can be accepted.", {
+        details: { currentVersion: INTEGRITY_CONSENT_NOTICE_VERSION },
+      });
     }
-    return ok(acceptConsent(user.id, version));
+    // Accepting the same version again keeps the original acceptance time.
+    if (consentOf(user.id).acceptedVersion !== body.data.noticeVersion) acceptConsent(user.id, body.data.noticeVersion);
+    return ok(consentStatusOf(user.id));
   }),
 
   // VERIFIED: POST /responses/:responseId/integrity-events (public, no CSRF). Accepted and dropped.
@@ -167,6 +244,20 @@ export const internalParticipationHandlers: RequestHandler[] = [
       });
     }
 
+    // Files: CLEAN uploads of this attempt for that question, attached with the submit (Phase 7).
+    const fileAnswers = content.blocks
+      .filter((block) => block.type === "file_upload")
+      .flatMap((block) => {
+        const files = validation.normalizedAnswers[block.id];
+        return Array.isArray(files)
+          ? files.map((file) => ({ questionId: block.id, objectId: String((file as { objectId: unknown }).objectId) }))
+          : [];
+      });
+    if (fileAnswers.length > 0) {
+      const rejected = attachSubmittedFiles(attempt.attemptId, fileAnswers);
+      if (rejected) return rejected;
+    }
+
     const submittedAt = nowIso();
     updateAttempt(attempt.attemptId, (target) => {
       target.status = "COMPLETED";
@@ -221,24 +312,20 @@ export const internalParticipationHandlers: RequestHandler[] = [
     return ok(result);
   }),
 
-  // ASSUMED API CONTRACT: GET /attempts/:attemptId/outcome (submission-service.ts).
+  // VERIFIED: GET /attempts/:attemptId/outcome (`survey-runner.controller.ts`) → attemptOutcomeSchema.
   http.get(apiUrl("/attempts/:attemptId/outcome"), async ({ params }) => {
     const forced = await applyScenario("participation");
     if (forced) return forced;
     const user = await getMockSessionUser();
     if (!user) return unauthorized();
     const attempt = findAttempt(String(params.attemptId));
-    if (!attempt || attempt.userId !== user.id) return fail(404, "ATTEMPT_NOT_FOUND", "Attempt not found.");
+    if (!attempt || attempt.userId !== user.id) {
+      return fail(404, ATTEMPT_NOT_FOUND_CODE, "Survey attempt not found.");
+    }
+    // MOCK-ONLY: releases due 48 h rewards on read. The backend outcome is
+    // read-only; its releases come from the IR.2b scheduler.
     releaseDuePendingRewards(user);
-    const outcome = rewardOutcomeOf(user, attempt.attemptId);
-    return ok({
-      attemptId: attempt.attemptId,
-      reward: outcome
-        ? { status: outcome.status, amount: outcome.amount, targetAccountClass: outcome.targetAccountClass }
-        : null,
-      accountActivated: outcome?.accountActivated ?? false,
-      submittedAt: attempt.submittedAt,
-    });
+    return ok(attemptOutcomeOf(user, attempt));
   }),
 
   // VERIFIED: GET /attempts/:attemptId/feedback → surveyFeedbackStatusSchema.
@@ -291,7 +378,7 @@ export const internalParticipationHandlers: RequestHandler[] = [
   http.get(apiUrl("/integrity/reliability/me"), async () => {
     const forced = await applyScenario("integrity");
     if (forced) return forced;
-    const user = await getMockSessionUser();
+    const user = isHybridMocking ? HYBRID_MEMBER : await getMockSessionUser();
     if (!user) return unauthorized();
     return ok(reliabilityOf(user));
   }),

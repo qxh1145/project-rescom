@@ -20,6 +20,7 @@ test("resolvePostLoginPath", () => {
     "/login?mode=register",
     "/register",
     "/forgot-password/sent",
+    "/reset-password?token=abc",
     "/auth/callback",
     "/auth/link-google",
     "/auth",

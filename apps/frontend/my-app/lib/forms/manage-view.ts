@@ -48,21 +48,19 @@ interface ListRowFacts extends StatusFacts {
   createdAt: string;
   deadlineAt: string | null;
   closedAt: string | null;
-  hiddenFromMarketplace: boolean;
 }
 
 /**
  * Desktop row subtitle (Figma 63:177, 63:188, 63:202):
  * "Google Forms · gửi 26/09 19:30", "Google Forms · hạn 05/10 · còn 9 ngày",
- * "Form Builder · kết thúc 22/09 · đã ẩn khỏi Khám phá".
+ * "Form Builder · kết thúc 22/09".
  */
 export function listRowMeta(form: ListRowFacts, now: number): string {
   const source = sourceLabel(form.type);
   switch (statusViewOf(form)) {
     case "PENDING_REVIEW":
       return `${source} · gửi ${formatShortDateTime(form.submittedAt ?? form.createdAt)}`;
-    case "RUNNING":
-    case "PAUSED": {
+    case "RUNNING": {
       const days = daysUntil(form.deadlineAt, now);
       return days === null
         ? `${source} · không giới hạn thời gian`
@@ -71,7 +69,7 @@ export function listRowMeta(form: ListRowFacts, now: number): string {
     case "FULL":
     case "ENDED": {
       const ended = form.closedAt ? ` · kết thúc ${formatDayMonth(form.closedAt)}` : "";
-      return `${source}${ended}${form.hiddenFromMarketplace ? " · đã ẩn khỏi Khám phá" : ""}`;
+      return `${source}${ended}`;
     }
     case "DRAFT":
     case "REJECTED":
@@ -83,22 +81,19 @@ interface HeaderFacts extends StatusFacts {
   type: FormTypeEnum;
   rewardPerResponse: number;
   estimatedDurationMinutes?: number | null;
-  questionCount: number | null;
-  audienceLabel: string | null;
   closedAt: string | null;
   currentVersion: { schemaJson?: { blocks?: unknown[] } | null };
 }
 
-/** Question count: the ASSUMED `questionCount`, else the current version's blocks. */
-export function questionCountOf(form: Pick<HeaderFacts, "questionCount" | "currentVersion">): number | null {
-  if (form.questionCount !== null) return form.questionCount;
+/** Question count: the block count of the current version (the backend sends no separate count). */
+export function questionCountOf(form: Pick<HeaderFacts, "currentVersion">): number | null {
   const blocks = form.currentVersion.schemaJson?.blocks;
   return blocks && blocks.length > 0 ? blocks.length : null;
 }
 
 /**
  * Survey header meta line. Desktop (Figma 10a / 17):
- * "Google Forms · 8 phút · 10 điểm/lượt · Marketing, QTKD · 18–25 tuổi",
+ * "Google Forms · 8 phút · 10 điểm/lượt",
  * "Form Builder · 8 câu hỏi · 6 phút · 12 điểm/lượt · kết thúc 22/09/2026".
  * `short` = mobile subtitle "Google Forms · 8 phút · 10 điểm/lượt".
  */
@@ -109,7 +104,6 @@ export function headerMeta(form: HeaderFacts, short = false): string {
   if (form.estimatedDurationMinutes) parts.push(`${form.estimatedDurationMinutes} phút`);
   parts.push(`${form.rewardPerResponse} điểm/lượt`);
   if (!short) {
-    if (form.audienceLabel) parts.push(form.audienceLabel);
     const view = statusViewOf(form);
     if ((view === "FULL" || view === "ENDED") && form.closedAt) parts.push(`kết thúc ${formatFullDate(form.closedAt)}`);
   }
@@ -128,37 +122,82 @@ const WEEKDAY_NAMES: Record<string, string> = {
 
 const RANGE_WINDOWS = { hour: "24 giờ qua", day: "7 ngày qua", week: "4 tuần qua", month: "6 tháng qua" } as const;
 
-export interface OpensSummary {
+const VN_OFFSET_MS = 7 * HOUR_MS;
+const WEEKDAY_LABELS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+
+/**
+ * Client label of a `completionsSeries` bucket, from its UTC `startsAt` in
+ * Vietnam time: `hour` → "0h".."21h"; `day` → "T2".."CN"; `week` → "dd/MM"
+ * of the Monday; `month` → "T1".."T12".
+ */
+export function seriesBucketLabel(range: keyof typeof RANGE_WINDOWS, startsAt: string): string {
+  const at = Date.parse(startsAt);
+  if (Number.isNaN(at)) return "";
+  const local = new Date(at + VN_OFFSET_MS);
+  switch (range) {
+    case "hour":
+      return `${local.getUTCHours()}h`;
+    case "day":
+      return WEEKDAY_LABELS[local.getUTCDay()];
+    case "week":
+      return formatDayMonth(startsAt);
+    case "month":
+      return `T${local.getUTCMonth() + 1}`;
+  }
+}
+
+export interface SeriesBucket {
+  label: string;
+  count: number;
+}
+
+/** The labelled bars of a series. */
+export function seriesBuckets(series: {
+  range: keyof typeof RANGE_WINDOWS;
+  buckets: readonly { startsAt: string; count: number }[];
+}): SeriesBucket[] {
+  return series.buckets.map((bucket) => ({ label: seriesBucketLabel(series.range, bucket.startsAt), count: bucket.count }));
+}
+
+export interface SeriesSummary {
   /** "7 ngày qua". */
   window: string;
   total: number;
-  /** Label of the busiest bucket, written out ("thứ Năm"); null when nothing was opened. */
+  /** Label of the busiest bucket, written out ("thứ Năm"); null when nothing completed. */
   peak: string | null;
   /** Index of the busiest bucket (its value is printed above the bar). */
   peakIndex: number;
   max: number;
 }
 
-/** Figma 10a "7 ngày qua · 47 lượt mở · nhiều nhất thứ Năm". */
-export function opensSummary(opens: {
+/** "thứ Năm" for a day bucket, "tháng 2" for a month bucket ("T2" both ways). */
+function peakName(range: keyof typeof RANGE_WINDOWS, label: string): string {
+  if (range === "day") return WEEKDAY_NAMES[label] ?? label;
+  if (range === "month") return `tháng ${label.slice(1)}`;
+  return label;
+}
+
+/** Figma 10a "7 ngày qua · 5 lượt hoàn thành · nhiều nhất thứ Năm". */
+export function seriesSummary(series: {
   range: keyof typeof RANGE_WINDOWS;
-  buckets: readonly { label: string; count: number }[];
-}): OpensSummary {
+  buckets: readonly { startsAt: string; count: number }[];
+}): SeriesSummary {
+  const labelled = seriesBuckets(series);
   let peakIndex = -1;
   let max = 0;
   let total = 0;
-  opens.buckets.forEach((bucket, index) => {
+  labelled.forEach((bucket, index) => {
     total += bucket.count;
     if (bucket.count > max) {
       max = bucket.count;
       peakIndex = index;
     }
   });
-  const peakLabel = peakIndex >= 0 ? opens.buckets[peakIndex].label : null;
+  const peakLabel = peakIndex >= 0 ? labelled[peakIndex].label : null;
   return {
-    window: RANGE_WINDOWS[opens.range],
+    window: RANGE_WINDOWS[series.range],
     total,
-    peak: peakLabel === null ? null : (WEEKDAY_NAMES[peakLabel] ?? peakLabel),
+    peak: peakLabel === null ? null : peakName(series.range, peakLabel),
     peakIndex,
     max,
   };

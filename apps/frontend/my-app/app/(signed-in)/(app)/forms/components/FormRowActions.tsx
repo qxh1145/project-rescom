@@ -37,9 +37,9 @@ function Action({ href, variant, layout, children }: { href: string; variant: ke
 /**
  * "Hành động" of a survey (Figma 63:127 / 63:1300): Chờ Admin duyệt · Xem tiến độ ·
  * Kết quả + Mở lại · Sửa & gửi lại. Returns null when a status has no action.
- * "Rút lại" (Phase 5 M7, ASSUMED placement) withdraws a queued survey or a
+ * "Rút lại" (Phase 5 M7, ASSUMED (design) placement) withdraws a queued survey or a
  * re-versioned draft; "Mở lại" follows `listOffersReopen` (Phase 5 M2).
- * "Xoá" (ASSUMED placement) deletes a never-published draft.
+ * "Xoá" (ASSUMED (design) placement) deletes a never-published draft.
  */
 export function FormRowActions({
   form,
@@ -73,7 +73,6 @@ export function FormRowActions({
         withdraw
       );
     case "RUNNING":
-    case "PAUSED":
       return (
         <Action href={`/forms/${id}`} variant="outline" layout={layout}>
           Xem tiến độ
@@ -100,7 +99,7 @@ export function FormRowActions({
         </Action>
       );
     case "DRAFT":
-      // ASSUMED (not drawn): a never-submitted draft continues in its editor.
+      // ASSUMED (design) (not drawn): a never-submitted draft continues in its editor.
       return (
         <>
           <Action href={continueDraftHref(form)} variant="secondary" layout={layout}>

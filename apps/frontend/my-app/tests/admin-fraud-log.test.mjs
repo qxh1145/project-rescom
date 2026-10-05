@@ -92,7 +92,7 @@ test("fraud-log service parses the ASSUMED payload", async (t) => {
         data: {
           items: [
             {
-              id: "fraud-seed-1",
+              id: "5eed0000-0000-4000-8000-000000000001",
               userId: KHANG,
               type: "RATE_LIMIT",
               survey: null,
@@ -103,6 +103,9 @@ test("fraud-log service parses the ASSUMED payload", async (t) => {
           total: 1,
           windowDays: 14,
           accounts: [{ userId: KHANG, count: 1, repeated: false, status: "ACTIVE" }],
+          nextCursor: null,
+          totalCapped: false,
+          truncated: false,
         },
         error: null,
         meta: {},
@@ -116,6 +119,20 @@ test("fraud-log service parses the ASSUMED payload", async (t) => {
   assert.equal(page.accounts[0].repeated, false);
 });
 
+test("fraud-log query: the next-page cursor is sent as is", () => {
+  const cursor = "2026-09-23T15:40:00.000Z:5eed0000-0000-4000-8000-000000000001";
+  assert.equal(
+    service.fraudLogSearch({ days: null, cursor }),
+    `limit=100&cursor=${encodeURIComponent(cursor)}`,
+  );
+});
+
+test("fraud-log totals: exact, or a lower bound past the backend cap", () => {
+  assert.equal(messages.fraudLogTotalText({ total: 12, totalCapped: false }), "12 mục");
+  assert.equal(messages.fraudLogTotalText({ total: 10_000, totalCapped: true }), "10 000+ mục");
+  assert.match(messages.FRAUD_LOG_TRUNCATED_NOTE, /thu hẹp bộ lọc/);
+});
+
 test("fraud-log messages", () => {
   assert.match(messages.fraudLogLoadErrorMessage(new ApiError({ kind: "network", message: "x" })), /Không kết nối/);
   assert.match(
@@ -123,4 +140,10 @@ test("fraud-log messages", () => {
     /chưa có trên máy chủ/,
   );
   assert.equal(messages.fraudLogLoadErrorMessage(new Error("x")), "Không tải được FraudLog. Vui lòng thử lại.");
+  assert.match(
+    messages.fraudLogLoadErrorMessage(
+      new ApiError({ kind: "http", status: 403, code: "FORBIDDEN_RESOURCE", message: "x" }),
+    ),
+    /không có quyền quản trị/,
+  );
 });

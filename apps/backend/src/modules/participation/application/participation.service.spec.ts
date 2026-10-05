@@ -90,6 +90,7 @@ describe('ParticipationService', () => {
     targetingJson?: Record<string, unknown> | null;
     externalUrl?: string | null;
     publisherId?: string;
+    deadlineAt?: Date | null;
   }): FormWithVersion {
     const form = new FormEntity(
       formId,
@@ -102,6 +103,11 @@ describe('ParticipationService', () => {
       overrides?.expectedCompletions ?? 10,
       new Date(),
       new Date(),
+      undefined,
+      0,
+      null,
+      null,
+      overrides?.deadlineAt ?? null,
     );
 
     const currentVersion = new FormVersionEntity(
@@ -123,6 +129,7 @@ describe('ParticipationService', () => {
   beforeEach(() => {
     mockFormRepo = {
       findById: jest.fn(),
+      findPublishedSummaryById: jest.fn(),
       create: jest.fn(),
       findManyByPublisher: jest.fn(),
       update: jest.fn(),
@@ -139,6 +146,12 @@ describe('ParticipationService', () => {
       findModerationQueue: jest.fn(),
       findByCreationKey: jest.fn(),
       countInProgressAttempts: jest.fn().mockResolvedValue(0),
+      countCompletionsInBuckets: jest.fn(),
+      countExternalCompletionsSince: jest.fn(),
+      findLatestRejection: jest.fn().mockResolvedValue(null),
+      // Story IR.2b (deadline-close job; not used by this service).
+      findFormsPastDeadline: jest.fn().mockResolvedValue([]),
+      findQuotaState: jest.fn().mockResolvedValue(null),
     };
 
     mockDemographicRepo = {
@@ -151,6 +164,10 @@ describe('ParticipationService', () => {
       hasCompletedLogicalForm: jest.fn().mockResolvedValue(false),
       findConflictingActiveAttempt: jest.fn().mockResolvedValue(null),
       abandonExpiredAttempts: jest.fn().mockResolvedValue(0),
+      // Story IR.2b (reservation-expiry job; not used by this service).
+      abandonExpiredAttemptsBatch: jest
+        .fn()
+        .mockResolvedValue({ abandonedIds: [] }),
       getQuotaStatus: jest
         .fn()
         .mockResolvedValue({ completedCount: 0, activeReservationCount: 0 }),
@@ -172,6 +189,8 @@ describe('ParticipationService', () => {
       completeExternalAttemptTransaction: jest.fn(),
       findInternalRewardRequest: jest.fn().mockResolvedValue(null),
       reportMissingCompletionCode: jest.fn(),
+      // Story IR.2a (the runner's cancel command, not used by this service).
+      cancelAttempt: jest.fn(),
     };
 
     mockCompletionCodeService = {
@@ -467,6 +486,46 @@ describe('ParticipationService', () => {
       await expect(
         service.startAttempt(formId, userId, {}, clientIp),
       ).rejects.toThrow(ConflictingActiveAttemptException);
+    });
+
+    describe('past-deadline start (IR.2b Task 9.2)', () => {
+      const pastDeadline = () => new Date(Date.now() - 60_000);
+
+      it('lets a user with an unexpired active attempt hit the resume conflict, not SURVEY_NOT_AVAILABLE', async () => {
+        mockFormRepo.findById.mockResolvedValue(
+          createMockFormWithVersion({ deadlineAt: pastDeadline() }),
+        );
+        mockParticipationRepo.findConflictingActiveAttempt.mockResolvedValue(
+          new SurveyAttemptEntity(
+            'existing-attempt-uuid',
+            formId,
+            formVersionId,
+            userId,
+            'IN_PROGRESS',
+            false,
+            new Date(),
+            null,
+            null,
+            new Date(),
+            new Date(),
+          ),
+        );
+
+        await expect(
+          service.startAttempt(formId, userId, {}, clientIp),
+        ).rejects.toThrow(ConflictingActiveAttemptException);
+      });
+
+      it('still refuses a user without an active attempt with SurveyNotAvailableException', async () => {
+        mockFormRepo.findById.mockResolvedValue(
+          createMockFormWithVersion({ deadlineAt: pastDeadline() }),
+        );
+
+        await expect(
+          service.startAttempt(formId, userId, {}, clientIp),
+        ).rejects.toThrow(SurveyNotAvailableException);
+        expect(mockParticipationRepo.reserveAttempt).not.toHaveBeenCalled();
+      });
     });
 
     it('should reject with SurveyQuotaFullException if remaining quota is 0', async () => {
@@ -2307,6 +2366,7 @@ describe('ParticipationService', () => {
         failureCount: 1,
         isLocked: false,
         accountFailureCount: 1,
+        attemptInProgress: true,
       });
 
       await expect(
@@ -2327,6 +2387,7 @@ describe('ParticipationService', () => {
         failureCount: 3,
         isLocked: true,
         accountFailureCount: 3,
+        attemptInProgress: true,
       });
 
       await expect(
@@ -2928,6 +2989,253 @@ describe('ParticipationService', () => {
           reason: 'Some reason',
         }),
       ).rejects.toThrow(AttemptLockedException);
+    });
+  });
+
+  describe('Story IR.2b deadline / plan 2.3 QUOTA close', () => {
+    function form(
+      over: {
+        type?: 'INTERNAL' | 'EXTERNAL';
+        status?: 'PUBLISHED' | 'CLOSED';
+        closeKind?: 'QUOTA' | 'OWNER' | null;
+        deadlineAt?: Date | null;
+      } = {},
+    ): FormWithVersion {
+      const entity = new FormEntity(
+        formId,
+        'publisher-id',
+        over.type ?? 'INTERNAL',
+        over.status ?? 'PUBLISHED',
+        'Survey',
+        null,
+        50,
+        10,
+        new Date(),
+        new Date(),
+        undefined,
+        over.status === 'CLOSED' ? 1 : 0,
+        null,
+        over.closeKind ?? null,
+        over.deadlineAt ?? null,
+      );
+      const version = new FormVersionEntity(
+        formVersionId,
+        formId,
+        1,
+        {
+          title: 'S',
+          blocks: [],
+          metadata: { expectedEffortSeconds: 60, minTimeBarrierSeconds: 15 },
+        } as any,
+        null,
+        true,
+        over.type === 'EXTERNAL'
+          ? 'https://docs.google.com/forms/d/e/x/viewform'
+          : null,
+        over.type === 'EXTERNAL' ? 'v1:valid_verifier_digest' : null,
+        new Date(),
+        new Date(),
+      );
+      return { form: entity, currentVersion: version, versions: [version] };
+    }
+
+    function attempt(
+      status: 'IN_PROGRESS' | 'ABANDONED',
+      closedReason: 'EXPIRED' | 'CANCELLED' | null = null,
+    ): SurveyAttemptEntity {
+      return new SurveyAttemptEntity(
+        'attempt-ir2b',
+        formId,
+        formVersionId,
+        userId,
+        status,
+        false,
+        new Date(Date.now() - 40 * 60_000),
+        null,
+        null,
+        new Date(),
+        new Date(),
+        undefined,
+        closedReason,
+        closedReason ? new Date() : null,
+      );
+    }
+
+    it('a survey closed because its sample target was met answers SURVEY_QUOTA_FULL', async () => {
+      mockFormRepo.findById.mockResolvedValue(
+        form({ status: 'CLOSED', closeKind: 'QUOTA' }),
+      );
+      await expect(
+        service.startAttempt(formId, userId, {}, clientIp),
+      ).rejects.toBeInstanceOf(SurveyQuotaFullException);
+      expect(mockParticipationRepo.reserveAttempt).not.toHaveBeenCalled();
+    });
+
+    it('refuses a new start at or after the deadline (SURVEY_NOT_AVAILABLE)', async () => {
+      mockFormRepo.findById.mockResolvedValue(
+        form({ deadlineAt: new Date(Date.now() - 1) }),
+      );
+      await expect(
+        service.startAttempt(formId, userId, {}, clientIp),
+      ).rejects.toBeInstanceOf(SurveyNotAvailableException);
+      expect(mockParticipationRepo.reserveAttempt).not.toHaveBeenCalled();
+    });
+
+    it('Q5: accepts a missing-code report on an attempt the sweep closed as EXPIRED, not on a cancelled one', async () => {
+      mockFormRepo.findById.mockResolvedValue(form({ type: 'EXTERNAL' }));
+      mockParticipationRepo.reportMissingCompletionCode.mockResolvedValue({
+        reportedAt: new Date(),
+      });
+      mockParticipationRepo.findAttemptById.mockResolvedValue(
+        attempt('ABANDONED', 'EXPIRED'),
+      );
+      await expect(
+        service.reportMissingCompletionCode(formId, 'attempt-ir2b', userId, {
+          reason: 'No code was shown at the end of the form',
+        }),
+      ).resolves.toMatchObject({ status: 'REPORTED' });
+
+      mockParticipationRepo.findAttemptById.mockResolvedValue(
+        attempt('ABANDONED', 'CANCELLED'),
+      );
+      await expect(
+        service.reportMissingCompletionCode(formId, 'attempt-ir2b', userId, {
+          reason: 'No code was shown at the end of the form',
+        }),
+      ).rejects.toBeInstanceOf(AttemptExpiredException);
+    });
+
+    it('closes the survey (QUOTA) inside the completion-code verification Unit of Work', async () => {
+      const quotaCloser = {
+        closeFormIfQuotaMet: jest
+          .fn()
+          .mockResolvedValue({ closed: true, refundAmount: 0 }),
+      };
+      const withCloser = new ParticipationService(
+        mockFormRepo,
+        mockDemographicRepo,
+        mockParticipationRepo,
+        mockRewardSettlementCoordinator,
+        mockCompletionCodeService,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { quotaCloser },
+      );
+      const inProgress = new SurveyAttemptEntity(
+        'attempt-ir2b',
+        formId,
+        formVersionId,
+        userId,
+        'IN_PROGRESS',
+        false,
+        new Date(Date.now() - 30_000),
+        null,
+        null,
+        new Date(),
+        new Date(),
+      );
+      mockFormRepo.findById.mockResolvedValue(form({ type: 'EXTERNAL' }));
+      mockParticipationRepo.findAttemptById.mockResolvedValue(inProgress);
+      mockParticipationRepo.lockAttemptForVerification.mockResolvedValue(
+        inProgress,
+      );
+      mockParticipationRepo.completeExternalAttemptTransaction.mockResolvedValue(
+        { outcome: 'COMPLETED', attempt: inProgress },
+      );
+
+      await withCloser.verifyExternalCompletionCode(
+        formId,
+        'attempt-ir2b',
+        userId,
+        { completionCode: '123456' },
+      );
+
+      expect(quotaCloser.closeFormIfQuotaMet).toHaveBeenCalledWith(
+        formId,
+        expect.any(Date),
+      );
+      // After this completion's own Pending credit drew its Escrow.
+      expect(
+        mockRewardSettlementCoordinator.settleExternalReward.mock
+          .invocationCallOrder[0],
+      ).toBeLessThan(
+        quotaCloser.closeFormIfQuotaMet.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('hands the QUOTA close to the Internal submit transaction (afterCompletion)', async () => {
+      const quotaCloser = {
+        closeFormIfQuotaMet: jest
+          .fn()
+          .mockResolvedValue({ closed: false, refundAmount: 0 }),
+      };
+      const withCloser = new ParticipationService(
+        mockFormRepo,
+        mockDemographicRepo,
+        mockParticipationRepo,
+        mockRewardSettlementCoordinator,
+        mockCompletionCodeService,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { quotaCloser },
+      );
+      const started = new Date(Date.now() - 60_000);
+      const inProgress = new SurveyAttemptEntity(
+        'attempt-ir2b',
+        formId,
+        formVersionId,
+        userId,
+        'IN_PROGRESS',
+        false,
+        started,
+        null,
+        null,
+        new Date(),
+        new Date(),
+      );
+      const response = new ResponseEntity(
+        'response-ir2b',
+        formId,
+        formVersionId,
+        'attempt-ir2b',
+        userId,
+        'IN_PROGRESS',
+        null,
+        clientIp,
+        false,
+        null,
+        new Date(),
+        new Date(),
+      );
+      mockFormRepo.findById.mockResolvedValue(form());
+      mockParticipationRepo.findResponseById.mockResolvedValue(response);
+      mockParticipationRepo.findAttemptById.mockResolvedValue(inProgress);
+      mockParticipationRepo.submitInternalResponseTransaction.mockImplementation(
+        async (params) => {
+          await params.afterCompletion?.();
+          return {
+            outcome: 'SUBMITTED',
+            response,
+            attempt: inProgress,
+            outboxEventIds: [],
+          };
+        },
+      );
+
+      await withCloser.submitInternalResponse('response-ir2b', userId, {
+        answers: {},
+      });
+
+      expect(quotaCloser.closeFormIfQuotaMet).toHaveBeenCalledWith(
+        formId,
+        expect.any(Date),
+      );
     });
   });
 });

@@ -18,6 +18,11 @@ import { EnvService } from '../src/common/config/env.service';
 import { PrismaService } from '../src/common/database/prisma.service';
 import { HttpExceptionFilter } from '../src/common/http/http-exception.filter';
 import { AUTH_COOKIE_NAME } from '../src/modules/auth/presentation/cookie-options.helper';
+import {
+  formDetailSchema,
+  formListSchema,
+  deletedFormSchema,
+} from '@rescom/schemas';
 
 describe('Form Draft Creation & Lifecycle E2E Tests (Story 2.2)', () => {
   let app: INestApplication;
@@ -184,6 +189,7 @@ describe('Form Draft Creation & Lifecycle E2E Tests (Story 2.2)', () => {
         .expect(201);
 
       expect(res.body.error).toBeNull();
+      expect(formDetailSchema.parse(res.body.data).type).toBe('INTERNAL');
       expect(res.body.data).toBeDefined();
       expect(res.body.data.id).toBeDefined();
       expect(res.body.data.publisherId).toBe(user.id);
@@ -255,7 +261,7 @@ describe('Form Draft Creation & Lifecycle E2E Tests (Story 2.2)', () => {
         .expect(200);
 
       expect(getRes.body.error).toBeNull();
-      expect(getRes.body.data.id).toBe(formId);
+      expect(formDetailSchema.parse(getRes.body.data).id).toBe(formId);
       expect(getRes.body.data.title).toBe('Survey for Retrieval');
       expect(getRes.body.data.currentVersion).toBeDefined();
     });
@@ -364,7 +370,7 @@ describe('Form Draft Creation & Lifecycle E2E Tests (Story 2.2)', () => {
         .set('Cookie', [`${AUTH_COOKIE_NAME}=${user1Tokens.accessToken}`])
         .expect(200);
 
-      expect(listRes.body.data.total).toBe(2);
+      expect(formListSchema.parse(listRes.body.data).total).toBe(2);
       expect(listRes.body.data.forms).toHaveLength(2);
     });
   });
@@ -425,6 +431,7 @@ describe('Form Draft Creation & Lifecycle E2E Tests (Story 2.2)', () => {
         .expect(200);
 
       expect(patchRes.body.error).toBeNull();
+      formDetailSchema.parse(patchRes.body.data);
       expect(patchRes.body.data.title).toBe('Draft V1 - Renamed');
       expect(patchRes.body.data.description).toBe(
         'Autosaved draft description',
@@ -612,6 +619,7 @@ describe('Form Draft Creation & Lifecycle E2E Tests (Story 2.2)', () => {
         .expect(200);
 
       expect(deleteRes.body.error).toBeNull();
+      expect(deletedFormSchema.parse(deleteRes.body.data).id).toBe(formId);
       expect(deleteRes.body.meta.message).toBe(
         'Form draft deleted successfully',
       );

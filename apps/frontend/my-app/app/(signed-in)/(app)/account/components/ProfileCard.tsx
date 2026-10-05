@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { PILOT_BUILD } from "@/lib/pilot-scope";
 import { Avatar, initialsOf } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
+import { DemoDataTag } from "@/components/ui/DemoDataTag";
 import { Icon } from "@/components/ui/Icon";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { ACCOUNT_MESSAGES } from "@/lib/profile/account-messages";
@@ -32,7 +34,7 @@ export function ProfileCard({ data }: { data: AccountData }) {
         <div className="flex min-w-0 flex-col items-start">
           <p className="max-w-full truncate text-[19px] font-extrabold text-ink">{session.displayName}</p>
           <p className="mt-1 max-w-full truncate text-caption text-ink-muted">{session.user?.email}</p>
-          {view ? (
+          {view && !PILOT_BUILD ? (
             <Link
               href="/account/tier"
               className="mt-1 inline-flex h-6 items-center gap-1 rounded-field bg-tone-green-bg px-2.25 text-[12px] font-bold text-tone-green-fg hover:brightness-95"
@@ -41,10 +43,11 @@ export function ProfileCard({ data }: { data: AccountData }) {
               {view.tierName}
             </Link>
           ) : null}
+          {PILOT_BUILD ? null : <DemoDataTag className="mt-1.5" />}
         </div>
       </div>
 
-      {engagement.error && !view ? (
+      {PILOT_BUILD ? null : engagement.error && !view ? (
         <p className="mt-5 flex flex-wrap items-center gap-x-2 text-caption text-ink-muted" role="alert">
           {ACCOUNT_MESSAGES.engagementLoadFailed}
           <Button variant="ghost" size="sm" className="-my-2" onClick={engagement.reload}>

@@ -1,5 +1,6 @@
 import type { FormBlockType } from "@rescom/schemas";
-import type { FormAnalytics, QuestionAnalytics, QuestionSummary } from "./results-analytics-service.ts";
+import type { AvailableFormAnalytics, QuestionAnalytics, QuestionSummary } from "./results-analytics-service.ts";
+import { formatDate } from "./results-view.ts";
 
 /**
  * Pure presentation rules of the analytics cards: which visual a question
@@ -96,6 +97,18 @@ export interface DistributionRow {
   color: string;
 }
 
+const normalizedLabel = (label: string) => label.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("vi");
+
+/**
+ * Name of the free-answer bucket: "Khác", or "Khác (tự nhập)" when the
+ * question also has a real option labelled "Khác" (case/space-insensitive),
+ * so the two never read the same.
+ */
+export function otherBucketLabel(summary: QuestionSummary): string {
+  const clash = summary.kind === "choice" && summary.options.some((option) => normalizedLabel(option.label) === "khác");
+  return clash ? "Khác (tự nhập)" : "Khác";
+}
+
 /** Rows of a choice / scale / number summary in display order; empty for text/file. */
 export function distributionRows(question: Pick<QuestionAnalytics, "type" | "summary">): DistributionRow[] {
   const { summary } = question;
@@ -111,7 +124,7 @@ export function distributionRows(question: Pick<QuestionAnalytics, "type" | "sum
       if (summary.other && summary.other.count > 0) {
         rows.push({
           key: "other",
-          label: "Khác",
+          label: otherBucketLabel(summary),
           count: summary.other.count,
           percentage: summary.other.percentage,
           color: CHART_OTHER_COLOR,
@@ -169,26 +182,18 @@ export function questionTypeLabel(type: FormBlockType): string {
   }
 }
 
-/** Header metrics; each is null when the data cannot back it (the tile is then hidden). */
+/**
+ * Header metrics; `lastResponseAt` is null without responses (the tile is
+ * then hidden). Started count and average time are FR-41 funnel metrics,
+ * deferred (IR.4a R4, Q6): not in the contract, so no tile.
+ */
 export interface AnalyticsHeaderMetrics {
   totalResponses: number;
-  /** 0–100, one decimal. */
-  completionRate: number | null;
-  averageDurationSeconds: number | null;
   lastResponseAt: string | null;
 }
 
-export function headerMetrics(analytics: FormAnalytics): AnalyticsHeaderMetrics {
-  const { totalResponses, startedCount } = analytics;
-  return {
-    totalResponses,
-    completionRate:
-      startedCount && startedCount >= totalResponses && totalResponses > 0
-        ? Math.round((totalResponses / startedCount) * 1000) / 10
-        : null,
-    averageDurationSeconds: totalResponses > 0 ? analytics.averageDurationSeconds : null,
-    lastResponseAt: analytics.lastResponseAt,
-  };
+export function headerMetrics(analytics: Pick<AvailableFormAnalytics, "totalResponses" | "lastResponseAt">): AnalyticsHeaderMetrics {
+  return { totalResponses: analytics.totalResponses, lastResponseAt: analytics.lastResponseAt };
 }
 
 /** Questions tab: clamp `?question=` to an existing question (default: the first). */
@@ -200,9 +205,7 @@ export function resolveQuestionIndex(questions: readonly Pick<QuestionAnalytics,
 
 /** A text-list answer as shown: a date answer "YYYY-MM-DD" reads "dd/mm/yyyy"; other types unchanged. */
 export function formatAnswerSample(type: FormBlockType, value: string): string {
-  if (type !== "date") return value;
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
-  return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
+  return type === "date" ? formatDate(value) : value;
 }
 
 /** One figure of the card's stat row ("Trung bình" · "4,1 / 5"). */

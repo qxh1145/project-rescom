@@ -1,23 +1,30 @@
 import * as crypto from 'crypto';
 import {
+  dangerousFileExtension,
   DISALLOWED_MIME_TYPES,
+  ListUploadsQuery,
   GetDownloadUrlResponse,
   InitiateUploadInput,
   InitiateUploadResponse,
   StoredObjectDto,
 } from '@rescom/schemas';
 import { EnvService } from '../../../common/config/env.service';
+import { currentRequestId } from '../../../common/http/request-context';
+import { recordStorageOutage } from '../../../common/system/storage-outage-counter';
 import { StoredObjectEntity } from '../domain/stored-object.entity';
 import {
   StorageInvalidFileException,
   StorageObjectNotCleanException,
   StorageObjectNotFoundException,
+  StorageQuestionFullException,
   StorageScannerOutageException,
+  StorageUnavailableException,
 } from './exceptions/storage.exceptions';
 import { MalwareScannerPort } from './ports/malware-scanner.port';
 import {
   ObjectPreconditionFailedError,
   ObjectStoragePort,
+  StoredObjectMetadata,
 } from './ports/object-storage.port';
 import {
   FileUploadPolicy,
@@ -47,36 +54,7 @@ const SNIFF_WINDOW_BYTES = 512;
 /** Leading markup comments are skipped within this window before sniffing. */
 const MARKUP_COMMENT_WINDOW_BYTES = 64 * 1024;
 const LEADING_MARKUP_COMMENTS = /^(?:<!--[\s\S]*?-->\s*)+/;
-const DANGEROUS_EXTENSIONS = new Set([
-  '.exe',
-  '.dll',
-  '.msi',
-  '.msc',
-  '.com',
-  '.scr',
-  '.bat',
-  '.cmd',
-  '.ps1',
-  '.lnk',
-  '.hta',
-  '.jar',
-  '.sh',
-  '.csh',
-  '.vbs',
-  '.vbe',
-  '.js',
-  '.jse',
-  '.mjs',
-  '.wsf',
-  '.php',
-  '.phtml',
-  '.html',
-  '.htm',
-  '.xhtml',
-  '.shtml',
-  '.svg',
-  '.svgz',
-]);
+/** Shared with the runner and the mock (`@rescom/schemas`). */
 const ASCII_WHITESPACE = new Set([0x09, 0x0a, 0x0c, 0x0d, 0x20]);
 /** Leading markup a browser would render or execute (checked lower-cased). */
 const ACTIVE_CONTENT_PREFIXES = [
@@ -103,6 +81,7 @@ export interface StorageCleanupResult {
 
 export interface StorageServiceLogger {
   warn(message: string): void;
+  error(message: string): void;
 }
 
 export class StorageService {
@@ -297,10 +276,18 @@ export class StorageService {
     }
 
     // Pre-claim checks leave the object unclaimed so the client can re-PUT.
-    const metadata = await this.objectStorage.getObjectMetadata(
-      current.bucket,
-      current.storageKey,
-    );
+    let metadata: StoredObjectMetadata | null;
+    try {
+      metadata = await this.objectStorage.getObjectMetadata(
+        current.bucket,
+        current.storageKey,
+      );
+    } catch (error) {
+      // Storage unreachable before the claim: the row stays INITIATED, so a
+      // retry after recovery is a plain finalize (IR.5 C2.1).
+      this.recordOutage('storage.unavailable', current, error);
+      throw new StorageUnavailableException();
+    }
     if (!metadata) {
       throw new StorageInvalidFileException(
         'Uploaded object was not found in private storage.',
@@ -372,6 +359,7 @@ export class StorageService {
         throw error;
       }
       // Read, scanner or copy failure after the claim: fail closed (AD-22).
+      this.recordOutage('storage.scan_outage', object, error);
       object.markScanOutage(
         'scanner-error',
         error instanceof Error ? error.message : 'Malware scanner failed',
@@ -431,6 +419,41 @@ export class StorageService {
         'read',
       ),
     );
+  }
+
+  /**
+   * The live uploads of one owner record (and question): what a runner that
+   * lost its local state (reload, crash) re-adopts or cleans up, so a
+   * question is never left full of uploads the respondent cannot see.
+   * Terminal objects (REJECTED, EXPIRED, DELETED) are left out.
+   */
+  async listUploads(
+    query: ListUploadsQuery,
+    callerUserId: string | null = null,
+    ownerCapability?: string | null,
+  ): Promise<StoredObjectDto[]> {
+    if (this.ownerAuthorization) {
+      await this.ownerAuthorization.authorize(
+        query.ownerContext,
+        query.ownerRecordId,
+        callerUserId,
+        ownerCapability,
+        'read',
+      );
+    }
+    const objects = await this.storageRepository.findByOwner(
+      query.ownerContext,
+      query.ownerRecordId,
+    );
+    return objects
+      .filter(
+        (object) =>
+          !['REJECTED', 'EXPIRED', 'DELETED'].includes(object.status) &&
+          (query.questionId === undefined ||
+            object.questionId === query.questionId),
+      )
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((object) => this.toDto(object));
   }
 
   async attachObject(
@@ -660,6 +683,7 @@ export class StorageService {
       object.fileName,
     );
     if (scanResult.isOutage) {
+      this.recordOutage('storage.scan_outage', object, scanResult.reason);
       object.markScanOutage(
         scanResult.scanPolicy,
         scanResult.reason || 'Malware scanner unavailable',
@@ -861,9 +885,7 @@ export class StorageService {
         !this.isLapsedUpload(object, now),
     ).length;
     if (activeForQuestion >= policy.maxFiles) {
-      throw new StorageInvalidFileException(
-        `This question allows at most ${policy.maxFiles} uploaded file(s).`,
-      );
+      throw new StorageQuestionFullException(questionId, policy.maxFiles);
     }
   }
 
@@ -919,6 +941,32 @@ export class StorageService {
   }
 
   /**
+   * IR.5 C3: one alertable structured error event per outage plus the
+   * `/system/metrics` counter. By object id and request id only: never the
+   * storage key or file name, which are also scrubbed from the reason.
+   */
+  private recordOutage(
+    event: 'storage.scan_outage' | 'storage.unavailable',
+    object: StoredObjectEntity,
+    cause: unknown,
+  ): void {
+    recordStorageOutage();
+    let reason =
+      cause instanceof Error ? cause.message : String(cause ?? 'unknown');
+    for (const secret of [object.storageKey, object.fileName]) {
+      if (secret) reason = reason.split(secret).join('[redacted]');
+    }
+    this.logger?.error(
+      JSON.stringify({
+        event,
+        objectId: object.id,
+        requestId: currentRequestId() ?? null,
+        reason: reason.slice(0, 300),
+      }),
+    );
+  }
+
+  /**
    * Best effort: runs after the state transition is persisted, which a failed
    * deletion never undoes. A missing key is not an error (port contract);
    * anything else is logged by object id — never the storage key.
@@ -947,13 +995,11 @@ export class StorageService {
 
   private assertSafeExtension(fileName: string): void {
     // Windows drops trailing dots and spaces, so `evil.exe.` runs as `.exe`.
-    const normalized = fileName.toLowerCase().replace(/[.\s]+$/, '');
-    for (const extension of DANGEROUS_EXTENSIONS) {
-      if (normalized.endsWith(extension)) {
-        throw new StorageInvalidFileException(
-          `Files ending in ${extension} are prohibited.`,
-        );
-      }
+    const extension = dangerousFileExtension(fileName);
+    if (extension) {
+      throw new StorageInvalidFileException(
+        `Files ending in ${extension} are prohibited.`,
+      );
     }
   }
 

@@ -293,6 +293,33 @@ describe('Story 6.3: FormsEscrowCoordinator (FR-14, FR-15, FR-19, FR-32, FR-33)'
     });
   });
 
+  describe('getProgressEscrow (IR.4a AC10.1)', () => {
+    it('held equals getFundingPosition().held and spent excludes reversed journals', async () => {
+      const form = makeForm({ expected: 10 });
+      const version = makeVersion(versionId, 1, true);
+      await formRepo.create(form, version);
+      await coordinator.coordinatePublish(form, version, publisherId); // 100
+      const [reversedAttempt] = await payExternal(3, 10);
+      const credit = await ledgerService.findJournalByIdempotencyKey(
+        `external-completion:${reversedAttempt}`,
+      );
+      await ledgerService.reverseJournal({ targetJournalId: credit!.id });
+      const refs = {
+        completedCount: completions.external.length,
+        internalResponses: [],
+        externalAttemptIds: [...completions.external],
+      };
+
+      const progress = await coordinator.getProgressEscrow(form, refs);
+
+      expect(progress.held).toBe(
+        (await coordinator.getFundingPosition(form, publisherId, [], refs))
+          .held,
+      );
+      expect(progress.spent).toBe(20); // 3 paid, 1 reversed
+    });
+  });
+
   describe('coordinateClose (FR-32, AD-16, Epic 6 review P4)', () => {
     it('refunds exactly the unused quota of an External survey after paid completions', async () => {
       // Another survey of the same publisher holds 300 points in Escrow.

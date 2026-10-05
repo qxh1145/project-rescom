@@ -47,6 +47,9 @@ describe('Notification contracts (Story 9.6, FR-57)', () => {
         'REWARD_RELEASED',
         'ACCOUNT_ACTIVATED',
         'WARNING',
+        'TOPUP_REJECTED',
+        'ACCOUNT_LOCKED',
+        'ACCOUNT_UNLOCKED',
       ]);
     });
 

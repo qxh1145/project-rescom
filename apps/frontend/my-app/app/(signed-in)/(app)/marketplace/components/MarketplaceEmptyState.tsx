@@ -29,7 +29,7 @@ export function MarketplaceEmptyState({ availablePoints }: { availablePoints: nu
   );
 }
 
-/** ASSUMED (not drawn): search/filters matched nothing. */
+/** ASSUMED (design) (not drawn): search/filters matched nothing. */
 export function NoMatchState({ onReset }: { onReset: () => void }) {
   return (
     <section aria-labelledby="marketplace-no-match-title" className="mx-auto flex w-full max-w-[342px] flex-col items-center py-6 text-center">

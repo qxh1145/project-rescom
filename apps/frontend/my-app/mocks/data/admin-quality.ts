@@ -1,6 +1,6 @@
 import type { FormBlock, NotificationDto } from "@rescom/schemas";
 import type { QualityDecisionCommand, QualityDecisionResult, QualityReview } from "@/lib/admin/quality-service";
-import { loadStore } from "@/lib/mock/store.ts";
+import { loadStore } from "../legacy/store";
 import type { MockSessionUser } from "../db/session";
 import { createCollection, hoursAgo, mockId, nowIso } from "../db/store";
 import { findAttempt, type MockAttempt } from "./attempts";

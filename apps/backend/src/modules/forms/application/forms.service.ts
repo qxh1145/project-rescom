@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'crypto';
 import {
   calculateEscrowCost,
+  checkFormDeadline,
   checkPublishRewardBand,
   closeFormSchema,
   CloseFormInput,
@@ -56,6 +57,7 @@ import {
 } from './forms-escrow.coordinator';
 import { FormEntity } from '../domain/form.entity';
 import { InsufficientBalanceException } from '../../economy/application/exceptions/economy.exceptions';
+import { NotificationPublisherPort } from '../../notifications/application/ports/notification-publisher.port';
 import { FormVersionEntity } from '../domain/form-version.entity';
 import {
   FormAlreadyClosedException,
@@ -77,6 +79,7 @@ import {
   ModerationEscrowNotFundedException,
   TargetingValidationException,
 } from './exceptions/form.exceptions';
+import { formManagementTimes } from './form-management-times';
 import {
   assertFormPublishable,
   assertRewardWithinPricingBand,
@@ -111,6 +114,10 @@ export function toFormDetailDto(data: FormWithVersion): FormDetailDto {
     expectedCompletions: data.form.expectedCompletions,
     estimatedDurationMinutes: data.form.estimatedDurationMinutes,
     closeKind: data.form.closeKind,
+    topic: data.form.topic,
+    deadlineAt: data.form.deadlineAt
+      ? data.form.deadlineAt.toISOString()
+      : null,
     currentVersion: toFormVersionDto(data.currentVersion),
     createdAt: data.form.createdAt.toISOString(),
     updatedAt: data.form.updatedAt.toISOString(),
@@ -185,6 +192,57 @@ function requestFingerprint(value: unknown): string {
   return createHash('sha256').update(canonicalJson(value)).digest('hex');
 }
 
+/**
+ * Story IR.2b Task 9.4 (Q2): the deadline close waits one reservation window
+ * + 2 min past the deadline, so attempts started before it can finish.
+ */
+export const DEADLINE_CLOSE_GRACE_MS = RESERVATION_EXPIRY_MS + 2 * 60_000;
+
+/**
+ * Story IR.2b Q1: a deadline being set must be 1 h – 180 d ahead of `now`
+ * (422 FORM_DEADLINE_INVALID). `null` / `undefined` pass.
+ */
+function assertDeadlineWindow(
+  deadlineAt: Date | null | undefined,
+  now: Date,
+): void {
+  if (!deadlineAt) return;
+  const problem = checkFormDeadline(deadlineAt, now);
+  if (problem) {
+    throw new FormValidationException(
+      problem === 'TOO_SOON'
+        ? 'The collection deadline must be at least 1 hour from now.'
+        : 'The collection deadline must be at most 180 days from now.',
+      [{ path: ['deadlineAt'], message: problem }],
+      'FORM_DEADLINE_INVALID',
+    );
+  }
+}
+
+/**
+ * Review LOW-9: a system close never moves `updatedAt` backwards (it is the
+ * optimistic-concurrency token of the form).
+ */
+function systemCloseTime(at: Date, form: FormEntity): Date {
+  return new Date(Math.max(at.getTime(), form.updatedAt.getTime() + 1));
+}
+
+/** ISO input → Date; `undefined` keeps, `null` clears. */
+function toDeadline(value: string | null | undefined): Date | null | undefined {
+  if (value === undefined) return undefined;
+  return value === null ? null : new Date(value);
+}
+
+/**
+ * Story IR.2b Task 9.4 / plan 2.3: a system close (deadline or full sample)
+ * and what it refunded. `closed: false` = nothing to do or a lost race.
+ */
+export interface SystemCloseResult {
+  closed: boolean;
+  refundAmount: number;
+  refundIdempotencyKey: string | null;
+}
+
 export class FormsService {
   constructor(
     private readonly formRepository: FormRepositoryPort,
@@ -196,6 +254,11 @@ export class FormsService {
      * roll back together.
      */
     private readonly unitOfWork: UnitOfWorkPort = new PassThroughUnitOfWork(),
+    /**
+     * Story IR.2b Task 9.4 (Q4): `ESCROW_RELEASED` to the Publisher after a
+     * deadline close. Optional, like the Economy coordinators' publisher.
+     */
+    private readonly notificationPublisher?: NotificationPublisherPort,
   ) {}
 
   private getCompletionCodePort(): CompletionCodePort {
@@ -207,14 +270,30 @@ export class FormsService {
     return this.completionCodePort;
   }
 
+  /**
+   * With an `Idempotency-Key` (mock-off Phase 6: the AI chat creates its
+   * draft only after the first answer, and may retry a lost response), a
+   * retry of the same request returns the draft the first one created; the
+   * same key with another body is 409 `IDEMPOTENCY_KEY_CONFLICT`.
+   */
   async createDraft(
     publisherId: string,
     rawDto: CreateFormDraftInput,
+    idempotencyKey?: string,
   ): Promise<FormDetailDto> {
     const dto = createFormDraftSchema.parse(rawDto);
+    const creationKey: FormCreationKey | undefined = idempotencyKey
+      ? { key: idempotencyKey, requestHash: requestFingerprint(dto) }
+      : undefined;
+    if (creationKey) {
+      const replay = await this.replayDraft(publisherId, creationKey);
+      if (replay) return replay;
+    }
     const formId = randomUUID();
     const versionId = randomUUID();
     const now = new Date();
+    const deadlineAt = toDeadline(dto.deadlineAt) ?? null;
+    assertDeadlineWindow(deadlineAt, now);
 
     const draftSchema: DraftFormDefinition = dto.schema ?? {
       schemaVersion: 1,
@@ -253,6 +332,9 @@ export class FormsService {
       undefined,
       0,
       dto.estimatedDurationMinutes ?? null,
+      null,
+      deadlineAt,
+      dto.topic ?? null,
     );
 
     const version = new FormVersionEntity(
@@ -268,8 +350,39 @@ export class FormsService {
       now,
     );
 
-    const created = await this.formRepository.create(form, version);
-    return toFormDetailDto(created);
+    try {
+      const created = await this.formRepository.create(
+        form,
+        version,
+        creationKey,
+      );
+      return toFormDetailDto(created);
+    } catch (error) {
+      if (creationKey && error instanceof FormCreationKeyTakenException) {
+        const replay = await this.replayDraft(publisherId, creationKey);
+        if (replay) return replay;
+      }
+      throw error;
+    }
+  }
+
+  /** The draft an earlier `POST /forms` with this key created, or null. */
+  private async replayDraft(
+    publisherId: string,
+    creationKey: FormCreationKey,
+  ): Promise<FormDetailDto | null> {
+    const existing = await this.formRepository.findByCreationKey(
+      publisherId,
+      creationKey.key,
+    );
+    if (!existing) return null;
+    if (existing.creationRequestHash !== creationKey.requestHash) {
+      throw new IdempotencyKeyConflictException(
+        'DIFFERENT_REQUEST',
+        existing.form.id,
+      );
+    }
+    return toFormDetailDto(existing);
   }
 
   /**
@@ -298,6 +411,8 @@ export class FormsService {
     const formId = randomUUID();
     const versionId = randomUUID();
     const now = new Date();
+    const deadlineAt = toDeadline(dto.deadlineAt) ?? null;
+    assertDeadlineWindow(deadlineAt, now);
 
     const plaintextCode = creationKey
       ? this.creationKeyCode(publisherId, creationKey.key)
@@ -352,6 +467,9 @@ export class FormsService {
       undefined,
       0,
       dto.estimatedDurationMinutes ?? null,
+      null,
+      deadlineAt,
+      dto.topic ?? null,
     );
 
     // Decision E6-D2: auto-publish is a publication, so the FR-14 pricing
@@ -518,10 +636,25 @@ export class FormsService {
       record.form.id,
     );
     const escrowLocked = await this.heldEscrow(record.form, completions);
+    const { form } = record;
+    // Mock-off plan Phase 3: the moderation rejection (reason, refund) of a
+    // survey closed by moderation; no read for any other survey.
+    const rejection =
+      form.isClosed() && form.closeKind === 'MODERATION'
+        ? await this.formRepository.findLatestRejection(form.id)
+        : null;
     return {
       ...toFormDetailDto(record),
       completedCompletions: completions.completedCount,
       escrowLocked,
+      ...formManagementTimes(form),
+      rejection: rejection
+        ? {
+            reason: rejection.reason,
+            refundAmount: rejection.refundAmount,
+            decidedAt: rejection.decidedAt.toISOString(),
+          }
+        : null,
     };
   }
 
@@ -566,8 +699,13 @@ export class FormsService {
       estimatedDurationMinutes: item.form.estimatedDurationMinutes,
       latestVersionNumber: item.latestVersionNumber,
       closeKind: item.form.closeKind,
+      topic: item.form.topic,
+      deadlineAt: item.form.deadlineAt
+        ? item.form.deadlineAt.toISOString()
+        : null,
       completedCompletions: item.completedCompletions,
       escrowLocked: escrow?.get(item.form.id) ?? null,
+      ...formManagementTimes(item.form),
       createdAt: item.form.createdAt.toISOString(),
       updatedAt: item.form.updatedAt.toISOString(),
     }));
@@ -653,6 +791,11 @@ export class FormsService {
       await this.assertPublishedPricingUnchanged(existing.form, dto);
     }
 
+    // Story IR.2b Q1: a deadline being set is checked against now; the
+    // stored one is checked again at publish.
+    const deadlineAt = toDeadline(dto.deadlineAt);
+    assertDeadlineWindow(deadlineAt, new Date());
+
     const updatedForm = existing.form.copyWith({
       title: dto.title,
       description: dto.description,
@@ -661,6 +804,8 @@ export class FormsService {
       expectedCompletions: dto.expectedCompletions,
       // Drafts stay editable: the FR-14 band is only checked at publish.
       estimatedDurationMinutes: dto.estimatedDurationMinutes,
+      deadlineAt,
+      topic: dto.topic,
       updatedAt: new Date(
         Math.max(Date.now(), existing.form.updatedAt.getTime() + 1),
       ),
@@ -820,12 +965,15 @@ export class FormsService {
     // which is stored with the transition; the FR-14 band is enforced here
     // (publish time only — drafts stay editable).
     const formToPublish =
-      dto.estimatedDurationMinutes !== undefined
+      dto.estimatedDurationMinutes !== undefined || dto.deadlineAt !== undefined
         ? existing.form.copyWith({
             estimatedDurationMinutes: dto.estimatedDurationMinutes,
+            deadlineAt: toDeadline(dto.deadlineAt),
             updatedAt: existing.form.updatedAt,
           })
         : existing.form;
+    // Story IR.2b Q1: the deadline (stored or given) must still be ahead.
+    assertDeadlineWindow(formToPublish.deadlineAt, new Date());
 
     // External surveys may supply the URL with the publish request. The
     // estimated duration being published is checked against the attempt
@@ -1333,7 +1481,11 @@ export class FormsService {
     // are final — only a survey its owner closed can be reopened.
     if (!existing.form.isReopenableByOwner()) {
       throw new FormNotReopenableException(id, {
-        reason: 'CLOSED_BY_ADMIN_OR_MODERATION',
+        // Plan 2.3: a QUOTA close is not reopenable for now.
+        reason:
+          existing.form.closeKind === 'QUOTA'
+            ? 'SAMPLE_TARGET_REACHED'
+            : 'CLOSED_BY_ADMIN_OR_MODERATION',
         closeKind: existing.form.closeKind,
       });
     }
@@ -1349,6 +1501,18 @@ export class FormsService {
     }
 
     const now = new Date();
+    // Story IR.2b Q3: a survey whose deadline passed (a DEADLINE close, or an
+    // owner close after the deadline) needs a new deadline — future or none —
+    // or the deadline job would close it again at once.
+    const deadlineAt = toDeadline(dto.deadlineAt);
+    if (deadlineAt === undefined && existing.form.isPastDeadline(now)) {
+      throw new FormValidationException(
+        'The collection deadline has passed: reopening needs a new deadline (or none).',
+        [{ path: ['deadlineAt'], message: 'REQUIRED' }],
+        'FORM_DEADLINE_REQUIRED',
+      );
+    }
+    assertDeadlineWindow(deadlineAt, now);
     const updatedExpectedCompletions =
       existing.form.expectedCompletions + dto.additionalCompletions;
     // Same cap as survey creation; also keeps the quota inside INT4 and the
@@ -1364,6 +1528,7 @@ export class FormsService {
       expectedCompletions: updatedExpectedCompletions,
       updatedAt: now,
       versions: existing.versions,
+      deadlineAt,
     });
 
     // AD-16: the additional Escrow lock and the reopen transition commit or
@@ -1400,6 +1565,123 @@ export class FormsService {
     );
 
     return this.toManagedDetailDto(saved);
+  }
+
+  /**
+   * Story IR.2b Task 9.4 (AC5, FR-32, NFR-12; closes Epic 6 DF6): the system
+   * close of a survey whose deadline passed, with the refund of its leftover
+   * Escrow through the normal close path (`close-refund:{formId}:c{n}`,
+   * `FormsEscrowCoordinator.coordinateClose`). Skips (closed: false) a form
+   * already closed, without a deadline, or whose deadline is later than
+   * `now − grace` (grace = the 30-minute reservation + 2 min, so attempts
+   * started before the deadline can finish). A lost optimistic race (the
+   * owner closed or reopened concurrently) is `closed: false`, not an error.
+   * After commit the Publisher gets `ESCROW_RELEASED` (dedupe
+   * `deadline-close:{formId}:c{n}`), the refund may be 0.
+   */
+  async closeFormAtDeadline(
+    formId: string,
+    now: Date,
+  ): Promise<SystemCloseResult> {
+    const skipped: SystemCloseResult = {
+      closed: false,
+      refundAmount: 0,
+      refundIdempotencyKey: null,
+    };
+    const existing = await this.formRepository.findById(formId);
+    if (!existing) return skipped;
+    const form = existing.form;
+    if (
+      form.isClosed() ||
+      !form.deadlineAt ||
+      form.deadlineAt.getTime() > now.getTime() - DEADLINE_CLOSE_GRACE_MS ||
+      (form.status !== 'PUBLISHED' && form.status !== 'MODERATION_QUEUE')
+    ) {
+      return skipped;
+    }
+
+    const updatedForm = form.close('DEADLINE', systemCloseTime(now, form));
+    const closeKey = `close-refund:${formId}:${closeIdentity(updatedForm.closeCount)}`;
+    const refund = await this.unitOfWork.run(closeKey, async () => {
+      const result = await this.formRepository.update(updatedForm, undefined, {
+        status: form.status,
+        updatedAt: form.updatedAt,
+      });
+      if (!result) return null;
+      return (
+        (await this.escrowCoordinator?.coordinateClose(
+          updatedForm,
+          form.publisherId,
+        )) ?? { refundAmount: 0, refundIdempotencyKey: null }
+      );
+    });
+    if (!refund) return skipped;
+
+    await this.notificationPublisher?.publish({
+      userId: form.publisherId,
+      type: 'ESCROW_RELEASED',
+      message:
+        refund.refundAmount > 0
+          ? `Your survey "${form.title}" reached its collection deadline and was closed; ${refund.refundAmount} unused points were returned to your Available balance.`
+          : `Your survey "${form.title}" reached its collection deadline and was closed.`,
+      dedupeKey: `deadline-close:${formId}:${closeIdentity(updatedForm.closeCount)}`,
+    });
+    return {
+      closed: true,
+      refundAmount: refund.refundAmount,
+      refundIdempotencyKey: refund.refundIdempotencyKey,
+    };
+  }
+
+  /**
+   * Plan 2.3 (decision A): closes the survey with close kind `QUOTA` once its
+   * completed participations (quota definition, guests included) reached the
+   * sample target, and refunds the leftover Escrow through the normal close
+   * path. Called by Participation INSIDE the transaction of the submission /
+   * code verification that may have filled the last slot (it joins that Unit
+   * of Work and the form row lock it already holds), so the close, the refund
+   * and the last completion commit together and two concurrent last
+   * completions close it once. A no-op while the target is not met or when
+   * the survey is no longer PUBLISHED. No notification (the Publisher sees
+   * "Đủ mẫu"). A QUOTA close is not reopenable (see `isOwnerReopenableClose`).
+   */
+  async closeFormIfQuotaMet(
+    formId: string,
+    at: Date,
+  ): Promise<{ closed: boolean; refundAmount: number }> {
+    const notClosed = { closed: false, refundAmount: 0 };
+    // Review HIGH-1: this runs under the exclusive form row lock of every
+    // completion, so the common (non-final) case is one cheap read.
+    const quota = await this.formRepository.findQuotaState(formId);
+    if (
+      !quota ||
+      quota.status !== 'PUBLISHED' ||
+      quota.expectedCompletions <= 0 ||
+      quota.completedCount < quota.expectedCompletions
+    ) {
+      return notClosed;
+    }
+    const existing = await this.formRepository.findById(formId);
+    if (!existing || !existing.form.isPublished()) return notClosed;
+    const form = existing.form;
+
+    const updatedForm = form.close('QUOTA', systemCloseTime(at, form));
+    return this.unitOfWork.run(
+      `close-refund:${formId}:${closeIdentity(updatedForm.closeCount)}`,
+      async () => {
+        const result = await this.formRepository.update(
+          updatedForm,
+          undefined,
+          { status: 'PUBLISHED', updatedAt: form.updatedAt },
+        );
+        if (!result) return { closed: false, refundAmount: 0 };
+        const refund = await this.escrowCoordinator?.coordinateClose(
+          updatedForm,
+          form.publisherId,
+        );
+        return { closed: true, refundAmount: refund?.refundAmount ?? 0 };
+      },
+    );
   }
 
   /**

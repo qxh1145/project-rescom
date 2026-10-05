@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto';
 import {
+  CancelAttemptParams,
+  CancelAttemptResult,
   CreateAttemptWithResponseParams,
   ParticipationRepositoryPort,
   QuotaStatus,
@@ -17,6 +19,7 @@ import {
 } from '../application/ports/participation-repository.port';
 import type { FormCompletionRefs } from '../../forms/application/ports/form-repository.port';
 import {
+  AttemptCloseReason,
   AttemptCodeVerificationState,
   AttemptStatus,
   MAX_COMPLETION_CODE_FAILURES,
@@ -52,6 +55,8 @@ function withAttempt(
     submittedAt?: Date | null;
     codeVerification?: AttemptCodeVerificationState;
     formVersionId?: string;
+    closedReason?: AttemptCloseReason;
+    closedAt?: Date;
   },
 ): SurveyAttemptEntity {
   return new SurveyAttemptEntity(
@@ -69,10 +74,46 @@ function withAttempt(
     attempt.createdAt,
     new Date(),
     changes.codeVerification ?? attempt.codeVerification,
+    changes.closedReason ?? attempt.closedReason,
+    changes.closedAt ?? attempt.closedAt,
   );
 }
 
+/** Story IR.2a parity: the lazy expiry writes closed reason EXPIRED. */
+function expired(attempt: SurveyAttemptEntity): SurveyAttemptEntity {
+  return withAttempt(attempt, {
+    status: 'ABANDONED',
+    closedReason: 'EXPIRED',
+    closedAt: new Date(),
+  });
+}
+
 export class InMemoryParticipationRepository implements ParticipationRepositoryPort {
+  /** Parity with the Prisma repository: an abandoned attempt's Response follows it. */
+  private abandonResponseOf(attemptId: string): void {
+    for (const res of this.responses.values()) {
+      if (res.attemptId === attemptId && res.status === 'IN_PROGRESS') {
+        this.responses.set(
+          res.id,
+          new ResponseEntity(
+            res.id,
+            res.formId,
+            res.formVersionId,
+            res.attemptId,
+            res.respondentId,
+            'ABANDONED',
+            res.answersJson,
+            res.ipAddress,
+            res.isGuest,
+            res.submittedAt,
+            res.createdAt,
+            new Date(),
+          ),
+        );
+      }
+    }
+  }
+
   public attempts = new Map<string, SurveyAttemptEntity>();
   public responses = new Map<string, ResponseEntity>();
   public integrityEvents: IntegrityEventEntity[] = [];
@@ -245,11 +286,44 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
         att.status === 'IN_PROGRESS' &&
         att.startedAt < cutoffDate
       ) {
-        this.attempts.set(id, withAttempt(att, { status: 'ABANDONED' }));
+        this.attempts.set(id, expired(att));
+        this.abandonResponseOf(id);
         count++;
       }
     }
     return count;
+  }
+
+  /** Story IR.2b Task 8 parity: oldest first, conditional on IN_PROGRESS. */
+  async abandonExpiredAttemptsBatch(
+    cutoff: Date,
+    limit: number,
+    now: Date,
+  ): Promise<{ abandonedIds: string[] }> {
+    const due = Array.from(this.attempts.values())
+      .filter(
+        (att) =>
+          att.status === 'IN_PROGRESS' &&
+          att.startedAt.getTime() < cutoff.getTime(),
+      )
+      .sort(
+        (a, b) =>
+          a.startedAt.getTime() - b.startedAt.getTime() ||
+          a.id.localeCompare(b.id),
+      )
+      .slice(0, Math.max(0, limit));
+    for (const att of due) {
+      this.attempts.set(
+        att.id,
+        withAttempt(att, {
+          status: 'ABANDONED',
+          closedReason: 'EXPIRED',
+          closedAt: now,
+        }),
+      );
+      this.abandonResponseOf(att.id);
+    }
+    return { abandonedIds: due.map((att) => att.id) };
   }
 
   async getQuotaStatus(formId: string, cutoffDate: Date): Promise<QuotaStatus> {
@@ -319,7 +393,8 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
           att.status === 'IN_PROGRESS' &&
           att.startedAt < params.cutoffDate
         ) {
-          this.attempts.set(id, withAttempt(att, { status: 'ABANDONED' }));
+          this.attempts.set(id, expired(att));
+          this.abandonResponseOf(id);
         }
       }
       for (const att of this.attempts.values()) {
@@ -477,6 +552,8 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
     eventType: string;
     idempotencyKey: string;
     payload: any;
+    /** Story IR.2b Task 5.2: when the dispatcher may first deliver it. */
+    availableAt?: Date;
   }> = [];
 
   public outboxOrderingStreams = new Map<string, string>();
@@ -505,7 +582,9 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
       existingResponse.status !== 'IN_PROGRESS' ||
       existingAttempt.status === 'COMPLETED'
     ) {
-      return { outcome: 'ALREADY_SUBMITTED' };
+      return existingResponse.status === 'ABANDONED'
+        ? { outcome: 'NOT_SUBMITTABLE' }
+        : { outcome: 'ALREADY_SUBMITTED' };
     }
     if (existingAttempt.status !== 'IN_PROGRESS') {
       return { outcome: 'NOT_SUBMITTABLE' };
@@ -535,16 +614,20 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
     const toAttach = attachments.map((attachment) =>
       this.storedObjects.get(attachment.objectId),
     );
-    const allAttachable = toAttach.every(
-      (object, index) =>
+    const offenders = attachments.filter((attachment, index) => {
+      const object = toAttach[index];
+      return !(
         object !== undefined &&
         object.ownerContext === 'participation' &&
         object.ownerRecordId === params.attemptId &&
-        object.questionId === attachments[index].questionId &&
-        object.status === 'CLEAN',
-    );
-    if (!allAttachable) {
-      throw new UncleanAttachmentException();
+        object.questionId === attachment.questionId &&
+        object.status === 'CLEAN'
+      );
+    });
+    if (offenders.length > 0) {
+      throw new UncleanAttachmentException(
+        offenders.map(({ questionId, objectId }) => ({ questionId, objectId })),
+      );
     }
     for (const object of toAttach) {
       if (object) {
@@ -605,6 +688,7 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
         id: rewardId,
         eventType: 'InternalRewardRequested',
         idempotencyKey: `internal-reward:${params.responseId}`,
+        availableAt: new Date(params.submittedAt.getTime() + 60_000),
         payload: {
           responseId: params.responseId,
           attemptId: params.attemptId,
@@ -650,6 +734,11 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
       `integrity:${params.responseId}`,
     );
 
+    // Plan 2.3 parity: the QUOTA close runs after the completion writes.
+    if (params.afterCompletion) {
+      await params.afterCompletion();
+    }
+
     return {
       outcome: 'SUBMITTED',
       response: updatedResponse,
@@ -693,6 +782,7 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
     failureCount: number;
     isLocked: boolean;
     accountFailureCount: number;
+    attemptInProgress: boolean;
   }> {
     let att = this.attempts.get(attemptId);
     // Epic 5 review P2: the server-owned counter only (never clientContext).
@@ -711,6 +801,7 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
         failureCount: currentFailures,
         isLocked: att?.status === 'LOCKED',
         accountFailureCount: accountFailuresBefore,
+        attemptInProgress: false,
       };
     }
     const failureCount = currentFailures + 1;
@@ -745,7 +836,12 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
       createdAt: new Date(),
     });
 
-    return { failureCount, isLocked, accountFailureCount };
+    return {
+      failureCount,
+      isLocked,
+      accountFailureCount,
+      attemptInProgress: true,
+    };
   }
 
   async countCompletionCodeFailures(
@@ -911,7 +1007,8 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
           (response) =>
             !response.isGuest &&
             response.respondentId !== null &&
-            response.status !== 'IN_PROGRESS',
+            response.status !== 'IN_PROGRESS' &&
+            response.status !== 'ABANDONED',
         )
         .map((response) => ({
           id: response.id,
@@ -967,5 +1064,45 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
     });
 
     return { reportedAt };
+  }
+
+  /**
+   * Story IR.2a parity: the same state machine as the Prisma transaction.
+   * The body is synchronous (no `await` between the check and the write), so
+   * concurrent calls cannot interleave — like the attempt row lock.
+   */
+  async cancelAttempt(
+    params: CancelAttemptParams,
+  ): Promise<CancelAttemptResult> {
+    const current = this.attempts.get(params.attemptId);
+    if (
+      !current ||
+      current.surveyId !== params.formId ||
+      current.isGuest ||
+      current.respondentId !== params.respondentId
+    ) {
+      return { outcome: 'NOT_FOUND' };
+    }
+    const state = current.cancellation(params.cutoffDate);
+    switch (state.kind) {
+      case 'ALREADY_CANCELLED':
+        return { outcome: 'ALREADY_CANCELLED', attempt: current };
+      case 'NOT_IN_PROGRESS':
+        return {
+          outcome: 'NOT_IN_PROGRESS',
+          attempt: current,
+          derivedCloseReason: state.closedReason,
+        };
+      case 'CANCELLABLE':
+        break;
+    }
+    const cancelled = withAttempt(current, {
+      status: 'ABANDONED',
+      closedReason: 'CANCELLED',
+      closedAt: params.now,
+    });
+    this.attempts.set(cancelled.id, cancelled);
+    this.abandonResponseOf(cancelled.id);
+    return { outcome: 'CANCELLED', attempt: cancelled };
   }
 }

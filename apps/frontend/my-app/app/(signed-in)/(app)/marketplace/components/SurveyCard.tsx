@@ -5,6 +5,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { Tag } from "@/components/ui/Tag";
 import type { MarketplaceCard } from "@/lib/marketplace/marketplace-service";
 import { effortMinutes, remainingSlots } from "@/lib/marketplace/marketplace-query";
+import { topicLabel } from "@/lib/forms/topics";
 
 /** "+12 điểm" pill — 30px on cards, 28px in the 15f quick list. */
 export function RewardPill({ points, size = "md" }: { points: number; size?: "sm" | "md" }) {
@@ -94,7 +95,7 @@ export function SurveyCard({ survey, featured, starting, disabled, onStart }: Su
             Còn {remainingSlots(survey)}/{survey.expectedCompletions} suất
           </span>
         ) : null}
-        {survey.topic ? <span>{survey.topic}</span> : null}
+        {topicLabel(survey.topic) ? <span>{topicLabel(survey.topic)}</span> : null}
       </p>
 
       {!completed ? (

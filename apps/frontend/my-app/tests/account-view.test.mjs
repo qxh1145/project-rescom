@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 const view = await import("../lib/profile/account-view.ts");
-const { EMPTY_ANSWERS } = await import("../lib/onboarding/onboarding-answers.ts");
+const { EMPTY_ANSWERS, answersFromServer } = await import("../lib/onboarding/onboarding-answers.ts");
+const { userProfileSchema } = await import("@rescom/schemas");
 
 const CURRENT_YEAR = 2026;
 
@@ -57,6 +58,34 @@ test("15h field groups follow Figma, school fields only for students", () => {
 
   const empty = view.profileFieldGroups(EMPTY_ANSWERS, CURRENT_YEAR);
   assert.ok(empty.flatMap((group) => group.fields).every((field) => field.value === view.EMPTY_FIELD_VALUE));
+});
+
+test("15h shows the saved profile from a backend-shaped GET /users/me/profile", () => {
+  const profile = userProfileSchema.parse({
+    displayName: "Linh Nguyễn",
+    birthYear: 2005,
+    school: "ĐH FPT – Đà Nẵng",
+    schoolYear: "Năm 3",
+    goal: "BOTH",
+  });
+  const demographics = {
+    age: 21,
+    gender: "FEMALE",
+    location: "Đà Nẵng",
+    occupation: "Sinh viên đại học",
+    fieldOfStudy: "Marketing & Truyền thông",
+    householdIncome: "Không chia sẻ",
+    specificInterests: linh.interests,
+  };
+  const fields = view
+    .profileFieldGroups(answersFromServer(demographics, profile, CURRENT_YEAR), CURRENT_YEAR)
+    .flatMap((group) => group.fields);
+  const valueOf = (label) => fields.find((field) => field.label === label)?.value;
+  assert.equal(valueOf("Tên hiển thị"), "Linh Nguyễn");
+  assert.equal(valueOf("Trường"), "ĐH FPT – Đà Nẵng");
+  assert.equal(valueOf("Năm học"), "Năm 3");
+  assert.equal(valueOf("Mục tiêu"), "Cả hai");
+  assert.ok(fields.every((field) => field.value !== view.EMPTY_FIELD_VALUE));
 });
 
 test("15h 'Sửa' reopens the onboarding question and returns to the profile", () => {

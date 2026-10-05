@@ -5,6 +5,7 @@ import {
   NotificationListDto,
   NotificationUnreadCountDto,
   PublishNotificationCommand,
+  isEmailNotificationType,
   publishNotificationCommandSchema,
 } from '@rescom/schemas';
 import { NotificationRepositoryPort } from './ports/notification-repository.port';
@@ -26,11 +27,22 @@ export interface NotificationFailureLogger {
  *   contexts, idempotently and without ever failing the caller.
  * - As the read side it serves the owner-scoped notification center.
  */
+export interface NotificationsServiceOptions {
+  /**
+   * Story IR.4b B4: queue an email (Outbox) next to a created email-type
+   * notification. False when `EMAIL_DELIVERY_MODE=disabled`.
+   */
+  emailRequests: boolean;
+}
+
 export class NotificationsService implements NotificationPublisherPort {
   constructor(
     private readonly repository: NotificationRepositoryPort,
     private readonly logger?: NotificationFailureLogger,
     private readonly clock: () => Date = () => new Date(),
+    private readonly options: NotificationsServiceOptions = {
+      emailRequests: false,
+    },
   ) {}
 
   async publish(
@@ -46,7 +58,10 @@ export class NotificationsService implements NotificationPublisherPort {
         return 'FAILED';
       }
 
-      const created = await this.repository.createIfAbsent(parsed.data);
+      const created =
+        this.options.emailRequests && isEmailNotificationType(parsed.data.type)
+          ? await this.repository.createIfAbsentWithEmailRequest(parsed.data)
+          : await this.repository.createIfAbsent(parsed.data);
       return created ? 'CREATED' : 'DUPLICATE';
     } catch (error) {
       this.reportFailure(

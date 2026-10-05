@@ -5,6 +5,7 @@ const { createAutosaveController, autosaveLabel } = await import("../lib/forms/b
 const offline = await import("../lib/forms/builder-offline.ts");
 const blocks = await import("../lib/forms/builder-blocks.ts");
 const publish = await import("../lib/forms/builder-publish.ts");
+const schemas = await import("@rescom/schemas");
 
 function fakeTimers() {
   const timers = new Map();
@@ -136,6 +137,28 @@ test("a network failure keeps the payload for the next flush", async () => {
   assert.equal(autosaveLabel(controller.snapshot(), true, () => "12:00"), "Chưa lưu · sửa các câu được đánh dấu");
 });
 
+test("a failed (non-network) save keeps the payload and retries it against the same baseline", async () => {
+  const serverError = Object.assign(new Error("boom"), { status: 500 });
+  const attempts = [];
+  let failing = true;
+  const { controller } = setup(async (payload, clientUpdatedAt) => {
+    attempts.push([payload, clientUpdatedAt]);
+    if (failing) throw serverError;
+    return { updatedAt: "2026-09-27T12:30:00.000Z" };
+  });
+  controller.queue("keep-me");
+  await controller.flush();
+  assert.equal(controller.snapshot().status, "error");
+  assert.equal(controller.snapshot().hasPending, true);
+  failing = false;
+  await controller.flush();
+  assert.equal(controller.snapshot().status, "saved");
+  assert.deepEqual(attempts, [
+    ["keep-me", "2026-09-27T10:00:00.000Z"],
+    ["keep-me", "2026-09-27T10:00:00.000Z"],
+  ]);
+});
+
 test("discardPending drops the queued edit (e.g. after loading the server version)", async () => {
   let calls = 0;
   const { controller, timers } = setup(async () => {
@@ -236,4 +259,23 @@ test("C4: the publish step opens only on a saved, publishable draft", () => {
   assert.equal(publish.publishReadiness({ doc, localDirty: false }), "invalid");
   assert.match(publish.PUBLISH_READINESS_NOTICE.unsaved, /chưa lưu/);
   assert.equal(publish.FROZEN_REWARD_HINT, "Giữ nguyên điểm thưởng của phiên bản đã đăng");
+});
+
+test("review LOW-17: builder deadline choices never leave a dead end", () => {
+  const now = new Date("2026-10-01T03:00:00Z");
+  const soon = new Date(now.getTime() + 30 * 60_000).toISOString();
+  const later = new Date(now.getTime() + 5 * 86_400_000).toISOString();
+  // A stored deadline < 2 h away is not offered as "keep": the publish would be refused.
+  assert.equal(publish.builderDeadlineChoices(soon, now)[0].value, "7");
+  assert.equal(publish.defaultBuilderDeadlineChoice(soon, now), "14");
+  assert.equal(publish.builderDeadlineAt("14", soon, now), "2026-10-15T16:59:59.999Z");
+  // A usable one is kept by default; no deadline stays none; "none" clears.
+  assert.equal(publish.defaultBuilderDeadlineChoice(later, now), "keep");
+  assert.equal(publish.builderDeadlineAt("keep", later, now), later);
+  assert.equal(publish.defaultBuilderDeadlineChoice(null, now), "none");
+  assert.equal(publish.builderDeadlineAt("none", later, now), null);
+  for (const choice of publish.builderDeadlineChoices(later, now)) {
+    const at = publish.builderDeadlineAt(choice.value, later, now);
+    assert.ok(at === null || schemas.checkFormDeadline(new Date(at), now) === null, choice.value);
+  }
 });

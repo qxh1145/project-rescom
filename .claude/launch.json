@@ -12,6 +12,28 @@
       ],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "backend-ir5-check",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "apps/backend", "run", "start:dev"],
+      "env": {
+        "DATABASE_URL": "postgresql://rescom_admin:rescom_password@localhost:5433/rescom_ir5_check?schema=public",
+        "AUTH_RATE_LIMIT_MAX_REQUESTS": "60",
+        "PORT": "4000"
+      },
+      "port": 4000
+    },
+    {
+      "name": "frontend-pilot",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "apps/frontend/my-app", "run", "start"],
+      "env": {
+        "NEXT_PUBLIC_PILOT_BUILD": "true",
+        "NEXT_PUBLIC_API_MOCKING": "disabled",
+        "RESCOM_API_URL": "http://localhost:4000"
+      },
+      "port": 3000
     }
   ]
 }

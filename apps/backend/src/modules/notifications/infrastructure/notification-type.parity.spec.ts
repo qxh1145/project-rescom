@@ -12,4 +12,12 @@ describe('NotificationType parity (Story 9.6 AC1.1)', () => {
       Object.values($Enums.NotificationType),
     );
   });
+
+  it('appends the IR.4b email types at the end (B3)', () => {
+    expect(NOTIFICATION_TYPES.slice(-3)).toEqual([
+      'TOPUP_REJECTED',
+      'ACCOUNT_LOCKED',
+      'ACCOUNT_UNLOCKED',
+    ]);
+  });
 });

@@ -1,9 +1,28 @@
+/**
+ * Plan 5.6: why a session was revoked. Mirrors the Prisma
+ * `SessionRevokeReason` enum (parity spec). `REPLACED` (a newer login of the
+ * same account) is answered with `AUTH_SESSION_REPLACED`.
+ */
+export const SESSION_REVOKE_REASONS = [
+  'LOGOUT',
+  'REPLACED',
+  'REFRESH_REUSE',
+  'ADMIN_LOCK',
+  'ROLE_CHANGED',
+  'PASSWORD_RESET',
+] as const;
+
+export type SessionRevokeReason = (typeof SESSION_REVOKE_REASONS)[number];
+
 export interface SessionProps {
   id: string;
   userId: string;
   sessionVersion: number;
   csrfDigest: string;
   revoked: boolean;
+  /** Null while active and on rows revoked before plan 5.6. */
+  revokedAt?: Date | null;
+  revokedReason?: SessionRevokeReason | null;
   expiresAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -30,6 +49,10 @@ export class Session {
 
   get revoked(): boolean {
     return this.props.revoked;
+  }
+
+  get revokedReason(): SessionRevokeReason | null {
+    return this.props.revokedReason ?? null;
   }
 
   get expiresAt(): Date {

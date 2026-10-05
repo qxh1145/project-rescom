@@ -403,6 +403,48 @@ export const fileUploadBlockSchema = fileUploadBlockBaseSchema;
 export type FileUploadBlock = z.infer<typeof fileUploadBlockSchema>;
 
 // --- Discriminated Union ---
+/** Distributive, so each block type keeps its own fields. */
+type WithoutIntegrity<T> = T extends unknown ? Omit<T, "integrity"> : never;
+
+function validateBlockByType(
+  block: WithoutIntegrity<
+    | z.infer<typeof textBlockBaseSchema>
+    | z.infer<typeof textareaBlockBaseSchema>
+    | z.infer<typeof numberBlockBaseSchema>
+    | z.infer<typeof singleChoiceBlockBaseSchema>
+    | z.infer<typeof multipleChoiceBlockBaseSchema>
+    | z.infer<typeof ratingBlockBaseSchema>
+    | z.infer<typeof linearScaleBlockBaseSchema>
+    | z.infer<typeof dateBlockBaseSchema>
+    | z.infer<typeof fileUploadBlockBaseSchema>
+  >,
+  ctx: z.RefinementCtx,
+) {
+  switch (block.type) {
+    case "text":
+      validateTextBlock(block, ctx);
+      break;
+    case "textarea":
+      validateTextareaBlock(block, ctx);
+      break;
+    case "number":
+      validateNumberBlock(block, ctx);
+      break;
+    case "single_choice":
+      validateSingleChoiceBlock(block, ctx);
+      break;
+    case "multiple_choice":
+      validateMultipleChoiceBlock(block, ctx);
+      break;
+    case "linear_scale":
+      validateLinearScaleBlock(block, ctx);
+      break;
+    case "date":
+      validateDateBlock(block, ctx);
+      break;
+  }
+}
+
 export const formBlockSchema = z
   .discriminatedUnion("type", [
     textBlockBaseSchema,
@@ -415,34 +457,42 @@ export const formBlockSchema = z
     dateBlockBaseSchema,
     fileUploadBlockBaseSchema,
   ])
-  .superRefine((block, ctx) => {
-    switch (block.type) {
-      case "text":
-        validateTextBlock(block, ctx);
-        break;
-      case "textarea":
-        validateTextareaBlock(block, ctx);
-        break;
-      case "number":
-        validateNumberBlock(block, ctx);
-        break;
-      case "single_choice":
-        validateSingleChoiceBlock(block, ctx);
-        break;
-      case "multiple_choice":
-        validateMultipleChoiceBlock(block, ctx);
-        break;
-      case "linear_scale":
-        validateLinearScaleBlock(block, ctx);
-        break;
-      case "date":
-        validateDateBlock(block, ctx);
-        break;
-    }
-  });
+  .superRefine(validateBlockByType);
 
 export type FormBlock = z.infer<typeof formBlockSchema>;
 export type FormBlockInput = z.input<typeof formBlockSchema>;
+
+/**
+ * Review MEDIUM-1 — the block as a Respondent (or guest) receives it: no
+ * `integrity` (attention-check expected values and fail actions, consistency
+ * pairs, the ATTENTION_CHECK semantic category), which would hand the
+ * answers of the quality checks to a bot. Strict, so a response that still
+ * carries `integrity` fails parsing. Answer validation keeps using the full
+ * stored `formBlockSchema` definition server-side.
+ */
+const noIntegrity = { integrity: true } as const;
+export const respondentFormBlockSchema = z
+  .discriminatedUnion("type", [
+    textBlockBaseSchema.omit(noIntegrity),
+    textareaBlockBaseSchema.omit(noIntegrity),
+    numberBlockBaseSchema.omit(noIntegrity),
+    singleChoiceBlockBaseSchema.omit(noIntegrity),
+    multipleChoiceBlockBaseSchema.omit(noIntegrity),
+    ratingBlockBaseSchema.omit(noIntegrity),
+    linearScaleBlockBaseSchema.omit(noIntegrity),
+    dateBlockBaseSchema.omit(noIntegrity),
+    fileUploadBlockBaseSchema.omit(noIntegrity),
+  ])
+  .superRefine(validateBlockByType);
+
+export type RespondentFormBlock = z.infer<typeof respondentFormBlockSchema>;
+
+/** Projects stored blocks for a Respondent or guest (see `respondentFormBlockSchema`). */
+export function toRespondentFormBlocks(
+  blocks: ReadonlyArray<FormBlock>,
+): RespondentFormBlock[] {
+  return blocks.map(({ integrity: _integrity, ...block }) => block);
+}
 
 function generateBlockId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {

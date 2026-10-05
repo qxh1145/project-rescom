@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
+import { DemoDataTag } from "@/components/ui/DemoDataTag";
 import { Tag } from "@/components/ui/Tag";
 import { useApiQuery } from "@/lib/api/use-api-query";
 import { formatDayMonth } from "@/lib/format/date-time";
@@ -33,6 +34,7 @@ function Heading({ quality }: { quality: FormQuality }) {
         <Tag tone={enough ? "teal" : "neutral"} size="md" icon={enough ? <Icon name="check-circle" size={14} /> : undefined}>
           {enough ? "Đủ dữ liệu" : "Chưa đủ dữ liệu"}
         </Tag>
+        <DemoDataTag />
         {confidence ? (
           <Tag tone="neutral" size="md" className="text-ink-strong">
             {confidence}

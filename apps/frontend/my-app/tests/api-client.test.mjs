@@ -347,3 +347,44 @@ test("apiRequest", async (t) => {
     assert.deepEqual(sent, ["tok-shared", "tok-shared"]);
   });
 });
+
+test("plan 5.6: the first AUTH_SESSION_REPLACED answer is remembered for the session status", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const notice = await import("../lib/auth/session-notice.ts");
+  const { sessionStatusFromError } = await import("../lib/session/session-status.ts");
+  notice.clearSessionReplaced();
+
+  const replaced = { data: null, error: { code: "AUTH_SESSION_REPLACED", message: "x" }, meta: {} };
+  const plain = { data: null, error: { code: "AUTH_UNAUTHORIZED", message: "x" }, meta: {} };
+  globalThis.fetch = async () => jsonResponse(replaced, { status: 401 });
+  await assert.rejects(apiRequest("/notifications/unread-count"), (error) => error instanceof ApiError);
+  assert.equal(notice.wasSessionReplaced(), true);
+
+  // The cookies are gone now, so GET /auth/me only says AUTH_UNAUTHORIZED…
+  globalThis.fetch = async () => jsonResponse(plain, { status: 401 });
+  const later = await apiRequest("/auth/me").catch((error) => error);
+  // …and the session still ends on the 15e notice.
+  assert.equal(sessionStatusFromError(later), "replaced");
+
+  notice.clearSessionReplaced();
+  assert.equal(sessionStatusFromError(later), "unauthenticated");
+});
+
+test("plan 5.6 review L1: logout clears the session-replaced mark", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const notice = await import("../lib/auth/session-notice.ts");
+  const { logout } = await import("../lib/auth/auth-service.ts");
+  notice.markSessionReplaced();
+  globalThis.fetch = async (url) =>
+    String(url).endsWith("/auth/csrf")
+      ? jsonResponse({ data: { csrfToken: "t" }, error: null, meta: {} })
+      : new Response(null, { status: 204 });
+  await logout();
+  assert.equal(notice.wasSessionReplaced(), false);
+});

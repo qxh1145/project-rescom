@@ -1,0 +1,101 @@
+# Hostinger VPS Stack for RESCOM (Option 2: Frontend on Vercel)
+# Services: Caddy (TLS/reverse proxy), Backend (NestJS), PostgreSQL 15, MinIO (S3), ClamAV
+name: rescom
+
+x-minio-credentials: &minio-credentials
+  MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:?}
+  MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:?}
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?}
+      S3_DOMAIN: ${S3_DOMAIN:?}
+    volumes:
+      - ./Caddyfile.hostinger:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [backend, minio]
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    restart: always
+    command: ["sh", "-c", "npx prisma migrate deploy && node dist/apps/backend/src/main"]
+    env_file: .env.prod
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+      clamav: { condition: service_healthy }
+
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 12
+
+  minio:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
+    restart: always
+    command: server /data
+    environment:
+      <<: *minio-credentials
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      retries: 12
+
+  minio-init:
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z@sha256:cfc83108c3abb371f8fb84d99c1fdc88f8c237e022409b0081fb7c0a3be634dd
+    restart: "no"
+    depends_on:
+      minio: { condition: service_healthy }
+    environment:
+      <<: *minio-credentials
+      STORAGE_BUCKET: ${STORAGE_BUCKET:?}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        mc alias set rescom http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
+        mc mb --ignore-existing "rescom/$${STORAGE_BUCKET}"
+        mc anonymous set none "rescom/$${STORAGE_BUCKET}"
+
+  clamav:
+    image: clamav/clamav-debian:1.5.4
+    restart: always
+    environment:
+      CLAMD_CONF_StreamMaxLength: 100M
+    volumes:
+      - clamav_data:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 360s
+
+volumes:
+  pgdata:
+  minio_data:
+  clamav_data:
+  caddy_data:
+  caddy_config:

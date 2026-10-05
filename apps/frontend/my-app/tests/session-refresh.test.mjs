@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 const {
+  ACCESS_TOKEN_TTL_SECONDS,
   SESSION_REFRESH_INTERVAL_MS,
+  accessCookieMayBeExpired,
   msUntilRefreshDue,
   refreshSession,
   shouldRefreshBeforeLoad,
@@ -61,6 +63,29 @@ test("refreshSession 401 forgets the refresh timestamp", async (t) => {
     jsonResponse({ data: null, error: { code: "AUTH_INVALID_REFRESH_TOKEN", message: "x" }, meta: {} }, 401);
   await assert.rejects(refreshSession(), (error) => error.status === 401);
   assert.equal(shouldRefreshBeforeLoad(Number.MAX_SAFE_INTEGER), false);
+});
+
+test("a throttled refresh before load escalates only once the access cookie must have expired", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  setCsrfToken("tok");
+  globalThis.fetch = async () => jsonResponse({ data: { csrfToken: "tok-2" }, error: null, meta: {} });
+  await refreshSession(() => 10_000);
+
+  // A 429 keeps the timestamp: the cookie age stays known.
+  globalThis.fetch = async () =>
+    jsonResponse({ data: null, error: { code: "RATE_LIMIT_EXCEEDED", message: "x" }, meta: {} }, 429);
+  await assert.rejects(refreshSession(() => 20_000), (error) => error.status === 429);
+
+  const ttlMs = ACCESS_TOKEN_TTL_SECONDS * 1000;
+  // Refresh is due (80% of the TTL) but the cookie is still valid: GET /auth/me may go ahead.
+  assert.equal(shouldRefreshBeforeLoad(10_000 + SESSION_REFRESH_INTERVAL_MS), true);
+  assert.equal(accessCookieMayBeExpired(10_000 + SESSION_REFRESH_INTERVAL_MS), false);
+  assert.equal(accessCookieMayBeExpired(10_000 + ttlMs - 1), false);
+  // A full TTL later the cookie must be gone: /auth/me would 401 and drop the refresh cookie.
+  assert.equal(accessCookieMayBeExpired(10_000 + ttlMs), true);
 });
 
 /** Fake clock + timers + visibility for the scheduler. */
@@ -174,6 +199,23 @@ test("transient failures retry; 401 and AUTH_USER_LOCKED end the session and sto
   });
   await locked.flush();
   assert.equal(locked.state.ended[0].code, "AUTH_USER_LOCKED");
+});
+
+test("a throttled refresh (429) is transient: the session stays and the scheduler retries", async () => {
+  let attempt = 0;
+  const { state, stop, flush, advance } = harness({
+    refresh: async () => {
+      attempt += 1;
+      throw new ApiError({ kind: "http", status: 429, code: "RATE_LIMIT_EXCEEDED", message: "x", retryAfterSeconds: 20 });
+    },
+  });
+  await flush();
+  assert.equal(attempt, 1);
+  await advance(30_000);
+  assert.equal(attempt, 2);
+  assert.equal(state.ended.length, 0);
+  assert.equal(state.timers.length, 1);
+  stop();
 });
 
 test("stop() during an in-flight refresh schedules nothing", async () => {

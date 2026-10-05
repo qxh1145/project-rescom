@@ -6,7 +6,7 @@ import {
   completionCodeLimitResetRequestSchema,
 } from "@rescom/schemas";
 import { DECISION_NOTE_MAX, DECISION_NOTE_MIN, disputeCaseOutcomeSchema } from "@/lib/admin/disputes-service";
-import { apiUrl } from "@/lib/api/config";
+import { apiUrl, isHybridMocking } from "@/lib/api/config";
 import {
   openCaseCounts,
   openDisputeCases,
@@ -16,6 +16,7 @@ import {
 } from "../data/admin-disputes";
 import { nowIso } from "../db/store";
 import { fail, missingCsrf, ok } from "../envelope";
+import { HYBRID_ADMIN } from "../hybrid";
 import { applyScenario } from "../scenarios";
 import { requireMockAdmin } from "./admin";
 
@@ -42,7 +43,8 @@ const resolveBodySchema = z
 async function guardAdmin(request?: Request) {
   const forced = await applyScenario("admin");
   if (forced) return forced;
-  const admin = await requireMockAdmin();
+  // Hybrid: the real session and `SessionGate requireAdmin` decide access (`mocks/hybrid.ts`).
+  const admin = isHybridMocking ? HYBRID_ADMIN : await requireMockAdmin();
   if (admin instanceof Response) return admin;
   if (request) {
     const csrf = missingCsrf(request);

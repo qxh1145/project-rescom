@@ -84,7 +84,7 @@ export function TransactionsScreen() {
             />
           </div>
           {view.hasMore ? (
-            // ASSUMED (not drawn): 50 journals per page.
+            // ASSUMED (design) (not drawn): 50 journals per page.
             <div className="mt-4 flex flex-col items-center gap-3">
               {view.loadMoreFailed ? (
                 <Alert tone="danger" className="w-full">

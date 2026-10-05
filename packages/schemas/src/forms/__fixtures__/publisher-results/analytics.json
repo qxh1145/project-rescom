@@ -1,0 +1,112 @@
+{
+  "availability": "AVAILABLE",
+  "form": {
+    "id": "5b1d7c2e-3f4a-4b6c-8d9e-0f1a2b3c4d01",
+    "title": "Nhà trọ quanh trường",
+    "type": "INTERNAL",
+    "versionId": "0b8c3c3e-5f43-4a43-9a51-6f1f1d2b0a02",
+    "versionNumber": 2
+  },
+  "totalResponses": 3,
+  "lastResponseAt": "2026-09-29T09:30:00.000Z",
+  "questions": [
+    {
+      "questionId": "q-budget",
+      "number": 1,
+      "title": "Ngân sách thuê trọ mỗi tháng",
+      "type": "single_choice",
+      "required": true,
+      "answeredCount": 3,
+      "skippedCount": 0,
+      "summary": {
+        "kind": "choice",
+        "multiple": false,
+        "options": [
+          {
+            "value": "lt2",
+            "label": "Dưới 2 triệu",
+            "count": 1,
+            "percentage": 33.3
+          },
+          {
+            "value": "2to4",
+            "label": "2–4 triệu",
+            "count": 1,
+            "percentage": 33.3
+          }
+        ],
+        "other": {
+          "count": 1,
+          "percentage": 33.3,
+          "samples": [
+            "Ở ký túc xá"
+          ]
+        }
+      }
+    },
+    {
+      "questionId": "q-sat",
+      "number": 2,
+      "title": "Mức hài lòng",
+      "type": "linear_scale",
+      "required": false,
+      "answeredCount": 2,
+      "skippedCount": 1,
+      "summary": {
+        "kind": "scale",
+        "min": 1,
+        "max": 5,
+        "minLabel": "Rất tệ",
+        "maxLabel": "Rất tốt",
+        "buckets": [
+          {
+            "value": 1,
+            "count": 0,
+            "percentage": 0
+          },
+          {
+            "value": 2,
+            "count": 0,
+            "percentage": 0
+          },
+          {
+            "value": 3,
+            "count": 0,
+            "percentage": 0
+          },
+          {
+            "value": 4,
+            "count": 1,
+            "percentage": 50
+          },
+          {
+            "value": 5,
+            "count": 1,
+            "percentage": 50
+          }
+        ],
+        "average": 4.5,
+        "median": 4.5
+      }
+    },
+    {
+      "questionId": "q-note",
+      "number": 3,
+      "title": "Góp ý",
+      "type": "textarea",
+      "required": false,
+      "answeredCount": 1,
+      "skippedCount": 2,
+      "summary": {
+        "kind": "text",
+        "samples": [
+          {
+            "responseId": "6a1f0e57-91b6-4c0f-8f0e-3d1c2b4a5e01",
+            "value": "Phòng hơi xa trường",
+            "submittedAt": "2026-09-29T09:30:00.000Z"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -17,9 +17,12 @@ import { apiRequest } from "../api/client.ts";
  * - `PATCH /admin/users/:id/role` `{ role }` (CSRF) → `{ user }`. Revokes every session of
  *   the target; 400 `CANNOT_DEMOTE_SELF` / `CANNOT_DEMOTE_LAST_ADMIN`.
  *
- * ASSUMED API CONTRACT extensions (the backend user carries only id, email, role,
- * status and dates): the Figma columns below are optional, so the VERIFIED payload
- * still parses and the screen shows "—" for what is missing.
+ * VERIFIED `lockReason` (shared `adminUserSchema`, mock-off plan 4.6): the reason of
+ * the latest lock, read from the identity audit log; null for active accounts.
+ *
+ * ASSUMED API (display, owner item) extensions, NOT emitted by the backend (its user carries only
+ * id, email, role, status, dates and `lockReason`): the Figma columns below are optional,
+ * so the VERIFIED payload parses and the screen shows "—". Outside IR.5 Q2.
  */
 
 export const ADMIN_USERS_PAGE_SIZE = 20;
@@ -47,8 +50,6 @@ export const adminUserViewSchema = adminUserSchema.extend({
   fraudLog: z.object({ count14d: z.number().int().nonnegative(), repeated: z.boolean() }).optional(),
   /** ASSUMED: demographic summary ("Hồ sơ"); null when the profile is not filled. */
   profile: profileSummarySchema.nullable().optional(),
-  /** ASSUMED: reason given when the account was locked. */
-  lockReason: z.string().nullable().optional(),
 });
 export type AdminUserView = z.infer<typeof adminUserViewSchema>;
 export type AdminUserProfileSummary = z.infer<typeof profileSummarySchema>;

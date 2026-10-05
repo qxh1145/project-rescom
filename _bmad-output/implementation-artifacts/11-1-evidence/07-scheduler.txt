@@ -1,0 +1,14 @@
+## AC6 scheduler single owner (verification, no code change) 2026-10-03T06:43:18Z
+- One api replica in deploy/docker-compose.prod.yml; SCHEDULER_ENABLED=true in deploy/.env.prod.example.
+- Production refuses SCHEDULER_ENABLED=false:
+203:    SCHEDULER_ENABLED: booleanEnv(false),
+415:      if (!data.SCHEDULER_ENABLED) {
+418:          path: ['SCHEDULER_ENABLED'],
+420:            'SCHEDULER_ENABLED must be true in production: the single API replica owns the scheduler and Outbox dispatcher',
+- Claims go through scheduler_job_leases (INSERT ... ON CONFLICT, conditional UPDATE on expired lease):
+24:      INSERT INTO scheduler_job_leases (job_name, next_run_at, created_at, updated_at)
+41:      UPDATE scheduler_job_leases
+65:      FROM scheduler_job_leases WHERE job_name = ${jobName}
+- Smoke stack (03 evidence) logged SCHEDULER_JOB_RUN for outbox-dispatch and storage-cleanup with one owner id; /health/ready reported scheduler=ok.
+- 'docker compose run --rm api npx prisma migrate deploy' runs only the Prisma CLI (02 evidence), never Nest, so it starts no second scheduler.
+- /health/ready exposes checks.scheduler (ok|degraded|disabled) without counts (AD-17).

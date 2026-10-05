@@ -23,7 +23,6 @@ function CardBody({ row, now }: { row: MyFormRow; now: number }) {
         </>
       );
     case "RUNNING":
-    case "PAUSED":
       return (
         <>
           <div className="mt-2.5 flex items-baseline justify-between gap-3 text-caption">
@@ -52,9 +51,9 @@ function CardBody({ row, now }: { row: MyFormRow; now: number }) {
             </div>
           ) : null}
           <p className="mt-2.5 text-caption font-semibold text-tone-teal-fg">
-            {/* ASSUMED `rejection` may be absent (backend list DTO): the escrow is refunded either way. */}
+            {/* `rejection` is on `GET /forms/:id` only, not on list items: the escrow is refunded either way. */}
             {form.rejection
-              ? `Đã hoàn ${form.rejection.refundedPoints} điểm ký quỹ vào số dư`
+              ? `Đã hoàn ${form.rejection.refundAmount} điểm ký quỹ vào số dư`
               : "Ký quỹ đã được hoàn vào số dư"}
           </p>
         </>
@@ -72,14 +71,13 @@ function CardBody({ row, now }: { row: MyFormRow; now: number }) {
   }
 }
 
-/** Top-right note of a card: "Còn 9 ngày" (63:1341), "Đã ẩn khỏi Khám phá" (63:1354). */
+/** Top-right note of a card: "Còn 9 ngày" (63:1341). */
 function cornerNote(row: MyFormRow, now: number): string | null {
   const { form, view } = row;
-  if (view === "RUNNING" || view === "PAUSED") {
+  if (view === "RUNNING") {
     const days = daysUntil(form.deadlineAt, now);
     return days === null ? null : `Còn ${days} ngày`;
   }
-  if ((view === "FULL" || view === "ENDED") && form.hiddenFromMarketplace) return "Đã ẩn khỏi Khám phá";
   return null;
 }
 

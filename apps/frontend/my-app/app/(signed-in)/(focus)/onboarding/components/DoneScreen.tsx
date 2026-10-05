@@ -4,7 +4,8 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import type { DemographicOnboardingNextStep } from "@rescom/schemas";
 import { Mascot } from "@/components/brand/Mascot";
-import { buttonClassName } from "@/components/ui/Button";
+import { Alert } from "@/components/ui/Alert";
+import { Button, buttonClassName } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { GOAL_LABELS, type OnboardingGoal, type SummaryItem } from "@/lib/onboarding/onboarding-answers";
 import { ONBOARDING_PARTS } from "@/lib/onboarding/onboarding-steps";
@@ -22,14 +23,33 @@ interface DoneScreenProps {
   summary: SummaryItem[];
   /** Called when the screen unmounts (leaving it by any route): trims the local draft. */
   onLeave: () => void;
+  /** The survey was saved but the profile extras were not; null when everything saved. */
+  profileWarning: string | null;
+  profileRetrying: boolean;
+  onRetryProfile: () => void;
+  /** Set when the server refused an answer: "Sửa" opens that question instead of "Thử lại". */
+  onFixProfile: (() => void) | null;
 }
 
 /**
  * "12 · Hoàn tất" — Figma draws goal "Cả hai" (desktop 62:1927, mobile 62:1998).
  * ASSUMED for the other cases: "Làm khảo sát, tích điểm" shows step 1 only;
  * an already activated user (`nextStep: COMPLETED`) sees a plain "next" card.
+ * The unsaved-profile alert and its "Thử lại" / "Sửa" are ASSUMED (design) too (not drawn).
  */
-export function DoneScreen({ name, goal, nextStep, continueHref, editHref, summary, onLeave }: DoneScreenProps) {
+export function DoneScreen({
+  name,
+  goal,
+  nextStep,
+  continueHref,
+  editHref,
+  summary,
+  onLeave,
+  profileWarning,
+  profileRetrying,
+  onRetryProfile,
+  onFixProfile,
+}: DoneScreenProps) {
   const activated = nextStep === "COMPLETED";
   const showCreate = goal !== "EARN";
   const goalLabel = GOAL_LABELS[goal ?? "BOTH"];
@@ -58,6 +78,23 @@ export function DoneScreen({ name, goal, nextStep, continueHref, editHref, summa
         <p className="mt-2.5 max-w-85.5 text-center text-lead-sm text-ink-muted lg:mt-3 lg:max-w-none lg:text-lead">
           Hồ sơ đã sẵn sàng. Đây là {count} tiếp theo cho mục tiêu “{goalLabel}”.
         </p>
+
+        {profileWarning ? (
+          <div className="mt-4 flex w-full max-w-87.5 flex-col gap-3 lg:max-w-225 lg:flex-row lg:items-start">
+            <Alert tone="danger" className="flex-1">
+              {profileWarning}
+            </Alert>
+            {onFixProfile ? (
+              <Button variant="secondary" size="base" radius="field" onClick={onFixProfile}>
+                Sửa
+              </Button>
+            ) : (
+              <Button variant="secondary" size="base" radius="field" loading={profileRetrying} onClick={onRetryProfile}>
+                Thử lại
+              </Button>
+            )}
+          </div>
+        ) : null}
 
         <div className="mt-6 grid w-full max-w-87.5 gap-3 lg:mt-7 lg:max-w-225 lg:grid-cols-2 lg:gap-5">
           {/* Step 1 (62:1976): amber card, primary CTA. */}

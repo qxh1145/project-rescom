@@ -1,9 +1,17 @@
 import { z } from "zod";
 import {
-  formCloseKindEnum,
-  formStatusEnum,
-  formTypeEnum,
-  surveyFeedbackIssueTagSchema,
+  createdFormVersionSchema as sharedCreatedFormVersionSchema,
+  deletedFormSchema,
+  formDetailSchema,
+  formDetailVersionSchema,
+  formInProgressAttemptsSchema,
+  formRejectionSchema,
+  formSummarySchema,
+  PUBLISHER_PROGRESS_RANGES,
+  publisherProgressSchema,
+  type FormInProgressAttempts,
+  type PublisherProgressDto,
+  type PublisherProgressRange,
 } from "@rescom/schemas";
 import { apiRequest } from "../api/client.ts";
 
@@ -12,17 +20,18 @@ import { apiRequest } from "../api/client.ts";
  * tracking, 10b reopen, 10c complaint) and the shared survey header of
  * `/forms/[id]/*`.
  *
- * Every ASSUMED field is optional with a neutral default, so the VERIFIED
- * backend response still parses before the backend adds them.
+ * Story IR.5 A2: only fields the backend emits remain (the frontend-only
+ * `pausedAt`, `hiddenFromMarketplace`, `audienceLabel`, top-level
+ * `publishedAt` and `questionCount` were removed); the optional ones keep a
+ * neutral default so an older response still parses.
  */
 
 const nullableIso = z.string().nullable().default(null);
 const count = z.number().int().nonnegative();
 
 /**
- * Management fields shared by `GET /forms` items and `GET /forms/:id`.
- * `completedCompletions` and `escrowLocked` are VERIFIED (Phase 5 M1/M2:
- * `FormSummaryDto` / `FormDetailDto`); the others are ASSUMED API CONTRACT.
+ * Management fields shared by `GET /forms` items and `GET /forms/:id`, all
+ * VERIFIED (`FormSummaryDto` / `FormDetailDto`, shared `formSummarySchema`).
  */
 const managementExtensions = {
   /** Completed participations so far (Figma "6/10"). */
@@ -33,45 +42,28 @@ const managementExtensions = {
    * a response without the field): the UI then shows no number.
    */
   escrowLocked: count.nullable().default(null),
+  /** `GET /forms/:id`: when the survey entered the moderation queue (null otherwise). */
   submittedAt: nullableIso,
-  publishedAt: nullableIso,
   /** Collection deadline ("hạn 05/10 · còn 9 ngày"). */
   deadlineAt: nullableIso,
+  /** `GET /forms/:id`: when the survey closed (null unless CLOSED). */
   closedAt: nullableIso,
-  /** Hidden from Khám phá ("đã ẩn khỏi Khám phá"). */
-  hiddenFromMarketplace: z.boolean().default(false),
-  /** "Tạm dừng" (Figma 10a) — no backend state exists yet. */
-  pausedAt: nullableIso,
   /**
-   * Admin rejection of the submitted version ("Bị từ chối · Đã hoàn 120
-   * điểm"): reason + points actually refunded. The rejection itself is
-   * VERIFIED as `status` CLOSED + `closeKind` MODERATION; these details are not.
+   * `GET /forms/:id` (shared `formRejectionSchema`): the Admin rejection of a
+   * survey closed by moderation ("Bị từ chối · Đã hoàn 120 điểm"), from its
+   * `SurveyModerationDecision`. The rejection itself is `status` CLOSED +
+   * `closeKind` MODERATION; the list DTO does not carry these details.
    */
-  rejection: z
-    .object({ reason: z.string(), refundedPoints: count, rejectedAt: z.string().nullable().default(null) })
-    .nullable()
-    .default(null),
+  rejection: formRejectionSchema.nullable().default(null),
 };
 
 /**
  * VERIFIED `FormSummaryDto` (`GET /forms` → `forms.service.ts#listForms`,
- * with `closeKind`, `completedCompletions`, `escrowLocked` since Phase 5 M2)
- * + ASSUMED management fields.
+ * with `closeKind`, `completedCompletions`, `escrowLocked` since Phase 5 M2),
+ * read with neutral defaults for the optional management fields.
  */
-export const publisherFormSummarySchema = z.object({
-  id: z.string().min(1),
-  publisherId: z.string(),
-  type: formTypeEnum,
-  status: formStatusEnum,
-  title: z.string(),
-  description: z.string().nullable().optional(),
-  rewardPerResponse: count,
-  expectedCompletions: count,
-  estimatedDurationMinutes: z.number().nullable().optional(),
-  latestVersionNumber: z.number().int(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  closeKind: formCloseKindEnum.nullable().default(null),
+export const publisherFormSummarySchema = formSummarySchema.extend({
+  closeKind: formSummarySchema.shape.closeKind.default(null),
   ...managementExtensions,
 });
 export type PublisherFormSummary = z.infer<typeof publisherFormSummarySchema>;
@@ -87,108 +79,33 @@ export type PublisherFormList = z.infer<typeof publisherFormListSchema>;
 
 /**
  * VERIFIED `FormDetailDto` (`GET /forms/:id` → `forms.service.ts#getFormById`,
- * owner or Admin) + ASSUMED management fields and header facts.
+ * owner or Admin), read with neutral defaults for the optional management fields.
  */
-export const publisherFormSchema = z.object({
-  id: z.string().min(1),
-  publisherId: z.string(),
-  type: formTypeEnum,
-  status: formStatusEnum,
-  title: z.string(),
-  description: z.string().nullable().optional(),
-  rewardPerResponse: count,
-  expectedCompletions: count,
-  estimatedDurationMinutes: z.number().nullable().optional(),
-  closeKind: formCloseKindEnum.nullable().default(null),
-  currentVersion: z
-    .object({
-      id: z.string(),
-      versionNumber: z.number().int(),
-      externalUrl: z.string().nullable().optional(),
-      schemaJson: z.object({ blocks: z.array(z.unknown()).optional() }).passthrough().nullable().optional(),
-    })
-    .passthrough(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+export const publisherFormSchema = formDetailSchema.extend({
+  closeKind: formDetailSchema.shape.closeKind.unwrap().default(null),
+  currentVersion: formDetailVersionSchema.extend({
+    schemaJson: z.object({ blocks: z.array(z.unknown()).optional() }).passthrough().nullable().optional(),
+  }),
   ...managementExtensions,
-  /** ASSUMED: questions of the current version (Figma 17 "8 câu hỏi"); falls back to the block count. */
-  questionCount: count.nullable().default(null),
-  /** ASSUMED: targeting summary (Figma 10a "Marketing, QTKD · 18–25 tuổi"). */
-  audienceLabel: z.string().nullable().default(null),
 });
 export type PublisherForm = z.infer<typeof publisherFormSchema>;
 
-/** VERIFIED `FormInProgressAttemptsDto` (`GET /forms/:id/in-progress-attempts`, decision E5-D4). */
-export const inProgressAttemptsSchema = z.object({
-  formId: z.string(),
-  status: formStatusEnum,
-  inProgressAttempts: count,
-  reservationWindowMinutes: count,
-});
-export type InProgressAttempts = z.infer<typeof inProgressAttemptsSchema>;
+/** `GET /forms/:id/in-progress-attempts` (shared `formInProgressAttemptsSchema`, decision E5-D4). */
+export const inProgressAttemptsSchema = formInProgressAttemptsSchema;
+export type InProgressAttempts = FormInProgressAttempts;
 
-/** "Giờ / Ngày / Tuần / Tháng" of "Lượt mở khảo sát". */
-export const OPENS_RANGES = ["hour", "day", "week", "month"] as const;
-export type OpensRange = (typeof OPENS_RANGES)[number];
-
-/** ASSUMED: why a Publisher disputes a Google Forms attempt (Figma 10c chips). */
-export const DISPUTE_REASONS = ["LOW_EFFORT", "NO_MATCHING_RESPONSE", "DUPLICATE_RESPONDENT", "OTHER"] as const;
-export const disputeReasonSchema = z.enum(DISPUTE_REASONS);
-export type DisputeReason = z.infer<typeof disputeReasonSchema>;
-
-const disputeSchema = z.object({
-  id: z.string(),
-  status: z.enum(["OPEN", "UPHELD", "DISMISSED"]),
-  reason: disputeReasonSchema,
-  createdAt: z.string(),
-});
+/** "Giờ / Ngày / Tuần / Tháng" of the "Lượt hoàn thành" chart (shared ranges). */
+export const PROGRESS_RANGES = PUBLISHER_PROGRESS_RANGES;
+export type ProgressRange = PublisherProgressRange;
 
 /**
- * ASSUMED API CONTRACT: `GET /forms/:id/progress?range=` — Figma 10a
- * "Tiến độ". No backend route aggregates opens, the funnel, the 48h review
- * queue and the rating summary for a Publisher yet.
+ * VERIFIED (Story IR.4a): `GET /forms/:id/progress?range=` — Figma 10a
+ * "Tiến độ", the shared `publisherProgressSchema`. Owner only (404
+ * `FORM_NOT_FOUND` for anybody else, Admins included). No opens/funnel
+ * metrics (FR-41 deferred) and no feedback summary (Story 9.3).
  */
-export const formProgressSchema = z.object({
-  formId: z.string(),
-  completed: count,
-  expected: count,
-  /** Escrow drawn by validated completions ("Điểm đã chi"). */
-  pointsSpent: count,
-  escrowRemaining: count,
-  deadlineAt: z.string().nullable(),
-  opens: z.object({
-    range: z.enum(OPENS_RANGES),
-    total: count,
-    buckets: z.array(z.object({ label: z.string(), count })),
-  }),
-  started: count,
-  abandoned: count,
-  averageDurationSeconds: z.number().nonnegative().nullable(),
-  /** Google Forms completions still in their 48h review (FR-24: disputable). */
-  pendingAttempts: z.array(
-    z.object({
-      attemptId: z.string(),
-      /** Anonymous respondent handle ("#7F3A"). */
-      respondentCode: z.string(),
-      codeVerifiedAt: z.string(),
-      reviewEndsAt: z.string(),
-      dispute: disputeSchema.nullable(),
-    }),
-  ),
-  feedback: z.object({
-    count,
-    averageRating: z.number().min(0).max(5).nullable(),
-    issues: z.array(z.object({ tag: surveyFeedbackIssueTagSchema, percent: z.number().min(0).max(100) })),
-  }),
-});
-export type FormProgress = z.infer<typeof formProgressSchema>;
-export type PendingAttempt = FormProgress["pendingAttempts"][number];
-
-export const disputeResultSchema = z.object({
-  attemptId: z.string(),
-  dispute: disputeSchema,
-});
-export type DisputeResult = z.infer<typeof disputeResultSchema>;
+export const formProgressSchema = publisherProgressSchema;
+export type FormProgress = PublisherProgressDto;
 
 /** Figma 10 lists every survey on one screen: the backend maximum page size. */
 export const PUBLISHER_FORMS_PAGE_SIZE = 100;
@@ -230,8 +147,8 @@ export function getPublisherForm(id: string, signal?: AbortSignal): Promise<Publ
   return apiRequest(formPath(id), { schema: publisherFormSchema, signal });
 }
 
-/** ASSUMED API CONTRACT: `GET /forms/:id/progress?range=day`. */
-export function getFormProgress(id: string, range: OpensRange, signal?: AbortSignal): Promise<FormProgress> {
+/** VERIFIED: `GET /forms/:id/progress?range=day` (Story IR.4a). */
+export function getFormProgress(id: string, range: ProgressRange, signal?: AbortSignal): Promise<FormProgress> {
   return apiRequest(`${formPath(id)}/progress?range=${range}`, { schema: formProgressSchema, signal });
 }
 
@@ -250,16 +167,21 @@ export function closePublisherForm(id: string): Promise<PublisherForm> {
   return apiRequest(`${formPath(id)}/close`, { method: "POST", body: {}, schema: publisherFormSchema });
 }
 
-/** VERIFIED: `POST /forms/:id/reopen` (`reopenSurveySchema`) — owner only, locks the added Escrow. */
-export function reopenPublisherForm(id: string, additionalCompletions: number): Promise<PublisherForm> {
+/**
+ * VERIFIED: `POST /forms/:id/reopen` (`reopenSurveySchema`) — owner only, locks the added Escrow.
+ * `deadlineAt` (Story IR.2b Q3): omitted keeps the current deadline; required (ISO or null) once it passed.
+ */
+export function reopenPublisherForm(
+  id: string,
+  additionalCompletions: number,
+  deadlineAt?: string | null,
+): Promise<PublisherForm> {
   return apiRequest(`${formPath(id)}/reopen`, {
     method: "POST",
-    body: { additionalCompletions },
+    body: deadlineAt === undefined ? { additionalCompletions } : { additionalCompletions, deadlineAt },
     schema: publisherFormSchema,
   });
 }
-
-export const deletedFormSchema = z.object({ id: z.string() });
 
 /**
  * VERIFIED: `DELETE /forms/:id` — deletes a never-published draft for good
@@ -269,8 +191,10 @@ export function deleteFormDraft(id: string): Promise<{ id: string }> {
   return apiRequest(formPath(id), { method: "DELETE", schema: deletedFormSchema });
 }
 
-/** VERIFIED `CreateFormVersionResultDto`: the form detail + attempts on the old version that were cut off. */
-export const createdFormVersionSchema = publisherFormSchema.extend({ interruptedAttempts: count.default(0) });
+/** `CreateFormVersionResultDto`: the form detail + attempts on the old version that were cut off. */
+export const createdFormVersionSchema = publisherFormSchema.extend({
+  interruptedAttempts: sharedCreatedFormVersionSchema.shape.interruptedAttempts.default(0),
+});
 export type CreatedFormVersion = z.infer<typeof createdFormVersionSchema>;
 
 /**
@@ -288,30 +212,3 @@ export function createFormVersion(id: string): Promise<CreatedFormVersion> {
  * so "Tạm dừng" / "Tiếp tục" stay hidden until it does.
  */
 export const PAUSE_SUPPORTED = false;
-
-/** ASSUMED API CONTRACT: `POST /forms/:id/pause` / `POST /forms/:id/resume` ("Tạm dừng", Figma 10a); unused while `PAUSE_SUPPORTED` is false. */
-export function setPublisherFormPaused(id: string, paused: boolean): Promise<PublisherForm> {
-  return apiRequest(`${formPath(id)}/${paused ? "pause" : "resume"}`, {
-    method: "POST",
-    body: {},
-    schema: publisherFormSchema,
-  });
-}
-
-export interface DisputeInput {
-  reason: DisputeReason;
-  description: string;
-}
-
-/**
- * ASSUMED API CONTRACT: `POST /forms/:id/attempts/:attemptId/disputes`
- * (Figma 10c, FR-24). The backend holds the reward of a disputed Google Forms
- * attempt (`external-dispute:` ledger hold) but exposes no Publisher route yet.
- */
-export function submitAttemptDispute(formId: string, attemptId: string, input: DisputeInput): Promise<DisputeResult> {
-  return apiRequest(`${formPath(formId)}/attempts/${encodeURIComponent(attemptId)}/disputes`, {
-    method: "POST",
-    body: input,
-    schema: disputeResultSchema,
-  });
-}

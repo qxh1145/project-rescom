@@ -7,6 +7,12 @@ export type AttemptStatus =
   'IN_PROGRESS' | 'COMPLETED' | 'ABANDONED' | 'LOCKED';
 
 /**
+ * Story IR.2a: why an ABANDONED attempt closed — its reservation ran out
+ * (EXPIRED) or the Respondent cancelled it (CANCELLED).
+ */
+export type AttemptCloseReason = 'EXPIRED' | 'CANCELLED';
+
+/**
  * FR-22 / `completion-code-policy-v1` (decision E5-D1, provisional pending
  * OQ14): wrong completion codes allowed per attempt before it is LOCKED.
  */
@@ -55,6 +61,9 @@ export class SurveyAttemptEntity {
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
     public readonly codeVerification: AttemptCodeVerificationState = EMPTY_CODE_VERIFICATION_STATE,
+    /** Set with the ABANDONED transition; null otherwise and on legacy rows. */
+    public readonly closedReason: AttemptCloseReason | null = null,
+    public readonly closedAt: Date | null = null,
   ) {}
 
   isActive(cutoffDate: Date): boolean {
@@ -63,6 +72,32 @@ export class SurveyAttemptEntity {
 
   isExpired(cutoffDate: Date): boolean {
     return this.status === 'IN_PROGRESS' && this.startedAt < cutoffDate;
+  }
+
+  /**
+   * Story IR.2a (API-03): how a cancel resolves now (`cutoffDate` = now −
+   * reservation). Only an unexpired IN_PROGRESS attempt can be cancelled; a
+   * cancelled one replays; an expired IN_PROGRESS attempt reads closed
+   * reason EXPIRED although nothing was written yet.
+   */
+  cancellation(
+    cutoffDate: Date,
+  ):
+    | { kind: 'CANCELLABLE' | 'ALREADY_CANCELLED' }
+    | { kind: 'NOT_IN_PROGRESS'; closedReason: 'EXPIRED' | null } {
+    if (this.status === 'ABANDONED' && this.closedReason === 'CANCELLED') {
+      return { kind: 'ALREADY_CANCELLED' };
+    }
+    if (this.isActive(cutoffDate)) {
+      return { kind: 'CANCELLABLE' };
+    }
+    return {
+      kind: 'NOT_IN_PROGRESS',
+      closedReason:
+        this.isExpired(cutoffDate) || this.closedReason === 'EXPIRED'
+          ? 'EXPIRED'
+          : null,
+    };
   }
 }
 

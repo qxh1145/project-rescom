@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { MobileTitleBar } from "@/components/layout/app/MobileTopBar";
 import { Alert } from "@/components/ui/Alert";
+import { PILOT_BUILD } from "@/lib/pilot-scope";
 import { SUPPORT_MAILTO } from "@/lib/feedback/error-pages";
 import {
   consentLabel,
@@ -21,7 +22,7 @@ import { ProfileCard } from "./ProfileCard";
 
 /**
  * Figma 15g "Tài khoản" — mobile 63:1426 (card + settings list), desktop
- * 63:483 (`AccountDesktop`). Rows without a drawn destination (ASSUMED):
+ * 63:483 (`AccountDesktop`). Rows without a drawn destination (ASSUMED (design)):
  * Google → password confirmation + VERIFIED link/start (`GoogleLinkDialog`),
  * Mật khẩu → 15 "Quên mật khẩu", Thiết bị and Dữ liệu chất lượng are
  * information only, Trợ giúp → support email.
@@ -69,22 +70,26 @@ export function AccountScreen() {
             label="Dữ liệu chất lượng"
             value={consent.data ? consentLabel(consent.data) : null}
           />
-          <MenuRow
-            icon="refresh"
-            label="Độ tin cậy câu trả lời"
-            value={reliability.data ? RELIABILITY_LEVEL_LABEL[reliability.data.level] : null}
-            href="/account/trust"
-          />
+          {PILOT_BUILD ? null : (
+            <MenuRow
+              icon="refresh"
+              label="Độ tin cậy câu trả lời"
+              value={reliability.data ? RELIABILITY_LEVEL_LABEL[reliability.data.level] : null}
+              href="/account/trust"
+            />
+          )}
         </MenuList>
 
         <SectionLabel id="account-other">Khác</SectionLabel>
         <MenuList labelledBy="account-other">
-          <MenuRow
-            icon="flag"
-            label="Bảng xếp hạng"
-            value={engagement.data ? weeklyRankLabel(engagement.data.weeklyRank) : null}
-            href="/leaderboard"
-          />
+          {PILOT_BUILD ? null : (
+            <MenuRow
+              icon="flag"
+              label="Bảng xếp hạng"
+              value={engagement.data ? weeklyRankLabel(engagement.data.weeklyRank) : null}
+              href="/leaderboard"
+            />
+          )}
           <MenuRow icon="help-circle" label="Trợ giúp & hỗ trợ" href={SUPPORT_MAILTO} />
           <MenuRow icon="log-out" label="Đăng xuất" onClick={() => void signOut()} danger busy={pending} />
         </MenuList>

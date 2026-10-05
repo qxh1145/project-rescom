@@ -48,7 +48,7 @@ export function FraudLogTable({ items, loading }: FraudLogTableProps) {
             : null}
           {!loading && items.length === 0 ? (
             <tr>
-              {/* ASSUMED: empty state not drawn. */}
+              {/* ASSUMED (design): empty state not drawn. */}
               <td colSpan={5} className="py-10 text-center text-body-sm text-ink-muted">
                 Không có mục FraudLog nào khớp bộ lọc.
               </td>

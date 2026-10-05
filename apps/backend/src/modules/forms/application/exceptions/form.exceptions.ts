@@ -261,7 +261,10 @@ export class FormModerationRequiredException extends Error {
  *   (a withdrawn submission cannot be put live by reopening it).
  */
 export type FormNotReopenableReason =
-  'CLOSED_BY_ADMIN_OR_MODERATION' | 'VERSION_NOT_APPROVED';
+  | 'CLOSED_BY_ADMIN_OR_MODERATION'
+  | 'VERSION_NOT_APPROVED'
+  // Plan 2.3: the system closed it because the sample target was met.
+  | 'SAMPLE_TARGET_REACHED';
 
 /**
  * Story 8.1 / decision E8-D1: the survey cannot be reopened with additional
@@ -283,7 +286,9 @@ export class FormNotReopenableException extends Error {
     super(
       reason === 'CLOSED_BY_ADMIN_OR_MODERATION'
         ? `Form "${id}" cannot be reopened: it was closed by an Admin or rejected by moderation, which is final. Only a survey its owner closed can be reopened.`
-        : `Form "${id}" cannot be reopened because its current version was never approved for the Marketplace.`,
+        : reason === 'SAMPLE_TARGET_REACHED'
+          ? `Form "${id}" cannot be reopened: it closed automatically when its sample target was met.`
+          : `Form "${id}" cannot be reopened because its current version was never approved for the Marketplace.`,
     );
     this.name = 'FormNotReopenableException';
     this.reason = reason;
@@ -371,5 +376,49 @@ export class IdempotencyKeyConflictException extends Error {
         : 'The survey created with this Idempotency-Key has changed since; its creation response can no longer be replayed.',
     );
     this.name = 'IdempotencyKeyConflictException';
+  }
+}
+
+/**
+ * Story IR.4a: the requested version does not exist on this form (unknown
+ * `versionNumber` / `versionId`, or a version of another form). HTTP 404.
+ */
+export class FormVersionNotFoundException extends Error {
+  readonly code = 'FORM_VERSION_NOT_FOUND';
+
+  constructor() {
+    super('Form version not found.');
+    this.name = 'FormVersionNotFoundException';
+  }
+}
+
+/**
+ * Story IR.4a: a responses `cursor` that is malformed or belongs to another
+ * version. HTTP 400.
+ */
+export class InvalidResultsCursorException extends Error {
+  readonly code = 'INVALID_CURSOR';
+
+  constructor() {
+    super('The cursor is invalid or belongs to another version.');
+    this.name = 'InvalidResultsCursorException';
+  }
+}
+
+/**
+ * Story IR.4a AC4 (NFR-30): the version has more listed responses than the
+ * analytics scan cap. HTTP 422 with `details: { totalResponses, limit }`.
+ */
+export class PublisherAnalyticsLimitExceededException extends Error {
+  readonly code = 'PUBLISHER_ANALYTICS_LIMIT_EXCEEDED';
+
+  constructor(
+    readonly totalResponses: number,
+    readonly limit: number,
+  ) {
+    super(
+      `Analytics are limited to ${limit} responses per version; this version has ${totalResponses}.`,
+    );
+    this.name = 'PublisherAnalyticsLimitExceededException';
   }
 }

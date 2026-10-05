@@ -19,7 +19,7 @@ const TITLE_ID = "report-missing-code-title";
 
 /**
  * "Không thấy mã… Báo Admin" / "Báo Admin kiểm tra" (Figma 5, 5c). The dialog
- * itself is ASSUMED (not drawn): reason textarea → VERIFIED
+ * itself is ASSUMED (design) (not drawn): reason textarea → VERIFIED
  * `POST /attempts/:id/report-missing-code` → success state.
  */
 export function ReportMissingCodeDialog({ attemptId, open, onClose }: ReportMissingCodeDialogProps) {

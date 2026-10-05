@@ -88,6 +88,7 @@ export function GoogleFormAttempt({ attemptId }: { attemptId: string }) {
           open={cancelOpen}
           onClose={() => setCancelOpen(false)}
           onCancelled={state.cancelled}
+          onCompleted={state.completed}
         />
       ) : null}
     </>

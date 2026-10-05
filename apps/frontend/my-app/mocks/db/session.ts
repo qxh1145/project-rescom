@@ -1,5 +1,5 @@
-import { mockRepository } from "@/lib/mock/repository.ts";
-import { loadStore } from "@/lib/mock/store.ts";
+import { mockRepository } from "../legacy/repository";
+import { loadStore } from "../legacy/store";
 import { toMockUuid } from "../data/auth";
 
 export interface MockSessionUser {
@@ -14,7 +14,7 @@ export interface MockSessionUser {
 
 /**
  * The one seam between new MSW handlers and the signed-in user. Sessions still
- * live in the legacy demo store (`lib/mock`) because the auth handlers use it;
+ * live in the legacy demo store (`mocks/legacy`) because the auth handlers use it;
  * swap this implementation when auth moves into `mocks/db`.
  */
 export async function getMockSessionUser(): Promise<MockSessionUser | null> {

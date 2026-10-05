@@ -1,4 +1,5 @@
 import { http, type RequestHandler } from "msw";
+import { adminOverviewSchema } from "@rescom/schemas";
 import { apiUrl } from "@/lib/api/config";
 import { buildAdminOverview } from "../data/admin-overview";
 import { ok } from "../envelope";
@@ -7,12 +8,12 @@ import { requireMockAdmin } from "./admin";
 
 /** Admin "Tổng quan" (Figma 11, 62:4070). */
 export const adminOverviewHandlers: RequestHandler[] = [
-  // ASSUMED API CONTRACT: GET /admin/overview (lib/admin/overview-service.ts).
+  // VERIFIED: GET /admin/overview (lib/admin/overview-service.ts, shared `adminOverviewSchema`).
   http.get(apiUrl("/admin/overview"), async () => {
     const forced = await applyScenario("admin");
     if (forced) return forced;
     const admin = await requireMockAdmin();
     if (admin instanceof Response) return admin;
-    return ok(buildAdminOverview());
+    return ok(adminOverviewSchema.parse(buildAdminOverview()));
   }),
 ];

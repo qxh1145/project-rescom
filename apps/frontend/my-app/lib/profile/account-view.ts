@@ -111,7 +111,7 @@ export function studySummary(answers: OnboardingAnswers, currentYear: number): s
   return text || EMPTY_FIELD_VALUE;
 }
 
-/** "Đã đồng ý v1 · 26/09" (Vietnam time) or "Chưa đồng ý" (ASSUMED copy). */
+/** "Đã đồng ý v1 · 26/09" (Vietnam time) or "Chưa đồng ý" (ASSUMED (design) copy). */
 export function consentLabel(consent: IntegrityConsent): string {
   if (consent.acceptedVersion === null) return "Chưa đồng ý";
   if (!consent.acceptedAt) return `Đã đồng ý v${consent.acceptedVersion}`;
@@ -153,7 +153,7 @@ export interface TierCardView {
 /**
  * "Làm thêm 18 khảo sát để được ưu tiên hiển thị trên Khám phá." With enough
  * surveys but no promotion yet: at level 1 only the profile gate of level 2 is
- * left (ASSUMED copy); from level 2 the tier is simply not recomputed yet —
+ * left (ASSUMED (design) copy); from level 2 the tier is simply not recomputed yet —
  * the same wording as 16 "Hạng thành viên" (`TierScreen`).
  */
 export function nextTierHint(level: number, remaining: number, unlockPhrase: string): string {

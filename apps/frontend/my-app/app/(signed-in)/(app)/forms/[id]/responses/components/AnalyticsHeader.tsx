@@ -1,7 +1,6 @@
 import { formatShortDateTime } from "@/lib/format/date-time";
-import type { FormAnalytics } from "@/lib/forms/results-analytics-service";
-import { formatCount, formatPercent, headerMetrics, responsesLabel } from "@/lib/forms/results-analytics";
-import { formatDurationLong } from "@/lib/forms/results-view";
+import type { AvailableFormAnalytics } from "@/lib/forms/results-analytics-service";
+import { headerMetrics, responsesLabel } from "@/lib/forms/results-analytics";
 
 interface Tile {
   label: string;
@@ -11,25 +10,13 @@ interface Tile {
 
 /**
  * Tóm tắt header: "321 câu trả lời" + stat tiles in the quality-screen style.
- * A tile is drawn only when the data backs it (`headerMetrics` → null hides it).
+ * A tile is drawn only when the data backs it (`headerMetrics` → null hides
+ * it). No completion-rate or average-time tile: FR-41 funnel metrics are
+ * deferred (IR.4a R4, Q6).
  */
-export function AnalyticsHeader({ analytics }: { analytics: FormAnalytics }) {
+export function AnalyticsHeader({ analytics }: { analytics: AvailableFormAnalytics }) {
   const metrics = headerMetrics(analytics);
   const tiles: Tile[] = [];
-  if (metrics.completionRate !== null && analytics.startedCount !== null) {
-    tiles.push({
-      label: "Tỷ lệ hoàn thành",
-      value: formatPercent(metrics.completionRate),
-      caption: `${formatCount(metrics.totalResponses)} / ${formatCount(analytics.startedCount)} lượt bắt đầu`,
-    });
-  }
-  if (metrics.averageDurationSeconds !== null) {
-    tiles.push({
-      label: "Thời gian trung bình",
-      value: formatDurationLong(metrics.averageDurationSeconds),
-      caption: "mỗi lượt hoàn thành",
-    });
-  }
   if (metrics.lastResponseAt !== null) {
     tiles.push({
       label: "Câu trả lời gần nhất",
@@ -49,10 +36,11 @@ export function AnalyticsHeader({ analytics }: { analytics: FormAnalytics }) {
       {tiles.length ? (
         <ul className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
           {tiles.map((tile) => (
+            // Fixed line boxes (18 · 26 · 18 px), mirrored by `AnalyticsSkeleton`, so loading does not shift the page.
             <li key={tile.label} className="flex flex-col gap-1.5 rounded-[18px] border border-line bg-surface p-4 lg:p-4.5">
-              <span className="text-caption font-semibold text-ink-muted">{tile.label}</span>
+              <span className="text-caption leading-[18px] font-semibold text-ink-muted">{tile.label}</span>
               <span className="text-[20px] leading-[26px] font-extrabold text-ink lg:text-[24px]">{tile.value}</span>
-              <span className="text-[12px] text-ink-muted">{tile.caption}</span>
+              <span className="text-[12px] leading-[18px] text-ink-muted">{tile.caption}</span>
             </li>
           ))}
         </ul>

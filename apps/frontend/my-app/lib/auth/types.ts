@@ -1,4 +1,4 @@
-import type { LoginDto, RegisterDto, SanitizedUser } from "@rescom/schemas";
+import type { ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto, SanitizedUser } from "@rescom/schemas";
 
 /** `{ id, email, role, status }` — the backend never exposes more on auth routes. */
 export type AuthUser = SanitizedUser;
@@ -40,10 +40,11 @@ export interface DemoAccount {
   description: string;
 }
 
-/** ASSUMED API CONTRACT: body of POST /auth/password/forgot. */
-export interface PasswordResetRequest {
-  email: string;
-}
+/** VERIFIED (plan 5.4): body of POST /auth/password/forgot. */
+export type PasswordResetRequest = ForgotPasswordDto;
+
+/** VERIFIED (plan 5.4): body of POST /auth/password/reset. */
+export type NewPasswordRequest = ResetPasswordDto;
 
 /** VERIFIED: `data` of POST /auth/google/link/start with `Accept: application/json`. */
 export interface GoogleLinkStartResponse {

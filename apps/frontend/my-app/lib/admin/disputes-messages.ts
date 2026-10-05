@@ -1,7 +1,7 @@
 import { isApiError } from "../api/api-error.ts";
 
 /**
- * Vietnamese copy for "Khiếu nại & báo lỗi" failures. Codes: ASSUMED case
+ * Vietnamese copy for "Khiếu nại & báo lỗi" failures. Codes: ASSUMED (design) case
  * codes of `disputes-service.ts`, ledger codes of `resolveDisputeHold`
  * (`economy.exceptions.ts`), `VALIDATION_ERROR` of the VERIFIED reset route.
  */
@@ -32,6 +32,8 @@ const RESOLVE_MESSAGES: Record<string, string> = {
   INVALID_LEDGER_OPERATION: "Không còn điểm đang giữ cho khiếu nại này.",
   LEDGER_COMMAND_IN_PROGRESS: "Sổ cái đang xử lý một thao tác khác trên lượt làm này. Thử lại sau giây lát.",
   FORBIDDEN: "Chỉ Admin mới xử lý được khiếu nại.",
+  // The code `RolesGuard` actually sends for a non-admin (`auth.exceptions.ts`).
+  FORBIDDEN_RESOURCE: "Chỉ Admin mới xử lý được khiếu nại.",
 };
 
 /** Resolve / reset failures. */

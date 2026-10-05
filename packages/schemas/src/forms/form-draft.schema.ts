@@ -11,6 +11,8 @@ import { surveyTargetingSchema, SurveyTargetingCriteria } from "./form-targeting
 import { externalSurveyUrlSchema } from "./external-url.schema";
 import { estimatedDurationMinutesSchema } from "../economy/pricing.schema";
 import { MAX_PAGINATION_OFFSET } from "../common/pagination.schema";
+import type { FormCloseKind } from "./form-publish.schema";
+import { formDeadlineAtSchema, formTopicEnum, type FormTopic } from "./form-topic.schema";
 
 export const formTypeEnum = z.enum(["INTERNAL", "EXTERNAL"]);
 export type FormTypeEnum = z.infer<typeof formTypeEnum>;
@@ -164,6 +166,14 @@ export const createFormDraftSchema = z
     schema: draftFormDefinitionSchema.optional(),
     targetingJson: surveyTargetingSchema.optional().nullable(),
     externalUrl: externalSurveyUrlSchema.optional().nullable(),
+    /** Plan 2.2: the survey topic (`FORM_TOPICS`); null = none chosen. */
+    topic: formTopicEnum.optional().nullable(),
+    /**
+     * Story IR.2b Q1: collection deadline (1 h – 180 d ahead, checked by the
+     * server); null = no deadline. New starts stop at it and the survey closes
+     * (refunding its leftover Escrow) shortly after.
+     */
+    deadlineAt: formDeadlineAtSchema.optional().nullable(),
   })
   .strict();
 
@@ -228,6 +238,10 @@ export const updateFormDraftSchema = z
      */
     targetingJson: surveyTargetingSchema.optional().nullable(),
     externalUrl: externalSurveyUrlSchema.optional().nullable(),
+    /** Plan 2.2: `null` clears the topic. */
+    topic: formTopicEnum.optional().nullable(),
+    /** Story IR.2b Q1: `null` clears the deadline; editable only in DRAFT. */
+    deadlineAt: formDeadlineAtSchema.optional().nullable(),
   })
   .strict();
 
@@ -286,11 +300,15 @@ export interface FormDetailDto {
   /** Estimated completion time in minutes (decision E6-D2); null when unset. */
   estimatedDurationMinutes?: number | null;
   /**
-   * Who closed the survey most recently (decision E8-D1): `OWNER`, `ADMIN` or
-   * `MODERATION`; null when it was never closed (or closed before the close
-   * kind was recorded). Only an `OWNER` close can be reopened.
+   * Who closed the survey most recently (decision E8-D1, `formCloseKindEnum`);
+   * null when it was never closed (or closed before the close kind was
+   * recorded). Only an `OWNER` close can be reopened.
    */
-  closeKind?: "OWNER" | "ADMIN" | "MODERATION" | null;
+  closeKind?: FormCloseKind | null;
+  /** Plan 2.2: the survey topic (`FORM_TOPICS`); null when none was chosen. */
+  topic?: FormTopic | null;
+  /** Story IR.2b: collection deadline (ISO); null = no deadline. */
+  deadlineAt?: string | null;
   /**
    * `GET /forms/:id` only (Phase 5 M1/M2): completed participations so far
    * (quota definition, guests included).
@@ -302,10 +320,33 @@ export interface FormDetailDto {
    * responses excluded). `null` when the server cannot compute it.
    */
   escrowLocked?: number | null;
+  /**
+   * `GET /forms/:id` only (IR.4a / mock-off plan Phase 3): when the survey
+   * entered the moderation queue (`MODERATION_QUEUE` only, else null).
+   */
+  submittedAt?: string | null;
+  /** `GET /forms/:id` only: when the survey closed (`CLOSED` only, else null). */
+  closedAt?: string | null;
+  /**
+   * `GET /forms/:id` only: the Admin rejection of a survey closed by moderation
+   * (`closeKind` MODERATION), from its `SurveyModerationDecision`; null otherwise.
+   */
+  rejection?: FormRejectionDto | null;
   currentVersion: FormVersionDto;
   createdAt: string;
   updatedAt: string;
 }
+
+/** Admin rejection of a submitted version (`SurveyModerationDecision`, outcome REJECTED). */
+export const formRejectionSchema = z
+  .object({
+    reason: z.string(),
+    /** Escrow points refunded to the Publisher by the rejection. */
+    refundAmount: z.number().int().nonnegative(),
+    decidedAt: z.string().datetime({ offset: true }),
+  })
+  .strict();
+export type FormRejectionDto = z.infer<typeof formRejectionSchema>;
 
 /**
  * Code-review decision E5-D4 (2026-09-26, option A — strict): "Create New
@@ -343,7 +384,15 @@ export interface FormSummaryDto {
   estimatedDurationMinutes?: number | null;
   latestVersionNumber: number;
   /** Who closed the survey most recently (see `FormDetailDto.closeKind`). */
-  closeKind: "OWNER" | "ADMIN" | "MODERATION" | null;
+  closeKind: FormCloseKind | null;
+  /** Plan 2.2 (see `FormDetailDto.topic`). */
+  topic?: FormTopic | null;
+  /** Story IR.2b (see `FormDetailDto.deadlineAt`). */
+  deadlineAt?: string | null;
+  /** Mock-off plan Phase 3 (see `FormDetailDto.submittedAt`). */
+  submittedAt?: string | null;
+  /** Mock-off plan Phase 3 (see `FormDetailDto.closedAt`). */
+  closedAt?: string | null;
   /** Completed participations so far (quota definition, guests included). */
   completedCompletions: number;
   /**

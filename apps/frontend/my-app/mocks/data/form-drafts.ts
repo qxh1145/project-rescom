@@ -1,3 +1,4 @@
+import type { FormTopic } from "@rescom/schemas";
 import { escrowDrawPerCompletion, type DraftFormDefinition, type FormBlock, type FormStatusEnum } from "@rescom/schemas";
 import type { AiConversation } from "@/lib/forms/builder-ai";
 import { createCollection, hoursAgo, mockId, nowIso } from "../db/store";
@@ -22,6 +23,9 @@ export interface MockFormDraft {
   estimatedDurationMinutes: number | null;
   schema: DraftFormDefinition;
   targetingJson: unknown;
+  /** Plan 2.2 / Story IR.2b (`PATCH /forms/:id/draft` parity). */
+  topic?: FormTopic | null;
+  deadlineAt?: string | null;
   versionNumber: number;
   escrowLocked: number;
   createdAt: string;
@@ -133,6 +137,7 @@ export function syncPublisherForm(draft: MockFormDraft): void {
     estimatedEffortSeconds: (draft.estimatedDurationMinutes ?? 0) * 60 || draft.schema.metadata.expectedEffortSeconds,
     submittedAt: draft.submittedAt,
     versionNumber: draft.versionNumber,
+    deadlineAt: draft.deadlineAt ?? null,
   };
   if (findPublisherForm(draft.id)) {
     updatePublisherForm(draft.id, (form) => Object.assign(form, summary));
@@ -146,9 +151,7 @@ export function syncPublisherForm(draft: MockFormDraft): void {
     externalUrl: null,
     createdAt: draft.createdAt,
     publishedAt: null,
-    deadlineAt: null,
     closedAt: null,
-    hiddenFromMarketplace: true,
     rejection: null,
     ...summary,
   });
@@ -244,9 +247,7 @@ export function ensureDemoRunningForm(ownerEmail: string): void {
     form.completedCompletions = completed;
     form.publishedAt = hoursAgo(24 * 2);
     form.deadlineAt = hoursAgo(-24 * 7);
-    form.hiddenFromMarketplace = false;
     form.questionCount = blocks.length;
-    form.audienceLabel = "Mọi sinh viên";
   });
   demoRunningForms.update((all) => {
     all[ownerEmail] = draft.id;

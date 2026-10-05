@@ -4,17 +4,18 @@ import { useMemo } from "react";
 import { useApiQuery } from "@/lib/api/use-api-query";
 import { getFormVersion, getFormVersions } from "@/lib/forms/results-service";
 import { diffVersions, draftAndBase, sortVersionsDesc } from "@/lib/forms/results-versions";
+import { VERSION_DIFF_ENABLED } from "@/lib/forms/results-scope";
 import { useSessionLossRedirect } from "@/lib/session/use-session-loss";
 
 /**
  * 17a data: the version list (VERIFIED route), then — when a draft sits on
- * top of a published version — both versions' blocks (ASSUMED route) to list
- * "Thay đổi so với vN".
+ * top of a published version — both versions' blocks (`GET /forms/:id/versions/:versionId`,
+ * Story IR.4a) to list "Thay đổi so với vN", diffed client-side (`VERSION_DIFF_ENABLED`).
  */
 export function useFormVersions(formId: string) {
   const list = useApiQuery(`form-versions:${formId}`, (signal) => getFormVersions(formId, signal));
   const { draft, base } = useMemo(() => draftAndBase(list.data ?? []), [list.data]);
-  const pairKey = draft && base ? `form-version-diff:${formId}:${base.id}:${draft.id}` : null;
+  const pairKey = VERSION_DIFF_ENABLED && draft && base ? `form-version-diff:${formId}:${base.id}:${draft.id}` : null;
   const diff = useApiQuery(pairKey, async (signal) => {
     if (!draft || !base) return [];
     const [previous, next] = await Promise.all([

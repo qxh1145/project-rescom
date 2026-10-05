@@ -243,7 +243,7 @@ function EscrowRows({ quote, large = false }: { quote: EscrowQuote; large?: bool
 /** Figma 9c right column: escrow summary + survey summary. */
 export function RewardAside({ draft, quote }: { draft: GoogleFormWizardDraft; quote: EscrowQuote | null }) {
   const band = DURATION_BANDS.find((item) => item.id === draft.durationBand);
-  const topic = TOPIC_OPTIONS.find((option) => option.value === draft.topic)?.value;
+  const topic = TOPIC_OPTIONS.find((option) => option.value === draft.topic)?.label;
   return (
     <>
       <section aria-label="Tóm tắt ký quỹ" data-tour="escrow-summary" className="rounded-[20px] border border-line bg-surface px-5 py-5">

@@ -47,8 +47,6 @@ export interface MockPublisherForm {
   /** Collection deadline (Figma "hạn 05/10 · còn 9 ngày"). */
   deadlineAt: string | null;
   closedAt: string | null;
-  /** Hidden from Khám phá once full (Figma "đã ẩn khỏi Khám phá"). */
-  hiddenFromMarketplace: boolean;
   /** Admin rejection (Figma "Bị từ chối · Lý do … · Đã hoàn 120 điểm"). */
   rejection: { reason: string; refundedPoints: number; rejectedAt: string } | null;
   /** Current version number (page 17a "Phiên bản"). */
@@ -56,12 +54,9 @@ export interface MockPublisherForm {
   /**
    * Phase 5B (forms-manage) additions, optional so other seeds stay valid.
    * `closeKind` = backend `FormDetailDto.closeKind` (only `OWNER` reopens);
-   * `pausedAt` = ASSUMED "Tạm dừng" (Figma 10a); `audienceLabel` = Figma 10a
-   * targeting summary; `questionCount` = Figma 17 "8 câu hỏi".
+   * `questionCount` = block count of the mock moderation preview (not part of the API response).
    */
   closeKind?: "OWNER" | "ADMIN" | "MODERATION" | null;
-  pausedAt?: string | null;
-  audienceLabel?: string | null;
   questionCount?: number | null;
 }
 
@@ -86,7 +81,6 @@ function seed(): MockPublisherForm[] {
       publishedAt: null,
       deadlineAt: null,
       closedAt: null,
-      hiddenFromMarketplace: true,
       rejection: null,
       versionNumber: 1,
     },
@@ -108,10 +102,8 @@ function seed(): MockPublisherForm[] {
       publishedAt: hoursAgo(24 * 4),
       deadlineAt: hoursAgo(-24 * 9),
       closedAt: null,
-      hiddenFromMarketplace: false,
       rejection: null,
       versionNumber: 1,
-      audienceLabel: "Marketing, QTKD · 18–25 tuổi",
     },
     {
       id: PUBLISHER_FORM_IDS.housingNearCampus,
@@ -130,7 +122,6 @@ function seed(): MockPublisherForm[] {
       publishedAt: hoursAgo(24 * 12),
       deadlineAt: null,
       closedAt: hoursAgo(24 * 5),
-      hiddenFromMarketplace: true,
       rejection: null,
       versionNumber: 2,
       // ASSUMED: the owner closed it once the quota was full, so it can be reopened (Figma 10b).
@@ -155,7 +146,6 @@ function seed(): MockPublisherForm[] {
       publishedAt: null,
       deadlineAt: null,
       closedAt: hoursAgo(24 * 6),
-      hiddenFromMarketplace: true,
       rejection: {
         reason: "Form yêu cầu đăng nhập tài khoản trường nên người ngoài không mở được.",
         refundedPoints: 120,

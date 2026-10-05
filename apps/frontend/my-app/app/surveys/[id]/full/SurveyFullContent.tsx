@@ -5,7 +5,10 @@ import { Spinner } from "@/components/ui/Spinner";
 import { useApiQuery } from "@/lib/api/use-api-query";
 import { getSurveySummary } from "@/lib/participation/survey-form-service";
 
-/** Loads the survey (ASSUMED public `GET /surveys/:id`); without it the screen drops the survey card. */
+/**
+ * Loads the survey (public `GET /surveys/:id`); without it — a closed survey
+ * is a 404 — the screen drops the survey card.
+ */
 export function SurveyFullContent({ surveyId }: { surveyId: string }) {
   const summary = useApiQuery(`survey-summary:${surveyId}`, (signal) => getSurveySummary(surveyId, signal));
 

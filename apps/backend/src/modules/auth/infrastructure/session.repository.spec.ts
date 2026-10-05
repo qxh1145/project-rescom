@@ -80,7 +80,7 @@ describe('SessionRepository (Task 2 Concurrency & Versioning)', () => {
     expect(fetchedS1?.revoked).toBe(true);
 
     // 3rd login after revoking session 2
-    await repository.revokeSession('s2');
+    await repository.revokeSession('s2', 'LOGOUT');
     const session3 = await repository.replaceUserSession(
       userId,
       createSampleInput('s3', 'c3', userId),

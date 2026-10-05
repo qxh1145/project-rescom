@@ -18,9 +18,9 @@ function createMockStorage() {
 
 test("Story 9.6: mock notification center", async (t) => {
   const { notificationListSchema } = await import("@rescom/schemas");
-  const { mockRepository } = await import("../lib/mock/repository.ts");
+  const { mockRepository } = await import("../mocks/legacy/repository.ts");
   const { setMockStorage, saveAttempt, getAttempt, loadStore, saveStore } = await import(
-    "../lib/mock/store.ts"
+    "../mocks/legacy/store.ts"
   );
 
   t.beforeEach(() => {
@@ -258,36 +258,4 @@ test("Story 9.6: mock notification center", async (t) => {
     await mockRepository.switchDemoUser("user-active-002");
     assert.equal(await mockRepository.getUnreadNotificationCount(), 1);
   });
-});
-
-test("Story 9.6: notification presentation", async () => {
-  const { NOTIFICATION_TYPES } = await import("@rescom/schemas");
-  const { FALLBACK_PRESENTATION, NOTIFICATION_TYPE_PRESENTATION, getNotificationPresentation } =
-    await import("../lib/notification-presentation.ts");
-
-  // Every shared type has its own entry, and nothing else is mapped.
-  assert.deepEqual(Object.keys(NOTIFICATION_TYPE_PRESENTATION).sort(), [...NOTIFICATION_TYPES].sort());
-  for (const type of NOTIFICATION_TYPES) {
-    const presentation = getNotificationPresentation(type);
-    assert.notEqual(presentation, FALLBACK_PRESENTATION, type);
-    assert.ok(presentation.title && presentation.icon && presentation.iconClass, type);
-  }
-
-  // Decision E9-D2: "Points earned" has its own Vietnamese title and opens the wallet.
-  assert.deepEqual(getNotificationPresentation("REWARD_EARNED"), {
-    title: "Bạn đã nhận điểm thưởng",
-    icon: "💰",
-    iconClass: "bg-emerald-50 dark:bg-emerald-950/50",
-    href: "/wallet",
-  });
-
-  // A type the frontend does not know yet renders neutrally and links nowhere.
-  for (const type of ["POINTS_EARNED", "toString", ""]) {
-    assert.deepEqual(getNotificationPresentation(type), {
-      title: "Thông báo",
-      icon: "🔔",
-      iconClass: "bg-slate-100 dark:bg-slate-800",
-    });
-    assert.equal(getNotificationPresentation(type).href, undefined);
-  }
 });

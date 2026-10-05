@@ -5,6 +5,8 @@ import { StarRating } from "@/components/ui/StarRating";
 import { MultipleChoiceAnswer, SingleChoiceAnswer } from "./answers/ChoiceAnswer";
 import { ScaleAnswer, scaleValues } from "./answers/ScaleAnswer";
 import { DateAnswer, LongTextAnswer, NumberAnswer, ShortTextAnswer } from "./answers/TextAnswers";
+import { FileUploadAnswer, PreviewFileAnswer } from "./answers/FileUploadAnswer";
+import type { FileUploadControls } from "../hooks/use-file-uploads";
 
 interface QuestionCardProps {
   block: FormBlock;
@@ -14,6 +16,8 @@ interface QuestionCardProps {
   onChange: (value: unknown) => void;
   /** Free-text fields report "done typing" (telemetry) on blur. */
   onBlur?: () => void;
+  /** Upload state of a `file_upload` question (the runner's); absent in the builder preview. */
+  upload?: FileUploadControls;
 }
 
 /**
@@ -21,7 +25,7 @@ interface QuestionCardProps {
  * radius / 24px padding on desktop, 18px / 18px on mobile; "3. Title *" in
  * bold 18px (16px mobile) with a red asterisk for required questions.
  */
-export function QuestionCard({ block, number, value, error, onChange, onBlur }: QuestionCardProps) {
+export function QuestionCard({ block, number, value, error, onChange, onBlur, upload }: QuestionCardProps) {
   const titleId = `q-${block.id}-title`;
   const errorId = error ? `q-${block.id}-error` : undefined;
   const descriptionId = block.description ? `q-${block.id}-description` : undefined;
@@ -109,10 +113,17 @@ export function QuestionCard({ block, number, value, error, onChange, onBlur }: 
             required={block.required}
             {...common}
           />
+        ) : !upload ? (
+          <PreviewFileAnswer block={block} value={value} onChange={onChange} inputId={inputId} {...common} />
         ) : (
-          <p className="rounded-field bg-surface-muted px-3.5 py-3 text-body-sm text-ink-muted">
-            Câu hỏi tải tệp chưa hỗ trợ trong ứng dụng. Hãy liên hệ người đăng khảo sát.
-          </p>
+          <FileUploadAnswer
+            block={block}
+            value={value}
+            controls={upload}
+            inputId={inputId}
+            invalid={Boolean(error)}
+            {...common}
+          />
         )}
       </div>
 

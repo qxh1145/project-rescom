@@ -10,7 +10,7 @@ import { getFormVersion, getFormVersions } from "@/lib/forms/results-service";
 import { useSessionLossRedirect } from "@/lib/session/use-session-loss";
 import { ResultsEmpty, ResultsError, ResultsLoading } from "../../responses/components/ResultsStatus";
 
-/** Read-only question list of one version ("Xem (chỉ đọc)", 17a). ASSUMED layout — not drawn in Figma. */
+/** Read-only question list of one version ("Xem (chỉ đọc)", 17a). ASSUMED (design) layout — not drawn in Figma. */
 export function VersionReadOnly({ versionNumber }: { versionNumber: number }) {
   const { id } = useParams<{ id: string }>();
   const query = useApiQuery(`form-version-view:${id}:${versionNumber}`, async (signal) => {

@@ -1,4 +1,4 @@
-import { loadStore } from "@/lib/mock/store.ts";
+import { loadStore } from "../legacy/store";
 import {
   disputeCaseSchema,
   type DisputeCase,

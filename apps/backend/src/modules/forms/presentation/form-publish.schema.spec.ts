@@ -56,15 +56,22 @@ describe('Story 2.6 / 8.1: Form Publish Lifecycle & Immutability Specification',
       expect(intoPublished).toEqual(['MODERATION_QUEUE']);
     });
 
-    it('records who closed a survey and lets only the owner reopen it', () => {
+    it('records who closed a survey and lets only the owner reopen it (plus a deadline close)', () => {
       expect(formCloseKindEnum.options).toEqual([
         'OWNER',
         'ADMIN',
         'MODERATION',
+        'DEADLINE',
+        'QUOTA',
       ]);
       expect(isOwnerReopenableClose('OWNER')).toBe(true);
       expect(isOwnerReopenableClose('ADMIN')).toBe(false);
       expect(isOwnerReopenableClose('MODERATION')).toBe(false);
+      // Story IR.2b Q3 (default): the owner may reopen a deadline close
+      // (with a new future-or-null deadline, enforced by the service).
+      expect(isOwnerReopenableClose('DEADLINE')).toBe(true);
+      // Plan 2.3: a QUOTA close stays NOT reopenable for now.
+      expect(isOwnerReopenableClose('QUOTA')).toBe(false);
       // A close recorded before the close kind existed fails closed.
       expect(isOwnerReopenableClose(null)).toBe(false);
       expect(isOwnerReopenableClose(undefined)).toBe(false);

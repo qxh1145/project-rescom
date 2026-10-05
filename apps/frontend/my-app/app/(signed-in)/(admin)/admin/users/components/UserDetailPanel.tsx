@@ -105,7 +105,7 @@ export function UserDetailPanel({ user, detailError, onRetryDetail, onUpdated }:
           </h2>
           <p className="mt-1.5 truncate text-caption text-ink-muted">{accountLineOf(user)}</p>
         </div>
-        {/* ASSUMED: status pill in the panel (the drawn user is active). */}
+        {/* ASSUMED (design): status pill in the panel (the drawn user is active). */}
         {status.tone !== "teal" ? <StatusPill tone={status.tone}>{status.label}</StatusPill> : null}
       </div>
 
@@ -153,7 +153,7 @@ export function UserDetailPanel({ user, detailError, onRetryDetail, onUpdated }:
 
       {locked ? (
         <div className="mt-4 flex flex-col gap-4">
-          {/* ASSUMED (not drawn): the locked state and "Mở khoá". */}
+          {/* ASSUMED (design) (not drawn): the locked state and "Mở khoá". */}
           <div className="rounded-field bg-danger-soft px-3.5 py-3">
             <p className="text-label font-bold text-danger-strong">Tài khoản đang bị khoá</p>
             {user.lockReason ? <p className="mt-1 text-body-sm text-ink">Lý do: {user.lockReason}</p> : null}
@@ -187,7 +187,7 @@ export function UserDetailPanel({ user, detailError, onRetryDetail, onUpdated }:
         {lockBlock ?? "Tài khoản bị khoá không đăng nhập được. Mở khoá sẽ trả lại toàn bộ quyền."}
       </p>
 
-      {/* ASSUMED (not drawn): role change, VERIFIED PATCH /admin/users/:id/role. */}
+      {/* ASSUMED (design) (not drawn): role change, VERIFIED PATCH /admin/users/:id/role. */}
       <div className="mt-5 border-t border-line-subtle pt-4">
         <div className="flex items-end gap-3">
           <Select

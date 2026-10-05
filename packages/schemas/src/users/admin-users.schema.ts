@@ -59,6 +59,12 @@ export const adminUserSchema = z
     status: userStatusSchema,
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
+    /**
+     * Reason given by the Admin who locked the account (identity audit log of
+     * the latest effective status change); null when the account is active or
+     * no reason was recorded.
+     */
+    lockReason: z.string().nullable().optional(),
   })
   .strict();
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/ui/Icon";
 import type { PublisherForm } from "@/lib/forms/manage-service";
+import { SURVEY_QUALITY_ENABLED } from "@/lib/forms/results-scope";
 
 /** Child segment → tab. Tiến độ also stays active under its dialogs (reopen, complaints). */
 export type SurveyTab = "progress" | "responses" | "quality" | "versions";
@@ -27,7 +28,10 @@ export function SurveyTabs({ form, active }: { form: PublisherForm; active: Surv
       ? [
           { tab: "progress" as const, href: `/forms/${id}`, label: "Tiến độ", count: null },
           { tab: "responses" as const, href: `/forms/${id}/responses`, label: "Câu trả lời", count: form.completedCompletions },
-          { tab: "quality" as const, href: `/forms/${id}/quality`, label: "Chất lượng", count: null },
+          // MSW-served in the hybrid mode (Epic 10 deferred): kept reachable for internal testing.
+          ...(SURVEY_QUALITY_ENABLED
+            ? [{ tab: "quality" as const, href: `/forms/${id}/quality`, label: "Chất lượng", count: null }]
+            : []),
           { tab: "versions" as const, href: `/forms/${id}/versions`, label: "Phiên bản", count: form.currentVersion.versionNumber },
         ]
       : [{ tab: "progress" as const, href: `/forms/${id}`, label: "Tiến độ", count: null }];

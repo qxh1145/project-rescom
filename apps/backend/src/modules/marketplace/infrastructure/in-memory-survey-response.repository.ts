@@ -202,6 +202,10 @@ export class InMemorySurveyResponseRepository implements SurveyResponseRepositor
       submittedAt: now,
     });
 
+    if (params.afterCreate) {
+      await params.afterCreate();
+    }
+
     return {
       outcome: 'CREATED',
       response: {

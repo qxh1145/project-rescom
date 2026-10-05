@@ -24,7 +24,7 @@ description: 'Perform a Cynical Review and produce a findings report. Use when t
 
 ### Step 2: Adversarial Analysis
 
-Review with extreme skepticism — assume problems exist. Find at least ten issues to fix or improve in the provided content.
+Review skeptically within the supplied change scope. Report only evidence-backed, actionable issues. There is no minimum finding count; zero findings is valid. Do not manufacture findings or expand scope to fill a quota.
 
 ### Step 3: Present Findings
 
@@ -33,5 +33,5 @@ Output findings as a Markdown list: descriptions only, no severity, priority, or
 
 ## HALT CONDITIONS
 
-- HALT if zero findings — this is suspicious, re-analyze or ask for guidance
+- If zero evidence-backed findings remain, report no findings and stop; do not repeat the review merely to find something.
 - HALT if content is empty or unreadable

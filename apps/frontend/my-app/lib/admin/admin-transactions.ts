@@ -41,7 +41,7 @@ export function matchesTransactionFilter(kind: HistoryKind, filter: TransactionF
 
 export type TransactionPeriod = "today" | "7d" | "30d" | "all";
 
-/** "Khoảng thời gian" select; Figma draws "Hôm nay", the other options are ASSUMED. */
+/** "Khoảng thời gian" select; Figma draws "Hôm nay", the other options are ASSUMED (design). */
 export const TRANSACTION_PERIODS = [
   { value: "today", label: "Hôm nay" },
   { value: "7d", label: "7 ngày" },
@@ -160,7 +160,7 @@ function titleOf(kind: HistoryKind, key: string): string {
   return TITLES[kind];
 }
 
-/** "Liên quan" fallback when the journal names no survey (Figma copy where drawn, else ASSUMED). */
+/** "Liên quan" fallback when the journal names no survey (Figma copy where drawn, else ASSUMED (design)). */
 function relatedFallback(kind: HistoryKind, key: string, description: string | null): string {
   switch (kind) {
     case "STARTER_GRANT":

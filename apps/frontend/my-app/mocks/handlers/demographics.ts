@@ -8,7 +8,7 @@ import {
   type DemographicProfileDto,
 } from "@rescom/schemas";
 import { apiUrl } from "@/lib/api/config";
-import { mockRepository } from "@/lib/mock/repository.ts";
+import { mockRepository } from "../legacy/repository";
 import { getMockSessionUser } from "../db/session";
 import { fail, missingCsrf, ok, unauthorized } from "../envelope";
 import { applyScenario, getActiveScenario } from "../scenarios";
@@ -17,7 +17,7 @@ import { applyScenario, getActiveScenario } from "../scenarios";
  * Mirrors `apps/backend/src/modules/users/presentation/demographics.controller.ts`
  * (VERIFIED): GET / PUT `/demographics`, POST `/demographics/survey`.
  *
- * The profile stays in the legacy demo store (`lib/mock`): the legacy
+ * The profile stays in the legacy demo store (`mocks/legacy`): the legacy
  * Marketplace, activation card and attempt pages still gate on it, and
  * `getMockSessionUser().profileComplete` (post-login redirect) derives from it.
  */

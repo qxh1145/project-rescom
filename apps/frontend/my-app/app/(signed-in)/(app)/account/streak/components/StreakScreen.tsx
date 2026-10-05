@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { DemoDataTag } from "@/components/ui/DemoDataTag";
 import { useState } from "react";
 import { MobileBackBar } from "@/components/layout/app/MobileTopBar";
 import { buttonClassName } from "@/components/ui/Button";
@@ -22,7 +23,7 @@ import { ErrorStatus, LoadingStatus } from "../../../_engagement/QueryStatus";
 const DAY_DISC: Record<StreakDayState, string> = {
   done: "bg-rating text-ink",
   missed: "bg-line-subtle",
-  // ASSUMED (not drawn): today, not counted yet.
+  // ASSUMED (design) (not drawn): today, not counted yet.
   today: "border-2 border-rating bg-surface",
   upcoming: "border-2 border-dashed border-line-strong",
 };
@@ -58,7 +59,7 @@ function WeekRow({ summary, today }: { summary: EngagementSummary; today: string
 }
 
 /**
- * Figma 16a "Chuỗi ngày" (63:4629, mobile). Desktop is derived (ASSUMED): the
+ * Figma 16a "Chuỗi ngày" (63:4629, mobile). Desktop is derived (ASSUMED (design)): the
  * same cards in a 720px column under the app header, CTA inline instead of a
  * bottom bar.
  */
@@ -75,6 +76,7 @@ export function StreakScreen() {
       <MobileBackBar title="Chuỗi ngày" backHref="/account" />
       <div className="mx-auto flex w-full max-w-[720px] flex-col px-4 pt-5 pb-[140px] lg:px-0 lg:pt-10 lg:pb-12">
         <h1 className="mb-6 hidden text-title font-extrabold text-ink lg:block">Chuỗi ngày</h1>
+        <DemoDataTag className="mb-4 self-start" />
 
         {query.error && !summary && !sessionLost ? (
           <ErrorStatus message={ENGAGEMENT_MESSAGES.summaryLoadFailed} onRetry={query.reload} />
@@ -113,7 +115,7 @@ export function StreakScreen() {
               <Icon name="chevron-right" size={18} className="text-line-strong" />
             </Link>
 
-            {/* Mobile: bottom bar above the tab bar (Figma 63:4670). Desktop: inline (ASSUMED). */}
+            {/* Mobile: bottom bar above the tab bar (Figma 63:4670). Desktop: inline (ASSUMED (design)). */}
             <div className="fixed inset-x-0 bottom-[calc(62px+env(safe-area-inset-bottom))] z-20 border-t border-line bg-surface px-4 pt-[11px] pb-4 lg:static lg:mt-2 lg:border-0 lg:bg-transparent lg:p-0">
               <p className="text-center text-caption text-ink-muted">{nextStreakHint(summary.streak, today)}</p>
               <Link

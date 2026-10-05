@@ -1,4 +1,5 @@
 import {
+  ActivationSurveyDto,
   ActivationSurveySource,
   decodeStarterPointsExpiryCursor,
   encodeStarterPointsExpiryCursor,
@@ -101,6 +102,18 @@ export type StarterPointsUnlockTrigger =
 
 /** Shared contract of `POST /economy/starter-points/unlock` (`@rescom/schemas`). */
 export type CheckAndUnlockStarterPointsResult = StarterPointsUnlockResultDto;
+
+/**
+ * Story IR.2a (read-only): the starter unlock of an account and the
+ * activation survey the shared rule attributes it to; all null while the
+ * account is not unlocked.
+ */
+export interface StarterActivationSnapshot {
+  unlockedAt: Date | null;
+  /** Points the `starter-unlock:` journal moved. */
+  amount: number | null;
+  activationSurvey: ActivationSurveyDto | null;
+}
 
 /**
  * Completions fetched per source on the first lookup (only one is needed).
@@ -254,6 +267,29 @@ export class StarterPointsCoordinator {
         : null,
       activationSurvey: evaluation.activationSurvey,
       isVerifiedMember: evaluation.isVerifiedMember,
+    };
+  }
+
+  /**
+   * Story IR.2a (`GET /attempts/:attemptId/outcome`): which survey activated
+   * the account, read-only. Unlike `getStatus` it never recovers a missing
+   * grant (`ensureStarterGrant` writes) and never publishes; an account
+   * without a `starter-unlock:` journal answers without loading completions.
+   */
+  async getActivationSnapshot(
+    userId: string,
+  ): Promise<StarterActivationSnapshot> {
+    const unlockJournal = await this.ledgerService.findJournalByIdempotencyKey(
+      unlockKey(userId),
+    );
+    if (!unlockJournal) {
+      return { unlockedAt: null, amount: null, activationSurvey: null };
+    }
+    const { evaluation } = await this.loadSnapshot(userId, new Date());
+    return {
+      unlockedAt: unlockJournal.createdAt,
+      amount: this.creditedAmount(unlockJournal),
+      activationSurvey: evaluation.activationSurvey,
     };
   }
 

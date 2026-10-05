@@ -1,3 +1,4 @@
+import { PILOT_BUILD } from "../../../lib/pilot-scope.ts";
 import type { IconName } from "@/components/ui/Icon";
 
 export interface NavItem {
@@ -20,7 +21,7 @@ export const MOBILE_NAV: readonly NavItem[] = [
   { href: "/marketplace", label: "Khám phá", icon: "compass", match: ["/surveys", "/attempts"] },
   { href: "/wallet", label: "Ví điểm", icon: "wallet" },
   { href: "/forms", label: "Đăng khảo sát", icon: "file-text" },
-  { href: "/account", label: "Tài khoản", icon: "user", match: ["/notifications", "/leaderboard"] },
+  { href: "/account", label: "Tài khoản", icon: "user", match: PILOT_BUILD ? ["/notifications"] : ["/notifications", "/leaderboard"] },
 ];
 
 export function isNavActive(item: NavItem, pathname: string): boolean {

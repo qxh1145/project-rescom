@@ -7,6 +7,7 @@ import { MOCK_GOOGLE_PROVIDER, isApiMockingEnabled } from "@/lib/api/config";
 import { isApiError } from "@/lib/api/api-error";
 import * as authService from "@/lib/auth/auth-service";
 import { savePendingEmail } from "@/lib/auth/pending-email";
+import { clearSessionReplaced } from "@/lib/auth/session-notice";
 import { sanitizeReturnTo } from "@/lib/onboarding";
 
 /**
@@ -29,6 +30,8 @@ export function AuthCallbackHandler() {
           await authService.completeMockGoogleSignIn(controller.signal);
         }
         const user = await authService.getCurrentUser(controller.signal);
+        // Google sign-in completed: an old "replaced" mark no longer applies (plan 5.6).
+        clearSessionReplaced();
         const destination = await authService.resolvePostLoginDestination(
           returnTo,
           controller.signal,

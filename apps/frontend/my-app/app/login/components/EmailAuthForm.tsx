@@ -71,7 +71,7 @@ export function EmailAuthForm({
           error={fieldErrors.password}
           onChange={(event) => onFieldChange("password", event.target.value)}
         />
-        {/* Figma `62:466` (mobile). The desktop frame has no link; shown there too (ASSUMED). */}
+        {/* Figma `62:466` (mobile). The desktop frame has no link; shown there too (ASSUMED (design)). */}
         <Link
           href="/forgot-password"
           className="self-end text-label font-bold text-primary hover:underline"

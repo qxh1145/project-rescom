@@ -1,35 +1,11 @@
 import { vietnamDateTimeParts } from "../format/date-time.ts";
-import type { AnswerValue, FormResponse, ResponseQuality, ResultQuestion } from "./results-service.ts";
+import type { AnswerValue, FormResponse, ResultQuestion } from "./results-service.ts";
 
 /**
  * Pure view logic of "Câu trả lời" (Figma 10d 63:3709 / 63:4534, 10d' 63:2033):
- * quality filter, search, pagination, table columns and answer formatting.
+ * search, pagination, table columns and answer formatting. No quality filter:
+ * responses are never graded in Phase 1 (IR.4a R8, `NOT_ASSESSED`).
  */
-
-export type QualityFilter = "all" | "passed" | "review";
-
-export const QUALITY_FILTERS: readonly QualityFilter[] = ["all", "passed", "review"];
-
-export function parseQualityFilter(value: string | null | undefined): QualityFilter {
-  return value === "passed" || value === "review" ? value : "all";
-}
-
-export function matchesQuality(quality: ResponseQuality, filter: QualityFilter): boolean {
-  if (filter === "passed") return quality === "PASSED";
-  if (filter === "review") return quality === "NEEDS_REVIEW";
-  return true;
-}
-
-export interface QualityCounts {
-  all: number;
-  passed: number;
-  review: number;
-}
-
-export function qualityCounts(responses: readonly FormResponse[]): QualityCounts {
-  const passed = responses.filter((response) => response.quality === "PASSED").length;
-  return { all: responses.length, passed, review: responses.length - passed };
-}
 
 /** Lowercase, no Vietnamese diacritics ("Ký túc xá" → "ky tuc xa"), no leading "#". */
 export function normalizeSearchText(value: string): string {
@@ -56,11 +32,9 @@ export function matchesSearch(response: FormResponse, questions: readonly Result
 export function filterResponses(
   responses: readonly FormResponse[],
   questions: readonly ResultQuestion[],
-  filter: { quality: QualityFilter; query: string },
+  filter: { query: string },
 ): FormResponse[] {
-  return responses.filter(
-    (response) => matchesQuality(response.quality, filter.quality) && matchesSearch(response, questions, filter.query),
-  );
+  return responses.filter((response) => matchesSearch(response, questions, filter.query));
 }
 
 export const RESPONSES_PAGE_SIZE = 10;
@@ -120,14 +94,12 @@ export function responsePosition(responses: readonly FormResponse[], id: string)
   };
 }
 
-/** Table columns shown by default ("Cột · 3/8 câu"): questions with a short label, else the first ones. */
+/** Table columns shown by default ("Cột · 3/8 câu"): the first questions. */
 export const DEFAULT_COLUMN_COUNT = 3;
 export const MAX_COLUMNS = 4;
 
 export function defaultColumnIds(questions: readonly ResultQuestion[]): string[] {
-  const labelled = questions.filter((question) => question.shortLabel);
-  const source = labelled.length ? labelled : questions;
-  return source.slice(0, DEFAULT_COLUMN_COUNT).map((question) => question.id);
+  return questions.slice(0, DEFAULT_COLUMN_COUNT).map((question) => question.id);
 }
 
 /** Keeps the chosen columns in question order, drops unknown ids, falls back to the defaults. */
@@ -136,25 +108,27 @@ export function normalizeColumnIds(questions: readonly ResultQuestion[], ids: re
   return chosen.length ? chosen.slice(0, MAX_COLUMNS) : defaultColumnIds(questions);
 }
 
-/** "C3 · Ngân sách/tháng" */
+/** "C3 · Ngân sách thuê trọ mỗi tháng" (no short labels are stored: the title, truncated by the cell). */
 export function columnHeader(question: ResultQuestion): string {
-  return `C${question.number} · ${question.shortLabel ?? question.title}`;
+  return `C${question.number} · ${question.title}`;
 }
 
 // --- Durations -------------------------------------------------------------
 
 const pad2 = (value: number) => String(value).padStart(2, "0");
 
-/** Table cell: "5p 48s", "7p 05s", "45s". */
-export function formatDurationShort(totalSeconds: number): string {
+/** Table cell: "5p 48s", "7p 05s", "45s"; "—" when unknown (no attempt start, e.g. a guest). */
+export function formatDurationShort(totalSeconds: number | null): string {
+  if (totalSeconds === null) return "—";
   const seconds = Math.max(0, Math.round(totalSeconds));
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
   return minutes ? `${minutes}p ${pad2(rest)}s` : `${rest}s`;
 }
 
-/** "6 phút 02 giây", "5 phút", "45 giây". */
-export function formatDurationLong(totalSeconds: number): string {
+/** "6 phút 02 giây", "5 phút", "45 giây"; "—" when unknown. */
+export function formatDurationLong(totalSeconds: number | null): string {
+  if (totalSeconds === null) return "—";
   const seconds = Math.max(0, Math.round(totalSeconds));
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
@@ -201,7 +175,8 @@ export function answerChoices(question: ResultQuestion, value: AnswerValue | und
   return values.map((item) => optionLabel(question, item));
 }
 
-function formatDate(value: string): string {
+/** A date answer "YYYY-MM-DD" → "dd/mm/yyyy"; anything else unchanged. */
+export function formatDate(value: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
 }
@@ -249,7 +224,7 @@ export function responseSummary(response: FormResponse, columns: readonly Result
       const value = response.answers[question.id];
       const compact = answerCompact(question, value);
       if ((question.type === "linear_scale" || question.type === "rating") && !isEmpty(value)) {
-        return `${lowerFirst(question.shortLabel ?? question.title)} ${compact}`;
+        return `${lowerFirst(question.title)} ${compact}`;
       }
       return index === 0 ? compact : lowerFirst(compact);
     })

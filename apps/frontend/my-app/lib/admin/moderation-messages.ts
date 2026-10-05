@@ -23,6 +23,8 @@ const CODE_MESSAGES: Record<string, string> = {
   MODERATION_SELF_REVIEW_FORBIDDEN: "Bạn không thể tự duyệt khảo sát do chính mình đăng.",
   MODERATION_ADMIN_CAPABILITY_REQUIRED: "Tài khoản quản trị của bạn không còn hoạt động. Vui lòng đăng nhập lại.",
   FORBIDDEN: "Bạn không có quyền duyệt khảo sát.",
+  // The code `RolesGuard` actually sends for a non-admin (`auth.exceptions.ts`).
+  FORBIDDEN_RESOURCE: "Bạn không có quyền duyệt khảo sát.",
   MODERATION_VERSION_MISMATCH: "Người đăng vừa cập nhật khảo sát. Hãy tải lại chi tiết rồi quyết định lại.",
   MODERATION_ALREADY_DECIDED: ALREADY_DECIDED,
   FORM_NOT_IN_MODERATION_QUEUE: ALREADY_DECIDED,
@@ -93,7 +95,7 @@ export function rejectionImpactWarning(survey: { isResubmission: boolean; versio
   return `Đây là phiên bản chỉnh sửa v${survey.versionNumber} của một khảo sát đã từng được duyệt. Từ chối sẽ đóng vĩnh viễn toàn bộ khảo sát — kể cả phiên bản đã duyệt trước đó${previous} — và người đăng không thể mở lại.`;
 }
 
-/** ASSUMED confirmation copy after a decision (not drawn in Figma). */
+/** ASSUMED (design) confirmation copy after a decision (not drawn in Figma). */
 export function approvedNotice(title: string): string {
   return `Đã duyệt “${title}”. Khảo sát đã lên Khám phá và người đăng đã được báo.`;
 }

@@ -10,7 +10,7 @@ export function walletLoadErrorMessage(error: unknown): string {
   return "Không tải được Ví điểm. Vui lòng thử lại.";
 }
 
-/** "Tải thêm" of the history failed; the rows already shown stay (ASSUMED copy). */
+/** "Tải thêm" of the history failed; the rows already shown stay (ASSUMED (design) copy). */
 export const WALLET_LOAD_MORE_FAILED = "Không tải thêm được giao dịch. Vui lòng thử lại.";
 
 const CREATE_MESSAGES: Record<string, string> = {

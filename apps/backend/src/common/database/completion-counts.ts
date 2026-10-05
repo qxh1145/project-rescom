@@ -205,3 +205,63 @@ export async function findCompletedFormIdsForRespondent(
   for (const attempt of attempts) formIds.add(attempt.surveyId);
   return formIds;
 }
+
+/** Works with the root client and with an interactive-transaction client. */
+export type CompletionBucketClient = Pick<
+  Prisma.TransactionClient,
+  '$queryRaw'
+>;
+
+/**
+ * Story IR.4a (FR-39): completed participations of one form per half-open
+ * `[startsAt, endsAt)` bucket, with the same completion definition as
+ * `countCompletionsByFormIds` (SUBMITTED/VALIDATED Responses by
+ * `submitted_at`, plus COMPLETED attempts without a Response). One grouped
+ * read, bounded to the window, served by `responses_form_completed_submitted_idx`
+ * and `survey_attempts_survey_id_status_submitted_at_idx`; ≤ 8 rows. The
+ * buckets are passed in (computed in Vietnam time by the caller), so zero
+ * buckets are kept and no time-zone math runs in SQL.
+ */
+export async function countCompletionsInBucketsForForm(
+  client: CompletionBucketClient,
+  formId: string,
+  buckets: ReadonlyArray<{ startsAt: Date; endsAt: Date }>,
+): Promise<number[]> {
+  if (buckets.length === 0) return [];
+  const starts = buckets.map((bucket) => bucket.startsAt.toISOString());
+  const ends = buckets.map((bucket) => bucket.endsAt.toISOString());
+  // `submitted_at` is TIMESTAMP(3) holding UTC: ISO instants cast to
+  // `timestamp` drop their `Z`, independent of the session time zone.
+  const from = new Date(
+    Math.min(...buckets.map((bucket) => bucket.startsAt.getTime())),
+  ).toISOString();
+  const to = new Date(
+    Math.max(...buckets.map((bucket) => bucket.endsAt.getTime())),
+  ).toISOString();
+  const rows = await client.$queryRaw<Array<{ idx: number; count: number }>>`
+    SELECT b.idx::int AS idx, COUNT(c.submitted_at)::int AS count
+    FROM unnest(${starts}::text[]::timestamp[], ${ends}::text[]::timestamp[])
+      WITH ORDINALITY AS b(starts_at, ends_at, idx)
+    LEFT JOIN (
+      SELECT r.submitted_at
+      FROM responses r
+      WHERE r.form_id = ${formId}::uuid
+        AND r.status IN ('SUBMITTED', 'VALIDATED')
+        AND r.submitted_at >= ${from}::timestamp
+        AND r.submitted_at < ${to}::timestamp
+      UNION ALL
+      SELECT a.submitted_at
+      FROM survey_attempts a
+      WHERE a.survey_id = ${formId}::uuid
+        AND a.status = 'COMPLETED'
+        AND a.submitted_at >= ${from}::timestamp
+        AND a.submitted_at < ${to}::timestamp
+        AND NOT EXISTS (SELECT 1 FROM responses r2 WHERE r2.attempt_id = a.id)
+    ) c ON c.submitted_at >= b.starts_at AND c.submitted_at < b.ends_at
+    GROUP BY b.idx
+    ORDER BY b.idx
+  `;
+  const counts = buckets.map(() => 0);
+  for (const row of rows) counts[Number(row.idx) - 1] = Number(row.count);
+  return counts;
+}

@@ -1,7 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { Notification as PrismaNotification } from '@prisma/client';
-import { NotificationType } from '@rescom/schemas';
+import {
+  NOTIFICATION_EMAIL_REQUESTED_EVENT,
+  NOTIFICATION_EMAIL_REQUESTED_SCHEMA_VERSION,
+  NotificationEmailRequestedPayload,
+  NotificationType,
+  isEmailNotificationType,
+  notificationEmailKey,
+} from '@rescom/schemas';
 import { PrismaService } from '../../../common/database/prisma.service';
+import {
+  afterCommit,
+  isInAmbientTransaction,
+} from '../../../common/database/prisma-unit-of-work';
 import { NotificationEntity } from '../domain/notification.entity';
 import {
   CreateNotificationRecord,
@@ -15,12 +26,87 @@ import {
  * Deliberately uses the base client (never `runInTransaction`): notifications
  * are recorded after the source transaction commits and must not be able to
  * abort it. Every query is scoped by `userId`.
+ *
+ * Story IR.2b Task 2.4: a publish made inside an ambient Unit of Work (an
+ * Outbox handler runs its Economy command in the dispatcher's transaction) is
+ * deferred with `afterCommit`, so the notice is written only after — and
+ * only if — the source transaction commits (Story 9.6 contract).
  */
 @Injectable()
 export class PrismaNotificationRepository implements NotificationRepositoryPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async createIfAbsent(record: CreateNotificationRecord): Promise<boolean> {
+    if (isInAmbientTransaction()) {
+      // Reported as created: the deferred insert is idempotent on
+      // (user_id, dedupe_key) and a rollback drops it with the source.
+      await afterCommit(async () => {
+        await this.insertIfAbsent(record);
+      }, `notification dedupeKey=${record.dedupeKey}`);
+      return true;
+    }
+    return this.insertIfAbsent(record);
+  }
+
+  async createIfAbsentWithEmailRequest(
+    record: CreateNotificationRecord,
+  ): Promise<boolean> {
+    if (isInAmbientTransaction()) {
+      await afterCommit(async () => {
+        await this.insertWithEmailRequest(record);
+      });
+      return true;
+    }
+    return this.insertWithEmailRequest(record);
+  }
+
+  /**
+   * Story IR.4b B4: notification + `NotificationEmailRequested` in one local
+   * transaction; a duplicate (ON CONFLICT DO NOTHING) writes no Outbox row.
+   */
+  private async insertWithEmailRequest(
+    record: CreateNotificationRecord,
+  ): Promise<boolean> {
+    const type = record.type;
+    if (!isEmailNotificationType(type)) return this.insertIfAbsent(record);
+    return this.prisma.$transaction(async (tx) => {
+      const [created] = await tx.notification.createManyAndReturn({
+        data: [
+          {
+            userId: record.userId,
+            type,
+            message: record.message,
+            dedupeKey: record.dedupeKey,
+          },
+        ],
+        skipDuplicates: true,
+        select: { id: true },
+      });
+      if (!created) return false;
+      const payload: NotificationEmailRequestedPayload = {
+        schemaVersion: NOTIFICATION_EMAIL_REQUESTED_SCHEMA_VERSION,
+        notificationId: created.id,
+        userId: record.userId,
+        type,
+      };
+      await tx.outboxEvent.create({
+        data: {
+          idempotencyKey: notificationEmailKey(created.id),
+          eventType: NOTIFICATION_EMAIL_REQUESTED_EVENT,
+          schemaVersion: NOTIFICATION_EMAIL_REQUESTED_SCHEMA_VERSION,
+          producer: 'notifications-service',
+          aggregateType: 'Notification',
+          aggregateId: created.id,
+          payload,
+        },
+      });
+      return true;
+    });
+  }
+
+  private async insertIfAbsent(
+    record: CreateNotificationRecord,
+  ): Promise<boolean> {
     // INSERT ... ON CONFLICT DO NOTHING on (user_id, dedupe_key): a replayed
     // event is a silent no-op instead of a unique-violation error.
     const result = await this.prisma.notification.createMany({

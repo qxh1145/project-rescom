@@ -34,7 +34,7 @@ interface RejectSurveyDialogProps {
 /**
  * Figma 11a' "Từ chối khảo sát (lý do + hoàn điểm)" (62:2868). The backend
  * takes one `reason` string: "<lý do chính>. <ghi chú>".
- * ASSUMED: no reason is preselected (Figma shows the first one chosen).
+ * ASSUMED (design): no reason is preselected (Figma shows the first one chosen).
  */
 export function RejectSurveyDialog({ open, survey, onClose, onReject }: RejectSurveyDialogProps) {
   const [reasonId, setReasonId] = useState<string | null>(null);

@@ -1,20 +1,18 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { isApiError } from "@/lib/api/api-error";
+import { useEffect, useRef, useState } from "react";
 import { useApiQuery } from "@/lib/api/use-api-query";
 import { browserDraftStorage, clearAnswerDraft } from "@/lib/participation/answer-draft";
 import { attemptPhase, getAttempt, type AttemptDetails } from "@/lib/participation/attempts-service";
-import { cancelAttempt } from "@/lib/participation/external-service";
+import { cancelFailureOf } from "@/lib/participation/external-code";
+import { cancelAttempt, newCancelIdempotencyKey } from "@/lib/participation/external-service";
 import { loadAttemptErrorMessage } from "@/lib/participation/participation-messages";
 import { consentPath } from "@/lib/participation/start-flow";
-import { getSurveyForm } from "@/lib/participation/survey-form-service";
-import { isSessionLost } from "@/lib/session/session-status";
 import { useSession } from "@/lib/session/SessionProvider";
 import { useSessionLossRedirect } from "@/lib/session/use-session-loss";
 import { FocusError, FocusLoading } from "../../../_participation/FocusPageState";
-import { FormUpdatedPanel } from "./StatusPanels";
+import { FormUpdatedPanel, SurveyClosedPanel } from "./StatusPanels";
 import { SurveyRunnerView } from "./SurveyRunnerView";
 
 /** Where a loaded attempt belongs when it is not an open in-Rescom attempt. */
@@ -25,15 +23,9 @@ function redirectFor(attempt: AttemptDetails): string | null {
 }
 
 /**
- * The attempt is pinned to a FormVersion; `GET /public/forms/:id` serves the
- * current one. Different numbers → the attempt's answers no longer fit.
- * Unknown on either side (ASSUMED field missing) → no check.
+ * `/attempts/:id` — loads the attempt with the questions of its PINNED
+ * version (`attempt.form`), then hands over to the runner.
  */
-function isVersionMismatch(attempt: AttemptDetails, formVersionNumber: number): boolean {
-  return typeof attempt.versionNumber === "number" && attempt.versionNumber !== formVersionNumber;
-}
-
-/** `/attempts/:id` — loads the attempt and its questions, then hands over to the runner. */
 export function SurveyTakingScreen() {
   const params = useParams<{ id: string }>();
   const attemptId = String(params.id);
@@ -43,11 +35,12 @@ export function SurveyTakingScreen() {
   const target = attempt.data ? redirectFor(attempt.data) : null;
   const phase = attempt.data ? attemptPhase(attempt.data) : null;
   const closed = phase === "locked" || phase === "cancelled";
-  const formId = attempt.data && !target && !closed ? attempt.data.formId : null;
-  const form = useApiQuery(formId ? `survey-form:${formId}` : null, (signal) => getSurveyForm(formId ?? "", signal));
   // 401 / locked account while loading: SessionGate redirects; the local draft stays.
-  const sessionLost = useSessionLossRedirect(attempt.error, form.error);
+  const sessionLost = useSessionLossRedirect(attempt.error);
   const [restart, setRestart] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
+  // One Idempotency-Key per restart: a retry after a lost answer reuses it.
+  // Created on the first click, not during render, so a failure cannot crash the screen.
+  const restartKey = useRef<string | null>(null);
 
   useEffect(() => {
     if (target) router.replace(target);
@@ -66,24 +59,36 @@ export function SurveyTakingScreen() {
       />
     );
   }
-  if (form.error) return <FocusError message={loadAttemptErrorMessage(form.error)} onRetry={form.reload} />;
-  if (!form.data) return <FocusLoading label="Đang tải câu hỏi…" />;
 
   const current = attempt.data;
-  if (phase === "open" && isVersionMismatch(current, form.data.versionNumber)) {
-    // Abandon the stale attempt (ASSUMED cancel route), drop its draft, start again on the new version.
+  const form = current.form;
+  // An in-Rescom attempt always carries its pinned form (shared schema).
+  if (!form) return <FocusError message={loadAttemptErrorMessage(null)} onRetry={attempt.reload} />;
+
+  // Decision E5-D4 (strict): once the survey left PUBLISHED, this attempt can
+  // no longer be submitted. A CLOSED survey takes no new attempt either.
+  if (phase === "open" && current.survey.status === "CLOSED") return <SurveyClosedPanel />;
+  // DRAFT / MODERATION_QUEUE / ESCROW_LOCKED: a new version is being prepared.
+  if (phase === "open" && current.survey.status !== "PUBLISHED") {
+    // Abandon the stale attempt, drop its draft, start again from the consent screen.
     const restartOnNewVersion = async () => {
       setRestart({ busy: true, error: null });
       try {
-        await cancelAttempt(current.attemptId);
+        restartKey.current ??= newCancelIdempotencyKey();
+        await cancelAttempt(current.attemptId, restartKey.current);
       } catch (cause) {
-        if (isSessionLost(cause)) {
+        const failed = cancelFailureOf(cause);
+        if (failed.kind === "session") {
           setRestart({ busy: false, error: null });
           refresh();
           return;
         }
-        // 409 = no longer in progress: nothing left to cancel. Anything else blocks the restart.
-        if (!(isApiError(cause) && cause.status === 409)) {
+        if (failed.kind === "completed") {
+          router.replace(`/attempts/${encodeURIComponent(current.attemptId)}/complete`);
+          return;
+        }
+        // Already closed: nothing left to cancel. Anything else blocks the restart.
+        if (failed.kind === "message") {
           setRestart({ busy: false, error: "Chưa bắt đầu lại được. Vui lòng thử lại." });
           return;
         }
@@ -91,8 +96,15 @@ export function SurveyTakingScreen() {
       clearAnswerDraft(browserDraftStorage(), current.attemptId);
       router.replace(consentPath(current.formId));
     };
-    return <FormUpdatedPanel onRestart={() => void restartOnNewVersion()} busy={restart.busy} error={restart.error} />;
+    return (
+      <FormUpdatedPanel
+        onRestart={() => void restartOnNewVersion()}
+        onRetryLater={attempt.reload}
+        busy={restart.busy}
+        error={restart.error}
+      />
+    );
   }
 
-  return <SurveyRunnerView key={current.attemptId} attempt={current} form={form.data} />;
+  return <SurveyRunnerView key={current.attemptId} attempt={current} form={form} />;
 }

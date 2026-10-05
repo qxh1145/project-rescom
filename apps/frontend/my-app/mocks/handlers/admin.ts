@@ -1,4 +1,5 @@
 import { http } from "msw";
+import { adminQueueCountsSchema } from "@rescom/schemas";
 import { apiUrl } from "@/lib/api/config";
 import { getMockSessionUser, type MockSessionUser } from "../db/session";
 import { fail, ok, unauthorized } from "../envelope";
@@ -12,7 +13,7 @@ import { topUpQueueCount } from "../data/admin-top-ups";
 export async function requireMockAdmin(): Promise<MockSessionUser | Response> {
   const user = await getMockSessionUser();
   if (!user) return unauthorized();
-  if (user.role !== "ADMIN") return fail(403, "FORBIDDEN", "Admin role required");
+  if (user.role !== "ADMIN") return fail(403, "FORBIDDEN_RESOURCE", "Admin role required");
   return user;
 }
 
@@ -21,18 +22,22 @@ export async function requireMockAdmin(): Promise<MockSessionUser | Response> {
  * own handler array next to this one (see `mocks/handlers/index.ts`).
  */
 export const adminHandlers = [
-  // ASSUMED API CONTRACT: GET /admin/queue-counts (lib/admin/admin-queue-service.ts).
-  // Counts are composed from the same stores as their corresponding queues.
+  // VERIFIED: GET /admin/queue-counts (lib/admin/admin-queue-service.ts, shared
+  // `adminQueueCountsSchema`). Counts are composed from the same stores as their
+  // corresponding queues; the real backend answers 0 for disputes and quality
+  // (those queues stay on MSW, decision Q1).
   http.get(apiUrl("/admin/queue-counts"), async () => {
     const forced = await applyScenario("admin");
     if (forced) return forced;
     const admin = await requireMockAdmin();
     if (admin instanceof Response) return admin;
-    return ok({
-      surveys: moderationQueueCount(),
-      topUps: topUpQueueCount(),
-      disputes: disputeQueueCount(),
-      quality: qualityQueueCount(),
-    });
+    return ok(
+      adminQueueCountsSchema.parse({
+        surveys: moderationQueueCount(),
+        topUps: topUpQueueCount(),
+        disputes: disputeQueueCount(),
+        quality: qualityQueueCount(),
+      }),
+    );
   }),
 ];

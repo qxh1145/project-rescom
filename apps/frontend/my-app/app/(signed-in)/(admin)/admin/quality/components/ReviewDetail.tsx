@@ -86,7 +86,7 @@ export function ReviewDetail({ review, onDecide }: ReviewDetailProps) {
       </div>
 
       {answersOpen ? (
-        // ASSUMED (not drawn): the answers open inline under the context.
+        // ASSUMED (design) (not drawn): the answers open inline under the context.
         <ol id={answersId} className="mt-3 flex flex-col gap-2 rounded-[14px] bg-surface-muted px-4 py-3">
           {review.answers.map((answer, index) => (
             <li key={`${index}-${answer.question}`} className="text-body-sm">

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { formStatusEnum, FormStatusEnum, FormTypeEnum } from "./form-draft.schema";
 import { externalSurveyUrlSchema } from "./external-url.schema";
 import { estimatedDurationMinutesSchema } from "../economy/pricing.schema";
+import { formDeadlineAtSchema } from "./form-topic.schema";
 
 /**
  * Platform Form Lifecycle State Machine (authoritative; Story 2.6, revised by Story 8.1):
@@ -42,14 +43,24 @@ export const FORM_STATUS_TRANSITIONS: Record<FormStatusEnum, readonly FormStatus
 
 /**
  * Who closed a survey (decision E8-D1). Must stay identical to the Prisma
- * `FormCloseKind` enum.
+ * `FormCloseKind` enum, in the same order (`form-close-kind.parity.spec.ts`).
  * - `OWNER`: the Publisher closed their live survey or withdrew it from the
  *   moderation queue (an Admin closing their own survey is an owner close).
  * - `ADMIN`: an Admin took down someone else's survey (`POST /forms/:id/close`
  *   or the generic `/status` endpoint).
  * - `MODERATION`: an Admin rejected the queued version (Story 8.1).
+ * - `DEADLINE`: the system closed the survey when its `deadlineAt` passed and
+ *   refunded the leftover Escrow (Story IR.2b).
+ * - `QUOTA`: the system closed the survey in the same transaction as the last
+ *   accepted submission, once the sample target was met (plan 2.3 option A).
  */
-export const formCloseKindEnum = z.enum(["OWNER", "ADMIN", "MODERATION"]);
+export const formCloseKindEnum = z.enum([
+  "OWNER",
+  "ADMIN",
+  "MODERATION",
+  "DEADLINE",
+  "QUOTA",
+]);
 export type FormCloseKind = z.infer<typeof formCloseKindEnum>;
 
 /**
@@ -57,11 +68,15 @@ export type FormCloseKind = z.infer<typeof formCloseKindEnum>;
  * additional quota) only after its owner closed it. Admin takedowns and
  * moderation rejections are final; `null` (a close recorded before the close
  * kind existed) is not proven to be the owner's, so it fails closed.
+ * Story IR.2b Q3 (default): a `DEADLINE` close is reopenable by the owner too,
+ * with a new deadline that is null or in the future (`reopenSurveySchema`).
+ * Plan 2.3: a `QUOTA` close is NOT reopenable for now (the owner raises the
+ * target by publishing a new survey); revisit with the product owner.
  */
 export function isOwnerReopenableClose(
   closeKind: FormCloseKind | null | undefined
 ): boolean {
-  return closeKind === "OWNER";
+  return closeKind === "OWNER" || closeKind === "DEADLINE";
 }
 
 /**
@@ -109,6 +124,12 @@ export const publishFormSchema = z
      * the form); the FR-14 band check uses it (decision E6-D2).
      */
     estimatedDurationMinutes: estimatedDurationMinutesSchema.optional(),
+    /**
+     * Story IR.2b Q1: sets (or with null clears) the collection deadline with
+     * the publish request. A stored or given deadline must still be 1 h –
+     * 180 d ahead at publish.
+     */
+    deadlineAt: formDeadlineAtSchema.optional().nullable(),
   })
   .strict();
 

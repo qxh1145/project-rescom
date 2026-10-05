@@ -4,8 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Alert } from "@/components/ui/Alert";
 import { TextDivider } from "@/components/ui/TextDivider";
-import { getOAuthErrorMessage } from "@/lib/auth/auth-error-messages";
-import { readSessionReplacedNotice } from "@/lib/auth/session-notice";
+import { AUTH_MESSAGES, getOAuthErrorMessage } from "@/lib/auth/auth-error-messages";
+import {
+  clearSessionReplaced,
+  readPasswordResetNotice,
+  readSessionReplacedNotice,
+} from "@/lib/auth/session-notice";
 import type { EmailAuthField } from "@/lib/auth/types";
 import { sanitizeReturnTo } from "@/lib/onboarding";
 import { useEmailAuth, type AuthFocusTarget } from "../hooks/use-email-auth";
@@ -33,6 +37,7 @@ export function LoginPanel() {
   const returnTo = sanitizeReturnTo(searchParams.get("returnTo"));
   const oauthErrorCode = searchParams.get("error");
   const sessionNotice = readSessionReplacedNotice(searchParams);
+  const passwordResetDone = readPasswordResetNotice(searchParams);
 
   const auth = useEmailAuth({ mode: "login", returnTo });
   useRedirectIfSignedIn(returnTo);
@@ -56,6 +61,11 @@ export function LoginPanel() {
     if (oauthErrorCode) replaceWithout("error");
     auth.setField(field, value);
   }
+
+  // Plan 5.6: the replaced-session mark has done its job once the login page shows.
+  useEffect(() => {
+    clearSessionReplaced();
+  }, []);
 
   // Focus after React commits the new state (inputs re-enabled, alert mounted, dialog closed).
   useEffect(() => {
@@ -97,6 +107,12 @@ export function LoginPanel() {
           onDismiss={auth.formError ? auth.dismissFormError : () => replaceWithout("error")}
         >
           {formError}
+        </Alert>
+      ) : null}
+
+      {passwordResetDone && !formError ? (
+        <Alert tone="info" onDismiss={() => replaceWithout("reason")}>
+          {AUTH_MESSAGES.passwordResetDone}
         </Alert>
       ) : null}
 

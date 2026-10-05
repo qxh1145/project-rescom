@@ -1,5 +1,6 @@
 "use client";
 
+import { PILOT_BUILD } from "@/lib/pilot-scope";
 import Link from "next/link";
 import { buttonClassName } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
@@ -39,7 +40,7 @@ export function BuilderHeader({ formId, title, statusLine, saving, onContinue, o
         <div className="flex flex-1 justify-center">
           <BuilderStepper current={0} />
         </div>
-        {!readOnly ? (
+        {!readOnly && !PILOT_BUILD ? (
           <Link href={`/forms/${formId}/builder/ai`} className={buttonClassName({ variant: "secondary", size: "md", radius: "field", className: "gap-2 text-label" })}>
             <Icon name="sparkles" size={18} />
             Tạo bằng AI

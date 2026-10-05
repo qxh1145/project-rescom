@@ -1,13 +1,14 @@
-import type { OpensSummary } from "@/lib/forms/manage-view";
+import type { SeriesBucket, SeriesSummary } from "@/lib/forms/manage-view";
 
 interface OpensChartProps {
-  buckets: readonly { label: string; count: number }[];
-  summary: OpensSummary;
+  buckets: readonly SeriesBucket[];
+  summary: SeriesSummary;
 }
 
 /**
- * Figma 10a "Lượt mở khảo sát" bars (62:2638 desktop 560×190, 62:3346 mobile
- * 318×146): three guide lines, one bar per bucket, the busiest value on top.
+ * Figma 10a chart bars (62:2638 desktop 560×190, 62:3346 mobile 318×146),
+ * now "Lượt hoàn thành" (IR.4a R3: no open tracking exists): three guide
+ * lines, one bar per bucket, the busiest value on top.
  */
 export function OpensChart({ buckets, summary }: OpensChartProps) {
   const max = Math.max(summary.max, 1);
@@ -16,14 +17,14 @@ export function OpensChart({ buckets, summary }: OpensChartProps) {
     <figure className="w-full lg:max-w-[560px]">
       <div
         role="img"
-        aria-label={`Lượt mở theo thời gian — ${description}`}
+        aria-label={`Lượt hoàn thành theo thời gian — ${description}`}
         className="relative mt-5 h-26 border-b border-line lg:h-32.5"
       >
         <span aria-hidden="true" className="absolute inset-x-0 top-0 border-t border-line-subtle" />
         <span aria-hidden="true" className="absolute inset-x-0 top-1/2 border-t border-line-subtle" />
         <div className="absolute inset-0 flex items-end">
           {buckets.map((bucket, index) => (
-            <div key={bucket.label} className="relative flex h-full flex-1 items-end justify-center">
+            <div key={index} className="relative flex h-full flex-1 items-end justify-center">
               {index === summary.peakIndex ? (
                 <span
                   className="absolute text-[12px] font-bold text-ink lg:text-caption"
@@ -42,8 +43,8 @@ export function OpensChart({ buckets, summary }: OpensChartProps) {
         </div>
       </div>
       <div aria-hidden="true" className="mt-1.5 flex text-[12px] text-ink-muted lg:text-caption">
-        {buckets.map((bucket) => (
-          <span key={bucket.label} className="flex-1 text-center">
+        {buckets.map((bucket, index) => (
+          <span key={index} className="flex-1 text-center">
             {bucket.label}
           </span>
         ))}

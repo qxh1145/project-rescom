@@ -51,9 +51,10 @@ export class StarterPointsController {
   }
 
   /**
-   * Admin/worker batch job endpoint to void unmatured frozen points past 30 days (FR-5).
+   * Admin batch endpoint to void unmatured frozen points past 30 days (FR-5).
    * Scans at most `limit` candidates per call; repeat with `after: nextCursor`
-   * until `nextCursor` is null.
+   * until `nextCursor` is null. Since Story IR.2b the `starter-expiry`
+   * scheduler job runs the same sweep hourly; this stays the operator fallback.
    */
   @Post('expire')
   @HttpCode(HttpStatus.OK)

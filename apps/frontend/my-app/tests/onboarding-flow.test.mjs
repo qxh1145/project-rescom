@@ -4,10 +4,17 @@ import assert from "node:assert/strict";
 const steps = await import("../lib/onboarding/onboarding-steps.ts");
 const answersLib = await import("../lib/onboarding/onboarding-answers.ts");
 const draftLib = await import("../lib/onboarding/onboarding-draft.ts");
-const { submitOnboarding } = await import("../lib/onboarding/onboarding-submit.ts");
+const { submitOnboarding, saveProfileExtras, isProfileSaveFailure, profileFixStep } = await import(
+  "../lib/onboarding/onboarding-submit.ts"
+);
+const { profileNotSavedMessage } = await import("../lib/onboarding/onboarding-messages.ts");
 const { searchOptions, foldVietnamese } = await import("../lib/onboarding/option-search.ts");
 const { resolvePostOnboardingPath } = await import("../lib/onboarding.ts");
-const { submitDemographicSurveySchema } = await import("@rescom/schemas");
+const { SCHOOL_YEAR_OPTIONS } = await import("../lib/demographic-options.ts");
+const { ApiError } = await import("../lib/api/api-error.ts");
+const { SCHOOL_YEAR_VALUES, submitDemographicSurveySchema, updateUserProfileSchema, userProfileSchema } = await import(
+  "@rescom/schemas"
+);
 
 const YEAR = 2026;
 
@@ -100,6 +107,30 @@ test("validation per question, incl. the Figma 3-interest minimum", () => {
   assert.equal(answersLib.firstInvalidStep(OFFICE, YEAR), null);
 });
 
+test("name, school and school year follow the shared profile rules", () => {
+  assert.equal(answersLib.DISPLAY_NAME_MAX, 50);
+  assert.equal(answersLib.validateStep("name", { ...STUDENT, displayName: "x".repeat(50) }, YEAR), null);
+  assert.equal(
+    answersLib.validateStep("name", { ...STUDENT, displayName: "Linh\tNguyễn" }, YEAR),
+    "Tên hiển thị có ký tự không hợp lệ. Bạn sửa lại giúp nhé.",
+  );
+  assert.equal(
+    answersLib.validateStep("school", { ...STUDENT, school: "ĐH\u0007 FPT" }, YEAR),
+    "Tên trường có ký tự không hợp lệ. Bạn sửa lại giúp nhé.",
+  );
+  // A school year no longer in the catalog must be picked again.
+  assert.equal(
+    answersLib.validateStep("school-year", { ...STUDENT, schoolYear: "Năm 6" }, YEAR),
+    "Chọn năm học hiện tại của bạn.",
+  );
+  assert.equal(answersLib.firstInvalidStep({ ...STUDENT, schoolYear: "Năm 6" }, YEAR), "school-year");
+  // The wizard options are exactly the values `schoolYear` accepts.
+  assert.deepEqual(
+    SCHOOL_YEAR_OPTIONS.map((option) => option.value),
+    [...SCHOOL_YEAR_VALUES],
+  );
+});
+
 test("resolveStep: no skipping ahead, hidden student steps, done only after submit", () => {
   const empty = answersLib.EMPTY_ANSWERS;
   assert.equal(answersLib.resolveStep("welcome", empty, false, YEAR), "welcome");
@@ -131,18 +162,22 @@ test("payload mapping: POST /demographics/survey passes the shared schema", () =
   assert.throws(() => answersLib.toSurveyPayload({ ...STUDENT, birthYear: "" }, YEAR));
 });
 
-test("payload mapping: ASSUMED PATCH /users/me/profile", () => {
-  assert.deepEqual(answersLib.toProfilePatch(STUDENT, YEAR), {
+test("payload mapping: PATCH /users/me/profile passes the shared schema", () => {
+  const patch = answersLib.toProfilePatch(STUDENT, YEAR);
+  assert.deepEqual(patch, {
     displayName: "Linh Nguyễn",
     birthYear: 2005,
     school: "Trường Đại học FPT – Đà Nẵng",
     schoolYear: "Năm 3",
     goal: "BOTH",
   });
+  assert.deepEqual(updateUserProfileSchema.parse(patch), patch);
   // Stale school answers of someone who switched to a non-student occupation are cleared.
-  const patch = answersLib.toProfilePatch({ ...STUDENT, occupation: "Nhân viên văn phòng" }, YEAR);
-  assert.equal(patch.school, null);
-  assert.equal(patch.schoolYear, null);
+  const office = answersLib.toProfilePatch({ ...STUDENT, occupation: "Nhân viên văn phòng" }, YEAR);
+  assert.equal(office.school, null);
+  assert.equal(office.schoolYear, null);
+  assert.equal(updateUserProfileSchema.safeParse(office).success, true);
+  assert.equal(updateUserProfileSchema.safeParse(answersLib.toProfilePatch(OFFICE, YEAR)).success, true);
 });
 
 test("prefill from GET /demographics + GET /users/me/profile", () => {
@@ -167,6 +202,34 @@ test("prefill from GET /demographics + GET /users/me/profile", () => {
   assert.deepEqual(answersLib.answersFromServer(null, null, YEAR), answersLib.EMPTY_ANSWERS);
 });
 
+test("contract: a backend profile response parses and prefills every saved answer", () => {
+  const response = userProfileSchema.parse({
+    displayName: "Linh Nguyễn",
+    birthYear: 2005,
+    school: "Trường Đại học FPT – Đà Nẵng",
+    schoolYear: "Năm 3",
+    goal: "BOTH",
+  });
+  const demographics = { ...answersLib.toSurveyPayload(STUDENT, YEAR) };
+  const prefilled = answersLib.answersFromServer(demographics, response, YEAR);
+  // "Sửa" opens with everything saved: no question has to be answered again.
+  assert.deepEqual(prefilled, STUDENT);
+  assert.equal(answersLib.firstInvalidStep(prefilled, YEAR), null);
+  assert.equal(answersLib.resolveStep("school", prefilled, false, YEAR), "school");
+
+  // A user without a profile row gets all-null fields: the extras are asked again.
+  const blank = userProfileSchema.parse({
+    displayName: null,
+    birthYear: null,
+    school: null,
+    schoolYear: null,
+    goal: null,
+  });
+  assert.equal(answersLib.resolveStep("school", answersLib.answersFromServer(demographics, blank, YEAR), false, YEAR), "name");
+  // Extra keys are a contract drift, not silently accepted.
+  assert.equal(userProfileSchema.safeParse({ ...response, userId: "u-1" }).success, false);
+});
+
 test("a 400 from the survey routes back to the first invalid question", () => {
   assert.equal(
     answersLib.stepFromValidationDetails({
@@ -187,6 +250,28 @@ test("a 400 from the survey routes back to the first invalid question", () => {
   assert.equal(answersLib.stepFromValidationDetails({ _errors: [], location: { _errors: [] } }), null);
   assert.equal(answersLib.stepFromValidationDetails({ _errors: ["x"] }), null);
   assert.equal(answersLib.stepFromValidationDetails(null), null);
+  // `PATCH /users/me/profile` fields route to their questions too, still in flow order.
+  assert.equal(
+    answersLib.stepFromValidationDetails({ _errors: [], goal: { _errors: ["x"] }, displayName: { _errors: ["x"] } }),
+    "name",
+  );
+  assert.equal(answersLib.stepFromValidationDetails({ _errors: [], schoolYear: { _errors: ["x"] } }), "school-year");
+});
+
+test("a profile save refused with 400 VALIDATION_ERROR offers Sửa, not the same retry", () => {
+  const refused = (details) =>
+    new ApiError({ kind: "http", status: 400, code: "VALIDATION_ERROR", message: "Invalid", details });
+  assert.equal(profileFixStep(refused({ _errors: [], birthYear: { _errors: ["Age must be 13 to 100"] } })), "birth-year");
+  assert.equal(profileFixStep(refused({ _errors: [], school: { _errors: ["x"] } })), "school");
+  // No field named (strict-object error): the first profile question.
+  assert.equal(profileFixStep(refused({ _errors: ["Unrecognized key"] })), "name");
+  assert.equal(profileFixStep(new ApiError({ kind: "network", message: "offline" })), null);
+  assert.equal(profileFixStep(new ApiError({ kind: "http", status: 500, code: "INTERNAL", message: "x" })), null);
+  assert.equal(profileFixStep(new ApiError({ kind: "http", status: 400, code: "OTHER", message: "x" })), null);
+  assert.equal(
+    profileNotSavedMessage(refused({ _errors: [] }), false),
+    "Hồ sơ đã lưu, nhưng tên hiển thị và mục tiêu của bạn có thông tin chưa hợp lệ nên chưa lưu được. Bấm Sửa để kiểm tra lại.",
+  );
 });
 
 test("done-screen summary matches the Figma line", () => {
@@ -281,7 +366,7 @@ test("submit guard: the first unanswered question is found before any request", 
   assert.equal(answersLib.firstInvalidStep({ ...STUDENT, birthYear: "2030" }, YEAR), "birth-year");
 });
 
-test("submit: VERIFIED survey first; ASSUMED profile is best-effort", async () => {
+test("submit: survey first; a failed profile save is returned, never thrown", async () => {
   const calls = [];
   const ok = await submitOnboarding(STUDENT, YEAR, {
     submitSurvey: async (input) => {
@@ -320,4 +405,40 @@ test("submit: VERIFIED survey first; ASSUMED profile is best-effort", async () =
     /400/,
   );
   assert.equal(profileCalled, false);
+});
+
+test("a failed profile save is shown with a retry, except for an aborted request", async () => {
+  const network = new ApiError({ kind: "network", message: "Network request failed" });
+  const notFound = new ApiError({ kind: "http", status: 404, code: "NOT_FOUND", message: "Not found" });
+  const aborted = new DOMException("The operation was aborted.", "AbortError");
+  assert.equal(isProfileSaveFailure(null), false);
+  assert.equal(isProfileSaveFailure(aborted), false);
+  assert.equal(isProfileSaveFailure(network), true);
+  // A backend without the route is a failure too: the extras were not saved.
+  assert.equal(isProfileSaveFailure(notFound), true);
+
+  assert.equal(
+    profileNotSavedMessage(notFound, true),
+    "Hồ sơ đã lưu, nhưng chưa lưu được tên hiển thị, trường, năm học và mục tiêu của bạn. Bấm Thử lại để lưu.",
+  );
+  assert.equal(
+    profileNotSavedMessage(network, false),
+    "Hồ sơ đã lưu, nhưng chưa lưu được tên hiển thị và mục tiêu của bạn. Kiểm tra mạng rồi bấm Thử lại.",
+  );
+
+  // "Thử lại" sends the same patch as the submit and reports the outcome.
+  const sent = [];
+  assert.equal(
+    await saveProfileExtras(STUDENT, YEAR, async (input) => {
+      sent.push(input);
+    }),
+    null,
+  );
+  assert.deepEqual(sent, [answersLib.toProfilePatch(STUDENT, YEAR)]);
+  assert.equal(
+    await saveProfileExtras(STUDENT, YEAR, async () => {
+      throw network;
+    }),
+    network,
+  );
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { DemoDataTag } from "@/components/ui/DemoDataTag";
 import { AdminPage } from "@/components/layout/admin/AdminPage";
 import { Mascot } from "@/components/brand/Mascot";
 import { Alert } from "@/components/ui/Alert";
@@ -8,6 +9,7 @@ import { disputeListErrorMessage } from "@/lib/admin/disputes-messages";
 import { EMPTY_TAB_COPY, queueChipLabel, resolvedMessage } from "@/lib/admin/disputes-view";
 import { useDisputeQueue } from "../hooks/use-dispute-queue";
 import { CaseDetail } from "./CaseDetail";
+import { MissingCodeReportList } from "./MissingCodeReportList";
 import { DISPUTE_PANEL_ID, DisputeTabs, disputeTabId } from "./DisputeTabs";
 import { RespondentCard } from "./RespondentCard";
 
@@ -24,6 +26,7 @@ export function DisputesScreen() {
   return (
     <AdminPage
       title="Khiếu nại & báo lỗi"
+      actions={<DemoDataTag />}
       meta={
         <DisputeTabs
           active={queue.tab}
@@ -55,8 +58,17 @@ export function DisputesScreen() {
               Thử lại
             </button>
           </Alert>
+        ) : queue.tab === "MISSING_CODE" && queue.reports ? (
+          <MissingCodeReportList
+            reports={queue.reports}
+            total={queue.counts?.MISSING_CODE ?? queue.reports.length}
+            hasMore={queue.hasMoreReports}
+            loadingMore={queue.loadingMoreReports}
+            loadMoreError={queue.moreReportsError}
+            onLoadMore={queue.loadMoreReports}
+          />
         ) : !selected ? (
-          // ASSUMED empty state (not drawn).
+          // ASSUMED (design) empty state (not drawn).
           <section className="flex flex-col items-center gap-4 rounded-[22px] border border-line bg-surface px-6 py-12 text-center">
             <Mascot name="cheer" height={120} />
             <p className="text-body font-semibold text-ink">{EMPTY_TAB_COPY[queue.tab]}</p>
@@ -64,7 +76,7 @@ export function DisputesScreen() {
         ) : (
           <>
             {queue.cases.length > 1 ? (
-              // ASSUMED: Figma draws one case per tab; several open cases get a chooser.
+              // ASSUMED (design): Figma draws one case per tab; several open cases get a chooser.
               <nav aria-label="Các mục đang chờ" className="flex flex-wrap gap-2">
                 {queue.cases.map((item) => {
                   const current = item.id === selected.id;

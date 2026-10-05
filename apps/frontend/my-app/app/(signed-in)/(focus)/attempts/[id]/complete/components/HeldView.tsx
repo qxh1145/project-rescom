@@ -76,7 +76,7 @@ export function HeldView({ amount, surveyTitle, submittedAt }: { amount: number;
             <strong className="font-bold text-ink">Cần xem thêm không có nghĩa là gian lận.</strong> Nếu không đồng ý với
             kết quả cuối, bạn có thể khiếu nại.
           </p>
-          {/* ASSUMED: Figma leaves "[THỜI HẠN]" open; no decision deadline is defined yet. */}
+          {/* ASSUMED (design): Figma leaves "[THỜI HẠN]" open; no decision deadline is defined yet. */}
           <p className="mt-2 text-body-sm leading-[21.7px] text-ink-strong">
             Nếu quá thời hạn xét mà chưa có kết quả, điểm tự động vào Khả dụng.
           </p>

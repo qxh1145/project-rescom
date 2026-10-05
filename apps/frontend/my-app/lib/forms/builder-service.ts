@@ -1,17 +1,21 @@
 import {
-  formStatusEnum,
-  formTypeEnum,
+  formDetailSchema,
+  formListSchema,
   parseFormDefinitionDraft,
+  pricingQuoteSchema,
+  type FormDetail,
+  type PricingQuote,
   type PublishFormInput,
   type UpdateFormDraftInput,
 } from "@rescom/schemas";
-import { z } from "zod";
 import { apiRequest } from "../api/client.ts";
 import {
   aiConversationSchema,
+  aiNewChatSchema,
   aiSuggestedBlockSchema,
   type AiConversation,
   type AiMessageInput,
+  type AiNewChat,
   type AiSuggestedBlock,
 } from "./builder-ai.ts";
 import { emptyDoc, normalizeDoc, toDraftDefinition, UNTITLED_FORM, type BuilderDoc, type BuilderSection } from "./builder-blocks.ts";
@@ -19,7 +23,7 @@ import { emptyDoc, normalizeDoc, toDraftDefinition, UNTITLED_FORM, type BuilderD
 /**
  * Form Builder endpoints.
  *
- * VERIFIED (`forms.controller.ts` + `packages/schemas/src/forms`):
+ * VERIFIED (`forms.controller.ts` + shared `@rescom/schemas` `publisher-form.schema`):
  * - `POST /forms` (`createFormDraftSchema`) → 201 `FormDetailDto`
  * - `GET /forms/:id` → `FormDetailDto` (owner or admin)
  * - `PATCH /forms/:id/draft` (`updateFormDraftSchema`, `clientUpdatedAt` optimistic lock) → `FormDetailDto`;
@@ -33,50 +37,10 @@ import { emptyDoc, normalizeDoc, toDraftDefinition, UNTITLED_FORM, type BuilderD
  * ASSUMED API CONTRACTS documented in `builder-ai.ts`.
  */
 
-export const builderFormSchema = z
-  .object({
-    id: z.string().uuid(),
-    type: formTypeEnum,
-    status: formStatusEnum,
-    title: z.string(),
-    description: z.string().nullable().optional(),
-    rewardPerResponse: z.number().int(),
-    expectedCompletions: z.number().int(),
-    estimatedDurationMinutes: z.number().int().nullable().optional(),
-    currentVersion: z
-      .object({
-        versionNumber: z.number().int(),
-        schemaJson: z.unknown(),
-        targetingJson: z.unknown().nullable().optional(),
-      })
-      .passthrough(),
-    updatedAt: z.string(),
-  })
-  .passthrough();
-export type BuilderForm = z.infer<typeof builderFormSchema>;
-
-export const pricingQuoteSchema = z
-  .object({
-    type: formTypeEnum,
-    expectedCompletions: z.number().int(),
-    baseRewardPerResponse: z.number(),
-    effectiveRewardPerResponse: z.number(),
-    baseCost: z.number(),
-    effectiveCost: z.number(),
-    discountPercent: z.number(),
-    discountAmount: z.number(),
-    estimatedDurationMinutes: z.number().nullable(),
-    pricingBand: z
-      .object({ min: z.number(), max: z.number(), suggested: z.number(), durationBand: z.string() })
-      .nullable(),
-    bandCheck: z.enum(["EXEMPT", "DURATION_REQUIRED", "OUT_OF_BAND", "WITHIN_BAND"]),
-  })
-  .passthrough();
-export type PricingQuote = z.infer<typeof pricingQuoteSchema>;
-
-const recentFormsSchema = z
-  .object({ forms: z.array(z.object({ id: z.string(), title: z.string(), type: formTypeEnum }).passthrough()) })
-  .passthrough();
+export const builderFormSchema = formDetailSchema;
+export type BuilderForm = FormDetail;
+export { pricingQuoteSchema };
+export type { PricingQuote };
 
 const PLACEHOLDER_TITLES = new Set([UNTITLED_FORM, "Untitled Survey"]);
 
@@ -113,12 +77,18 @@ export function draftPayloadOf(doc: BuilderDoc): DraftPayload {
 }
 
 /** `title` names the draft (e.g. from the first AI prompt); blank → "Khảo sát chưa có tên". */
-export function createBuilderDraft({ title, signal }: { title?: string; signal?: AbortSignal } = {}): Promise<BuilderForm> {
+/** With `idempotencyKey`, a retry after a lost response returns the same draft (never a second one). */
+export function createBuilderDraft({
+  title,
+  signal,
+  idempotencyKey,
+}: { title?: string; signal?: AbortSignal; idempotencyKey?: string } = {}): Promise<BuilderForm> {
   return apiRequest("/forms", {
     method: "POST",
     body: { title: title?.trim() || UNTITLED_FORM, type: "INTERNAL" },
     schema: builderFormSchema,
     signal,
+    ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}),
   });
 }
 
@@ -128,7 +98,13 @@ export function getBuilderForm(formId: string, signal?: AbortSignal): Promise<Bu
 
 export function saveBuilderDraft(
   formId: string,
-  payload: DraftPayload & Partial<Pick<UpdateFormDraftInput, "rewardPerResponse" | "expectedCompletions" | "estimatedDurationMinutes" | "targetingJson">>,
+  payload: DraftPayload &
+    Partial<
+      Pick<
+        UpdateFormDraftInput,
+        "rewardPerResponse" | "expectedCompletions" | "estimatedDurationMinutes" | "targetingJson" | "topic" | "deadlineAt"
+      >
+    >,
   clientUpdatedAt: string,
 ): Promise<BuilderForm> {
   return apiRequest(`/forms/${encodeURIComponent(formId)}/draft`, {
@@ -151,7 +127,7 @@ export function publishBuilderForm(formId: string, body: PublishFormInput): Prom
 }
 
 export async function listRecentForms(signal?: AbortSignal): Promise<{ id: string; title: string }[]> {
-  const result = await apiRequest("/forms?limit=5&type=INTERNAL", { schema: recentFormsSchema, signal });
+  const result = await apiRequest("/forms?limit=5&type=INTERNAL", { schema: formListSchema, signal });
   return result.forms.map((item) => ({ id: item.id, title: item.title }));
 }
 
@@ -167,6 +143,25 @@ export function sendAiMessage(formId: string, input: AiMessageInput, signal?: Ab
     body: input,
     schema: aiConversationSchema,
     signal,
+  });
+}
+
+/** First prompt of a new chat: no draft is created for it (see `ai-new-chat.ts`). */
+export function startAiChat(input: AiMessageInput, signal?: AbortSignal): Promise<AiNewChat> {
+  return apiRequest("/forms/ai/messages", {
+    method: "POST",
+    body: input,
+    schema: aiNewChatSchema,
+    signal,
+  });
+}
+
+/** Attaches the new chat's conversation to the draft created after its first answer. */
+export function adoptAiConversation(formId: string, conversationId: string): Promise<AiConversation> {
+  return apiRequest(`/forms/${encodeURIComponent(formId)}/ai/conversation`, {
+    method: "POST",
+    body: { conversationId },
+    schema: aiConversationSchema,
   });
 }
 

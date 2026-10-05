@@ -1,3 +1,9 @@
+import {
+  NOTIFICATION_EMAIL_REQUESTED_EVENT,
+  NotificationEmailRequestedPayload,
+  isEmailNotificationType,
+  notificationEmailKey,
+} from '@rescom/schemas';
 import { NotificationEntity } from '../domain/notification.entity';
 import {
   CreateNotificationRecord,
@@ -14,6 +20,13 @@ export class InMemoryNotificationRepository implements NotificationRepositoryPor
   private readonly rows: Array<{ seq: number; entity: NotificationEntity }> =
     [];
   private sequence = 0;
+  /** Story IR.4b B4: Outbox rows written by `createIfAbsentWithEmailRequest`. */
+  readonly outboxEvents: Array<{
+    idempotencyKey: string;
+    eventType: string;
+    aggregateId: string;
+    payload: NotificationEmailRequestedPayload;
+  }> = [];
 
   async createIfAbsent(record: CreateNotificationRecord): Promise<boolean> {
     const exists = this.rows.some(
@@ -32,6 +45,31 @@ export class InMemoryNotificationRepository implements NotificationRepositoryPor
         message: record.message,
         dedupeKey: record.dedupeKey,
       }),
+    });
+    return true;
+  }
+
+  async createIfAbsentWithEmailRequest(
+    record: CreateNotificationRecord,
+  ): Promise<boolean> {
+    const created = await this.createIfAbsent(record);
+    const type = record.type;
+    if (!created || !isEmailNotificationType(type)) return created;
+    const { entity } = this.rows.find(
+      (row) =>
+        row.entity.userId === record.userId &&
+        row.entity.dedupeKey === record.dedupeKey,
+    )!;
+    this.outboxEvents.push({
+      idempotencyKey: notificationEmailKey(entity.id),
+      eventType: NOTIFICATION_EMAIL_REQUESTED_EVENT,
+      aggregateId: entity.id,
+      payload: {
+        schemaVersion: 1,
+        notificationId: entity.id,
+        userId: record.userId,
+        type,
+      },
     });
     return true;
   }
@@ -88,6 +126,7 @@ export class InMemoryNotificationRepository implements NotificationRepositoryPor
 
   clear(): void {
     this.rows.length = 0;
+    this.outboxEvents.length = 0;
   }
 
   private ownedRows(userId: string, unreadOnly: boolean) {

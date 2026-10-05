@@ -1,13 +1,15 @@
 import { http, type RequestHandler } from "msw";
-import { z } from "zod";
 import {
   SURVEY_DURATION_EXCEEDS_RESERVATION_CODE,
+  audienceEstimateInputSchema,
   calculateEscrowCost,
   checkPublishRewardBand,
   checkSurveyFitsReservationWindow,
   createExternalSurveySchema,
+  checkFormDeadline,
   resolveRewardBandDurationOptions,
-  surveyTargetingSchema,
+  toAudienceEstimate,
+  type SurveyTargetingCriteria,
 } from "@rescom/schemas";
 import { apiUrl } from "@/lib/api/config";
 import { reserveSurveyEscrow, walletOf } from "../data/economy";
@@ -24,17 +26,15 @@ import { applyScenario } from "../scenarios";
  * Google Forms wizard (Figma 9), plus the ASSUMED audience estimate.
  */
 
-/** School is supported only by the ASSUMED audience-estimate endpoint. */
-const wizardTargetingSchema = surveyTargetingSchema.extend({
-  schools: z.array(z.string().trim().min(1).max(200)).max(50).optional(),
-});
+/** Wizard targeting plus the UI-only school filter (`SCHOOL_TARGETING_SUPPORTED`), kept in the extras. */
+type WizardTargeting = SurveyTargetingCriteria & { schools?: string[] };
 const createBodySchema = createExternalSurveySchema;
 
 /** Wizard data `MockPublisherForm` has no field for, keyed by form id (MOCK-ONLY). */
 export interface CreatedFormExtras {
   description: string | null;
   topic: string | null;
-  targeting: z.infer<typeof wizardTargetingSchema> | null;
+  targeting: WizardTargeting | null;
   estimatedDurationMinutes: number | null;
   /** Plaintext only in the mock; the backend stores a verifier. */
   completionCode: string;
@@ -70,7 +70,8 @@ async function readJson(request: Request): Promise<unknown> {
 }
 
 /** Deterministic stand-in for the audience estimate (Figma 9b). */
-function estimateRespondents(targeting: z.infer<typeof wizardTargetingSchema>): number {
+/** MOCK-ONLY heuristic standing in for the backend count (`AudienceEstimateService`). */
+function estimateRespondents(targeting: SurveyTargetingCriteria): number {
   let estimate = 2400;
   if (targeting.ageRange) {
     const span = targeting.ageRange.max - targeting.ageRange.min + 1;
@@ -78,7 +79,6 @@ function estimateRespondents(targeting: z.infer<typeof wizardTargetingSchema>): 
   }
   if (targeting.genders?.length) estimate *= 0.5 * Math.min(2, targeting.genders.length);
   if (targeting.fieldOfStudy?.length) estimate *= Math.min(1, 0.16 * targeting.fieldOfStudy.length);
-  if (targeting.schools?.length) estimate *= 0.35;
   if (targeting.locations?.length) estimate *= 0.45;
   return Math.max(0, Math.round(estimate));
 }
@@ -105,6 +105,10 @@ export const formsCreateHandlers: RequestHandler[] = [
       return fail(400, "VALIDATION_ERROR", "Validation failed", { details: parsed.error.format() });
     }
     const dto = parsed.data;
+    // Story IR.2b Q1 parity: a deadline is 1 h – 180 d ahead.
+    if (dto.deadlineAt && checkFormDeadline(new Date(dto.deadlineAt), new Date())) {
+      return fail(422, "FORM_DEADLINE_INVALID", "The collection deadline must be 1 hour to 180 days ahead.");
+    }
     const definition = {
       metadata: {
         expectedEffortSeconds: dto.expectedEffortSeconds,
@@ -176,16 +180,16 @@ export const formsCreateHandlers: RequestHandler[] = [
       createdAt: now,
       submittedAt: dto.autoPublish ? now : null,
       publishedAt: null,
-      deadlineAt: null,
+      // Story IR.2b: the wizard's collection deadline.
+      deadlineAt: dto.deadlineAt ?? null,
       closedAt: null,
-      hiddenFromMarketplace: true,
       rejection: null,
       versionNumber: 1,
     });
     createdFormExtras.update((all) => {
       all[id] = {
         description: dto.description ?? null,
-        topic: null,
+        topic: dto.topic ?? null,
         targeting: dto.targetingJson ?? null,
         estimatedDurationMinutes,
         completionCode,
@@ -203,6 +207,8 @@ export const formsCreateHandlers: RequestHandler[] = [
       expectedCompletions: dto.expectedCompletions,
       estimatedDurationMinutes,
       closeKind: null,
+      topic: dto.topic ?? null,
+      deadlineAt: dto.deadlineAt ?? null,
       createdAt: now,
       updatedAt: now,
       plaintextCompletionCode: completionCode,
@@ -218,7 +224,8 @@ export const formsCreateHandlers: RequestHandler[] = [
     return ok(response, 201);
   }),
 
-  // ASSUMED API CONTRACT: POST /forms/audience-estimate { targeting } → { estimatedRespondents }
+  // VERIFIED: POST /forms/audience-estimate (`audience-estimate.controller.ts`, session + CSRF)
+  // `audienceEstimateInputSchema` → `audienceEstimateSchema` (rounded, null below the minimum).
   http.post(apiUrl("/forms/audience-estimate"), async ({ request }) => {
     const forced = await applyScenario("forms-create");
     if (forced) return forced;
@@ -226,13 +233,10 @@ export const formsCreateHandlers: RequestHandler[] = [
     if (!user) return unauthorized();
     const csrf = missingCsrf(request);
     if (csrf) return csrf;
-    const body = await readJson(request);
-    const parsed = wizardTargetingSchema.safeParse(
-      typeof body === "object" && body !== null ? (body as { targeting?: unknown }).targeting : undefined,
-    );
+    const parsed = audienceEstimateInputSchema.safeParse(await readJson(request));
     if (!parsed.success) {
       return fail(400, "VALIDATION_ERROR", "Invalid targeting.", { details: parsed.error.format() });
     }
-    return ok({ estimatedRespondents: estimateRespondents(parsed.data) });
+    return ok(toAudienceEstimate(estimateRespondents(parsed.data.targeting)));
   }),
 ];

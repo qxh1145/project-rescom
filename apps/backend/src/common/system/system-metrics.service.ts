@@ -14,6 +14,7 @@ import {
   MemoryMetrics,
   SystemMetrics,
 } from './system-metrics.interface';
+import { storageOutagesSinceBoot } from './storage-outage-counter';
 
 /**
  * BE-10: a CPU sampling baseline. Kept separate per consumer so that an
@@ -278,6 +279,7 @@ export class SystemMetricsService
       cpu,
       memory,
       database,
+      storage: { outagesSinceBoot: storageOutagesSinceBoot() },
     };
   }
 

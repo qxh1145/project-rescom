@@ -131,3 +131,16 @@ Desktop.ini
 
 # Local Agent Artifacts
 .gemini/
+
+# Seed credentials written by `npm run seed` (apps/backend)
+.seed-credentials.local.md
+
+# Production deploy secrets and local backups
+deploy/.env.prod
+deploy/.env.internal
+deploy/certs/
+deploy/backups/
+
+# OMC runtime state (plans/notepads stay tracked)
+**/.omc/state/
+apps/**/.omc/

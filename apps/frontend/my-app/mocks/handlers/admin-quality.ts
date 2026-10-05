@@ -1,8 +1,9 @@
 import { http, type RequestHandler } from "msw";
 import { qualityDecisionCommandSchema } from "@/lib/admin/quality-service";
-import { apiUrl } from "@/lib/api/config";
+import { apiUrl, isHybridMocking } from "@/lib/api/config";
 import { decideQualityReview, openQualityReviews, toQualityReviewDto } from "../data/admin-quality";
 import { fail, missingCsrf, ok } from "../envelope";
+import { HYBRID_ADMIN } from "../hybrid";
 import { applyScenario } from "../scenarios";
 import { requireMockAdmin } from "./admin";
 
@@ -21,7 +22,8 @@ export const adminQualityHandlers: RequestHandler[] = [
   http.get(apiUrl("/admin/quality-reviews"), async () => {
     const forced = await applyScenario("admin");
     if (forced) return forced;
-    const admin = await requireMockAdmin();
+    // Hybrid: the real session and `SessionGate requireAdmin` decide access (`mocks/hybrid.ts`).
+    const admin = isHybridMocking ? HYBRID_ADMIN : await requireMockAdmin();
     if (admin instanceof Response) return admin;
     const items = openQualityReviews().map(toQualityReviewDto);
     return ok({ items, total: items.length });
@@ -31,7 +33,8 @@ export const adminQualityHandlers: RequestHandler[] = [
   http.post(apiUrl("/admin/quality-reviews/:responseId/decision"), async ({ params, request }) => {
     const forced = await applyScenario("admin");
     if (forced) return forced;
-    const admin = await requireMockAdmin();
+    // Hybrid: the real session and `SessionGate requireAdmin` decide access (`mocks/hybrid.ts`).
+    const admin = isHybridMocking ? HYBRID_ADMIN : await requireMockAdmin();
     if (admin instanceof Response) return admin;
     const csrf = missingCsrf(request);
     if (csrf) return csrf;

@@ -11,7 +11,7 @@ import { AuthCard } from "../../login/components/AuthCard";
 import { AuthFormAlert } from "../../login/components/AuthFormAlert";
 import { usePasswordResetRequest } from "../hooks/use-password-reset-request";
 
-/** 15b "Quên mật khẩu" — Figma `63:1973` (mobile only; desktop card ASSUMED). */
+/** 15b "Quên mật khẩu" — Figma `63:1973` (mobile only; desktop card ASSUMED (design)). */
 export function ForgotPasswordPanel() {
   const router = useRouter();
   const reset = usePasswordResetRequest();

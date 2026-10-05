@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   DEFAULT_PARTICIPATION_RATE_LIMIT_POLICY,
+  EMAIL_DELIVERY_MODES,
   PARTICIPATION_RATE_LIMIT_POLICY_VERSION,
   PARTICIPATION_RATE_LIMIT_POLICY_VERSION_PATTERN,
   hasDefaultParticipationRateLimitValues,
@@ -13,6 +14,14 @@ function isValidUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Review L8: the host of the address in `EMAIL_FROM` (`Name <a@host>` or
+ * `a@host`), used as the Message-ID domain when none is configured.
+ */
+export function emailFromDomain(from: string | undefined): string | undefined {
+  return from?.match(/@([A-Za-z0-9.-]+)>?\s*$/)?.[1]?.toLowerCase();
 }
 
 function checkNoCredentialsOrFragmentOrWildcard(value: string): boolean {
@@ -57,6 +66,20 @@ function booleanEnv(defaultValue: boolean) {
       });
       return z.NEVER;
     });
+}
+
+// IR.1 inventory section 3 items 5-6: the .env.example placeholders are long
+// enough to pass the length checks, so production refuses them by prefix.
+// `change_?me` also catches the CHANGE_ME* values of deploy/.env.prod.example.
+const PLACEHOLDER_SECRET_PATTERN = /^(replace_with_|change_?me|example)/i;
+const DEFAULT_CREDENTIAL_VALUES = [
+  'minioadmin',
+  'rescom_password',
+  'change_me',
+];
+
+function isPlaceholderSecret(value: string | undefined): boolean {
+  return value !== undefined && PLACEHOLDER_SECRET_PATTERN.test(value.trim());
 }
 
 const TOPUP_PLACEHOLDER_ACCOUNT_NUMBER = '0000000000';
@@ -172,6 +195,60 @@ export const envSchema = z
       .int()
       .min(0, 'SYSTEM_METRICS_LOG_INTERVAL_SECONDS must be at least 0')
       .default(30),
+
+    // Story IR.2b (AD-5 amendment, AD-17): the in-process scheduler and the
+    // Outbox dispatcher. Off by default; exactly one replica may enable it
+    // (Story 11.1 sets it in docker-compose.prod.yml). Never starts under
+    // NODE_ENV=test. Per-job cadences and leases are code constants.
+    SCHEDULER_ENABLED: booleanEnv(false),
+    SCHEDULER_TICK_SECONDS: z.coerce.number().int().min(1).max(300).default(15),
+    OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(50).default(8),
+
+    // Story IR.4b part B + plan 5.4: email (critical notifications, password
+    // reset). `capture` keeps sent mail in memory (local/test), `smtp` uses
+    // the portable SMTP sender (Mailpit locally, a provider later; AD-23),
+    // `disabled` sends nothing. Production refuses `capture` and `disabled`.
+    // Secrets only through the environment.
+    EMAIL_DELIVERY_MODE: z.enum(EMAIL_DELIVERY_MODES).optional(),
+    EMAIL_FROM: z.string().trim().min(3).max(320).optional(),
+    EMAIL_REPLY_TO: z.string().trim().email().max(320).optional(),
+    // Base of links in emails (reset link, wallet). Defaults to the first
+    // FRONTEND_ORIGINS entry; when set, its origin must be one of them.
+    EMAIL_APP_BASE_URL: z
+      .string()
+      .refine(isValidUrl, 'EMAIL_APP_BASE_URL must be a valid URL')
+      .refine(
+        checkNoCredentialsOrFragmentOrWildcard,
+        'EMAIL_APP_BASE_URL must not contain credentials, fragments, or wildcard hosts',
+      )
+      .refine(
+        (value) => !isValidUrl(value) || !new URL(value).search,
+        'EMAIL_APP_BASE_URL must not contain a query string',
+      )
+      .optional(),
+    EMAIL_MESSAGE_ID_DOMAIN: z
+      .string()
+      .trim()
+      .regex(
+        /^[a-z0-9.-]+$/i,
+        'EMAIL_MESSAGE_ID_DOMAIN must be a bare host name',
+      )
+      // Unset: the domain of EMAIL_FROM (review L8), else rescom.local outside production.
+      .optional(),
+    EMAIL_SEND_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(1000)
+      .max(60000)
+      .default(10000),
+    SMTP_HOST: z.string().trim().min(1).optional(),
+    SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+    // true = implicit TLS (465); false = STARTTLS, required unless
+    // SMTP_REQUIRE_TLS=false (local Mailpit only; refused in production).
+    SMTP_SECURE: booleanEnv(false),
+    SMTP_REQUIRE_TLS: booleanEnv(true),
+    SMTP_USERNAME: z.string().min(1).optional(),
+    SMTP_PASSWORD: z.string().min(1).optional(),
 
     // Story 1.2: Session and Keyed Secret Configuration
     SESSION_ABSOLUTE_TTL_SECONDS: z.coerce
@@ -332,6 +409,18 @@ export const envSchema = z
         });
       }
 
+      // IR.5 E3.1 (AD-5 amendment): the single production replica owns the
+      // scheduler and Outbox dispatcher; without it nothing matures, expires
+      // or sends email.
+      if (!data.SCHEDULER_ENABLED) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['SCHEDULER_ENABLED'],
+          message:
+            'SCHEDULER_ENABLED must be true in production: the single API replica owns the scheduler and Outbox dispatcher',
+        });
+      }
+
       if (!data.AUTH_SECRET_PROTECTION_KEY) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -372,6 +461,41 @@ export const envSchema = z
           path: ['TOPUP_BANK_ACCOUNT_NUMBER'],
           message:
             'Production requires the real top-up bank account (TOPUP_BANK_ACCOUNT_NUMBER and TOPUP_BANK_ACCOUNT_NAME)',
+        });
+      }
+
+      const placeholderSecrets: [string, string | undefined][] = [
+        ['JWT_SECRET', data.JWT_SECRET],
+        ['AUTH_SECRET_PROTECTION_KEY', data.AUTH_SECRET_PROTECTION_KEY],
+        ['COMPLETION_CODE_HMAC_SECRET', data.COMPLETION_CODE_HMAC_SECRET],
+        ['STORAGE_CAPABILITY_SECRET', data.STORAGE_CAPABILITY_SECRET],
+        ['GOOGLE_CLIENT_ID', data.GOOGLE_CLIENT_ID],
+        ['GOOGLE_CLIENT_SECRET', data.GOOGLE_CLIENT_SECRET],
+        ['STORAGE_ACCESS_KEY_ID', data.STORAGE_ACCESS_KEY_ID],
+        ['STORAGE_SECRET_ACCESS_KEY', data.STORAGE_SECRET_ACCESS_KEY],
+        ['SMTP_USERNAME', data.SMTP_USERNAME],
+        ['SMTP_PASSWORD', data.SMTP_PASSWORD],
+      ];
+      for (const [key, value] of placeholderSecrets) {
+        if (isPlaceholderSecret(value)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key} is a placeholder value (replace_with_*, change_me*/changeme*, example*); production requires a real secret`,
+          });
+        }
+      }
+
+      if (
+        DEFAULT_CREDENTIAL_VALUES.some((credential) =>
+          data.DATABASE_URL.toLowerCase().includes(credential),
+        )
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['DATABASE_URL'],
+          message:
+            'DATABASE_URL uses a default development credential; production requires its own database password',
         });
       }
 
@@ -422,6 +546,83 @@ export const envSchema = z
       'AUTH_FRONTEND_ERROR_URL',
       data.AUTH_FRONTEND_ERROR_URL,
     );
+
+    // Story IR.4b B-T4 / plan 5.4: email delivery.
+    if (data.EMAIL_APP_BASE_URL) {
+      checkFrontendOrigin('EMAIL_APP_BASE_URL', data.EMAIL_APP_BASE_URL);
+    }
+    const emailMode =
+      data.EMAIL_DELIVERY_MODE ?? (isProduction ? undefined : 'capture');
+    if (isProduction) {
+      if (emailMode !== 'smtp') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['EMAIL_DELIVERY_MODE'],
+          message:
+            'EMAIL_DELIVERY_MODE=smtp is required in production (capture keeps mail in memory, disabled sends none)',
+        });
+      }
+      if (!data.EMAIL_APP_BASE_URL) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['EMAIL_APP_BASE_URL'],
+          message: 'EMAIL_APP_BASE_URL is required in production',
+        });
+      } else if (
+        isValidUrl(data.EMAIL_APP_BASE_URL) &&
+        new URL(data.EMAIL_APP_BASE_URL).protocol !== 'https:'
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['EMAIL_APP_BASE_URL'],
+          message: 'EMAIL_APP_BASE_URL must use HTTPS in production',
+        });
+      }
+      if (!data.EMAIL_MESSAGE_ID_DOMAIN && !emailFromDomain(data.EMAIL_FROM)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['EMAIL_MESSAGE_ID_DOMAIN'],
+          message:
+            'Production needs EMAIL_MESSAGE_ID_DOMAIN or an EMAIL_FROM address with a domain',
+        });
+      }
+      if (!data.SMTP_SECURE && !data.SMTP_REQUIRE_TLS) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['SMTP_REQUIRE_TLS'],
+          message:
+            'SMTP_REQUIRE_TLS=false is for local Mailpit only; production needs TLS',
+        });
+      }
+    }
+    if (emailMode === 'smtp') {
+      const required: [string, unknown][] = [
+        ['SMTP_HOST', data.SMTP_HOST],
+        ['EMAIL_FROM', data.EMAIL_FROM],
+        ...(isProduction
+          ? ([
+              ['SMTP_USERNAME', data.SMTP_USERNAME],
+              ['SMTP_PASSWORD', data.SMTP_PASSWORD],
+            ] as [string, unknown][])
+          : []),
+      ];
+      for (const [key, value] of required) {
+        if (!value) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key} is required when EMAIL_DELIVERY_MODE=smtp`,
+          });
+        }
+      }
+      if (Boolean(data.SMTP_USERNAME) !== Boolean(data.SMTP_PASSWORD)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['SMTP_USERNAME'],
+          message: 'Set both SMTP_USERNAME and SMTP_PASSWORD, or neither',
+        });
+      }
+    }
   });
 
 export type EnvConfig = z.infer<typeof envSchema>;

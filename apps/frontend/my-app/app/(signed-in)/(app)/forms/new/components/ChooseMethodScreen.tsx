@@ -1,3 +1,4 @@
+import { PILOT_BUILD } from "@/lib/pilot-scope";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { getRewardPricingRange } from "@rescom/schemas";
@@ -60,7 +61,7 @@ function Pill({ tone, children }: { tone: "amber" | "green" | "neutral"; childre
 
 /**
  * `/forms/new` — Figma 9 "Tạo khảo sát · chọn cách tạo" (63:2400, mobile).
- * Desktop not drawn: ASSUMED the same content in a centered column with the
+ * Desktop not drawn: ASSUMED (design) the same content in a centered column with the
  * two cards side by side.
  */
 export function ChooseMethodScreen() {
@@ -111,7 +112,7 @@ export function ChooseMethodScreen() {
             icon="layout-grid"
             iconTone="bg-tone-teal-bg text-tone-teal-fg"
             title="Tạo form trong Rescom"
-            subtitle="Kéo-thả câu hỏi, có AI gợi ý"
+            subtitle={PILOT_BUILD ? "Kéo-thả câu hỏi" : "Kéo-thả câu hỏi, có AI gợi ý"}
             description="Người trả lời làm ngay trong app, bạn xem từng câu trả lời và đánh giá chất lượng."
             tags={
               <>

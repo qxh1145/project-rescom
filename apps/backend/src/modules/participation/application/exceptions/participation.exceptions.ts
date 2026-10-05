@@ -1,8 +1,12 @@
 import {
+  ATTEMPT_NOT_FOUND_CODE,
+  ATTEMPT_NOT_IN_PROGRESS_CODE,
   COMPLETION_CODE_LIMIT_REACHED_CODE,
   SELF_PARTICIPATION_FORBIDDEN_CODE,
+  SURVEY_NOT_FOUND_CODE,
 } from '@rescom/schemas';
 import type {
+  AttemptNotInProgressDetails,
   CompletionCodeLimitDetails,
   ConflictingActiveAttemptDetails,
   ParticipationRateLimitDetails,
@@ -158,14 +162,26 @@ export class ParticipationRateLimitedException extends Error {
   }
 }
 
+/** A file answer that could not be attached (Phase 7: the runner marks it). */
+export interface UncleanAttachmentFile {
+  questionId: string;
+  objectId: string;
+}
+
 export class UncleanAttachmentException extends Error {
   readonly code = 'UNCLEAN_ATTACHMENT';
 
   constructor(
+    /** The offending files: unknown, of another attempt/question, or not CLEAN. */
+    readonly files: UncleanAttachmentFile[] = [],
     message = 'Attached file has not passed malware scanning or was rejected.',
   ) {
     super(message);
     this.name = 'UncleanAttachmentException';
+  }
+
+  get details(): { files: UncleanAttachmentFile[] } {
+    return { files: this.files };
   }
 }
 
@@ -261,5 +277,49 @@ export class RewardNotSettleableException extends Error {
   constructor(message = 'This completion has no reward to settle.') {
     super(message);
     this.name = 'RewardNotSettleableException';
+  }
+}
+
+/**
+ * Story IR.2a (API-01): unknown, unpublished (DRAFT, ESCROW_LOCKED,
+ * MODERATION_QUEUE, CLOSED) and version-less surveys look the same (404), so
+ * the public summary does not reveal which surveys exist.
+ */
+export class SurveyNotFoundException extends Error {
+  readonly code = SURVEY_NOT_FOUND_CODE;
+
+  constructor(message = 'Survey not found.') {
+    super(message);
+    this.name = 'SurveyNotFoundException';
+  }
+}
+
+/**
+ * Story IR.2a (API-02..04): the attempt does not exist, is a guest attempt,
+ * or belongs to another user — one 404 for all three (owner-only routes; an
+ * Admin who does not own the attempt gets it too).
+ */
+export class AttemptNotFoundException extends Error {
+  readonly code = ATTEMPT_NOT_FOUND_CODE;
+
+  constructor(message = 'Survey attempt not found.') {
+    super(message);
+    this.name = 'AttemptNotFoundException';
+  }
+}
+
+/**
+ * Story IR.2a (API-03): only an unexpired IN_PROGRESS attempt can be
+ * cancelled (409); `details` = its status and why it closed.
+ */
+export class AttemptNotInProgressException extends Error {
+  readonly code = ATTEMPT_NOT_IN_PROGRESS_CODE;
+
+  constructor(
+    public readonly details: AttemptNotInProgressDetails,
+    message = 'Only an in-progress survey attempt can be cancelled.',
+  ) {
+    super(message);
+    this.name = 'AttemptNotInProgressException';
   }
 }

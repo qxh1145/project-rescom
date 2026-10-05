@@ -539,6 +539,8 @@ export class SurveyModerationService {
       targetingInvalid: !targeting.ok,
       isResubmission: this.forms.hasEarlierLiveVersion(record),
       submittedAt: form.updatedAt.toISOString(),
+      topic: form.topic,
+      deadlineAt: form.deadlineAt ? form.deadlineAt.toISOString() : null,
     };
   }
 

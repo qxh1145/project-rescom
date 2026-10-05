@@ -1,6 +1,6 @@
 import { isApiError } from "../api/api-error.ts";
 
-/** Vietnamese copy of the admin "Tổng quan" (ASSUMED — not drawn). */
+/** Vietnamese copy of the admin "Tổng quan" (ASSUMED (design) — not drawn). */
 
 export function overviewLoadErrorMessage(error: unknown): string {
   if (isApiError(error) && error.kind === "network") {
@@ -11,4 +11,5 @@ export function overviewLoadErrorMessage(error: unknown): string {
 }
 
 export const OVERVIEW_TODO_EMPTY = "Không còn việc nào đang chờ. Các hàng chờ đều trống.";
-export const OVERVIEW_FLAGGED_EMPTY = "Chưa có tài khoản nào bị gắn cờ vi phạm lặp lại.";
+/** The card lists every account with a FraudLog entry in the last 14 days ("Lặp lại" marks repeat offenders). */
+export const OVERVIEW_FLAGGED_EMPTY = "Không có tài khoản nào ghi nhận vi phạm trong 14 ngày qua.";

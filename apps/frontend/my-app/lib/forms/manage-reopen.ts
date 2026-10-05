@@ -9,6 +9,31 @@ import { escrowDrawPerCompletion, MAX_EXPECTED_COMPLETIONS, type FormTypeEnum } 
  * survey; the backend locks 8 × 10 = 80).
  */
 
+/**
+ * Story IR.2b Q3: reopening a survey whose deadline passed needs a new
+ * deadline (or none), else the deadline job closes it again. `null` = no
+ * deadline, otherwise days from now (same choices as the create wizard).
+ */
+export const REOPEN_DEADLINE_CHOICES: readonly { value: number | null; label: string }[] = [
+  { value: 7, label: "7 ngày nữa" },
+  { value: 14, label: "14 ngày nữa" },
+  { value: 30, label: "30 ngày nữa" },
+  { value: null, label: "Không giới hạn thời gian" },
+];
+export const REOPEN_DEFAULT_DEADLINE_DAYS = 14;
+
+/** True when the survey's deadline is set and already passed. */
+export function reopenNeedsNewDeadline(deadlineAt: string | null | undefined, now: Date = new Date()): boolean {
+  if (!deadlineAt) return false;
+  const time = Date.parse(deadlineAt);
+  return Number.isFinite(time) && time <= now.getTime();
+}
+
+/** `deadlineAt` of the reopen request: `days` from now, or null for none. */
+export function reopenDeadlineAt(days: number | null, now: Date = new Date()): string | null {
+  return days === null ? null : new Date(now.getTime() + days * 86_400_000).toISOString();
+}
+
 /** Figma 10b default of "Thêm người trả lời". */
 export const REOPEN_DEFAULT_COMPLETIONS = 8;
 

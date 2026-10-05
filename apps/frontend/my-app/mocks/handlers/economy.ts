@@ -1,4 +1,5 @@
 import { http } from "msw";
+import { walletTransactionItemSchema } from "@rescom/schemas";
 import { apiUrl } from "@/lib/api/config";
 import { ledgerItemsOf, releaseDuePendingRewards, toBalanceDto, walletOf } from "../data/economy";
 import { getMockSessionUser } from "../db/session";
@@ -18,7 +19,7 @@ function pageOf(url: URL): { limit: number; offset: number } {
 }
 
 export const economyHandlers = [
-  // VERIFIED: GET /economy/wallet → walletDetailsSchema (+ ASSUMED `surveyTitle` per transaction)
+  // VERIFIED: GET /economy/wallet → walletDetailsSchema
   http.get(apiUrl("/economy/wallet"), async ({ request }) => {
     const forced = await applyScenario("wallet");
     if (forced) return forced;
@@ -32,7 +33,8 @@ export const economyHandlers = [
     // `accounts` stays empty: no screen reads it.
     return ok({
       balance: toBalanceDto(walletOf(user)),
-      transactions: ledgerItemsOf(user, limit, offset),
+      // The mock rows also carry `surveyTitle` for the admin ledger; the real response does not.
+      transactions: ledgerItemsOf(user, limit, offset).map((item) => walletTransactionItemSchema.parse(item)),
       accounts: [],
     });
   }),

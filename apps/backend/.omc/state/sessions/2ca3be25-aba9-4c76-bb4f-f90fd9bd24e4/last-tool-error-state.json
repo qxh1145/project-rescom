@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"rtk grep -n \\\"^model \\\\|^enum \\\" prisma/schema.prisma; rtk grep -n \\\"enum FraudType\\\" -A 10 prisma/schema.prisma\",\"description\":\"List Prisma models and fraud types\"}",
-  "error": "Exit code 1\n52 matches in 1 files:\n\n13:enum Role {\n19:enum UserStatus {\n24:enum AuthProvider {\n29:enum FormType {\n34:enum FormStatus {\n42:enum ResponseStatus {\n50:enum AttemptStatus {\n57:enum IntegrityEventType {\n91:enum IntegrityRiskLevel {\n97:enum FraudLogType {\n105:enum IntegrityIncidentType {\n116:enum IntegrityIncidentStatus {\n121:enum IntegritySeverity {\n128:enum IntegrityResolution {\n134:enum PolicyStatus {\n142:enum OutboxStatus {\n149:enum NotificationType {\n156:enum TopUpStatus {\n162:enum...",
-  "timestamp": "2026-09-25T19:27:05.771Z",
-  "retry_count": 1
-}

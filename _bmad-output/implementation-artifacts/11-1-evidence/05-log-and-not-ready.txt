@@ -1,0 +1,8 @@
+## Caddy access log: client_ip field for the last login
+{'remote_ip': '192.168.65.1', 'client_ip': '203.0.113.8', 'status': 401, 'edge_key_logged': False}
+
+## readiness with the scanner stopped
+$ GET /health/ready
+{"data":null,"error":{"code":"NOT_READY","message":"Service is not ready.","details":{"database":"up","scanner":"down","scheduler":"ok"},"requestId":"4b58d592-5953-4507-9e7b-dd274f618123"},"meta":{}} [503]
+## api log line (server-side reason only)
+api-1  | [33m[Nest] 1  - [39m10/03/2026, 6:41:19 AM [33m   WARN[39m [38;5;3m[HealthController] [39m[33mReadiness check "scanner" failed: unreachable[39m

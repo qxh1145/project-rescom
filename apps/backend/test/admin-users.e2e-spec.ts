@@ -21,6 +21,8 @@ import {
   AUTH_COOKIE_NAME,
   REFRESH_COOKIE_NAME,
 } from '../src/modules/auth/presentation/cookie-options.helper';
+import { NOTIFICATION_REPOSITORY_PORT } from '../src/modules/notifications/application/ports/notification-repository.port';
+import { InMemoryNotificationRepository } from '../src/modules/notifications/infrastructure/in-memory-notification.repository';
 
 describe('Admin Users & RBAC E2E Tests (Story 1.4)', () => {
   let app: INestApplication;
@@ -28,6 +30,7 @@ describe('Admin Users & RBAC E2E Tests (Story 1.4)', () => {
   let sessionRepo: InMemorySessionRepository;
   let auditRepo: InMemoryIdentityAuditRepository;
   let transactionAdapter: InMemoryUserAdminTransactionAdapter;
+  let notificationRepo: InMemoryNotificationRepository;
   let sessionService: SessionService;
   let envService: EnvService;
 
@@ -46,6 +49,7 @@ describe('Admin Users & RBAC E2E Tests (Story 1.4)', () => {
       sessionRepo,
       auditRepo,
     );
+    notificationRepo = new InMemoryNotificationRepository();
 
     envService = new EnvService({
       NODE_ENV: 'test',
@@ -75,6 +79,8 @@ describe('Admin Users & RBAC E2E Tests (Story 1.4)', () => {
       .useValue(auditRepo)
       .overrideProvider(USER_ADMIN_TRANSACTION_PORT)
       .useValue(transactionAdapter)
+      .overrideProvider(NOTIFICATION_REPOSITORY_PORT)
+      .useValue(notificationRepo)
       .overrideProvider(EnvService)
       .useValue(envService)
       .compile();
@@ -107,6 +113,7 @@ describe('Admin Users & RBAC E2E Tests (Story 1.4)', () => {
     userRepo.clear();
     sessionRepo.clear();
     auditRepo.clear();
+    notificationRepo.clear();
   });
 
   async function createTestUserWithSession(
@@ -215,7 +222,7 @@ describe('Admin Users & RBAC E2E Tests (Story 1.4)', () => {
           status: 'LOCKED',
         }),
       );
-      await sessionRepo.revokeAllByUserId(user.id);
+      await sessionRepo.revokeAllByUserId(user.id, 'ADMIN_LOCK');
 
       const res = await request(app.getHttpServer())
         .get('/auth/me')
@@ -242,7 +249,7 @@ describe('Admin Users & RBAC E2E Tests (Story 1.4)', () => {
           status: 'LOCKED',
         }),
       );
-      await sessionRepo.revokeAllByUserId(user.id);
+      await sessionRepo.revokeAllByUserId(user.id, 'ADMIN_LOCK');
 
       const res = await request(app.getHttpServer())
         .post('/auth/refresh')
@@ -269,7 +276,7 @@ describe('Admin Users & RBAC E2E Tests (Story 1.4)', () => {
         'ACTIVE',
       );
 
-      await sessionRepo.revokeAllByUserId(user.id);
+      await sessionRepo.revokeAllByUserId(user.id, 'ADMIN_LOCK');
 
       const res = await request(app.getHttpServer())
         .get('/auth/me')
@@ -575,6 +582,48 @@ describe('Admin Users & RBAC E2E Tests (Story 1.4)', () => {
         .get('/auth/me')
         .set('Cookie', [`${AUTH_COOKIE_NAME}=${targetTokens.accessToken}`])
         .expect(403);
+    });
+
+    it('publishes ACCOUNT_LOCKED / ACCOUNT_UNLOCKED once each, queued for email; a same-status PATCH publishes nothing (IR.4b B3)', async () => {
+      const { tokens: adminTokens } = await createTestUserWithSession(
+        'admin-notify@example.com',
+        'ADMIN',
+      );
+      const { user: target } = await createTestUserWithSession(
+        'target-notify@example.com',
+        'RESPONDENT',
+      );
+      const patch = (status: 'LOCKED' | 'ACTIVE') =>
+        request(app.getHttpServer())
+          .patch(`/admin/users/${target.id}/status`)
+          .set('Cookie', [`${AUTH_COOKIE_NAME}=${adminTokens.accessToken}`])
+          .set('Origin', 'http://localhost:3000')
+          .set('x-csrf-token', adminTokens.csrfToken)
+          .send(
+            status === 'LOCKED'
+              ? { status, reason: 'Vi phạm quy định cộng đồng nhiều lần' }
+              : { status },
+          )
+          .expect(200);
+
+      await patch('LOCKED');
+      await patch('LOCKED');
+      await patch('ACTIVE');
+      await patch('ACTIVE');
+
+      const notices = notificationRepo
+        .all()
+        .filter((notification) => notification.userId === target.id);
+      expect(notices.map((notification) => notification.type)).toEqual([
+        'ACCOUNT_LOCKED',
+        'ACCOUNT_UNLOCKED',
+      ]);
+      expect(
+        notificationRepo.outboxEvents.map((event) => event.payload.type),
+      ).toEqual(['ACCOUNT_LOCKED', 'ACCOUNT_UNLOCKED']);
+      expect(JSON.stringify(notificationRepo.outboxEvents)).not.toContain(
+        'target-notify@example.com',
+      );
     });
 
     it('should reject locking the last remaining active admin with 400 CANNOT_LOCK_LAST_ADMIN', async () => {

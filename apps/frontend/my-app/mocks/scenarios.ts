@@ -1,4 +1,5 @@
 import { HttpResponse, delay } from "msw";
+import { isHybridMocking } from "@/lib/api/config";
 import { fail, unauthorized } from "./envelope";
 
 /**
@@ -32,6 +33,8 @@ export const MOCK_SCENARIOS = [
   "integrity-hold",
   // MOCK-ONLY: every Google Forms reward in its 48h review is released on the next wallet/status read.
   "release-pending",
+  // Plan 5.6: another device signed in, so every session request answers 401 AUTH_SESSION_REPLACED (15e).
+  "session-replaced",
 ] as const;
 
 export type MockScenario = (typeof MOCK_SCENARIOS)[number];
@@ -44,6 +47,7 @@ export type MockEndpoint =
   | "refresh"
   | "google"
   | "password-forgot"
+  | "password-reset"
   | "demographics"
   | (string & {});
 
@@ -51,7 +55,14 @@ export type MockEndpoint =
 const AUTH_ENDPOINTS = new Set(["login", "register", "me", "refresh", "google"]);
 
 /** Guest routes: callable without a session, so `unauthenticated` leaves them alone. */
-const GUEST_ENDPOINTS = new Set(["login", "register", "google", "password-forgot", "public-surveys"]);
+const GUEST_ENDPOINTS = new Set([
+  "login",
+  "register",
+  "google",
+  "password-forgot",
+  "password-reset",
+  "public-surveys",
+]);
 
 /** localStorage key of the remembered scenario (cleared by `?msw-reset=1`). */
 export const SCENARIO_STORAGE_KEY = "rescom:msw-scenario";
@@ -63,6 +74,9 @@ function isScenario(value: string | null): value is MockScenario {
 }
 
 export function getActiveScenario(): MockScenario {
+  // Hybrid (gate G): a scenario remembered from `enabled` mode (e.g. `unauthenticated`) must not
+  // turn a deferred route into a fake 401 next to the real session.
+  if (isHybridMocking) return "default";
   const fromUrl = new URLSearchParams(window.location.search).get("msw");
   try {
     if (isScenario(fromUrl)) {
@@ -135,6 +149,10 @@ export async function applyScenario(endpoint: MockEndpoint): Promise<Response | 
             details: { email: "minh.le@fpt.edu.vn" },
           })
         : undefined;
+    case "session-replaced":
+      return GUEST_ENDPOINTS.has(endpoint)
+        ? undefined
+        : fail(401, "AUTH_SESSION_REPLACED", "Session was replaced by a newer sign-in.");
     case "api-error":
       return AUTH_ENDPOINTS.has(endpoint) ? undefined : fail(500, "INTERNAL_SERVER_ERROR", "Internal server error");
     case "api-offline":

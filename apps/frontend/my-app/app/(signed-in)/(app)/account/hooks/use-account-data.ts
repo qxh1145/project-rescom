@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { PILOT_BUILD } from "@/lib/pilot-scope";
 import { useApiQuery } from "@/lib/api/use-api-query";
 import { getDemographics } from "@/lib/demographics/demographics-service";
 import { getEngagementSummary } from "@/lib/engagement/engagement-service";
@@ -12,7 +13,7 @@ import { useSessionLossRedirect } from "@/lib/session/use-session-loss";
 
 /**
  * Data of `/account` and `/account/profile`:
- * - VERIFIED `GET /demographics` + the session's ASSUMED `GET /users/me/profile` → profile fields;
+ * - VERIFIED `GET /demographics` + the session's VERIFIED `GET /users/me/profile` → profile fields;
  * - ASSUMED `GET /engagement/me` → streak, tier, stats, weekly rank;
  * - ASSUMED `GET /integrity/consent` and `GET /integrity/reliability/me` → row values
  *   (best effort: a failure only leaves the row value empty).
@@ -23,9 +24,9 @@ export function useAccountData({ withRowDetails = false }: { withRowDetails?: bo
   const session = useSession();
   const currentYear = useMemo(() => new Date().getFullYear(), []);
   const demographics = useApiQuery("account-demographics", (signal) => getDemographics(signal));
-  const engagement = useApiQuery("engagement-summary", (signal) => getEngagementSummary(signal));
+  const engagement = useApiQuery(PILOT_BUILD ? null : "engagement-summary", (signal) => getEngagementSummary(signal));
   const consent = useApiQuery(withRowDetails ? "integrity-consent" : null, (signal) => getIntegrityConsent(signal));
-  const reliability = useApiQuery(withRowDetails ? "reliability-summary" : null, (signal) =>
+  const reliability = useApiQuery(withRowDetails && !PILOT_BUILD ? "reliability-summary" : null, (signal) =>
     getReliabilitySummary(signal),
   );
 

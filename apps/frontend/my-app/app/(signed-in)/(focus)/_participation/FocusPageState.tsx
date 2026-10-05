@@ -6,7 +6,7 @@ import { Spinner } from "@/components/ui/Spinner";
 
 /**
  * Full-page loading / error states shared by the Phase 3B focus screens
- * (start, taking, complete). ASSUMED: not drawn in Figma; page 8 states.
+ * (start, taking, complete). ASSUMED (design): not drawn in Figma; page 8 states.
  */
 export function FocusLoading({ label = "Đang tải…" }: { label?: string }) {
   return (

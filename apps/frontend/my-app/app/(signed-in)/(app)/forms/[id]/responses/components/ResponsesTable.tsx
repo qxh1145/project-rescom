@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { Icon } from "@/components/ui/Icon";
-import type { FormResponse, FormResponses, ResultQuestion } from "@/lib/forms/results-service";
+import type { FormResponse, ResultQuestion } from "@/lib/forms/results-service";
 import {
   answerCompact,
   columnHeader,
@@ -13,7 +13,6 @@ import {
   responseLabel,
   type Page,
 } from "@/lib/forms/results-view";
-import { QualityTag } from "./QualityTag";
 
 const HEAD = "px-2 pb-2.5 text-left text-[12px] font-semibold whitespace-nowrap text-ink-muted";
 const CELL = "h-13 border-t border-line-subtle px-2 text-body-sm text-ink";
@@ -58,16 +57,14 @@ function pageWindow(page: number, pageCount: number): number[] {
   return Array.from({ length: Math.min(5, pageCount) }, (_, index) => start + index);
 }
 
-/** Desktop table of 10d (63:3752): code, time, duration, chosen questions, quality. */
+/** Desktop table of 10d (63:3752): code, time, duration, chosen questions. */
 export function ResponsesTable({
-  data,
   page,
   columns,
   selectedId,
   hrefFor,
   onPage,
 }: {
-  data: FormResponses;
   page: Page<FormResponse>;
   columns: ResultQuestion[];
   selectedId: string | null;
@@ -75,7 +72,6 @@ export function ResponsesTable({
   onPage: (page: number) => void;
 }) {
   const router = useRouter();
-  const external = data.form.type === "EXTERNAL";
   return (
     <>
       <div className="overflow-x-auto">
@@ -92,20 +88,11 @@ export function ResponsesTable({
               <th scope="col" className={`${HEAD} w-24`}>
                 Thời gian
               </th>
-              {external ? (
-                <th scope="col" className={HEAD}>
-                  Mã hoàn thành
+              {columns.map((question) => (
+                <th key={question.id} scope="col" className={`${HEAD} max-w-48 truncate`} title={question.title}>
+                  {columnHeader(question)}
                 </th>
-              ) : (
-                columns.map((question) => (
-                  <th key={question.id} scope="col" className={`${HEAD} max-w-48 truncate`} title={question.title}>
-                    {columnHeader(question)}
-                  </th>
-                ))
-              )}
-              <th scope="col" className={`${HEAD} w-31`}>
-                Chất lượng
-              </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -131,18 +118,11 @@ export function ResponsesTable({
                   </td>
                   <td className={`${CELL} whitespace-nowrap`}>{formatSubmittedAt(response.submittedAt)}</td>
                   <td className={`${CELL} whitespace-nowrap`}>{formatDurationShort(response.durationSeconds)}</td>
-                  {external ? (
-                    <td className={CELL}>{response.codeVerified ? "Đã xác minh" : "Chưa xác minh"}</td>
-                  ) : (
-                    columns.map((question) => (
-                      <td key={question.id} className={`${CELL} max-w-48 truncate`}>
-                        {answerCompact(question, response.answers[question.id])}
-                      </td>
-                    ))
-                  )}
-                  <td className={CELL}>
-                    <QualityTag quality={response.quality} />
-                  </td>
+                  {columns.map((question) => (
+                    <td key={question.id} className={`${CELL} max-w-48 truncate`}>
+                      {answerCompact(question, response.answers[question.id])}
+                    </td>
+                  ))}
                 </tr>
               );
             })}

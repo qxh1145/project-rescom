@@ -1,4 +1,4 @@
-import { delay, http, type RequestHandler } from "msw";
+import { http, type RequestHandler } from "msw";
 import {
   calculateEscrowCost,
   checkPublishRewardBand,
@@ -15,10 +15,8 @@ import {
   updateFormDraftSchema,
 } from "@rescom/schemas";
 import { apiUrl } from "@/lib/api/config";
-import { aiMessageInputSchema } from "@/lib/forms/builder-ai";
 import { reserveSurveyEscrow } from "../data/economy";
 import { ensureFormActivity } from "../data/form-activity";
-import { cannedAssistantTurn, cannedSuggestedBlock } from "../data/form-ai-canned";
 import {
   createFormDraft,
   ensureDemoDraftListed,
@@ -33,14 +31,15 @@ import { getMockSessionUser, type MockSessionUser } from "../db/session";
 import { fail, missingCsrf, ok, unauthorized } from "../envelope";
 import { applyScenario } from "../scenarios";
 import { toDetail } from "./forms-manage";
+import { decideIdempotentRequest, idempotencyRecordKey, type IdempotencyRecord } from "../data/idempotency";
+import { createCollection } from "../db/store";
 
-/** Mock latency of an AI reply (ms). */
-const AI_REPLY_DELAY_MS = 7000;
+/** `Idempotency-Key` of `POST /forms` → the draft id it created, by `<userId>:<key>`. */
+const draftCreations = createCollection<Record<string, IdempotencyRecord<string>>>("builder-draft-creations", () => ({}));
 
 /**
  * Phase 5D — Form Builder (Figma 13). VERIFIED routes mirror
- * `forms.controller.ts`; the AI chat routes are ASSUMED (see
- * `lib/forms/builder-ai.ts`). Only forms the builder owns (`form-drafts`)
+ * `forms.controller.ts`; the AI chat routes live in `forms-ai.ts`. Only forms the builder owns (`form-drafts`)
  * are answered here: any other id / an EXTERNAL `POST /forms` falls through
  * to the next handler (Google Forms wizard, my-surveys…).
  */
@@ -75,6 +74,8 @@ function detailOf(draft: MockFormDraft, user: MockSessionUser) {
     expectedCompletions: row?.expectedCompletions ?? draft.expectedCompletions,
     estimatedDurationMinutes: draft.estimatedDurationMinutes,
     closeKind: row?.closeKind ?? null,
+    topic: draft.topic ?? null,
+    deadlineAt: draft.deadlineAt ?? null,
     currentVersion: {
       id: `${draft.id.slice(0, 24)}${String(draft.versionNumber).padStart(12, "0")}`,
       formId: draft.id,
@@ -165,6 +166,17 @@ export const formsBuilderHandlers: RequestHandler[] = [
     if (csrf) return csrf;
     const parsed = createFormDraftSchema.safeParse(body ?? {});
     if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid form draft.", { details: parsed.error.format() });
+    // `Idempotency-Key` (Phase 6): a retry of the same creation returns the same draft.
+    const recordKey = idempotencyRecordKey(user.id, request.headers.get("Idempotency-Key"));
+    const fingerprint = JSON.stringify(parsed.data);
+    const replay = decideIdempotentRequest(recordKey ? draftCreations.get()[recordKey] : undefined, fingerprint);
+    if (replay.kind === "conflict") {
+      return fail(409, "IDEMPOTENCY_KEY_CONFLICT", "This Idempotency-Key was already used with a different request body.");
+    }
+    if (replay.kind === "replay") {
+      const existing = findFormDraft(replay.response);
+      if (existing) return ok(detailOf(existing, user), 201);
+    }
     const draft = createFormDraft({
       ownerEmail: user.email,
       title: parsed.data.title,
@@ -174,6 +186,11 @@ export const formsBuilderHandlers: RequestHandler[] = [
       estimatedDurationMinutes: parsed.data.estimatedDurationMinutes ?? null,
       schema: parsed.data.schema,
     });
+    if (recordKey) {
+      draftCreations.update((all) => {
+        all[recordKey] = { fingerprint, response: draft.id };
+      });
+    }
     return ok(detailOf(draft, user), 201);
   }),
 
@@ -210,6 +227,8 @@ export const formsBuilderHandlers: RequestHandler[] = [
         input.estimatedDurationMinutes === undefined ? draft.estimatedDurationMinutes : input.estimatedDurationMinutes,
       schema: input.schema ?? draft.schema,
       targetingJson: input.targetingJson === undefined ? draft.targetingJson : input.targetingJson,
+      topic: input.topic === undefined ? draft.topic : input.topic,
+      deadlineAt: input.deadlineAt === undefined ? draft.deadlineAt : input.deadlineAt,
       updatedAt: nextUpdatedAt(draft.updatedAt),
     };
     saveFormDraft(next);
@@ -286,34 +305,5 @@ export const formsBuilderHandlers: RequestHandler[] = [
     saveFormDraft(published);
     syncPublisherForm(published);
     return ok(detailOf(published, user));
-  }),
-
-  // ASSUMED API CONTRACT: GET /forms/:id/ai/conversation.
-  http.get(apiUrl("/forms/:id/ai/conversation"), async ({ params, request }) => {
-    const result = await access(String(params.id), request);
-    if (!result || result instanceof Response) return result;
-    const { draft } = result;
-    if (!draft.ai) return fail(404, "AI_CONVERSATION_NOT_FOUND", "No AI conversation for this form yet.");
-    return ok({ formId: draft.id, ...draft.ai });
-  }),
-
-  // ASSUMED API CONTRACT: POST /forms/:id/ai/messages — canned Vietnamese replies.
-  http.post(apiUrl("/forms/:id/ai/messages"), async ({ params, request }) => {
-    const result = await access(String(params.id), request, true);
-    if (!result || result instanceof Response) return result;
-    const parsed = aiMessageInputSchema.safeParse(await readJson(request));
-    if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid AI message.", { details: parsed.error.format() });
-    // A model takes a while: long enough to watch the thought line (canvas 13b₁) play.
-    await delay(AI_REPLY_DELAY_MS);
-    const ai = cannedAssistantTurn(result.draft.ai, parsed.data.message, parsed.data.options);
-    saveFormDraft({ ...result.draft, ai });
-    return ok({ formId: result.draft.id, ...ai });
-  }),
-
-  // ASSUMED API CONTRACT: POST /forms/:id/ai/suggest-block (13f "Để AI gợi ý câu hỏi").
-  http.post(apiUrl("/forms/:id/ai/suggest-block"), async ({ params, request }) => {
-    const result = await access(String(params.id), request, true);
-    if (!result || result instanceof Response) return result;
-    return ok({ block: cannedSuggestedBlock(result.draft.schema.blocks.length), attentionSuggestion: null });
   }),
 ];

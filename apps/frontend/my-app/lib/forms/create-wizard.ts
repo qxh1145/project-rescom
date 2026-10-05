@@ -7,12 +7,14 @@ import {
   isGoogleFormsUrl,
   isHttpsUrl,
   type CreateExternalSurveyInput,
+  type FormTopic,
   type Gender,
   type RewardPricingRange,
   type SurveyTargetingCriteria,
 } from "@rescom/schemas";
 import { FIELDS_OF_STUDY, SCHOOL_OPTIONS, VIETNAM_LOCATIONS } from "../demographic-options.ts";
 import { CREATE_MESSAGES } from "./create-messages.ts";
+import { normalizeWizardTopic } from "./topics.ts";
 
 /**
  * Pure rules of the Google Forms creation wizard (Figma 9a info · 9b
@@ -97,21 +99,8 @@ export function rewardRangeOf(id: DurationBandId | null | undefined): RewardPric
   return band ? getRewardPricingRange(band.minutes) : null;
 }
 
-/**
- * "Chủ đề" (Figma 9a select). It remains wizard metadata until the backend
- * adds a persisted topic field; it must not be sent to the strict create API.
- */
-export const TOPIC_OPTIONS: readonly { value: string; label: string }[] = [
-  { value: "Marketing", label: "Marketing & Truyền thông" },
-  { value: "Kinh tế", label: "Kinh tế & Quản trị kinh doanh" },
-  { value: "CNTT", label: "Công nghệ thông tin" },
-  { value: "Kỹ thuật", label: "Kỹ thuật & Kiến trúc" },
-  { value: "Xã hội", label: "Ngôn ngữ & Khoa học xã hội" },
-  { value: "Thiết kế", label: "Thiết kế đồ họa & Mỹ thuật" },
-  { value: "Sức khỏe", label: "Y sinh & Sức khỏe" },
-  { value: "Đời sống", label: "Đời sống sinh viên" },
-  { value: "Khác", label: "Khác" },
-];
+// "Chủ đề" (Figma 9a select, plan 2.2): shared values + Vietnamese labels.
+export { TOPIC_LABELS, TOPIC_OPTIONS, normalizeWizardTopic, topicLabel } from "./topics.ts";
 
 // ---------------------------------------------------------------------------
 // Draft (what the wizard edits and keeps in localStorage)
@@ -122,8 +111,8 @@ export type GenderChoice = "ALL" | Extract<Gender, "MALE" | "FEMALE">;
 export interface GoogleFormWizardDraft {
   externalUrl: string;
   title: string;
-  /** `TOPIC_OPTIONS` value; "" = none chosen. */
-  topic: string;
+  /** Shared `FORM_TOPICS` value; "" = none chosen. */
+  topic: FormTopic | "";
   description: string;
   durationBand: DurationBandId | null;
   gender: GenderChoice;
@@ -308,7 +297,7 @@ export function audienceSummaryLine(draft: GoogleFormWizardDraft): string {
 // Step 3 · số mẫu & điểm (FR-14 band, escrow = sample × reward)
 // ---------------------------------------------------------------------------
 
-/** ASSUMED: "Hạn thu thập" choices (Figma 9c "14 ngày · đến 10/10/2026"). */
+/** ASSUMED (design): "Hạn thu thập" choices (Figma 9c "14 ngày · đến 10/10/2026"). */
 export const COLLECTION_DAY_CHOICES = [7, 14, 30] as const;
 export const DEFAULT_COLLECTION_DAYS = 14;
 
@@ -322,6 +311,20 @@ const DATE_FORMAT = new Intl.DateTimeFormat("vi-VN", {
 /** "14 ngày · đến 10/10/2026". */
 export function collectionDaysLabel(days: number, now: Date = new Date()): string {
   return `${days} ngày · đến ${DATE_FORMAT.format(new Date(now.getTime() + days * 86_400_000))}`;
+}
+
+const VIETNAM_OFFSET_MS = 7 * 3_600_000;
+
+/**
+ * Story IR.2b Q1: the `deadlineAt` sent for "Hạn thu thập" — the END of the
+ * day shown in `collectionDaysLabel` (23:59:59.999 Asia/Ho_Chi_Minh, UTC+7,
+ * no DST). A whole day, not `now + days`, so a retry of the same request
+ * (same `Idempotency-Key`) on the same day sends the same body.
+ */
+export function collectionDeadlineAt(days: number, now: Date = new Date()): string {
+  const local = new Date(now.getTime() + days * 86_400_000 + VIETNAM_OFFSET_MS);
+  const endOfLocalDay = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), 23, 59, 59, 999);
+  return new Date(endOfLocalDay - VIETNAM_OFFSET_MS).toISOString();
 }
 
 /** Positive integer or null (inputs are raw strings). */
@@ -413,9 +416,10 @@ export function reachableStep(requested: WizardStep, draft: GoogleFormWizardDraf
  * Body of `POST /forms/external` (VERIFIED `createExternalSurveySchema`) with
  * `autoPublish: true`: the backend creates the survey, checks the FR-14 band
  * and the 30-minute window, locks the escrow and queues it for moderation in
- * one unit of work (AD-16). UI-only topic, collection deadline and school
- * targeting are deliberately omitted until the backend persists them; the
- * create schema is strict. Null when a step is still invalid.
+ * one unit of work (AD-16). It carries the topic (plan 2.2) and the
+ * collection deadline (`collectionDeadlineAt`, Story IR.2b); the UI-only
+ * school targeting is still omitted (strict schema). Null when a step is
+ * still invalid.
  */
 export type CreateGoogleFormSurveyBody = Omit<
   CreateExternalSurveyInput,
@@ -426,7 +430,10 @@ export type CreateGoogleFormSurveyBody = Omit<
   targetingJson: SurveyTargetingCriteria;
 };
 
-export function toCreateRequest(draft: GoogleFormWizardDraft): CreateGoogleFormSurveyBody | null {
+export function toCreateRequest(
+  draft: GoogleFormWizardDraft,
+  now: Date = new Date(),
+): CreateGoogleFormSurveyBody | null {
   if (WIZARD_STEPS.some((step) => hasErrors(validateStep(step, draft)))) return null;
   const url = checkGoogleFormsUrl(draft.externalUrl);
   const band = durationBandOf(draft.durationBand);
@@ -444,6 +451,8 @@ export function toCreateRequest(draft: GoogleFormWizardDraft): CreateGoogleFormS
     estimatedDurationMinutes: band.minutes,
     targetingJson: toBackendTargetingJson(draft),
     autoPublish: true,
+    topic: normalizeWizardTopic(draft.topic) || null,
+    deadlineAt: collectionDeadlineAt(draft.collectionDays, now),
   };
 }
 
@@ -468,6 +477,8 @@ export interface WizardPrefillSource {
   rewardPerResponse: number;
   expectedCompletions: number;
   estimatedDurationMinutes?: number | null;
+  /** Plan 2.2 (`FormDetailDto.topic`). */
+  topic?: string | null;
   currentVersion: { externalUrl?: string | null; targetingJson?: unknown };
 }
 
@@ -485,9 +496,9 @@ const strings = (value: unknown): string[] =>
  * A fresh wizard draft from a rejected Google Forms survey: link, title,
  * description, duration band, targeting, sample and reward. Only values the
  * wizard can show are kept (a gender list other than exactly Nam or Nữ is
- * "Tất cả"; unknown fields of study / regions are dropped). Topic, deadline and
- * school are not stored by the backend, so they start empty. Null for an
- * in-Rescom survey.
+ * "Tất cả"; unknown fields of study / regions are dropped). The topic is
+ * kept (plan 2.2); the deadline restarts at the default collection days and
+ * the school is not stored by the backend. Null for an in-Rescom survey.
  */
 export function wizardDraftFromSurvey(source: WizardPrefillSource): GoogleFormWizardDraft | null {
   if (source.type !== "EXTERNAL") return null;
@@ -505,6 +516,7 @@ export function wizardDraftFromSurvey(source: WizardPrefillSource): GoogleFormWi
     ...draft,
     externalUrl: source.currentVersion.externalUrl ?? "",
     title: source.title,
+    topic: normalizeWizardTopic(source.topic),
     description: source.description ?? "",
     durationBand: durationBandForMinutes(source.estimatedDurationMinutes),
     gender: genders.length === 1 && (genders[0] === "MALE" || genders[0] === "FEMALE") ? genders[0] : "ALL",

@@ -34,7 +34,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
  * Figma 63:457 "Đối chiếu yêu cầu" (470px card): amount, transfer content and
  * receiving account to match against the bank statement, the three-point
  * checklist, then "Từ chối…" / "Duyệt & cộng N điểm". Reviewed requests show
- * the decision instead of the actions (ASSUMED, not drawn).
+ * the decision instead of the actions (ASSUMED (design), not drawn).
  */
 export function TopUpReviewPanel({ item, checked, onCheck, busy, error, onApprove, onReject }: TopUpReviewPanelProps) {
   const name = requesterName(item);

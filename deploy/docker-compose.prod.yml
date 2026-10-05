@@ -1,0 +1,70 @@
+# AD-23 pilot stack on the Google Cloud VM (Story 11.1): caddy, api, clamav only.
+# Database = Cloud SQL (private IP, DATABASE_URL); storage = Cloud Storage via its S3 API (STORAGE_*);
+# frontend = Vercel. No business data lives in a container volume: a lost VM is replaced by
+# provisioning a new one and redeploying the image. Only Caddy publishes ports.
+#   cp deploy/.env.prod.example deploy/.env.prod   # fill every value, chmod 600
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod run --rm api npx prisma migrate deploy
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod up -d
+name: rescom-pilot
+
+services:
+  caddy:
+    image: caddy:2.11.6-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?}
+      EDGE_KEY: ${EDGE_KEY:?}
+      TRUSTED_PROXY_RANGES: ${TRUSTED_PROXY_RANGES:?}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+      # Caddy state only (no business data).
+      - caddy_data:/data
+      - caddy_config:/config
+    healthcheck:
+      # Admin API, loopback only.
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      api: { condition: service_healthy }
+
+  api:
+    image: ${API_IMAGE:-ghcr.io/qxh1145/rescom-api}:${API_TAG:?}
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    restart: unless-stopped
+    # The VM uses deploy/.env.prod; API_ENV_FILE only redirects local smoke runs.
+    env_file: ${API_ENV_FILE:-.env.prod}
+    # No published port: Caddy reaches api:4000 on the compose network. The image's
+    # HEALTHCHECK probes /health/live; deploys wait on /health/ready (Story 11.3).
+    depends_on:
+      clamav: { condition: service_healthy }
+
+  clamav:
+    image: clamav/clamav-debian:1.5.4
+    restart: unless-stopped
+    environment:
+      # clamd's own default (25M) is below the 50 MB upload limit (IR.5 C4, DF9).
+      CLAMD_CONF_StreamMaxLength: 100M
+    volumes:
+      # Signature cache only; re-downloadable, not business data.
+      - clamav_data:/var/lib/clamav
+    healthcheck:
+      # Loading signatures takes minutes on a cold volume, hence start_period.
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 360s
+
+volumes:
+  caddy_data:
+  caddy_config:
+  clamav_data:

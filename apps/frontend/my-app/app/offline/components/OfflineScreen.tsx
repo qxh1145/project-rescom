@@ -66,7 +66,7 @@ export function OfflineScreen({ returnPath }: { returnPath: string | null }) {
           <Button size="lg" loading={checking} loadingLabel="Đang kết nối…" onClick={handleRetry} className={ERROR_ACTION_LAYOUT}>
             Thử kết nối lại
           </Button>
-          {/* Desktop has "Về Khám phá" in the top bar; mobile gets it here (ASSUMED, not drawn). */}
+          {/* Desktop has "Về Khám phá" in the top bar; mobile gets it here (ASSUMED (design), not drawn). */}
           <Link href={ERROR_FALLBACK_PATH} className={`${errorActionClassName("secondary")} lg:hidden`}>
             Về Khám phá
           </Link>

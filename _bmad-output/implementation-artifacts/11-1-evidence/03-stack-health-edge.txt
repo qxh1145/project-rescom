@@ -1,0 +1,19 @@
+## stack 2026-10-03T06:41:28Z
+api | Up 54 seconds (healthy) | 4000/tcp
+caddy | Up 48 seconds (healthy) | 0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp, 0.0.0.0:443->443/udp, [::]:443->443/udp
+clamav | Up 2 minutes (healthy) | 3310/tcp, 7357/tcp
+
+$ GET /health/live
+{"data":{"status":"ok"},"error":null,"meta":{}}
+$ GET /health/ready
+{"data":{"status":"ready","checks":{"database":"up","scanner":"up","scheduler":"ok"}},"error":null,"meta":{}} [200]
+$ GET /auth/me, no edge key
+[403]
+$ GET /auth/me, wrong key
+[403]
+$ GET /auth/me, valid key but missing client IP
+[400]
+$ GET /auth/me, valid key
+[401]
+$ api port published to host?
+4000 closed (ok)

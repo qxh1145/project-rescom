@@ -9,20 +9,18 @@ import { isOwnerReopenableClose, type FormCloseKind, type FormStatusEnum, type F
 /** What the Publisher sees; several backend states share one pill. */
 export type PublisherStatusView =
   | "REJECTED" // CLOSED by moderation (legacy: DRAFT + rejection) — "Bị từ chối"
-  | "DRAFT" // never submitted — ASSUMED "Bản nháp" (not drawn)
+  | "DRAFT" // never submitted — ASSUMED (design) "Bản nháp" (not drawn)
   | "PENDING_REVIEW" // MODERATION_QUEUE / legacy ESCROW_LOCKED — "Chờ duyệt"
-  | "PAUSED" // PUBLISHED + pausedAt — ASSUMED "Tạm dừng"
   | "RUNNING" // PUBLISHED — "Đang chạy"
   | "FULL" // CLOSED with the quota met — "Đủ mẫu"
-  | "ENDED"; // CLOSED early — ASSUMED "Đã kết thúc"
+  | "ENDED"; // CLOSED early — ASSUMED (design) "Đã kết thúc"
 
 export interface StatusFacts {
   status: FormStatusEnum;
   /** VERIFIED on `GET /forms/:id` and (Phase 5 M2) `GET /forms` items; absent = unknown. */
   closeKind?: FormCloseKind | null;
-  /** ASSUMED: the Admin's reason and the refunded Escrow. */
-  rejection: { reason: string; refundedPoints: number } | null;
-  pausedAt: string | null;
+  /** `GET /forms/:id`: the Admin's reason and the refunded Escrow (absent on list items). */
+  rejection: { reason: string; refundAmount: number } | null;
   completedCompletions: number;
   expectedCompletions: number;
 }
@@ -40,9 +38,11 @@ export function statusViewOf(form: StatusFacts): PublisherStatusView {
     case "MODERATION_QUEUE":
       return "PENDING_REVIEW";
     case "PUBLISHED":
-      return form.pausedAt ? "PAUSED" : "RUNNING";
+      return "RUNNING";
     case "CLOSED":
       if (form.closeKind === "MODERATION") return "REJECTED";
+      // Plan 2.3: the backend closes a survey (QUOTA) when its sample target is met.
+      if (form.closeKind === "QUOTA") return "FULL";
       return form.expectedCompletions > 0 && form.completedCompletions >= form.expectedCompletions ? "FULL" : "ENDED";
   }
 }
@@ -61,7 +61,6 @@ export const STATUS_PILLS: Record<PublisherStatusView, StatusPill> = {
   REJECTED: { label: "Bị từ chối", tone: "danger", icon: "x-circle" },
   DRAFT: { label: "Bản nháp", tone: "neutral", icon: "file-text" },
   PENDING_REVIEW: { label: "Chờ duyệt", tone: "neutral", icon: "clock" },
-  PAUSED: { label: "Tạm dừng", tone: "amber", icon: "pause" },
   RUNNING: { label: "Đang chạy", tone: "teal", icon: "play-circle" },
   FULL: { label: "Đủ mẫu", tone: "green", icon: "check" },
   ENDED: { label: "Đã kết thúc", tone: "neutral", icon: "check" },
@@ -83,7 +82,7 @@ export function matchesFilter(view: PublisherStatusView, filter: ManageFilter): 
     case "all":
       return true;
     case "running":
-      return view === "RUNNING" || view === "PAUSED";
+      return view === "RUNNING";
     case "pending":
       return view === "PENDING_REVIEW";
     case "ended":
@@ -92,7 +91,7 @@ export function matchesFilter(view: PublisherStatusView, filter: ManageFilter): 
 }
 
 export interface ManageStats {
-  /** "Đang chạy" (paused surveys included: they still hold their quota). */
+  /** "Đang chạy". */
   running: number;
   /** "Chờ Admin duyệt". */
   pendingReview: number;
@@ -112,7 +111,7 @@ export function aggregateStats(
   let escrowKnown = forms.length === 0;
   for (const form of forms) {
     const view = statusViewOf(form);
-    if (view === "RUNNING" || view === "PAUSED") stats.running += 1;
+    if (view === "RUNNING") stats.running += 1;
     if (view === "PENDING_REVIEW") stats.pendingReview += 1;
     if (form.escrowLocked !== null) {
       escrowKnown = true;
@@ -125,7 +124,12 @@ export function aggregateStats(
 }
 
 /** Why `POST /forms/:id/reopen` refuses (backend `FormNotReopenableException.reason`, + not closed). */
-export type ReopenRefusal = "NOT_CLOSED" | "CLOSED_BY_ADMIN_OR_MODERATION" | "VERSION_NOT_APPROVED";
+export type ReopenRefusal =
+  | "NOT_CLOSED"
+  | "CLOSED_BY_ADMIN_OR_MODERATION"
+  | "VERSION_NOT_APPROVED"
+  // Plan 2.3: a QUOTA close (sample target met) is not reopenable for now.
+  | "SAMPLE_TARGET_REACHED";
 
 /**
  * Backend `reopenForm` order: only CLOSED; decision E8-D1 — only a survey its
@@ -140,6 +144,8 @@ export function reopenRefusalOf(form: {
   currentVersion?: Readonly<Record<string, unknown>> | null;
 }): ReopenRefusal | null {
   if (form.status !== "CLOSED") return "NOT_CLOSED";
+  if (form.closeKind === "QUOTA") return "SAMPLE_TARGET_REACHED";
+  // Story IR.2b: OWNER and DEADLINE closes are reopenable.
   if (!isOwnerReopenableClose(form.closeKind ?? null)) return "CLOSED_BY_ADMIN_OR_MODERATION";
   if (form.currentVersion?.isPublished === false) return "VERSION_NOT_APPROVED";
   return null;
@@ -185,12 +191,12 @@ export function canDelete(form: StatusFacts, versionNumber: number): boolean {
 
 /**
  * "Chỉnh sửa" of a running Form Builder survey (`POST /forms/:id/versions`
- * needs PUBLISHED; a paused survey is still PUBLISHED). Google Forms surveys
+ * needs PUBLISHED). Google Forms surveys
  * are edited on Google itself, so they never offer it.
  */
 export function canEditLive(form: StatusFacts & { type: FormTypeEnum }): boolean {
   const view = statusViewOf(form);
-  return form.type === "INTERNAL" && (view === "RUNNING" || view === "PAUSED");
+  return form.type === "INTERNAL" && view === "RUNNING";
 }
 
 /**
@@ -205,7 +211,7 @@ export function resubmitHref(form: { id: string; type: FormTypeEnum }): string {
     : `/forms/${encodeURIComponent(form.id)}/resubmit`;
 }
 
-/** "Tiếp tục soạn" of a never-submitted draft (ASSUMED, not drawn): its own editor. */
+/** "Tiếp tục soạn" of a never-submitted draft (ASSUMED (design), not drawn): its own editor. */
 export function continueDraftHref(form: { id: string; type: FormTypeEnum }): string {
   return form.type === "EXTERNAL"
     ? `/forms/new/google-form?from=${encodeURIComponent(form.id)}`

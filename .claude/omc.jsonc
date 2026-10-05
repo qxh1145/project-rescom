@@ -1,0 +1,184 @@
+{
+  "permissions": {
+    "maxBackgroundTasks": 2
+  },
+  "features": {
+    "parallelExecution": true
+  },
+  "routing": {
+    "enabled": true,
+    "forceInherit": false,
+    "defaultTier": "MEDIUM",
+    "escalationEnabled": false,
+    "tierModels": {
+      "LOW": "haiku",
+      "MEDIUM": "sonnet",
+      "HIGH": "opus"
+    },
+    "agentOverrides": {
+      "planner": {
+        "tier": "MEDIUM",
+        "reason": "Rescom task-based budget policy"
+      },
+      "analyst": {
+        "tier": "MEDIUM",
+        "reason": "Rescom task-based budget policy"
+      },
+      "architect": {
+        "tier": "HIGH",
+        "reason": "Rescom task-based budget policy"
+      },
+      "executor": {
+        "tier": "MEDIUM",
+        "reason": "Rescom task-based budget policy"
+      },
+      "debugger": {
+        "tier": "MEDIUM",
+        "reason": "Rescom task-based budget policy"
+      },
+      "critic": {
+        "tier": "MEDIUM",
+        "reason": "Rescom task-based budget policy"
+      },
+      "code-reviewer": {
+        "tier": "MEDIUM",
+        "reason": "Rescom task-based budget policy"
+      },
+      "security-reviewer": {
+        "tier": "HIGH",
+        "reason": "Rescom task-based budget policy"
+      },
+      "test-engineer": {
+        "tier": "MEDIUM",
+        "reason": "Rescom task-based budget policy"
+      },
+      "designer": {
+        "tier": "MEDIUM",
+        "reason": "Rescom task-based budget policy"
+      },
+      "writer": {
+        "tier": "LOW",
+        "reason": "Rescom task-based budget policy"
+      },
+      "code-simplifier": {
+        "tier": "MEDIUM",
+        "reason": "Rescom task-based budget policy"
+      },
+      "explore": {
+        "tier": "LOW",
+        "reason": "Rescom task-based budget policy"
+      },
+      "document-specialist": {
+        "tier": "LOW",
+        "reason": "Rescom task-based budget policy"
+      }
+    }
+  },
+  "agents": {
+    "planner": {
+      "model": "sonnet"
+    },
+    "analyst": {
+      "model": "sonnet"
+    },
+    "architect": {
+      "model": "opus"
+    },
+    "executor": {
+      "model": "sonnet"
+    },
+    "debugger": {
+      "model": "sonnet"
+    },
+    "critic": {
+      "model": "sonnet"
+    },
+    "codeReviewer": {
+      "model": "sonnet"
+    },
+    "securityReviewer": {
+      "model": "opus"
+    },
+    "testEngineer": {
+      "model": "sonnet"
+    },
+    "designer": {
+      "model": "sonnet"
+    },
+    "writer": {
+      "model": "haiku"
+    },
+    "codeSimplifier": {
+      "model": "sonnet"
+    },
+    "explore": {
+      "model": "haiku"
+    },
+    "documentSpecialist": {
+      "model": "haiku"
+    }
+  },
+  "team": {
+    "roleRouting": {
+      "orchestrator": {
+        "model": "MEDIUM"
+      },
+      "planner": {
+        "provider": "claude",
+        "model": "MEDIUM"
+      },
+      "analyst": {
+        "provider": "claude",
+        "model": "MEDIUM"
+      },
+      "architect": {
+        "provider": "claude",
+        "model": "HIGH"
+      },
+      "executor": {
+        "provider": "claude",
+        "model": "MEDIUM"
+      },
+      "debugger": {
+        "provider": "claude",
+        "model": "MEDIUM"
+      },
+      "critic": {
+        "provider": "claude",
+        "model": "MEDIUM"
+      },
+      "code-reviewer": {
+        "provider": "claude",
+        "model": "MEDIUM"
+      },
+      "security-reviewer": {
+        "provider": "claude",
+        "model": "HIGH"
+      },
+      "test-engineer": {
+        "provider": "claude",
+        "model": "MEDIUM"
+      },
+      "designer": {
+        "provider": "claude",
+        "model": "MEDIUM"
+      },
+      "writer": {
+        "provider": "claude",
+        "model": "LOW"
+      },
+      "code-simplifier": {
+        "provider": "claude",
+        "model": "MEDIUM"
+      },
+      "explore": {
+        "provider": "claude",
+        "model": "LOW"
+      },
+      "document-specialist": {
+        "provider": "claude",
+        "model": "LOW"
+      }
+    }
+  }
+}

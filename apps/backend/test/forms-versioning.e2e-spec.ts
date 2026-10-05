@@ -29,6 +29,11 @@ import { InMemoryNotificationRepository } from '../src/modules/notifications/inf
 import { LEDGER_REPOSITORY_PORT } from '../src/modules/economy/application/ports/ledger-repository.port';
 import { InMemoryLedgerRepository } from '../src/modules/economy/infrastructure/in-memory-ledger.repository';
 import { LedgerService } from '../src/modules/economy/application/ledger.service';
+import {
+  createdFormVersionSchema,
+  formInProgressAttemptsSchema,
+  formVersionSummaryListSchema,
+} from '@rescom/schemas';
 
 describe('Story 2.7: Form Versioning E2E Tests', () => {
   let app: INestApplication;
@@ -248,7 +253,7 @@ describe('Story 2.7: Form Versioning E2E Tests', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.error).toBeNull();
-      expect(res.body.data.id).toBe(formId);
+      expect(createdFormVersionSchema.parse(res.body.data).id).toBe(formId);
       expect(res.body.data.status).toBe('DRAFT');
       expect(res.body.data.currentVersion.versionNumber).toBe(2);
       expect(res.body.data.currentVersion.isPublished).toBe(false);
@@ -272,6 +277,7 @@ describe('Story 2.7: Form Versioning E2E Tests', () => {
         .get(`/forms/${formId}/in-progress-attempts`)
         .set('Cookie', [`${AUTH_COOKIE_NAME}=${tokens.accessToken}`]);
       expect(impact.status).toBe(200);
+      formInProgressAttemptsSchema.parse(impact.body.data);
       expect(impact.body.data).toEqual({
         formId,
         status: 'PUBLISHED',
@@ -518,7 +524,9 @@ describe('Story 2.7: Form Versioning E2E Tests', () => {
         .send();
 
       expect(res2.status).toBe(200);
-      expect(res2.body.data).toHaveLength(2);
+      expect(formVersionSummaryListSchema.parse(res2.body.data)).toHaveLength(
+        2,
+      );
       expect(res2.body.data[0].versionNumber).toBe(1);
       expect(res2.body.data[1].versionNumber).toBe(2);
       expect(res2.body.data[1].isPublished).toBe(false);

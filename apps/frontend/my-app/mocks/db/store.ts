@@ -4,11 +4,11 @@
  * flows survive reloads (take a survey → wallet → notifications stay in sync).
  *
  * Reset everything with `?msw-reset=1` or `resetMockDb()`: the collections,
- * the legacy demo store (`lib/mock`, which still holds the signed-in user),
+ * the legacy demo store (`mocks/legacy`, which still holds the signed-in user),
  * passwords registered through MSW and the remembered `?msw=` scenario.
  */
 
-import { LEGACY_STORE_KEY } from "@/lib/mock/store.ts";
+import { LEGACY_STORE_KEY } from "../legacy/store";
 import { CREDENTIALS_KEY } from "../data/auth";
 import { SCENARIO_STORAGE_KEY } from "../scenarios";
 
@@ -17,8 +17,9 @@ const PREFIX = "rescom:mockdb:";
  * Bump when seed shapes change so stale browser state is discarded.
  * 2: attempts use the backend `AttemptStatus` values (Phase 3 review).
  * 3: survey response analytics seed (321-response and empty publisher surveys).
+ * 4: the empty analytics survey is also a respondent survey (surveys + survey-content).
  */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 interface Persisted<T> {
   version: number;

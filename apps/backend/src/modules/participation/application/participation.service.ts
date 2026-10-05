@@ -19,22 +19,15 @@ import {
   VerifyExternalCompletionCodeResponseDto,
   ReportMissingCompletionCodeInput,
   ReportMissingCompletionCodeResponseDto,
-  AttemptTimeBarrierDto,
   TimeBarrierRejectionDetails,
   computeInternalTimeBarrier,
   evaluateTimeBarrier,
-  resolveExternalTimeBarrierSeconds,
-  TIME_BARRIER_POLICY_VERSION,
   COMPLETION_CODE_POLICY,
   COMPLETION_CODE_POLICY_VERSION,
   CompletionCodeLimitResetRequest,
   CompletionCodeLimitResetResultDto,
 } from '@rescom/schemas';
-import {
-  FormRepositoryPort,
-  FormWithVersion,
-} from '../../forms/application/ports/form-repository.port';
-import { FormVersionEntity } from '../../forms/domain/form-version.entity';
+import { FormRepositoryPort } from '../../forms/application/ports/form-repository.port';
 import { CompletionCodePort } from '../../forms/application/ports/completion-code.port';
 import { DemographicProfileRepositoryPort } from '../../users/application/ports/demographic-profile.repository.port';
 import { requireCompleteDemographicProfile } from '../../users/application/demographic-profile.gate';
@@ -80,10 +73,17 @@ import {
   UnitOfWorkPort,
 } from '../../../common/database/unit-of-work.port';
 import { NotificationPublisherPort } from '../../notifications/application/ports/notification-publisher.port';
+import { SurveyQuotaClosePort } from './ports/survey-quota-close.port';
 import {
   CompletionCapacityContext,
   ParticipationRateLimiter,
 } from './participation-rate-limiter';
+import {
+  describeAttemptTimeBarrier,
+  findPinnedVersion,
+  ResolvedTimeBarrier,
+  resolveTimeBarrier,
+} from './attempt-projection';
 
 /** Story 5.1 AC3.1; shared with Storage via `@rescom/schemas` (Epic 5 review P16). */
 export { RESERVATION_EXPIRY_MINUTES };
@@ -108,6 +108,12 @@ export interface ParticipationServiceOptions {
    * absent (unit tests) a random per-instance key is used — never a literal.
    */
   storageCapabilitySecret?: string;
+  /**
+   * Plan 2.3 (decision A): closes the survey (QUOTA) and refunds its leftover
+   * Escrow in the transaction of the completion that meets its sample
+   * target. Absent (unit tests) = surveys stay PUBLISHED when full.
+   */
+  quotaCloser?: SurveyQuotaClosePort;
 }
 
 /** Outcome of the locked completion-code unit (Epic 5 review P6). */
@@ -137,15 +143,6 @@ export interface InternalRewardRedriveResult {
   policyMode: RewardPolicyMode;
 }
 
-/** Barrier that applies to an attempt (Story 8.2); computed server-side only. */
-interface ResolvedTimeBarrier {
-  requiredSeconds: number;
-  questionCount: number | null;
-  secondsPerQuestion: number | null;
-  publisherMinimumSeconds: number | null;
-  policyVersion: string;
-}
-
 export class ParticipationService {
   constructor(
     private readonly formRepository: FormRepositoryPort,
@@ -163,9 +160,11 @@ export class ParticipationService {
   ) {
     this.storageCapabilitySecret =
       options.storageCapabilitySecret ?? randomBytes(32).toString('hex');
+    this.quotaCloser = options.quotaCloser;
   }
 
   private readonly storageCapabilitySecret: string;
+  private readonly quotaCloser?: SurveyQuotaClosePort;
 
   /**
    * Initializes a survey attempt with concurrency checks and expiring quota reservation.
@@ -203,6 +202,12 @@ export class ParticipationService {
     }
 
     const { form, currentVersion } = formWithVersion;
+
+    // Plan 2.3: a survey the system closed because its sample target was met
+    // keeps the respondent-facing "survey full" answer.
+    if (form.isClosed() && form.closeKind === 'QUOTA') {
+      throw new SurveyQuotaFullException();
+    }
 
     if (!form.isPublished() || !currentVersion.isPublished) {
       throw new SurveyNotAvailableException(
@@ -297,6 +302,16 @@ export class ParticipationService {
       });
     }
 
+    // Story IR.2b Task 9.2: no new start at or after the deadline (attempts
+    // started before it may still finish; the deadline close waits for them).
+    // Checked after the active-attempt conflict so an open attempt can still
+    // be resumed through start (review 2026-10-01).
+    if (form.isPastDeadline(now)) {
+      throw new SurveyNotAvailableException(
+        `Survey "${formId}" is past its collection deadline.`,
+      );
+    }
+
     // Quota: completed participations + active reservations < expectedCompletions
     const { completedCount, activeReservationCount } =
       await this.participationRepository.getQuotaStatus(form.id, cutoffDate);
@@ -388,8 +403,8 @@ export class ParticipationService {
         this.storageCapabilitySecret,
         attempt.id,
       ),
-      timeBarrier: this.describeAttemptTimeBarrier(
-        this.resolveTimeBarrier(form.type, currentVersion),
+      timeBarrier: describeAttemptTimeBarrier(
+        resolveTimeBarrier(form.type, currentVersion),
         startedAt,
       ),
     };
@@ -729,7 +744,7 @@ export class ParticipationService {
       throw new SurveyNotAvailableException('Survey not found.');
     }
     const { form } = formWithVersion;
-    const pinnedVersion = this.findPinnedVersion(
+    const pinnedVersion = findPinnedVersion(
       formWithVersion,
       attempt.formVersionId,
     );
@@ -854,6 +869,15 @@ export class ParticipationService {
           },
         },
         ...(completionLimit ? { completionLimit } : {}),
+        // Plan 2.3: the submission that meets the sample target closes the
+        // survey (QUOTA) and refunds its leftover Escrow in its transaction.
+        ...(this.quotaCloser
+          ? {
+              afterCompletion: async () => {
+                await this.quotaCloser?.closeFormIfQuotaMet(form.id, now);
+              },
+            }
+          : {}),
       });
 
     // Epic 5 review P7: the transaction is state-predicated; only this
@@ -1087,7 +1111,7 @@ export class ParticipationService {
 
     // 4. Server-authoritative Time Barrier Verification (FR-13, FR-22, FR-45).
     // External forms have no question count: publisher minimum or 15 s.
-    const barrier = this.resolveTimeBarrier('EXTERNAL', pinnedVersion);
+    const barrier = resolveTimeBarrier('EXTERNAL', pinnedVersion);
     const timing = evaluateTimeBarrier({
       startedAt: attempt.startedAt,
       now,
@@ -1182,12 +1206,23 @@ export class ParticipationService {
           verifyVersion.completionCode,
         );
         if (!isCodeValid) {
-          const { failureCount, isLocked, accountFailureCount } =
+          const {
+            failureCount,
+            isLocked,
+            accountFailureCount,
+            attemptInProgress,
+          } =
             await this.participationRepository.recordFailedAttemptVerification(
               attempt.id,
               callerUserId,
               verifyVersion.id,
             );
+          // Review LOW-2: an attempt that left IN_PROGRESS under the lock
+          // (cancelled or expired) took no strike and can no longer be
+          // completed: 409 ATTEMPT_EXPIRED, not a wrong-code reply.
+          if (!attemptInProgress && !isLocked) {
+            return { kind: 'EXPIRED' };
+          }
           return {
             kind: 'INVALID',
             failureCount,
@@ -1242,6 +1277,10 @@ export class ParticipationService {
               form.rewardPerResponse,
             )
           : null;
+        // Plan 2.3: the verification that meets the sample target closes the
+        // survey (QUOTA) and refunds its leftover Escrow in this Unit of Work
+        // (after this completion's own Pending credit drew its Escrow).
+        await this.quotaCloser?.closeFormIfQuotaMet(form.id, now);
         return { kind: 'COMPLETED', attempt: claim.attempt, rewardResult };
       },
     );
@@ -1596,63 +1635,6 @@ export class ParticipationService {
     );
   }
 
-  /** The attempt's pinned FormVersion (AD-19), or null when it is unknown. */
-  private findPinnedVersion(
-    formWithVersion: FormWithVersion,
-    formVersionId: string,
-  ): FormVersionEntity | null {
-    return (
-      formWithVersion.versions?.find((v) => v.id === formVersionId) ??
-      (formWithVersion.currentVersion.id === formVersionId
-        ? formWithVersion.currentVersion
-        : null)
-    );
-  }
-
-  /**
-   * Story 8.2: Internal = max(answerable questions x 2 s, publisher minimum);
-   * External = publisher minimum or 15 s (question count unknown).
-   */
-  private resolveTimeBarrier(
-    formType: 'INTERNAL' | 'EXTERNAL',
-    version: FormVersionEntity,
-  ): ResolvedTimeBarrier {
-    const parsed = parseFormDefinitionDraft(version.schemaJson);
-    const definition = parsed.success
-      ? parsed.data
-      : ((version.schemaJson ?? null) as Parameters<
-          typeof computeInternalTimeBarrier
-        >[0]);
-    if (formType === 'INTERNAL') {
-      return computeInternalTimeBarrier(definition);
-    }
-    const requiredSeconds = resolveExternalTimeBarrierSeconds(
-      definition?.metadata,
-    );
-    return {
-      requiredSeconds,
-      questionCount: null,
-      secondsPerQuestion: null,
-      publisherMinimumSeconds: requiredSeconds,
-      policyVersion: TIME_BARRIER_POLICY_VERSION,
-    };
-  }
-
-  private describeAttemptTimeBarrier(
-    barrier: ResolvedTimeBarrier,
-    startedAt: Date,
-  ): AttemptTimeBarrierDto {
-    return {
-      requiredSeconds: barrier.requiredSeconds,
-      questionCount: barrier.questionCount,
-      secondsPerQuestion: barrier.secondsPerQuestion,
-      earliestSubmitAt: new Date(
-        startedAt.getTime() + barrier.requiredSeconds * 1000,
-      ).toISOString(),
-      policyVersion: barrier.policyVersion,
-    };
-  }
-
   /**
    * Rejects a too-fast submission with structured countdown data and records
    * one FraudLog TIME_BARRIER entry per attempt (FR-45, FR-47) for
@@ -1769,7 +1751,8 @@ export class ParticipationService {
    * Reports a missing completion code for an external survey attempt (FR-23).
    * Epic 5 review P20: External attempts only, under the COMPLETION_CODE
    * burst limit, with timing evidence for the Admin. An expired attempt may
-   * still report — that is the honest "never got a code" case.
+   * still report — that is the honest "never got a code" case — also once the
+   * reservation sweep marked it ABANDONED/EXPIRED (Story IR.2b Q5).
    */
   async reportMissingCompletionCode(
     formId: string | null,
@@ -1824,15 +1807,19 @@ export class ParticipationService {
       );
     }
 
-    if (attempt.status === 'ABANDONED') {
+    // Story IR.2b Q5 (default): the reservation sweep turns an expired
+    // External attempt into ABANDONED/EXPIRED within minutes; the honest
+    // "never got a code" report must still be accepted for it. A cancelled
+    // attempt stays rejected.
+    if (attempt.status === 'ABANDONED' && attempt.closedReason !== 'EXPIRED') {
       throw new AttemptExpiredException('This survey attempt was abandoned.');
     }
 
     const now = new Date();
     const pinnedVersion =
-      this.findPinnedVersion(formWithVersion, attempt.formVersionId) ??
+      findPinnedVersion(formWithVersion, attempt.formVersionId) ??
       formWithVersion.currentVersion;
-    const barrier = this.resolveTimeBarrier('EXTERNAL', pinnedVersion);
+    const barrier = resolveTimeBarrier('EXTERNAL', pinnedVersion);
     const elapsedMs = Math.max(0, now.getTime() - attempt.startedAt.getTime());
 
     const { reportedAt } =

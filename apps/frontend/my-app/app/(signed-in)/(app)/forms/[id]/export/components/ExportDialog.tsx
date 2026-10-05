@@ -20,9 +20,13 @@ import {
   toCsv,
   type ExportOptions,
 } from "@/lib/forms/results-export";
-import { EXPORT_FAILED, responsesLoadErrorMessage } from "@/lib/forms/results-messages";
-import { getFormResponses } from "@/lib/forms/results-service";
-import { qualityCounts } from "@/lib/forms/results-view";
+import {
+  EXPORT_FAILED,
+  GOOGLE_FORMS_ANSWERS_NOTE,
+  RESPONSES_TRUNCATED_NOTE,
+  responsesLoadErrorMessage,
+} from "@/lib/forms/results-messages";
+import { collectFormResponses } from "@/lib/forms/results-service";
 import { buildXlsx, XLSX_MIME } from "@/lib/forms/results-xlsx";
 import { useSessionLossRedirect } from "@/lib/session/use-session-loss";
 
@@ -48,8 +52,9 @@ function Group({ title, children, className = "" }: { title: string; children: R
 }
 
 /**
- * Figma 10e: desktop modal (620px) / mobile bottom sheet. Only the anonymous
- * response code identifies a row (privacy note in the dialog).
+ * Figma 10e: desktop modal (620px) / mobile bottom sheet, built from the real
+ * responses (`RESPONSE_EXPORT_ENABLED`, open for internal testing). Only the
+ * anonymous response code identifies a row (privacy note in the dialog).
  */
 export function ExportDialog() {
   const { id } = useParams<{ id: string }>();
@@ -57,14 +62,14 @@ export function ExportDialog() {
   const router = useRouter();
   const version = Number(search.get("v")) || null;
   const titleId = useId();
-  const query = useApiQuery(`form-export:${id}:${version ?? ""}`, (signal) => getFormResponses(id, version, signal));
+  const query = useApiQuery(`form-export:${id}:${version ?? ""}`, (signal) => collectFormResponses(id, version, signal));
   const sessionLost = useSessionLossRedirect(query.error);
   const [options, setOptions] = useState<ExportOptions>(DEFAULT_EXPORT_OPTIONS);
   const [status, setStatus] = useState<{ tone: "info" | "danger"; text: string } | null>(null);
 
-  const data = query.data ?? null;
+  const loaded = query.data ?? null;
+  const data = loaded?.availability === "AVAILABLE" ? loaded : null;
   const table = useMemo(() => (data ? buildExportTable(data, options) : null), [data, options]);
-  const counts = qualityCounts(data?.responses ?? []);
   const hasMultipleChoice = Boolean(data?.questions.some((question) => question.type === "multiple_choice"));
   const backHref = `/forms/${id}/responses${version ? `?v=${version}` : ""}`;
   const close = () => router.push(backHref);
@@ -119,7 +124,9 @@ export function ExportDialog() {
           <IconButton icon="x" label="Đóng" onClick={close} />
         </div>
 
-        {query.error && !data && !sessionLost ? (
+        {loaded?.availability === "NOT_APPLICABLE" ? (
+          <Alert tone="info">{GOOGLE_FORMS_ANSWERS_NOTE}</Alert>
+        ) : query.error && !data && !sessionLost ? (
           <div className="flex flex-col gap-3">
             <Alert tone="danger">{responsesLoadErrorMessage(query.error)}</Alert>
             <Button variant="secondary" size="base" radius="field" onClick={query.reload}>
@@ -172,22 +179,8 @@ export function ExportDialog() {
 
             <div className="grid gap-5 lg:grid-cols-2 lg:gap-4">
               <Group title="Câu trả lời">
-                <Radio
-                  size={20}
-                  name="export-scope"
-                  id="export-all"
-                  checked={options.scope === "all"}
-                  onChange={() => set({ scope: "all" })}
-                  label={`Tất cả · ${counts.all}`}
-                />
-                <Radio
-                  size={20}
-                  name="export-scope"
-                  id="export-passed"
-                  checked={options.scope === "passed"}
-                  onChange={() => set({ scope: "passed" })}
-                  label={`Chỉ câu trả lời đạt · ${counts.passed}`}
-                />
+                <p className="text-body-sm text-ink">Tất cả · {data.responses.length}</p>
+                {data.truncated ? <p className="text-caption text-tone-amber-fg">{RESPONSES_TRUNCATED_NOTE}</p> : null}
               </Group>
               {hasMultipleChoice ? (
                 <Group title="Câu nhiều lựa chọn" className="max-lg:hidden">
@@ -226,13 +219,6 @@ export function ExportDialog() {
                   checked={options.includeDuration}
                   onChange={(event) => set({ includeDuration: event.target.checked })}
                   label="Thời gian làm"
-                />
-                <Checkbox
-                  size={20}
-                  id="export-quality"
-                  checked={options.includeQuality}
-                  onChange={(event) => set({ includeQuality: event.target.checked })}
-                  label="Kết quả đánh giá chất lượng"
                 />
               </div>
             </Group>

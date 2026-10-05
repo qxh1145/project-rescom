@@ -336,6 +336,10 @@ export function OnboardingFlow() {
         editHref={flow.stepHref("name")}
         summary={profileSummary(answers, flow.currentYear)}
         onLeave={flow.finish}
+        profileWarning={flow.profileWarning}
+        profileRetrying={flow.profileRetrying}
+        onRetryProfile={() => void flow.retryProfile()}
+        onFixProfile={flow.fixProfile}
       />
     );
   }

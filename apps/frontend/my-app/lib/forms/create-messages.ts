@@ -55,6 +55,8 @@ export function createSurveyErrorMessage(error: unknown): string {
     case "INSUFFICIENT_BALANCE":
     case "INSUFFICIENT_ESCROW_BALANCE":
       return "Số dư không đủ để khoá ký quỹ cho khảo sát này.";
+    case "FORM_DEADLINE_INVALID":
+      return "Hạn thu thập đã quá gần hoặc quá xa. Chọn lại “Hạn thu thập” rồi gửi lại.";
     case "VALIDATION_ERROR":
     case "TARGETING_VALIDATION_ERROR":
       return "Thông tin khảo sát chưa hợp lệ. Kiểm tra lại các bước rồi thử lại.";
@@ -65,7 +67,7 @@ export function createSurveyErrorMessage(error: unknown): string {
 }
 
 const IDEMPOTENCY_CONFLICT_MESSAGE =
-  "Lần gửi trước của bản nháp này đã được ghi nhận với thông tin khác. Kiểm tra “Khảo sát của tôi” trước khi gửi lại để tránh tạo trùng khảo sát.";
+  "Lần gửi trước của bản nháp này đã được ghi nhận với thông tin khác. Hãy kiểm tra danh sách khảo sát của bạn (“Khảo sát của tôi”): khảo sát có thể đã được tạo.";
 
 /** Backend 409 for an `Idempotency-Key` reused with a different body (exact code not final: any `IDEMPOTENCY*` code). */
 function isIdempotencyConflict(error: unknown): boolean {
@@ -77,10 +79,13 @@ function isIdempotencyConflict(error: unknown): boolean {
  * `POST /forms/external` is unknown (no response, 5xx, 429), so the retry is
  * replayed by the server instead of creating a second survey and escrow. Any
  * other answer is final: the next submit (maybe with edited fields) is a new
- * request with a new key.
+ * request with a new key. Review MEDIUM-4: an `IDEMPOTENCY*` conflict keeps
+ * the key too — the survey may already exist, so the Publisher checks the
+ * list instead of sending a second, different survey under a fresh key.
  */
 export function keepsIdempotencyKey(error: unknown): boolean {
   if (!isApiError(error)) return true;
+  if (isIdempotencyConflict(error)) return true;
   // No response, or a 2xx body that did not parse: the survey may exist.
   if (error.kind === "network" || error.kind === "malformed") return true;
   return error.status === 429 || (typeof error.status === "number" && error.status >= 500);

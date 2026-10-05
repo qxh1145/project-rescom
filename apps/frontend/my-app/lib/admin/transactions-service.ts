@@ -1,70 +1,44 @@
-import { z } from "zod";
-import { ledgerAccountClassSchema, ledgerEntrySchema, ledgerJournalSchema } from "@rescom/schemas";
+import {
+  ADMIN_JOURNAL_DEFAULT_LIMIT,
+  adminJournalListSchema,
+  adminLedgerSummarySchema,
+  type AdminJournalList,
+  type AdminLedgerSummary,
+} from "@rescom/schemas";
 import { apiRequest } from "../api/client.ts";
 import type { TransactionFilter } from "./admin-transactions.ts";
 
 /**
  * Admin ledger view (Figma 11f "Giao dịch điểm", 63:1629).
  *
- * The backend has no admin journal list: `ledger.controller.ts` only posts /
- * reverses journals, reads one account balance and `GET /economy/integrity`
- * (`{ totalSystemBalance, isZeroSum }` — not drawn on this screen), and
- * `admin-audit-logs.controller.ts` lists admin actions, not journals.
- *
- * ASSUMED API CONTRACT:
- * - `GET /admin/ledger/journals?type&from&to&before&limit` → page of
- *   `ledgerJournalSchema` journals (newest first, ties by id descending) with ASSUMED extras:
- *   `entries[].accountClass` / `entries[].ownerName` (the account's tier and
- *   owner, for "Từ → Đến · Linh N."), `related` (survey title) and
- *   `attemptId` (anonymous "#7F3A" code of reward journals).
+ * VERIFIED (`admin/presentation/admin-ledger.controller.ts`, shared schemas in
+ * `@rescom/schemas` `admin/admin-ledger.schema.ts`), ADMIN only:
+ * - `GET /admin/ledger/journals?type&from&to&before&limit` → page of journals
+ *   (newest first, ties by id descending) with `entries[].accountClass` /
+ *   `entries[].ownerName` (the account's tier and its owner's display name, for
+ *   "Từ → Đến · Linh N."), `related` (survey title of escrow / refund journals)
+ *   and `attemptId` (Google Forms rewards, anonymous "#7F3A" code).
  *   `type` = `top-up | escrow | reward | refund` (omitted = all), grouped by
- *   idempotency-key prefix like `matchesTransactionFilter`; `from` / `to` =
- *   ISO bounds on `createdAt` (`from` omitted = all time), frozen by the client
- *   at the first page; `before` = keyset cursor `<createdAt>:<id>` of the last
- *   row already shown (`journalCursorOf`), so a journal posted between pages
- *   cannot shift or repeat rows.
+ *   idempotency-key prefix (`ADMIN_LEDGER_FILTER_KEY_PREFIXES`, the same
+ *   grouping as `matchesTransactionFilter`); `from` / `to` = ISO bounds on
+ *   `createdAt` (`from` omitted = all time), frozen by the client at the first
+ *   page; `before` = keyset cursor `<createdAt>:<id>` of the last row already
+ *   shown (`journalCursorOf`), so a journal posted between pages cannot shift
+ *   or repeat rows.
  * - `GET /admin/ledger/summary` → the four cards: pending top-ups (count,
- *   points, VND), total Ký quỹ, total Chờ 48h, escrow refunded today.
+ *   points, VND), total Ký quỹ, total Chờ 48h, escrow refunded since 00:00
+ *   Vietnam time.
  */
 
-export const adminJournalEntrySchema = ledgerEntrySchema.extend({
-  accountClass: ledgerAccountClassSchema.optional(),
-  ownerName: z.string().min(1).nullable().optional(),
-});
+export {
+  adminJournalEntrySchema,
+  adminJournalListSchema,
+  adminJournalSchema,
+  adminLedgerSummarySchema,
+} from "@rescom/schemas";
+export type { AdminJournal, AdminJournalList, AdminLedgerSummary } from "@rescom/schemas";
 
-export const adminJournalSchema = ledgerJournalSchema.extend({
-  entries: z.array(adminJournalEntrySchema).default([]),
-  related: z.string().min(1).nullable().optional(),
-  attemptId: z.string().uuid().nullable().optional(),
-});
-export type AdminJournal = z.infer<typeof adminJournalSchema>;
-
-export const adminJournalListSchema = z.object({
-  items: z.array(adminJournalSchema),
-  limit: z.number().int().min(1),
-  hasMore: z.boolean(),
-});
-export type AdminJournalList = z.infer<typeof adminJournalListSchema>;
-
-export const adminLedgerSummarySchema = z.object({
-  pendingTopUps: z.object({
-    count: z.number().int().nonnegative(),
-    points: z.number().int().nonnegative(),
-    amountVnd: z.number().int().nonnegative(),
-  }),
-  /** Sum of every Ký quỹ balance (surveys running). */
-  escrowTotal: z.number().int().nonnegative(),
-  /** Sum of every Chờ 48h balance (Google Forms rewards in review). */
-  pendingTotal: z.number().int().nonnegative(),
-  /** Escrow given back since 00:00 Vietnam time. */
-  refundedToday: z.object({
-    points: z.number().int().nonnegative(),
-    surveys: z.number().int().nonnegative(),
-  }),
-});
-export type AdminLedgerSummary = z.infer<typeof adminLedgerSummarySchema>;
-
-export const ADMIN_JOURNAL_PAGE_SIZE = 50;
+export const ADMIN_JOURNAL_PAGE_SIZE = ADMIN_JOURNAL_DEFAULT_LIMIT;
 
 export function listAdminJournals(
   query: { type: TransactionFilter; from: string | null; to: string; before?: string },

@@ -4,6 +4,7 @@ inputDocuments:
   - _bmad-output/planning-artifacts/prds/prd-project-rescom-2026-08-08/prd.md
   - _bmad-output/planning-artifacts/architecture/architecture-project-rescom-2026-08-08/ARCHITECTURE-SPINE.md
   - _bmad-output/planning-artifacts/sprint-change-proposal-2026-09-26.md
+  - _bmad-output/brainstorming/brainstorm-backend-integration-deployment-2026-09-29/integration-deployment-plan.md
 ---
 
 # project-rescom - Epic Breakdown
@@ -135,6 +136,7 @@ NFR-22: CSAT target > 4.0/5.0
 - **Epic 8: Moderation & Anti-Fraud** -> FR-20, FR-28, FR-45, FR-46, FR-47, FR-48, FR-53, FR-54, FR-55
 - **Epic 9: Analytics & Notifications** -> FR-41, FR-42, FR-43, FR-44, FR-56, FR-57
 - **Epic 10: Research Integrity Foundation & TrustGraph** -> FR-58, FR-59, FR-60, FR-61, FR-62, FR-63, FR-64, FR-65, FR-66, FR-67
+- **Epic IR: Integration Readiness** -> Phase 1 launch journeys and cross-cutting integration acceptance gates; gap-closing stories IR.2a/IR.2b/IR.4a/IR.4b add FR-39, FR-40 and complete FR-5, FR-9, FR-24, FR-32, FR-57 (email)
 - **Epic 11: Production Deployment & Pilot Readiness** -> NFR-ADD-3, NFR-ADD-4, NFR-ADD-5, AD-23 (no new FRs)
 
 ## Epic List
@@ -179,9 +181,14 @@ NFR-22: CSAT target > 4.0/5.0
 **Goal:** Internal Form responses produce privacy-conscious telemetry, explainable integrity assessments, respondent reliability history, Survey Quality assessments, and TrustGraph-ready evidence without affecting external form compatibility.
 **FRs covered:** FR-58, FR-59, FR-60, FR-61, FR-62, FR-63, FR-64, FR-65, FR-66, FR-67
 
+### Epic IR: Integration Readiness
+**Goal:** Phase 1 launch journeys run end to end against the real backend with mock mode disabled, verified frontend-to-backend contracts, same-origin `/api` behavior, and evidence for every applicable success and failure state.
+**FRs covered:** FR-39, FR-40 (IR.4a) and completion of FR-5, FR-24, FR-32 (IR.2b), FR-9 and FR-57 email (IR.4b), added 2026-09-30 from the implementation-readiness report; otherwise integrates the completed Phase 1 capabilities from Epics 1, 2, 4, 5, 6, 7, 8 and 9. Epic 3, Epic 10 and all other deferred Phase 2 scope remain excluded unless separately approved.
+
 ### Epic 11: Production Deployment & Pilot Readiness
 **Goal:** The Phase 1 platform runs for pilot students on a simple, portable Google Cloud topology (Architecture AD-23) with automated deploys, error and uptime alerts, tested backups, and a rehearsed exit path to another provider.
 **FRs covered:** none (operational epic) — NFR-ADD-3, NFR-ADD-4, NFR-ADD-5, AD-23. Added by `sprint-change-proposal-2026-09-26.md`.
+**Dependency:** Packaging, infrastructure and pipeline work may proceed in parallel with Epic IR after IR.1 confirms scope and architecture. Staging promotion requires IR.5; production launch review in Story 11.5 requires IR.6 and Stories 11.1–11.4.
 
 ### Additional Production Requirements (Newly Added)
 
@@ -1084,9 +1091,267 @@ So that the system can track graph evidence without requiring a separate graph d
 **And** raw graph and device linkages are strictly isolated and never exposed through Publisher-facing APIs.
 **And** the projection is fully rebuildable from primary transactional tables.
 
+## Epic IR: Integration Readiness
+
+**Goal:** Phase 1 launch journeys run end to end against the real backend with mock mode disabled, verified frontend-to-backend contracts, same-origin `/api` behavior, and evidence for every applicable success and failure state.
+
+**Scope guard:** This epic integrates completed Phase 1 capabilities. It does not reactivate Epic 3, Epic 10, advanced analytics, advanced integrity, multi-replica scaling, Redis, or any other deferred Phase 2 scope. A deferred or unapproved entry point that remains reachable must be hidden or build-time excluded from the pilot.
+
+**Dependencies and acceptance gates:**
+
+- IR.1 establishes G0/G1 and unblocks IR.2; IR.2 is the G2 local real-stack gate. Epic 11 packaging and infrastructure may proceed in parallel once IR.1 confirms AD-23, the canonical origin, and environment ownership.
+- IR.2a (respondent read endpoints) and IR.2b (scheduler and Outbox dispatcher) close backend gaps found by the 2026-09-30 readiness assessment. They may start after IR.1 and in parallel with IR.2. IR.3 requires IR.2a and IR.2b. IR.4a and IR.4b implement publisher/profile/admin reads approved at IR.1; IR.4 requires IR.4a and IR.4b, or the IR.1 decision to hide the corresponding routes. Migration order: IR.2a (attempt `closed_reason`/`closed_at`) → IR.2b (`scheduler_job_leases`, `forms.deadline_at`, Outbox dispatcher) → IR.4b email part (Outbox handler) and IR.4a deadline read. The IR.4b profile and admin-overview parts and IR.4a's other reads do not depend on IR.2b.
+- IR.3 and IR.4 may proceed in parallel after IR.2. IR.5 requires both and is the G3 local integration gate.
+- IR.6 requires IR.5 plus Stories 11.1–11.4 deployed to staging. IR.6 is the G5 evidence gate and blocks Story 11.5 go/no-go and production launch.
+- Story status, a health check, or implementation completion alone is not gate evidence; each gate requires the named test report, trace, manifest, or drill record.
+
+**Internal-testing milestone (2026-10-01, owner decisions in `.omc/plans/mock-off-full-backend.md`; reconciled by `sprint-change-proposal-2026-10-01.md`):**
+
+- The milestone's goal is internal team testing on the real stack, not the pilot. For that goal, the plan replaces IR.1's scope decisions. No screen is hidden: the Phase 2-deferred features (disputes, reliability, quality, AI, engagement) run on MSW through `NEXT_PUBLIC_API_MOCKING=hybrid` (3 MOCK_ONLY + 14 DEFERRED_KEEP_MOCK, enforced by `tests/route-diff.test.mjs`). Screens that use them show a "Dữ liệu minh hoạ" tag.
+- Overrides, internal testing only: IR.4a AC7 (export, Survey Quality and complaints stay reachable), IR.4a AC5.2 (version diff visible), IR.4b C3/C4 (`0` placeholders for disputes and quality), IR.4b C7 (no pilot nav filter). The IR.4a and IR.4b acceptance criteria below remain the pilot target.
+- Built without a story and traced to the plan: auth throttle made configurable, S3 presigned checksum fix, runner `file_upload`, integrity consent, survey topic, QUOTA auto-close (not reopenable), forgot/reset password, session revoke reason, and admin fraud-log, ledger and outbox views.
+- Before the pilot, IR.1 must re-gate every override above: hide or build-exclude the deferred screens, close export, and build staging with mocking `disabled`, not `hybrid` (IR.6).
+
+### Story IR.1: Pilot Scope, Ownership and Contract Freeze
+
+As an Integration Lead,
+I want a canonical inventory of every frontend call and direct mock consumer in the approved pilot journeys,
+So that the team knows which contracts are real, which gaps must close, and which deferred entry points must be hidden.
+
+**Acceptance Criteria:**
+
+**Given** the approved integration and deployment plan and the completed Phase 1 epics
+**When** the G0/G1 review is completed
+**Then** the pilot journey list, Integration Lead, Release Manager, domain owners, decision owners and due dates are recorded.
+**And** AD-23 is confirmed with `app.rescom.com.vn` as the canonical browser origin and relative `/api` requests rewritten through Vercel, the public API edge/Cloudflare, Caddy and NestJS on private port 4000.
+**And** every reachable frontend API call and direct `mockRepository` consumer is mapped to a controller, shared/request-response schema, access mode, status codes, idempotency/pagination behavior and applicable error states, with status `verified`, `assumed` or `mock-only`.
+**And** every `assumed` or `mock-only` item has an owner, milestone and acceptance test; no launch-critical call is unclassified.
+**And** a contract coverage report proves 100% of pilot-journey calls are mapped and no `mock-only` route remains reachable in the pilot build.
+**And** password recovery, reliability, form responses, form analytics, progress, complaints, admin disputes and quality routes are explicitly approved for the pilot or hidden/build-time excluded without expanding deferred Phase 2 scope.
+**And** external completion, analytics and consent/telemetry are explicitly recorded as in-scope or out-of-scope.
+**And** secrets, credentials, placeholder bank data and other production-blocking defaults are inventoried with an owner and removal or rotation decision.
+**And** each internal-testing override of 2026-10-01 (see the Epic IR note) is re-decided for the pilot.
+
+### Story IR.2: Local Real-Stack Integration Foundation
+
+As a Product Engineer,
+I want a repeatable local frontend-to-backend integration loop,
+So that domains can move from mocks to real APIs without an uncontrolled all-at-once cutover.
+
+**Acceptance Criteria:**
+
+**Given** the IR.1 contract register for the first vertical slice
+**When** a developer starts the local integration environment
+**Then** browser requests use relative `/api`, with local proxy, session cookies, exact-origin CSRF and the same-host OAuth callback behavior documented and tested.
+**And** per-domain hybrid mock controls and a visible environment/mock banner identify whether each request uses mock or real data; an unhandled MSW request cannot silently fall through to the backend.
+**And** a deterministic seed command creates a respondent, publisher, two distinct admins and a smoke account without production data.
+**And** shell, email authentication, logout/session expiry, demographics and post-login routing run against the real backend without MSW.
+**And** baseline unit, integration and E2E results are recorded and contract tests pass for the shell, email-authentication and demographics slice.
+**And** migration prerequisites are checked and `prisma migrate deploy` runs through a pipeline-equivalent local path.
+**And** build-time, non-secret runtime and secret runtime configuration are classified, with no secret committed or embedded in an image.
+
+### Story IR.2a: Respondent Read Endpoints for the Survey Runner
+
+As a Respondent,
+I want the survey summary, my attempt, its pinned form and its outcome to load from the real backend,
+So that I can start, resume, cancel and finish a survey without mock data.
+
+**Acceptance Criteria:**
+
+**Given** the frontend contracts currently marked ASSUMED in `lib/participation/survey-form-service.ts`, `attempts-service.ts`, `submission-service.ts` and `external-service.ts`
+**When** the contracts are implemented
+**Then** each request/response schema is promoted into `@rescom/schemas`, and the frontend service and backend controller import the same schema, which is covered by a contract test.
+
+**Given** any caller, including an unauthenticated one
+**When** it calls `GET /surveys/:id`
+**Then** it receives only public facts about a published survey (title, description, form type, estimated duration, reward, remaining slots, status), with no targeting internals, Completion Code or Publisher-private data.
+**And** an unknown, draft or unpublished survey returns 404 without leaking existence.
+
+**Given** an authenticated Respondent who owns the Attempt
+**When** they call `GET /attempts/:attemptId`
+**Then** the response returns the Attempt status, server `startedAt`/`expiresAt`, form type and the **pinned** `formVersionId`/`versionNumber`. For an Internal Form it also returns the pinned version's Form Definition, which remains unchanged even after a newer version is published (AD-19, API-05).
+**And** another user's Attempt returns 404 (not 403), and Admin read access, if any, is explicit and audited.
+
+**Given** an owned Attempt
+**When** the Respondent calls `GET /attempts/:attemptId/outcome`
+**Then** the response returns the reward state derived from posted Ledger journals: `AVAILABLE`, `PENDING` with `releasesAt`, or `HELD_IN_INTEGRITY` only when an `ENFORCED` policy exists. It also returns the credited amount and the starter-point unlock effect, and it never recomputes or mutates balances.
+
+**Given** an owned `IN_PROGRESS` Attempt
+**When** the Respondent calls `POST /attempts/:attemptId/cancel` with CSRF and an `Idempotency-Key`
+**Then** the Attempt moves to its abandoned state with a recorded reason and releases its quota reservation in one transaction.
+**And** a retry returns the original result, and cancelling a submitted or completed Attempt returns 409 with a stable error code.
+
+**And** every route uses the `{data,error,meta}` envelope and stable error codes, and has tests for unauthorized, not-found, conflict, concurrency (cancel racing submit) and idempotent retry.
+
+### Story IR.2b: In-Process Scheduler and Outbox Dispatcher
+
+As a Respondent and Publisher,
+I want time-based point movements to happen automatically,
+So that pending rewards release, starter points expire and unused escrow is refunded without an Admin pressing a button.
+
+**Acceptance Criteria:**
+
+**Given** the single-replica pilot (AD-5 amendment, AD-23)
+**When** the API starts with the scheduler configuration flag enabled
+**Then** exactly one logical scheduler owner runs in-process; with the flag disabled no job runs. Every job claims work through PostgreSQL with an owner/fencing token and lease (AD-10, AD-17), so a restart or accidental second owner cannot double-process.
+
+**Given** External Form rewards whose 48-hour Pending window has elapsed and that carry no locked dispute hold
+**When** the pending-release job runs
+**Then** it releases them to Available through the existing idempotent Economy command (FR-24, NFR-13), producing exactly one Ledger journal per reward and a notification.
+
+**Given** accounts whose starter onboarding has not completed within 30 days of registration
+**When** the starter-expiry job runs
+**Then** the Frozen Points are voided exactly once through the existing Economy command, and the user is notified (FR-5).
+
+**Given** Attempts whose reservation has expired
+**When** the reservation-expiry job runs
+**Then** each Attempt is closed as abandoned and its quota slot is released, without racing a concurrent submission.
+
+**Given** surveys whose deadline has passed with unfilled slots
+**When** the escrow-refund job runs
+**Then** the survey closes and the remaining Escrow is refunded under a stable close command, and the Publisher is notified (FR-32, NFR-12).
+
+**Given** unprocessed `OutboxEvent` rows
+**When** the Outbox dispatcher runs
+**Then** it dispatches each event to its registered handlers with claim/lease, retry with backoff and dead-letter after a bounded number of attempts. Each handler's effect commits atomically with its `ProcessedHandler` record, so replay is a no-op.
+
+**And** the existing admin re-drive and manual release endpoints keep working as operator fallbacks.
+**And** job runs, claim conflicts, retries and dead letters are logged with correlation IDs and exposed to readiness/metrics.
+**And** tests cover a clock-controlled boundary for every job, duplicate/concurrent runs, crash-after-claim recovery and a no-double-journal ledger invariant.
+
+### Story IR.3: Respondent Journey Without Mocks
+
+As a Respondent,
+I want to complete the pilot survey journey against the real backend,
+So that attempt state, pinned forms, submissions and rewards are proven before staging promotion.
+
+**Acceptance Criteria:**
+
+**Given** IR.2, IR.2a and IR.2b are complete and the respondent-domain contract gaps are resolved
+**When** the respondent journey runs with its domain mocks disabled
+**Then** authentication, demographics, marketplace eligibility, survey summary, attempt start/read/resume/cancel/outcome, pinned form read and internal submission complete end to end.
+**And** concurrent reservation/start tests prove an attempt is not granted twice and resume continues on the form version pinned to that attempt.
+**And** duplicate or offline-retried submissions are idempotent and do not duplicate completion, rewards or ledger entries.
+**And** reward and wallet balances are explained by immutable ledger entries rather than direct balance updates.
+**And** success and every applicable unauthorized, forbidden, validation, not-found, conflict, rate-limit, session-expiry, offline, idempotency and empty-state case have automated evidence.
+**And** external completion is tested for time barrier, expiry and replay only if IR.1 approved it for the pilot; otherwise its entry point is not reachable.
+
+### Story IR.4: Publisher, Financial and Moderation Journeys Without Mocks
+
+As a Publisher and Admin,
+I want publishing and governed financial actions to use the real backend,
+So that the pilot proves escrow, top-up, moderation and notification invariants before launch.
+
+**Acceptance Criteria:**
+
+**Given** IR.2, IR.4a and IR.4b are complete (or their routes are hidden per IR.1) and publisher-domain contract gaps are resolved
+**When** the publisher and administration journeys run with their domain mocks disabled
+**Then** form draft creation/editing is idempotent and publish creates the expected escrow ledger entry for sufficient funds while rejecting insufficient funds safely.
+**And** top-up approval creates an auditable ledger transaction and retries do not duplicate top-ups, rewards or notifications.
+**And** transaction/outbox events produce real in-app notifications with no direct mock source.
+**And** moderation is tested with two distinct admins; self-review is forbidden, concurrent decisions record only one result, and every decision has an audit trail.
+**And** success and every applicable unauthorized, forbidden, validation, conflict, rate-limit, session-expiry, offline, idempotency and empty-state case have automated evidence.
+
+### Story IR.4a: Publisher Progress and Response Viewing
+
+As a Publisher,
+I want to see my survey's progress and read the responses it has collected,
+So that I can track collection and review my data inside RESCOM (FR-39, FR-40).
+
+**Acceptance Criteria:**
+
+**Given** the frontend contracts marked ASSUMED in `lib/forms/manage-service.ts` (`GET /forms/:id/progress?range=`), `lib/forms/results-service.ts` (`GET /forms/:id/responses[?versionNumber=]`, `GET /forms/:id/versions/:versionId`) and `lib/forms/results-analytics-service.ts` (`GET /forms/:id/analytics`)
+**When** these contracts are implemented
+**Then** each schema is promoted into `@rescom/schemas` and is shared by the frontend service and the backend controller under a contract test. Any field IR.1 did not approve is removed from the frontend rather than faked.
+
+**Given** the Publisher who owns the form
+**When** they call `GET /forms/:id/progress`
+**Then** they receive completions against target, Points spent, Escrow remaining (derived from Ledger), deadline, status, and a bucketed time series for the requested `range` (FR-39).
+**And** a non-owner receives 404; Admin read access, if granted, is explicit and audited.
+
+**Given** an Internal Form owned by the Publisher
+**When** they call `GET /forms/:id/responses`
+**Then** they receive cursor-paginated submitted responses for one pinned Form Version, newest first, each with its `formVersionId` and answers (FR-40).
+**And** no raw integrity telemetry, device/account evidence or unrelated Respondent history is returned. Respondent identity follows the IR.1/AD-21 privacy decision, and integrity metadata is `NOT_ASSESSED` while Epic 10 is deferred.
+**And** an External Form returns an explicit not-applicable result rather than an empty list that could be mistaken for no data.
+
+**Given** the analytics summary is approved at IR.1
+**When** the Publisher calls `GET /forms/:id/analytics`
+**Then** they receive per-question aggregates computed server-side for one Form Version within NFR-1, with no unbounded scan (NFR-30). If it is not approved, the analytics entry point is hidden.
+
+**Given** the Form lifecycle has no paused status, and `POST /forms/:id/status` is Admin-only (verified 2026-09-30)
+**When** the pilot build is produced
+**Then** `PAUSE_SUPPORTED` stays `false`, and the unused ASSUMED `/pause` and `/resume` client and mock handlers are removed. Publisher pause requires a separate lifecycle story if IR.1 wants it.
+**And** `deadlineAt` is read from `forms.deadline_at` once IR.2b adds it; until then it returns `null`.
+
+**And** export, Survey Quality and version-diff routes stay hidden unless separately approved (OQ-6, OQ-8).
+**And** tests cover owner, non-owner, empty, paginated and mixed-version cases.
+
+### Story IR.4b: Profile Update, Email Delivery and Admin Overview
+
+As a User and as an Admin,
+I want to edit my profile, receive critical emails, and see what needs my attention,
+So that the pilot supports FR-9 profile updates, FR-57 email for critical events and an actionable admin landing page.
+
+**Acceptance Criteria:**
+
+**Given** the ASSUMED contract in `lib/profile/profile-service.ts`
+**When** an authenticated user calls `GET /users/me/profile` or `PATCH /users/me/profile` with CSRF
+**Then** they read or update display name and the non-demographic profile fields (university, academic year, onboarding goal) through a shared schema.
+**And** demographic matching fields keep flowing through the existing `/demographics` routes and take effect for future matching immediately (FR-9).
+**And** the goal intent never changes roles or permissions.
+
+**Given** a critical event (complaint resolution, ban/unban, top-up approved or rejected)
+**When** the in-app notification is written
+**Then** an email is also queued through an `EmailSenderPort` via the Outbox (IR.2b). A provider adapter is selected, configured and documented, and there is a local no-op/capture adapter.
+**And** email sending is idempotent per event, failures retry without blocking the originating transaction, and no secret or personal data beyond what is required appears in logs.
+
+**Given** an authenticated Admin
+**When** they call `GET /admin/queue-counts` or `GET /admin/overview` (ASSUMED in `lib/admin/admin-queue-service.ts` and `overview-service.ts`)
+**Then** they receive counts for pending moderation, pending top-ups and other queues approved at IR.1, plus overview aggregates computed with bounded queries.
+**And** non-admins receive 403, and deferred queues (disputes, quality, fraud-log) are omitted or hidden rather than faked.
+
+**And** tests cover validation, authorization, the email adapter contract and the no-duplicate-email invariant.
+
+### Story IR.5: Launch-Domain Closure and Local Integration Gate
+
+As a QA Lead,
+I want a reviewed G3 evidence pack for all approved pilot domains,
+So that staging receives only an application whose launch journeys no longer depend on mocks or assumed contracts.
+
+**Acceptance Criteria:**
+
+**Given** IR.3 and IR.4 are complete
+**When** the local integration gate is reviewed
+**Then** every launch-critical contract is `verified` with frontend path, controller, schema, access mode and passing contract test; none remains `assumed` or `mock-only`.
+**And** shell, notification, feedback, onboarding guard and legacy respondent direct mock consumers are removed, redirected, hidden or build-time excluded as approved in IR.1.
+**And** the approved upload flow proves presign, private upload, scan and finalize; storage or ClamAV failure is fail-closed and produces correlated alertable evidence.
+**And** the respondent report proves one complete no-MSW journey and the publisher report proves a real ledger entry, including the applicable failure, concurrency and idempotency results.
+**And** AI and every other deferred Phase 2 entry point remain hidden and no deferred scope is marked complete or moved into Phase 1.
+**And** QA records an independent G3 pass; a story status or isolated health response is not accepted as substitute evidence.
+
+### Story IR.6: Staging Integration Acceptance and Go/No-Go Evidence
+
+As a Release Manager,
+I want the complete pilot matrix proven on a production-like staging topology,
+So that the production go/no-go decision is based on executable evidence rather than implementation status.
+
+**Acceptance Criteria:**
+
+**Given** IR.5 and Stories 11.1–11.4 are complete and deployed to isolated staging
+**When** the G5 acceptance review runs
+**Then** the staging frontend is built with `NEXT_PUBLIC_API_MOCKING` disabled and no mock route or direct mock consumer is reachable.
+**And** synthetic respondent, publisher and two-admin accounts pass the approved journeys through Vercel same-origin `/api` rewrite, the public API edge/Cloudflare, Caddy and NestJS private port 4000.
+**And** Google OAuth callback/session persistence, exact-origin CSRF/CORS, trusted client IP/rate limiting, file upload/ClamAV fail-closed behavior and one-replica performance meet the approved acceptance matrix.
+**And** the promoted commit-SHA artifact, release manifest, controlled migration log, image scan, readiness/smoke report and no-secret evidence all identify the same release.
+**And** correlated logs, Sentry release tracing with PII scrubbing, uptime/dependency alerts, backup/PITR restore and previous-image rollback are demonstrated and independently reviewed.
+**And** the evidence pack has no open launch-critical defect and records incident ownership, rotation procedure, stop conditions and a signed G5 gate decision; failure of any required item blocks Story 11.5.
+
 ## Epic 11: Production Deployment & Pilot Readiness
 
 **Goal:** The Phase 1 platform runs for pilot students on a simple, portable Google Cloud topology (Architecture AD-23) with automated deploys, error and uptime alerts, tested backups, and a rehearsed exit path to another provider.
+
+**Dependency and gate model:** Stories 11.1–11.4 may run alongside Epic IR after IR.1 confirms AD-23, the canonical origin and owners. Staging promotion requires the IR.5 local integration gate. Story 11.5 requires IR.6 plus Stories 11.1–11.4 and is the G6 gate and only path to production dark deploy and cohort opening. Story 11.6 is the G7 post-launch gate, follows a successful pilot and does not expand Phase 1 launch scope.
 
 ### Story 11.1: Deployment-Ready Backend Packaging
 
@@ -1100,7 +1365,8 @@ So that the same artifact runs locally, on the Google Cloud VM, and on any later
 **When** the production image is built
 **Then** a multi-stage `Dockerfile` builds `@rescom/schemas` and the backend, runs as a non-root user on Node 22, and contains no secrets.
 **And** `docker-compose.prod.yml` runs `caddy`, `api` and `clamav` with restart policies and healthchecks; no database, object storage or other business data lives in a container volume (AD-23).
-**And** the `Caddyfile` proxies `api.rescom.com.vn` to the API and restores the client address from `CF-Connecting-IP`; with `TRUST_PROXY_HOPS=1` the API logs and rate-limits by the real client IP.
+**And** the frontend is not packaged or served by Caddy; browser traffic stays on the canonical frontend origin and reaches the backend only through Vercel's external `/api` rewrite, the public API edge/Cloudflare and Caddy.
+**And** the `Caddyfile` proxies edge traffic to NestJS on private port 4000 and the trusted-proxy configuration restores, logs and rate-limits by the real client IP across the approved multi-hop chain.
 **And** liveness and readiness endpoints exist; readiness reports database reachability and scanner reachability without leaking payloads (AD-17, NFR-ADD-4).
 **And** scheduled durable work (pending-credit release, frozen-starter expiry, reservation expiry, Outbox dispatch) runs in-process behind one configuration flag so exactly one scheduler owner exists, still claiming work through PostgreSQL (AD-5 amendment, AD-10).
 **And** the S3 client sets `requestChecksumCalculation` and `responseChecksumValidation` to `WHEN_REQUIRED`, and presigned upload plus download pass against Google Cloud Storage's S3 interoperability endpoint as well as local MinIO.
@@ -1121,10 +1387,11 @@ So that the API, database and storage are reachable only through the intended pa
 **And** Cloud SQL for PostgreSQL has private IP only, automated backups and point-in-time recovery, and `prisma migrate deploy` has been applied.
 **And** one private Cloud Storage bucket exists per environment with HMAC credentials scoped to it and CORS limited to the frontend origin for presigned uploads; the bucket name is chosen so it can be reused on the post-trial host or its rewrite is planned (`StoredObject.bucket`).
 **And** the VM firewall admits 80/443 only from Cloudflare IP ranges; SSH uses keys only and is limited to team addresses.
-**And** Cloudflare proxies `rescom.com.vn` (Vercel) and `api.rescom.com.vn` (VM) with SSL mode Full (strict).
-**And** Vercel serves the frontend with function region `sin1` and `RESCOM_API_URL` pointing at the API.
-**And** the Google OAuth client lists the production redirect URI and frontend URLs.
+**And** Cloudflare provides the public API edge to the VM with SSL mode Full (strict), while the NestJS port remains private.
+**And** Vercel serves `app.rescom.com.vn` from region `sin1` and external-rewrites same-origin `/api` to the public API edge; browser code does not call a backend origin directly.
+**And** the Google OAuth client lists the canonical same-host callback under `app.rescom.com.vn/api/...` and the approved frontend URLs.
 **And** secrets live in the VM `.env` (file mode 600) and GitHub Actions secrets only, never in the repository (NFR-ADD-3).
+**And** staging uses a separate database, bucket, OAuth client/secret, domain and synthetic accounts while mirroring the production proxy topology.
 
 ### Story 11.3: CI/CD Pipeline with Rollback
 
@@ -1137,9 +1404,10 @@ So that releases are repeatable and a bad release can be reverted in minutes.
 **Given** a push to the main branch
 **When** the GitHub Actions workflow runs
 **Then** it runs `npm run verify` and stops on failure.
-**And** it builds the backend image, tags it with the commit SHA and pushes it to GHCR.
-**And** it deploys over SSH by pulling the tag, running `prisma migrate deploy`, restarting the stack and waiting for readiness; a failed readiness check restores the previous tag automatically.
-**And** a manual workflow input redeploys any earlier tag (rollback).
+**And** it builds the backend image once, scans it, tags it with the immutable commit SHA and pushes it to GHCR without embedded secrets.
+**And** it records a release manifest containing image SHA, schema version and non-secret config version.
+**And** after a backup check it deploys over SSH by pulling the tag, running the backward-compatible `prisma migrate deploy`, restarting one API replica and waiting for readiness and synthetic smoke; failure restores the previous tag automatically.
+**And** a manual workflow input redeploys an earlier tag using the rehearsed previous-image rollback path; schema incidents use a reviewed forward fix or restore rather than a blind down migration.
 **And** the frontend continues to deploy through Vercel's Git integration.
 
 ### Story 11.4: Observability, Alerting and Backup-Restore Drill
@@ -1153,9 +1421,11 @@ So that pilot incidents are noticed and recoverable.
 **Given** the deployed pilot environment
 **When** observability is configured
 **Then** Sentry captures frontend and backend exceptions with release tags, with request bodies, cookies and personal data scrubbed (NFR-ADD-4).
-**And** an external uptime monitor checks `rescom.com.vn` and the API readiness endpoint and alerts Telegram or email.
-**And** Cloud SQL backup failures and VM disk above 80% raise alerts.
+**And** an external uptime monitor checks the canonical frontend and a documented TLS readiness path through the public API edge/Caddy chain and alerts Telegram or email.
+**And** Cloud SQL backup failures, database connectivity, VM disk above 80% and ClamAV health raise alerts.
 **And** one point-in-time restore of Cloud SQL into a scratch instance has been performed and its steps written down; RPO, RTO and backup retention are proposed for Operations approval (NFR-ADD-5).
+**And** a previous-image rollback has been rehearsed against a compatible schema and its evidence is retained for the G5 review.
+**And** G4 is recorded as passed only when staging mirrors the approved domain/proxy topology, the database and bucket are private, migrations run only through the controlled pipeline, and previous-image deployment/rollback is reproducible.
 
 ### Story 11.5: Pilot Launch Readiness
 
@@ -1165,25 +1435,32 @@ So that the first pilot students meet a working, governed platform.
 
 **Acceptance Criteria:**
 
-**Given** Stories 11.1–11.4 are done
+**Given** Stories 11.1–11.4 and IR.6 are done with independently reviewed G5 evidence
 **When** launch readiness is reviewed
 **Then** the AD-21 processing register has Product plus Privacy/Legal approval; without it the launch date moves.
 **And** at least two active ADMIN accounts exist (self-moderation and self-top-up approval are forbidden, decision E8-D3).
 **And** real top-up bank account values are configured (production refuses placeholders) and `PARTICIPATION_RATE_LIMIT_POLICY_VERSION` is set.
 **And** the Form Builder hides the "Generate with AI" entry point while the AI Gateway is unconfigured (AD-3/AD-4 amendment).
-**And** a full-journey smoke test passes on production: register (email and Google), onboarding, create and publish a form, moderation approval, answer with a file upload, top-up approval, and notifications.
+**And** a signed go/no-go confirms the freeze window, backup check, immutable rollback artifact, incident owners and approved stop conditions before migration or cohort access.
+**And** production is dark-deployed as one API replica, runs the controlled `prisma migrate deploy`, and passes TLS liveness/readiness plus synthetic business smoke using dedicated test accounts and no mock records.
+**And** the production smoke covers email and Google registration, onboarding, respondent completion/reward, publisher publish/escrow, two-admin moderation, file upload, top-up approval, notifications and alert delivery.
+**And** only after dark-deploy evidence passes is a limited cohort opened; any approved stop condition closes the cohort or triggers rollback.
+**And** general pilot access requires a recorded decision after the limited cohort completes without a launch-critical incident.
 
-### Story 11.6: Post-Trial Hosting Decision and Portability Rehearsal
+### Story 11.6: Post-Trial Hosting Decision, Post-Launch Review and Portability Rehearsal
 
 As the Product Owner,
-I want the post-trial hosting choice made and rehearsed before the credit ends,
-So that the pilot never loses data to trial expiry.
+I want the pilot reviewed and the post-trial hosting choice made and rehearsed before the credit ends,
+So that launch learnings are owned and the pilot never loses data to trial expiry.
 
 **Acceptance Criteria:**
 
-**Given** the Google Cloud trial reaches about day 70
+**Given** Story 11.5 has completed the limited cohort and the Google Cloud trial reaches about day 70
 **When** the hosting decision is prepared
 **Then** the team asks the university about FPT Cloud sponsorship and compares it with paid Google Cloud.
 **And** if FPT Cloud is a candidate, FPT Object Storage passes presigned upload/download with the unchanged AWS SDK storage adapter (fallback: Cloudflare R2).
 **And** a rehearsal restores a copy of the database and objects on the target, switches configuration only, and passes the smoke test.
 **And** the chosen path is executed before trial day 90, and never later than the end of the 30-day grace period, with a maintenance window that stops writes during `pg_dump`/`pg_restore` so the ledger stays consistent.
+**And** the G7 review records contract gaps, journey failures, incidents, support signals and a remediation backlog with an owner for every launch-critical item.
+**And** remaining hybrid mock workarounds are closed, the AI entry point remains hidden, and recurring restore drills, secret rotation, dependency/image updates and rollback-artifact retention have assigned owners.
+**And** multi-replica scaling, Redis, advanced synthetic journeys, richer dashboards and other deferred work remain Phase 2 unless a separate decision promotes them.

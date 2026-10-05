@@ -1,0 +1,18 @@
+## image checks 2026-10-03T06:36:48Z
+$ docker run --rm --entrypoint id rescom-api:local -u
+1000
+$ node --version
+v22.23.3
+$ secret scan (.env*, *.local.md outside node_modules)
+(end, 1 )
+$ prisma CLI in image
+prisma                  : 6.0.0
+@prisma/client          : 6.0.0
+Computed binaryTarget   : linux-arm64-openssl-3.0.x
+Operating System        : linux
+$ @rescom/schemas resolves
+564 exports
+$ image size
+607MB
+$ history secret grep
+none

@@ -76,7 +76,7 @@ function EmptyState() {
 /**
  * Figma 10 "Khảo sát của tôi" — desktop 63:127 (stat cards + table), mobile
  * 63:1300 (two stat cards, filter pills, cards). Empty / filter-empty states
- * are ASSUMED (not drawn).
+ * are ASSUMED (design) (not drawn).
  */
 export function MyFormsScreen() {
   const { loaded, loading, error, reload, rows, visible, stats, filter, setFilter, now } = useMyForms();

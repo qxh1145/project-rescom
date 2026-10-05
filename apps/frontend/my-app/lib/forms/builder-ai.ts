@@ -19,6 +19,13 @@ import {
  * - `GET  /forms/:id/ai/conversation` → `AiConversation` (404 `AI_CONVERSATION_NOT_FOUND` = none yet)
  * - `POST /forms/:id/ai/messages` `{ message, options }` → `AiConversation`
  * - `POST /forms/:id/ai/suggest-block` `{ sectionTitle? }` → `{ block, attentionSuggestion }`
+ * - `POST /forms/ai/messages` `{ message, options }` → `AiNewChat`: the first
+ *   prompt of a new chat, answered BEFORE any draft exists (mock-off Phase 6:
+ *   a failed or stopped first prompt must not leave an orphan draft). The
+ *   conversation is held under `conversationId` until it is attached.
+ * - `POST /forms/:id/ai/conversation` `{ conversationId }` → `AiConversation`:
+ *   attaches that conversation to the draft created after the first answer
+ *   (404 `AI_CONVERSATION_NOT_FOUND`, 409 `AI_CONVERSATION_EXISTS`).
  *
  * The draft carries **valid `form-blocks`** (`formBlockSchema`) but never an
  * active attention check: suggested checks travel separately in
@@ -87,6 +94,14 @@ export const aiConversationSchema = z.object({
   updatedAt: z.string(),
 });
 export type AiConversation = z.infer<typeof aiConversationSchema>;
+
+/** First answer of a new chat, before its draft exists (`POST /forms/ai/messages`). */
+export const aiNewChatSchema = aiConversationSchema.omit({ formId: true }).extend({
+  conversationId: z.string().min(1).max(100),
+});
+export type AiNewChat = z.infer<typeof aiNewChatSchema>;
+
+export const aiAdoptConversationInputSchema = z.object({ conversationId: z.string().min(1).max(100) }).strict();
 
 export const aiSuggestedBlockSchema = z.object({
   block: formBlockSchema,

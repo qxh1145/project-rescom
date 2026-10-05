@@ -2,7 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { computeInternalTimeBarrier, type FormBlock } from "@rescom/schemas";
+import {
+  computeInternalTimeBarrier,
+  type FileAttachmentAnswer,
+  type FileUploadBlock,
+  type FormBlock,
+} from "@rescom/schemas";
 import { useSurveyTelemetry } from "@/app/forms/hooks/useSurveyTelemetry";
 import { isApiError } from "@/lib/api/api-error";
 import { useApiQuery } from "@/lib/api/use-api-query";
@@ -14,7 +19,7 @@ import {
   restorableAnswers,
   saveAnswerDraft,
 } from "@/lib/participation/answer-draft";
-import { attemptPhase, type AttemptDetails } from "@/lib/participation/attempts-service";
+import { attemptPhase, type AttemptDetails, type AttemptPinnedForm } from "@/lib/participation/attempts-service";
 import { getIntegrityConsent } from "@/lib/participation/consent-service";
 import {
   invalidBlockIds,
@@ -32,14 +37,16 @@ import {
   toSubmissionAnswers,
   validateBlocks,
 } from "@/lib/participation/survey-form";
-import type { SurveyForm } from "@/lib/participation/survey-form-service";
+import { isFileAttachmentList, uncleanAttachmentFiles } from "@/lib/participation/file-upload";
 import { isSessionLost } from "@/lib/session/session-status";
 import { useSession } from "@/lib/session/SessionProvider";
+import { useFileUploads } from "./use-file-uploads";
 
 export type RunnerPhase = "answering" | "submitting" | "offline" | "expired";
 
 const AUTOSAVE_DELAY_MS = 600;
-/** ASSUMED (not in Figma): "sắp hết giờ giữ chỗ" notice 5 minutes before `expiresAt`. */
+const UPLOAD_IN_PROGRESS = "Tệp đang được tải lên. Vui lòng đợi tải xong.";
+/** ASSUMED (design) (not in Figma): "sắp hết giờ giữ chỗ" notice 5 minutes before `expiresAt`. */
 export const EXPIRY_WARNING_MS = 5 * 60 * 1000;
 const FREE_TEXT = new Set<FormBlock["type"]>(["text", "textarea", "number"]);
 const FOCUSABLE = "input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled])";
@@ -71,7 +78,7 @@ function applyFocus(request: FocusRequest, firstBlockId: string | undefined): vo
  * Mounted only once the attempt and its form are loaded, so the draft is
  * restored synchronously in the state initializers.
  */
-export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
+export function useSurveyRunner(attempt: AttemptDetails, form: AttemptPinnedForm) {
   const router = useRouter();
   const { refresh } = useSession();
   const storage = useMemo(() => browserDraftStorage(), []);
@@ -108,7 +115,7 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
   const focusRequest = useRef<FocusRequest | null>(null);
   const blockIds = useMemo(() => new Set(form.blocks.map((block) => block.id)), [form]);
 
-  // Telemetry batches carry the notice version the respondent accepted (ASSUMED consent route).
+  // Telemetry batches carry the notice version the respondent accepted.
   const consent = useApiQuery("integrity-consent", (signal) => getIntegrityConsent(signal));
   const telemetry = useSurveyTelemetry({
     formId: attempt.formId,
@@ -291,40 +298,94 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
     [blockIds, recordEvent],
   );
 
+  // File uploads live here, not in the question cards: paging never loses them (Phase 7).
+  const setFiles = useCallback(
+    (block: FileUploadBlock, files: FileAttachmentAnswer[], options?: { immediate?: boolean }) => {
+      setAnswer(block, files);
+      // A removed file must not come back from a stale draft.
+      if (options?.immediate) saveNow();
+    },
+    [saveNow, setAnswer],
+  );
+  const getAnswer = useCallback((blockId: string) => answersRef.current[blockId], []);
+  const uploads = useFileUploads(attempt.attemptId, getAnswer, setFiles);
+  const { isBusy: isUploading } = uploads;
+
+  // "Đang tải lên" errors are hidden once that question's upload settled.
+  const busyKey = form.blocks.filter((block) => isUploading(block.id)).map((block) => block.id).join(",");
+  const shownErrors = useMemo(() => {
+    const busy = new Set(busyKey ? busyKey.split(",") : []);
+    const stale = Object.keys(errors).filter((id) => errors[id] === UPLOAD_IN_PROGRESS && !busy.has(id));
+    if (stale.length === 0) return errors;
+    const rest = { ...errors };
+    for (const id of stale) delete rest[id];
+    return rest;
+  }, [busyKey, errors]);
+
+  /** Validation errors, plus "still uploading" for file questions whose upload has not settled. */
+  const blockErrors = useCallback(
+    (blocks: readonly FormBlock[]) => {
+      const found = validateBlocks(blocks, answersRef.current);
+      for (const block of blocks) {
+        if (isUploading(block.id)) found[block.id] = UPLOAD_IN_PROGRESS;
+      }
+      return found;
+    },
+    [isUploading],
+  );
+
+  /** Leaving a page (or the attempt) waits for its uploads and deletes: true when it was blocked. */
+  const blockedByUploads = useCallback(
+    (blocks: readonly FormBlock[]) => {
+      const busy = blocks.filter((block) => isUploading(block.id));
+      if (busy.length === 0) return false;
+      showErrors(Object.fromEntries(busy.map((block) => [block.id, UPLOAD_IN_PROGRESS])));
+      return true;
+    },
+    [isUploading, showErrors],
+  );
+
   const next = useCallback(() => {
     if (!page) return;
-    const found = validateBlocks(page.blocks, answersRef.current);
+    const found = blockErrors(page.blocks);
     if (Object.keys(found).length > 0) {
       showErrors(found);
       return;
     }
     setErrors({});
     goToPage(pageIndex + 1);
-  }, [goToPage, page, pageIndex, showErrors]);
+  }, [blockErrors, goToPage, page, pageIndex, showErrors]);
 
   const back = useCallback(() => {
+    if (page && blockedByUploads(page.blocks)) return;
     for (const block of layout.pages[pageIndex - 1]?.blocks ?? []) recordEvent("QUESTION_RETURNED", block.id);
     goToPage(pageIndex - 1);
-  }, [goToPage, layout.pages, pageIndex, recordEvent]);
+  }, [blockedByUploads, goToPage, layout.pages, page, pageIndex, recordEvent]);
 
   const jumpToSection = useCallback(
     (sectionIndex: number) => {
       const section = layout.sections[sectionIndex];
-      if (section) goToPage(section.firstPage);
+      if (!section || (page && blockedByUploads(page.blocks))) return;
+      goToPage(section.firstPage);
     },
-    [goToPage, layout.sections],
+    [blockedByUploads, goToPage, layout.sections, page],
   );
 
   const saveAndExit = useCallback(() => {
     if (busyRef.current) return;
+    if (blockedByUploads(form.blocks)) {
+      const target = firstPageWith(layout, form.blocks.filter((block) => isUploading(block.id)).map((block) => block.id));
+      if (target >= 0 && target !== pageIndex) goToPage(target);
+      return;
+    }
     saveNow();
     void flushQueue();
     router.push("/marketplace");
-  }, [flushQueue, router, saveNow]);
+  }, [blockedByUploads, flushQueue, form.blocks, goToPage, isUploading, layout, pageIndex, router, saveNow]);
 
   const submit = useCallback(async () => {
     if (busyRef.current) return;
-    const all = validateBlocks(form.blocks, answersRef.current);
+    const all = blockErrors(form.blocks);
     if (Object.keys(all).length > 0) {
       const target = firstPageWith(layout, Object.keys(all));
       if (target >= 0 && target !== pageIndex) goToPage(target);
@@ -395,6 +456,23 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
         blockUntil(Date.now() + remaining * 1000);
         return;
       }
+      // A file the server could not attach: drop it from the answer and say which one.
+      const unclean = uncleanAttachmentFiles(cause).filter((file) => blockIds.has(file.questionId));
+      if (unclean.length > 0) {
+        const marked: Record<string, string> = {};
+        for (const { questionId, objectId } of unclean) {
+          const block = form.blocks.find((candidate) => candidate.id === questionId);
+          const files = answersRef.current[questionId];
+          if (!block || !isFileAttachmentList(files)) continue;
+          const name = files.find((file) => file.objectId === objectId)?.fileName ?? "đã chọn";
+          setAnswer(block, files.filter((file) => file.objectId !== objectId));
+          marked[questionId] = `Tệp “${name}” chưa được xác minh an toàn hoặc đã bị xoá. Hãy tải lại tệp rồi nộp bài.`;
+        }
+        saveNow();
+        const target = firstPageWith(layout, Object.keys(marked));
+        if (target >= 0) goToPage(target);
+        showErrors(marked);
+      }
       const invalid = invalidBlockIds(cause, blockIds);
       if (invalid.length > 0) {
         const target = firstPageWith(layout, invalid);
@@ -405,6 +483,7 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
     }
   }, [
     attempt,
+    blockErrors,
     blockIds,
     blockUntil,
     earliestSubmitAt,
@@ -417,6 +496,7 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
     refresh,
     router,
     saveNow,
+    setAnswer,
     showErrors,
     storage,
   ]);
@@ -436,7 +516,7 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
     isLastPage: pageIndex >= lastPage,
     furthestSection: layout.pages[furthestPage]?.sectionIndex ?? 0,
     answers,
-    errors,
+    errors: shownErrors,
     phase,
     /** Figma 4b: the last submit failed without a response (kept during the retry). */
     showOffline: phase === "offline" || (phase === "submitting" && offlineRetry),
@@ -448,6 +528,8 @@ export function useSurveyRunner(attempt: AttemptDetails, form: SurveyForm) {
     /** ASSUMED: the reservation ends within `EXPIRY_WARNING_MS`. */
     expiringSoon,
     setAnswer,
+    /** Upload state and actions of one `file_upload` question. */
+    uploadControls: uploads.controlsFor,
     blurAnswer,
     next,
     back,

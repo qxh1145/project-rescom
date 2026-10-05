@@ -13,7 +13,7 @@ import { useTopUpRequest } from "../hooks/use-top-up-request";
 import { StatusTimeline } from "./StatusTimeline";
 import { TopUpFrame } from "./TopUpFrame";
 
-/** Figma 14c draws PENDING only; APPROVED / REJECTED copy, pill and mascot are ASSUMED. */
+/** Figma 14c draws PENDING only; APPROVED / REJECTED copy, pill and mascot are ASSUMED (design). */
 const STATUS: Record<TopUpStatus, { pill: string; icon: IconName; pillClass: string; mascot: MascotName }> = {
   PENDING: { pill: "Đang chờ duyệt", icon: "hourglass", pillClass: "bg-tone-amber-bg text-tone-amber-fg", mascot: "wait" },
   APPROVED: { pill: "Đã duyệt", icon: "check", pillClass: "bg-tone-teal-bg text-tone-teal-fg", mascot: "points" },

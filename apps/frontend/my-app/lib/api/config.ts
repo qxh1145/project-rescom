@@ -7,8 +7,15 @@
  */
 export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "/api").replace(/\/$/, "");
 
-/** `enabled` → MSW intercepts API calls in the browser; anything else → real backend. */
+/**
+ * `NEXT_PUBLIC_API_MOCKING`:
+ * - `enabled` → MSW answers every API call (tests, demo), mock-only features on (demo accounts, mock Google);
+ * - `hybrid` → gate G of the mock-off plan: MSW answers only the `DEFERRED_KEEP_MOCK` routes of
+ *   `mocks/route-allowlist.ts`, everything else (session included) is the real backend;
+ * - anything else (`disabled`) → real backend, no MSW.
+ */
 export const isApiMockingEnabled = process.env.NEXT_PUBLIC_API_MOCKING === "enabled";
+export const isHybridMocking = process.env.NEXT_PUBLIC_API_MOCKING === "hybrid";
 
 export function apiUrl(path: `/${string}`): string {
   return `${API_BASE_URL}${path}`;

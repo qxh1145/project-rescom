@@ -4,8 +4,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { IconLink } from "@/components/ui/IconButton";
-import { REVIEW_DISCLAIMER, reviewReasonText } from "@/lib/forms/results-messages";
-import type { FormResponse, FormResponses, ResultQuestion } from "@/lib/forms/results-service";
+import type { AvailableFormResponses, FormResponse, ResultQuestion } from "@/lib/forms/results-service";
 import {
   formatDurationLong,
   formatSubmittedAt,
@@ -14,18 +13,15 @@ import {
   type ResponsePosition,
 } from "@/lib/forms/results-view";
 import { ResponseAnswers, ResponseMeta } from "./ResponseAnswers";
-import { QualityTag } from "./QualityTag";
 
-/** Mobile card list of 10d (63:4567…): code + quality, time line, 3-answer summary. */
+/** Mobile card list of 10d (63:4567…): code, time line, 3-answer summary. */
 export function ResponseCards({
-  data,
   responses,
   columns,
   hrefFor,
   visible,
   onShowMore,
 }: {
-  data: FormResponses;
   responses: FormResponse[];
   columns: ResultQuestion[];
   hrefFor: (response: FormResponse) => string;
@@ -34,13 +30,10 @@ export function ResponseCards({
 }) {
   const shown = responses.slice(0, visible);
   const rest = responses.length - shown.length;
-  const external = data.form.type === "EXTERNAL";
   return (
     <div className="flex flex-col gap-2.5">
       <ul className="flex flex-col gap-2.5">
         {shown.map((response) => {
-          const reasons =
-            response.quality === "NEEDS_REVIEW" ? response.reviewReasons.map(reviewReasonText).join(", ") : "";
           return (
             <li key={response.id}>
               <Link
@@ -50,19 +43,11 @@ export function ResponseCards({
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
                   <div className="flex items-center gap-2">
                     <span className="text-[16px] font-extrabold text-ink">{responseLabel(response)}</span>
-                    <QualityTag quality={response.quality} />
                   </div>
                   <p className="text-[12px] text-ink-muted">
                     {formatSubmittedAt(response.submittedAt)} · {formatDurationLong(response.durationSeconds)}
-                    {reasons ? ` · ${reasons}` : ""}
                   </p>
-                  <p className="truncate text-body-sm text-ink">
-                    {external
-                      ? response.codeVerified
-                        ? "Mã hoàn thành đã xác minh"
-                        : "Mã hoàn thành chưa xác minh"
-                      : responseSummary(response, columns)}
-                  </p>
+                  <p className="truncate text-body-sm text-ink">{responseSummary(response, columns)}</p>
                 </div>
                 <Icon name="chevron-right" size={20} className="text-ink-muted" />
               </Link>
@@ -75,7 +60,6 @@ export function ResponseCards({
           Xem thêm {rest} câu trả lời
         </Button>
       ) : null}
-      <p className="text-[12px] leading-[18px] text-ink-muted">{REVIEW_DISCLAIMER}</p>
     </div>
   );
 }
@@ -117,7 +101,7 @@ export function ResponseDetailMobile({
   listHref,
   hrefFor,
 }: {
-  data: FormResponses;
+  data: AvailableFormResponses;
   response: FormResponse;
   position: ResponsePosition;
   listHref: string;

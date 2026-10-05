@@ -61,7 +61,8 @@ function entry(
   details: Record<string, unknown>,
   createdAt: string,
 ): MockFraudLogEntry {
-  return { id: `fraud-seed-${seq}`, userId, type, survey, details, createdAt };
+  // UUIDs like the backend rows (the keyset cursor `<createdAt>:<id>` needs one).
+  return { id: `5eed0000-0000-4000-8000-${String(seq).padStart(12, "0")}`, userId, type, survey, details, createdAt };
 }
 
 function seed(): MockFraudLogEntry[] {
@@ -118,7 +119,13 @@ export interface FraudLogFilter {
   type?: string;
 }
 
-/** Entries matching the filter, newest first. */
+/** Backend list order: newest first, ties by id descending. */
+function newestFirst(a: MockFraudLogEntry, b: MockFraudLogEntry): number {
+  if (a.createdAt !== b.createdAt) return b.createdAt.localeCompare(a.createdAt);
+  return a.id === b.id ? 0 : a.id < b.id ? 1 : -1;
+}
+
+/** Entries matching the filter, newest first (ties by id descending). */
 export function queryFraudLog(filter: FraudLogFilter): MockFraudLogEntry[] {
   const now = Date.now();
   return fraudLogEntries
@@ -126,7 +133,7 @@ export function queryFraudLog(filter: FraudLogFilter): MockFraudLogEntry[] {
     .filter((item) => !filter.userIds || filter.userIds.includes(item.userId))
     .filter((item) => filter.days === null || withinDays(item.createdAt, filter.days, now))
     .filter((item) => !filter.type || fraudKindOf(item) === filter.type)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    .sort(newestFirst);
 }
 
 /**

@@ -7,7 +7,12 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Select } from "@/components/ui/Select";
 import { fieldClassName } from "@/components/ui/TextField";
-import { fraudLogLoadErrorMessage } from "@/lib/admin/fraud-log-messages";
+import {
+  FRAUD_LOG_LOAD_MORE_FAILED,
+  FRAUD_LOG_TRUNCATED_NOTE,
+  fraudLogLoadErrorMessage,
+  fraudLogTotalText,
+} from "@/lib/admin/fraud-log-messages";
 import { FRAUD_TYPE_OPTIONS, FRAUD_WINDOW_OPTIONS, repeatBannerOf } from "@/lib/admin/fraud-log-view";
 import { useFraudLog } from "../hooks/use-fraud-log";
 import { FraudLogTable } from "./FraudLogTable";
@@ -21,7 +26,7 @@ const LABEL = "text-caption font-semibold text-ink-muted";
  */
 export function FraudLogScreen({ urlUserId }: { urlUserId: string | null }) {
   const state = useFraudLog(urlUserId);
-  const items = state.data?.items ?? [];
+  const items = state.items;
   const repeatAccounts = state.data?.accounts.filter((account) => account.repeated) ?? [];
 
   const readOnlyChip = (
@@ -72,7 +77,7 @@ export function FraudLogScreen({ urlUserId }: { urlUserId: string | null }) {
           />
         </div>
         <p className="ml-auto pb-3 text-body-sm text-ink-muted" aria-live="polite">
-          {state.data ? `${state.data.total} mục` : null}
+          {state.data ? fraudLogTotalText(state.data) : null}
         </p>
       </div>
 
@@ -89,10 +94,21 @@ export function FraudLogScreen({ urlUserId }: { urlUserId: string | null }) {
 
       <section aria-label="Nhật ký vi phạm" className="mt-4 rounded-[22px] border border-line bg-surface px-6 pt-3 pb-3.5">
         <FraudLogTable items={items} loading={state.loading} />
-        {state.data && state.data.total > items.length ? (
-          <p className="border-t border-line-subtle pt-3 text-caption text-ink-muted">
-            Hiển thị {items.length} mục mới nhất — thu hẹp bộ lọc để xem các mục cũ hơn.
-          </p>
+        {state.hasMore ? (
+          // ASSUMED (design) (not drawn): 100 entries per page, newest first.
+          <div className="flex flex-col items-center gap-3 border-t border-line-subtle pt-3">
+            {state.loadMoreFailed ? (
+              <Alert tone="danger" className="w-full">
+                {FRAUD_LOG_LOAD_MORE_FAILED}
+              </Alert>
+            ) : null}
+            <Button variant="secondary" size="sm" onClick={() => void state.loadMore()} loading={state.loadingMore}>
+              Tải thêm
+            </Button>
+          </div>
+        ) : null}
+        {state.data?.truncated ? (
+          <p className="border-t border-line-subtle pt-3 text-caption text-ink-muted">{FRAUD_LOG_TRUNCATED_NOTE}</p>
         ) : null}
       </section>
 
@@ -118,7 +134,7 @@ export function FraudLogScreen({ urlUserId }: { urlUserId: string | null }) {
         );
       })}
       {state.data && repeatAccounts.length === 0 ? (
-        // ASSUMED: policy note when no account is flagged (copy from the overview, 62:4179).
+        // ASSUMED (design): policy note when no account is flagged (copy from the overview, 62:4179).
         <p className="mt-4 text-caption-relaxed text-ink-muted">
           Hệ thống chỉ gắn cờ tài khoản vi phạm lặp lại. Khoá tài khoản luôn do Admin quyết định.
         </p>

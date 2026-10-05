@@ -14,7 +14,7 @@ const EMPTY_TEXT: Record<TopUpStatus, string> = {
   REJECTED: "Chưa có yêu cầu nào bị từ chối.",
 };
 
-/** Reviewed tabs show when the decision was made (ASSUMED; Figma draws the pending tab only). */
+/** Reviewed tabs show when the decision was made (ASSUMED (design); Figma draws the pending tab only). */
 const TIME_HEADER: Record<TopUpStatus, string> = {
   PENDING: "Gửi lúc",
   APPROVED: "Duyệt lúc",

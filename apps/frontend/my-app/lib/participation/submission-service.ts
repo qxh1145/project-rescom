@@ -1,24 +1,25 @@
 import {
+  attemptOutcomeSchema,
   internalFormSubmissionResponseSchema,
-  ledgerAccountClassSchema,
-  rewardSettlementStatusSchema,
-  type BlockAnswer,
+  type AttemptOutcomeDto,
   type InternalFormSubmissionResponseDto,
 } from "@rescom/schemas";
-import { z } from "zod";
 import { apiRequest } from "../api/client.ts";
+import type { SubmissionAnswers } from "./survey-form.ts";
 
 /**
  * VERIFIED: `POST /responses/:responseId/submit` (`participation.controller.ts`,
- * OptionalSessionCsrfGuard + JsonOnlyGuard) → 200
+ * OptionalSessionCsrfGuard + JsonOnlyGuard), `answers` as a record by block
+ * id (`toSubmissionAnswers`; file questions carry CLEAN attachments) → 200
  * `internalFormSubmissionResponseSchema`. Errors: 400 `INVALID_FORM_SUBMISSION`
  * (details = errors by block id), 404 `RESPONSE_NOT_FOUND`, 409
  * `ATTEMPT_EXPIRED`, 422 `SUBMISSION_TOO_FAST` (time barrier details),
+ * 400 `UNCLEAN_ATTACHMENT` (a file is not a CLEAN upload of this attempt),
  * 429 `PARTICIPATION_RATE_LIMITED`.
  */
 export function submitSurveyResponse(
   responseId: string,
-  input: { attemptId: string; answers: BlockAnswer[] },
+  input: { attemptId: string; answers: SubmissionAnswers },
   signal?: AbortSignal,
 ): Promise<InternalFormSubmissionResponseDto> {
   return apiRequest(`/responses/${encodeURIComponent(responseId)}/submit`, {
@@ -30,25 +31,18 @@ export function submitSurveyResponse(
 }
 
 /**
- * ASSUMED API CONTRACT: `GET /attempts/:attemptId/outcome` — the reward state
- * of a finished attempt, so `/attempts/:id/complete` survives a reload and
- * also serves Google Forms attempts. `accountActivated` = this attempt
- * unlocked the frozen starter points (Figma 6 "Tài khoản đã kích hoạt"); the
- * submit response has no such flag.
+ * VERIFIED: `GET /attempts/:attemptId/outcome` (`survey-runner.controller.ts`,
+ * owner-only, read-only) → `attemptOutcomeSchema` (strict): `reward.state`
+ * derived from the posted ledger journals (AVAILABLE, PENDING with
+ * `releasesAt`, HELD_IN_INTEGRITY, HELD_IN_DISPUTE, REVERSED,
+ * AWAITING_SETTLEMENT, NO_REWARD, NOT_COMPLETED), the credited `amount`, and
+ * whether THIS attempt unlocked the frozen starter points
+ * (`starterUnlock.activatedByThisAttempt`, mirrored by `accountActivated`,
+ * Figma 6 "Tài khoản đã kích hoạt"). Lets `/attempts/:id/complete` survive a
+ * reload for in-Rescom and Google Forms attempts.
  */
-export const attemptOutcomeSchema = z.object({
-  attemptId: z.string().uuid(),
-  reward: z
-    .object({
-      status: rewardSettlementStatusSchema,
-      amount: z.number().int().nonnegative(),
-      targetAccountClass: ledgerAccountClassSchema.nullable(),
-    })
-    .nullable(),
-  accountActivated: z.boolean(),
-  submittedAt: z.string().datetime().nullable(),
-});
-export type AttemptOutcome = z.infer<typeof attemptOutcomeSchema>;
+export { attemptOutcomeSchema };
+export type AttemptOutcome = AttemptOutcomeDto;
 
 export function getAttemptOutcome(attemptId: string, signal?: AbortSignal): Promise<AttemptOutcome> {
   return apiRequest(`/attempts/${encodeURIComponent(attemptId)}/outcome`, { schema: attemptOutcomeSchema, signal });
@@ -56,8 +50,7 @@ export function getAttemptOutcome(attemptId: string, signal?: AbortSignal): Prom
 
 /**
  * The submit response is kept in sessionStorage for the completion screen:
- * it is the only VERIFIED source of the reward state until the outcome route
- * exists.
+ * the reward state survives an outcome read that fails (offline, slow).
  */
 const STASH_PREFIX = "rescom:survey-submission:";
 

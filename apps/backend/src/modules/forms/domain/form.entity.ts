@@ -1,6 +1,7 @@
 import {
   FormCloseKind,
   FormStatusEnum,
+  FormTopic,
   FormTypeEnum,
   isFormImmutable,
   isOwnerReopenableClose,
@@ -41,7 +42,22 @@ export class FormEntity {
      * never closed, or closed before the close kind was recorded.
      */
     public readonly closeKind: FormCloseKind | null = null,
+    /**
+     * Story IR.2b Q1: collection deadline. New starts stop at it; the
+     * `deadline-close` job closes the survey (close kind DEADLINE) once the
+     * in-flight attempts' window passed. `null` = no deadline.
+     */
+    public readonly deadlineAt: Date | null = null,
+    /** Plan 2.2: the survey topic (`FORM_TOPICS`); `null` = none chosen. */
+    public readonly topic: FormTopic | null = null,
   ) {}
+
+  /** Story IR.2b: true once `now` reached the deadline (no new starts). */
+  isPastDeadline(now: Date): boolean {
+    return (
+      this.deadlineAt !== null && this.deadlineAt.getTime() <= now.getTime()
+    );
+  }
 
   isDraft(): boolean {
     return this.status === 'DRAFT';
@@ -132,6 +148,10 @@ export class FormEntity {
     estimatedDurationMinutes?: number | null;
     /** `undefined` keeps the current value; `null` clears it. */
     closeKind?: FormCloseKind | null;
+    /** `undefined` keeps the current value; `null` clears it. */
+    deadlineAt?: Date | null;
+    /** `undefined` keeps the current value; `null` clears it. */
+    topic?: FormTopic | null;
   }): FormEntity {
     return new FormEntity(
       this.id,
@@ -152,6 +172,8 @@ export class FormEntity {
         ? updates.estimatedDurationMinutes
         : this.estimatedDurationMinutes,
       updates.closeKind !== undefined ? updates.closeKind : this.closeKind,
+      updates.deadlineAt !== undefined ? updates.deadlineAt : this.deadlineAt,
+      updates.topic !== undefined ? updates.topic : this.topic,
     );
   }
 }

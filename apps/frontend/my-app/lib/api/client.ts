@@ -1,5 +1,7 @@
+import { csrfTokenResponseSchema } from "@rescom/schemas";
 import { ApiError } from "./api-error.ts";
 import { apiUrl } from "./config.ts";
+import { SESSION_REPLACED_CODE, markSessionReplaced } from "../auth/session-notice.ts";
 
 /** Minimal structural contract satisfied by any zod schema. */
 export interface ResponseSchema<T> {
@@ -41,7 +43,7 @@ function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | undefined): 
   });
 }
 
-/** VERIFIED: GET /auth/csrf → `{ csrfToken }`. Guests get 401 `AUTH_UNAUTHORIZED`. */
+/** VERIFIED (shared `csrfTokenResponseSchema`): GET /auth/csrf → `{ csrfToken }`. Guests get 401 `AUTH_UNAUTHORIZED`. */
 async function fetchCsrfToken(): Promise<string> {
   let res: Response;
   try {
@@ -52,6 +54,7 @@ async function fetchCsrfToken(): Promise<string> {
   const payload = (await readJson(res)) as ({ data?: { csrfToken?: unknown } } & ErrorEnvelope) | null;
   if (!res.ok) {
     const error = payload?.error;
+    noteSessionReplaced(res.status, error?.code);
     throw new ApiError({
       kind: "http",
       status: res.status,
@@ -60,11 +63,11 @@ async function fetchCsrfToken(): Promise<string> {
       details: error?.details,
     });
   }
-  const token = payload?.data?.csrfToken;
-  if (typeof token !== "string") {
+  const parsed = csrfTokenResponseSchema.safeParse(payload?.data);
+  if (!parsed.success) {
     throw new ApiError({ kind: "malformed", status: res.status, message: "CSRF token unavailable" });
   }
-  return token;
+  return parsed.data.csrfToken;
 }
 
 /**
@@ -100,6 +103,15 @@ export function setCsrfToken(token: string): void {
 /** Forget the cached token (after logout or a rejected token). */
 export function resetCsrfToken(): void {
   csrfTokenPromise = null;
+}
+
+/**
+ * Plan 5.6: the backend clears the cookies on its first `AUTH_SESSION_REPLACED`
+ * answer, so later requests cannot tell why the session ended. Remember it
+ * here, on whichever request saw it first (read by the session status).
+ */
+function noteSessionReplaced(status: number, code: unknown): void {
+  if (status === 401 && code === SESSION_REPLACED_CODE) markSessionReplaced();
 }
 
 interface ErrorEnvelope {
@@ -178,6 +190,7 @@ export async function apiRequest<T>(
   if (!res.ok) {
     const payload = (await readJson(res)) as ErrorEnvelope | null;
     const error = payload?.error;
+    noteSessionReplaced(res.status, error?.code);
     throw new ApiError({
       kind: "http",
       status: res.status,

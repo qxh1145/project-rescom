@@ -3,6 +3,7 @@ import { surveyTargetingSchema } from "./form-targeting.schema";
 import { externalSurveyUrlSchema } from "./external-url.schema";
 import { estimatedDurationMinutesSchema } from "../economy/pricing.schema";
 import type { FormDetailDto } from "./form-draft.schema";
+import { formDeadlineAtSchema, formTopicEnum } from "./form-topic.schema";
 
 // `isGoogleFormsUrl` lives in `./external-url.schema` (decision E4-DN3: it is
 // now the server-side allowlist enforced by `externalSurveyUrlSchema`).
@@ -53,6 +54,13 @@ export const createExternalSurveySchema = z
     estimatedDurationMinutes: estimatedDurationMinutesSchema.optional(),
     targetingJson: surveyTargetingSchema.optional().nullable(),
     autoPublish: z.boolean().default(false),
+    /** Plan 2.2: the wizard's "Chủ đề" (`FORM_TOPICS`). */
+    topic: formTopicEnum.optional().nullable(),
+    /**
+     * Story IR.2b Q1: the wizard's "Hạn thu thập" as an instant (1 h – 180 d
+     * ahead, checked by the server); null/omitted = no deadline.
+     */
+    deadlineAt: formDeadlineAtSchema.optional().nullable(),
   })
   .strict();
 

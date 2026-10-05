@@ -12,9 +12,9 @@ import { useSession } from "@/lib/session/SessionProvider";
 import { useSessionLossRedirect } from "@/lib/session/use-session-loss";
 
 /**
- * `/attempts/:id/complete` data: the attempt, its reward outcome (ASSUMED
- * route; falls back to the stashed submit response, then the attempt) and
- * the feedback eligibility. Works for in-Rescom and Google Forms attempts.
+ * `/attempts/:id/complete` data: the attempt, its reward outcome (falls back
+ * to the stashed submit response, then the attempt) and the feedback
+ * eligibility. Works for in-Rescom and Google Forms attempts.
  */
 export function useCompletion(attemptId: string) {
   const router = useRouter();

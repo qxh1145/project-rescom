@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   title: "Kiểm tra hộp thư — Rescom",
 };
 
-/** Figma `63:2089` "15c · Đã gửi link đặt lại · Mobile". Desktop ASSUMED (split layout + card). */
+/** Figma `63:2089` "15c · Đã gửi link đặt lại · Mobile". Desktop ASSUMED (design) (split layout + card). */
 export default function ResetLinkSentPage() {
   return (
     <AuthSplitLayout

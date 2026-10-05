@@ -8,6 +8,8 @@ export const PARTICIPATION_STORAGE_PREFIXES = [
   "rescom:survey-draft:",
   "rescom:google-form-draft:",
   "rescom:survey-submission:",
+  // Guest proof of an attempt's uploads (`file-upload-service.ts`, sessionStorage).
+  "rescom:storage-capability:",
   // Publisher side: Google Forms wizard draft and the one-time completion code hand-off.
   "rescom:create-gform-draft:",
   "rescom:created-form-code:",

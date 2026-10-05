@@ -73,7 +73,7 @@ describe('PrismaParticipationRepository (Epic 6 review P5/P6)', () => {
     submittedAt: new Date(),
   };
 
-  it('claims an External attempt only while the form is PUBLISHED, under FOR SHARE', async () => {
+  it('claims an External attempt only while the form is PUBLISHED, under FOR NO KEY UPDATE', async () => {
     const { tx, queries, repository, unitOfWork } = setup('PUBLISHED');
 
     const result = await unitOfWork.run('external-completion:a', () =>
@@ -81,9 +81,9 @@ describe('PrismaParticipationRepository (Epic 6 review P5/P6)', () => {
     );
 
     expect(result.outcome).toBe('COMPLETED');
-    expect(queries.some((sql) => /FROM forms[\s\S]*FOR SHARE/.test(sql))).toBe(
-      true,
-    );
+    expect(
+      queries.some((sql) => /FROM forms[\s\S]*FOR NO KEY UPDATE/.test(sql)),
+    ).toBe(true);
     expect(tx.surveyAttempt.update).toHaveBeenCalled();
   });
 
@@ -415,6 +415,132 @@ describe('PrismaParticipationRepository (Epic 5 review)', () => {
     });
   });
 
+  describe('Story IR.2a: closed reason and cancel', () => {
+    const cancelParams = {
+      attemptId: ids.attempt,
+      respondentId: ids.respondent,
+      formId: ids.form,
+      cutoffDate: new Date(Date.now() - 30 * 60 * 1000),
+      now: new Date('2026-10-01T08:00:00.000Z'),
+    };
+
+    it('the lazy expiry inside a start writes closed reason EXPIRED', async () => {
+      const { tx, repository } = createHarness();
+
+      await repository.reserveAttempt(reserveParams);
+
+      expect(tx.surveyAttempt.updateMany).toHaveBeenCalledWith({
+        where: {
+          respondentId: ids.respondent,
+          surveyId: ids.form,
+          status: 'IN_PROGRESS',
+          startedAt: { lt: reserveParams.cutoffDate },
+        },
+        data: {
+          status: 'ABANDONED',
+          closedReason: 'EXPIRED',
+          closedAt: reserveParams.startedAt,
+        },
+      });
+    });
+
+    it('cancel locks the form row before the attempt row, then moves only an IN_PROGRESS row', async () => {
+      const { tx, log, repository } = createHarness();
+      tx.surveyAttempt.findUniqueOrThrow.mockResolvedValue(
+        attemptRow({
+          status: 'ABANDONED',
+          closedReason: 'CANCELLED',
+          closedAt: cancelParams.now,
+        }),
+      );
+
+      const result = await repository.cancelAttempt(cancelParams);
+
+      const sql = log.filter((entry) => entry.startsWith('sql:'));
+      expect(sql[0]).toMatch(/FROM forms WHERE id = \? ?::uuid FOR SHARE/);
+      expect(sql[1]).toMatch(
+        /FROM survey_attempts WHERE id = \? ?::uuid FOR UPDATE/,
+      );
+      // No user completion lock: a cancel only removes a reservation.
+      expect(sql.some((entry) => entry.includes('pg_advisory_xact_lock'))).toBe(
+        false,
+      );
+      expect(tx.surveyAttempt.updateMany).toHaveBeenCalledWith({
+        where: { id: ids.attempt, status: 'IN_PROGRESS' },
+        data: {
+          status: 'ABANDONED',
+          closedReason: 'CANCELLED',
+          closedAt: cancelParams.now,
+        },
+      });
+      expect(result.outcome).toBe('CANCELLED');
+      expect(result.outcome !== 'NOT_FOUND' && result.attempt.closedAt).toEqual(
+        cancelParams.now,
+      );
+    });
+
+    it('cancel replays a cancelled attempt with its original closedAt, without writing', async () => {
+      const { tx, repository } = createHarness();
+      const original = new Date('2026-10-01T07:55:00.000Z');
+      tx.surveyAttempt.findUnique.mockResolvedValue(
+        attemptRow({
+          status: 'ABANDONED',
+          closedReason: 'CANCELLED',
+          closedAt: original,
+        }),
+      );
+
+      const result = await repository.cancelAttempt(cancelParams);
+
+      expect(result).toMatchObject({
+        outcome: 'ALREADY_CANCELLED',
+        attempt: { closedReason: 'CANCELLED', closedAt: original },
+      });
+      expect(tx.surveyAttempt.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('cancel refuses an expired reservation (derived EXPIRED) and a completed attempt', async () => {
+      const { tx, repository } = createHarness();
+      tx.surveyAttempt.findUnique.mockResolvedValueOnce(
+        attemptRow({ startedAt: new Date(Date.now() - 31 * 60 * 1000) }),
+      );
+      await expect(
+        repository.cancelAttempt(cancelParams),
+      ).resolves.toMatchObject({
+        outcome: 'NOT_IN_PROGRESS',
+        derivedCloseReason: 'EXPIRED',
+      });
+
+      tx.surveyAttempt.findUnique.mockResolvedValueOnce(
+        attemptRow({ status: 'COMPLETED' }),
+      );
+      await expect(
+        repository.cancelAttempt(cancelParams),
+      ).resolves.toMatchObject({
+        outcome: 'NOT_IN_PROGRESS',
+        derivedCloseReason: null,
+      });
+      expect(tx.surveyAttempt.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("cancel answers NOT_FOUND for a guest or another user's attempt", async () => {
+      const { tx, repository } = createHarness();
+      tx.surveyAttempt.findUnique.mockResolvedValueOnce(
+        attemptRow({ respondentId: ids.publisher }),
+      );
+      await expect(repository.cancelAttempt(cancelParams)).resolves.toEqual({
+        outcome: 'NOT_FOUND',
+      });
+      tx.surveyAttempt.findUnique.mockResolvedValueOnce(
+        attemptRow({ respondentId: null, isGuest: true }),
+      );
+      await expect(repository.cancelAttempt(cancelParams)).resolves.toEqual({
+        outcome: 'NOT_FOUND',
+      });
+      expect(tx.surveyAttempt.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('submitInternalResponseTransaction (P7/P4/P21)', () => {
     it('locks the form then the attempt, and transitions with state predicates', async () => {
       const { tx, log, repository } = createHarness();
@@ -424,7 +550,7 @@ describe('PrismaParticipationRepository (Epic 5 review)', () => {
 
       expect(result.outcome).toBe('SUBMITTED');
       const sql = log.filter((entry) => entry.startsWith('sql:'));
-      expect(sql[0]).toMatch(/FROM forms .*FOR SHARE/);
+      expect(sql[0]).toMatch(/FROM forms .*FOR NO KEY UPDATE/);
       expect(sql[1]).toMatch(/FROM survey_attempts .*FOR UPDATE/);
       expect(tx.response.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -544,12 +670,15 @@ describe('PrismaParticipationRepository (Epic 5 review)', () => {
       });
 
       tx.storedObject.updateMany.mockResolvedValue({ count: 0 });
-      await expect(
-        repository.submitInternalResponseTransaction({
-          ...submitParams,
-          attachments,
-        }),
-      ).rejects.toBeInstanceOf(UncleanAttachmentException);
+      const rejected = repository.submitInternalResponseTransaction({
+        ...submitParams,
+        attachments,
+      });
+      await expect(rejected).rejects.toBeInstanceOf(UncleanAttachmentException);
+      // Phase 7: the files that could not be attached are named for the runner.
+      await expect(rejected).rejects.toMatchObject({
+        details: { files: [{ questionId: 'q-file', objectId: ids.object }] },
+      });
     });
   });
 
@@ -572,6 +701,7 @@ describe('PrismaParticipationRepository (Epic 5 review)', () => {
         failureCount: 3,
         isLocked: true,
         accountFailureCount: 1,
+        attemptInProgress: true,
       });
       expect(tx.surveyAttempt.findUnique).toHaveBeenCalledWith({
         where: { id: ids.attempt },
@@ -617,6 +747,7 @@ describe('PrismaParticipationRepository (Epic 5 review)', () => {
           failureCount: 2,
           isLocked: true,
           accountFailureCount: 6,
+          attemptInProgress: true,
         });
         expect(tx.surveyAttempt.aggregate).toHaveBeenCalledWith({
           where: { respondentId: ids.respondent, formVersionId: ids.version },
@@ -668,6 +799,7 @@ describe('PrismaParticipationRepository (Epic 5 review)', () => {
           failureCount: 3,
           isLocked: true,
           accountFailureCount: 3,
+          attemptInProgress: true,
         });
         expect(tx.surveyAttempt.update).toHaveBeenNthCalledWith(1, {
           where: { id: ids.attempt },
@@ -697,7 +829,11 @@ describe('PrismaParticipationRepository (Epic 5 review)', () => {
           ids.version,
         );
 
-        expect(result).toMatchObject({ failureCount: 3, isLocked: true });
+        expect(result).toMatchObject({
+          failureCount: 3,
+          isLocked: true,
+          attemptInProgress: false,
+        });
         expect(tx.surveyAttempt.update).not.toHaveBeenCalled();
       });
 
@@ -858,7 +994,7 @@ describe('PrismaParticipationRepository (Epic 5 review)', () => {
       expect(result.outcome).toBe('SUBMITTED');
       const sql = sqlOf(log);
       expect(sql[0]).toMatch(ADVISORY_LOCK);
-      expect(sql[1]).toMatch(/FROM forms .*FOR SHARE/);
+      expect(sql[1]).toMatch(/FROM forms .*FOR NO KEY UPDATE/);
       expect(sql[2]).toMatch(/FROM survey_attempts .*FOR UPDATE/);
       expect(tx.$queryRaw.mock.calls[0][1]).toBe(
         `participation-completions:${ids.respondent}`,
@@ -946,7 +1082,7 @@ describe('PrismaParticipationRepository (Epic 5 review)', () => {
       });
       const sql = sqlOf(log);
       expect(sql[0]).toMatch(ADVISORY_LOCK);
-      expect(sql[1]).toMatch(/FROM forms .*FOR SHARE/);
+      expect(sql[1]).toMatch(/FROM forms .*FOR NO KEY UPDATE/);
       expect(sql[2]).toMatch(/FROM survey_attempts .*FOR UPDATE/);
       expect(log.indexOf('surveyAttempt.findMany')).toBeGreaterThan(
         log.indexOf(sql[2]),
@@ -1046,7 +1182,7 @@ describe('PrismaParticipationRepository (Epic 5 review)', () => {
       );
       const sql = sqlOf(withLock.log);
       expect(sql[0]).toMatch(ADVISORY_LOCK);
-      expect(sql[1]).toMatch(/FROM forms .*FOR SHARE/);
+      expect(sql[1]).toMatch(/FROM forms .*FOR NO KEY UPDATE/);
       expect(sql[2]).toMatch(/FROM survey_attempts .*FOR UPDATE/);
 
       const withoutLock = createHarness();
@@ -1054,7 +1190,9 @@ describe('PrismaParticipationRepository (Epic 5 review)', () => {
         ids.attempt,
         ids.form,
       );
-      expect(sqlOf(withoutLock.log)[0]).toMatch(/FROM forms .*FOR SHARE/);
+      expect(sqlOf(withoutLock.log)[0]).toMatch(
+        /FROM forms .*FOR NO KEY UPDATE/,
+      );
     });
   });
 });

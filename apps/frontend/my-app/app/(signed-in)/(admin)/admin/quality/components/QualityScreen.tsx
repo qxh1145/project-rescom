@@ -1,6 +1,7 @@
 "use client";
 
 import { Mascot } from "@/components/brand/Mascot";
+import { DemoDataTag } from "@/components/ui/DemoDataTag";
 import { AdminPage } from "@/components/layout/admin/AdminPage";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -19,7 +20,7 @@ export function QualityScreen() {
   const { items, selected, hrefFor, error, loading, reload, decide, notice, clearNotice } = useQualityReviews();
 
   return (
-    <AdminPage title="Xem xét chất lượng" meta={items ? qualityQueueMeta(items) : undefined}>
+    <AdminPage title="Xem xét chất lượng" meta={items ? qualityQueueMeta(items) : undefined} actions={<DemoDataTag />}>
       {notice ? (
         <Alert tone={notice.tone} onDismiss={clearNotice} className="mb-4">
           {notice.text}
@@ -40,7 +41,7 @@ export function QualityScreen() {
           Đang tải câu trả lời cần xem…
         </p>
       ) : items.length === 0 || !selected ? (
-        // ASSUMED empty state (not drawn).
+        // ASSUMED (design) empty state (not drawn).
         <section className="flex flex-col items-center gap-3 rounded-[22px] border border-line bg-surface px-6 py-12 text-center">
           <Mascot name="cheer" height={120} />
           <h2 className="text-[17px] font-extrabold text-ink">{QUALITY_EMPTY_TITLE}</h2>

@@ -1,15 +1,22 @@
 import { http } from "msw";
 import {
+  ATTEMPT_NOT_FOUND_CODE,
+  ATTEMPT_NOT_IN_PROGRESS_CODE,
   COMPLETION_CODE_LIMIT_REACHED_CODE,
   COMPLETION_CODE_POLICY,
   COMPLETION_CODE_POLICY_VERSION,
+  IDEMPOTENCY_KEY_HEADER,
   RESERVATION_EXPIRY_MS,
   SUBMISSION_TOO_FAST_CODE,
   TIME_BARRIER_POLICY_VERSION,
   evaluateTimeBarrier,
+  cancelAttemptRequestSchema,
+  idempotencyKeySchema,
   remainingCompletionCodeTries,
   reportMissingCompletionCodeInputSchema,
   verifyExternalCompletionCodeInputSchema,
+  type AttemptNotInProgressDetails,
+  type CancelAttemptResponseDto,
 } from "@rescom/schemas";
 import { apiUrl } from "@/lib/api/config";
 import {
@@ -60,6 +67,15 @@ async function guard(request: Request, attemptId: string, requireExternal = true
     return { response: fail(400, "ATTEMPT_NOT_EXTERNAL", "This attempt is not an external survey attempt.") };
   }
   return { user, attempt };
+}
+
+function cancelledDto(attempt: MockAttempt): CancelAttemptResponseDto {
+  return {
+    attemptId: attempt.attemptId,
+    status: "ABANDONED",
+    closedReason: "CANCELLED",
+    closedAt: attempt.closedAt ?? attempt.startedAt,
+  };
 }
 
 function isExpired(attempt: MockAttempt): boolean {
@@ -235,21 +251,48 @@ export const externalParticipationHandlers = [
     });
   }),
 
-  // ASSUMED API CONTRACT: POST /attempts/:attemptId/cancel ("Huỷ lượt làm"; also the
-  // in-Rescom "bắt đầu lại" after a form update). Both types → ABANDONED.
+  // VERIFIED: POST /attempts/:attemptId/cancel (`survey-runner.controller.ts`) → cancelAttemptResponseSchema
+  // ("Huỷ lượt làm"; also the in-Rescom "bắt đầu lại" after a survey update). Both types.
   http.post(apiUrl("/attempts/:attemptId/cancel"), async ({ request, params }) => {
     const forced = await applyScenario("participation");
     if (forced) return forced;
-    const guarded = await guard(request, String(params.attemptId), false);
-    if ("response" in guarded) return guarded.response;
-    const { attempt } = guarded;
-    if (attempt.status !== "IN_PROGRESS" || isExpired(attempt)) {
-      return fail(409, "ATTEMPT_NOT_IN_PROGRESS", "Only an in-progress attempt can be cancelled.");
+    const user = await getMockSessionUser();
+    if (!user) return unauthorized();
+    const csrf = missingCsrf(request);
+    if (csrf) return csrf;
+    const body = cancelAttemptRequestSchema.safeParse(await readJson(request));
+    if (!body.success) {
+      return fail(400, "VALIDATION_ERROR", body.error.errors[0]?.message ?? "Validation failed", {
+        details: body.error.format(),
+      });
     }
-    updateAttempt(attempt.attemptId, (target) => {
+    const key = idempotencyKeySchema.safeParse(request.headers.get(IDEMPOTENCY_KEY_HEADER) ?? "");
+    if (!key.success) {
+      return fail(400, "INVALID_IDEMPOTENCY_KEY", key.error.errors[0]?.message ?? "Invalid Idempotency-Key");
+    }
+    const attempt = findAttempt(String(params.attemptId));
+    // Unknown and other users' attempts are one 404 (owner-only route).
+    if (!attempt || attempt.userId !== user.id) {
+      return fail(404, ATTEMPT_NOT_FOUND_CODE, "Survey attempt not found.");
+    }
+    // A replay (any key) returns the original closing time.
+    if (attempt.status === "ABANDONED" && attempt.closedReason === "CANCELLED") {
+      return ok(cancelledDto(attempt));
+    }
+    if (attempt.status !== "IN_PROGRESS" || isExpired(attempt)) {
+      const details: AttemptNotInProgressDetails = {
+        status: attempt.status,
+        closedReason: attempt.status === "IN_PROGRESS" || attempt.closedReason === "EXPIRED" ? "EXPIRED" : null,
+      };
+      return fail(409, ATTEMPT_NOT_IN_PROGRESS_CODE, "Only an in-progress survey attempt can be cancelled.", {
+        details,
+      });
+    }
+    const cancelled = updateAttempt(attempt.attemptId, (target) => {
       target.status = "ABANDONED";
       target.closedReason = "CANCELLED";
+      target.closedAt = nowIso();
     });
-    return ok({ attemptId: attempt.attemptId, status: "ABANDONED" as const });
+    return ok(cancelledDto(cancelled ?? attempt));
   }),
 ];

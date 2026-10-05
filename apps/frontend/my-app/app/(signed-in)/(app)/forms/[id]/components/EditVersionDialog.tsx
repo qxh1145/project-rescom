@@ -19,7 +19,7 @@ interface EditVersionDialogProps {
 }
 
 /**
- * "Chỉnh sửa" of a running Form Builder survey — ASSUMED design (not drawn),
+ * "Chỉnh sửa" of a running Form Builder survey — ASSUMED (design) design (not drawn),
  * same panel as "Đóng & hoàn điểm". Confirms what re-versioning does (VERIFIED
  * `POST /forms/:id/versions`: back to DRAFT, off Khám phá, in-progress attempts
  * cut off, the new version needs approval), then opens the builder on vN+1.

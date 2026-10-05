@@ -1,30 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
-import { isApiError } from "@/lib/api/api-error";
-import { EXTERNAL_MESSAGES } from "@/lib/participation/external-messages";
-import { cancelAttempt } from "@/lib/participation/external-service";
+import { cancelFailureOf } from "@/lib/participation/external-code";
+import { cancelAttempt, newCancelIdempotencyKey } from "@/lib/participation/external-service";
+import { useSession } from "@/lib/session/SessionProvider";
 
 interface CancelAttemptDialogProps {
   attemptId: string;
   open: boolean;
   onClose: () => void;
   onCancelled: () => void;
+  /** The attempt turned out to be already completed (verified in another tab). */
+  onCompleted: () => void;
 }
 
 const TITLE_ID = "cancel-attempt-title";
 
-/** "Huỷ lượt làm" confirmation (ASSUMED, not drawn) → ASSUMED `POST /attempts/:id/cancel`. */
-export function CancelAttemptDialog({ attemptId, open, onClose, onCancelled }: CancelAttemptDialogProps) {
+/** "Huỷ lượt làm" confirmation (ASSUMED (design), not drawn) → `POST /attempts/:id/cancel`. */
+export function CancelAttemptDialog({ attemptId, open, onClose, onCancelled, onCompleted }: CancelAttemptDialogProps) {
+  const { refresh } = useSession();
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  /** One Idempotency-Key per opening of the dialog, reused by "retry" clicks. */
+  const idempotencyKey = useRef<string | null>(null);
 
   const close = () => {
     if (busy) return;
     setFailure(null);
+    idempotencyKey.current = null;
     onClose();
   };
 
@@ -32,11 +38,31 @@ export function CancelAttemptDialog({ attemptId, open, onClose, onCancelled }: C
     setBusy(true);
     setFailure(null);
     try {
-      await cancelAttempt(attemptId);
+      // Inside the try: a key that cannot be generated must not leave the dialog busy.
+      idempotencyKey.current ??= newCancelIdempotencyKey();
+      await cancelAttempt(attemptId, idempotencyKey.current);
       onCancelled();
     } catch (error) {
-      setFailure(isApiError(error) && error.kind === "network" ? EXTERNAL_MESSAGES.network : EXTERNAL_MESSAGES.cancelFailed);
-      setBusy(false);
+      const failed = cancelFailureOf(error);
+      switch (failed.kind) {
+        // 409 ATTEMPT_NOT_IN_PROGRESS: it already closed in another tab. A
+        // completed attempt shows its completion screen; otherwise (expired,
+        // cancelled, locked) leave it like after a cancel.
+        case "completed":
+          onCompleted();
+          return;
+        case "closed":
+          onCancelled();
+          return;
+        case "session":
+          // 401 / locked account: `SessionGate` redirects once the session is re-read.
+          setBusy(false);
+          refresh();
+          return;
+        case "message":
+          setFailure(failed.message);
+          setBusy(false);
+      }
     }
   };
 

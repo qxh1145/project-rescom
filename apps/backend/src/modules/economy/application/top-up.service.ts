@@ -407,9 +407,11 @@ export class TopUpService {
     // Epic 9 review P9: never split an emoji (a lone surrogate fails the
     // publish and the notice is lost).
     const shortReason = truncateText(reason, NOTIFICATION_REASON_MAX_LENGTH);
+    // Story IR.4b B3: its own type (was WARNING), so it can also be emailed;
+    // the dedupe key is unchanged.
     await this.notificationPublisher?.publish({
       userId: request.userId,
-      type: 'WARNING',
+      type: 'TOPUP_REJECTED',
       message: `Your top-up request ${request.transferReference} for ${request.amount} points was rejected. Reason: ${shortReason}`,
       dedupeKey: topUpRejectionKey(request.id),
     });

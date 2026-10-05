@@ -7,13 +7,14 @@ const {
   getGoogleLinkErrorMessage,
   getOAuthErrorMessage,
   getPasswordResetErrorMessage,
+  getResetPasswordErrorMessage,
   sessionReplacedMessage,
 } = await import("../lib/auth/auth-error-messages.ts");
 const { describePasswordStrength, scorePassword, PASSWORD_GUIDANCE } = await import(
   "../lib/auth/password-strength.ts"
 );
-const { readSessionReplacedNotice } = await import("../lib/auth/session-notice.ts");
-const { validateEmail } = await import("../lib/auth/validate-credentials.ts");
+const { readPasswordResetNotice, readSessionReplacedNotice } = await import("../lib/auth/session-notice.ts");
+const { validateEmail, validateNewPassword } = await import("../lib/auth/validate-credentials.ts");
 
 const httpError = (status, code, extra = {}) =>
   new ApiError({ kind: "http", status, code, message: code ?? "error", ...extra });
@@ -65,13 +66,49 @@ test("getPasswordResetErrorMessage never reveals account existence", () => {
   });
 });
 
-test("password reset route missing (ASSUMED contract) says the feature is not available", () => {
-  for (const status of [404, 501]) {
-    assert.deepEqual(getPasswordResetErrorMessage(httpError(status, null)), {
-      form: AUTH_MESSAGES.passwordResetUnavailable,
-    });
-  }
-  assert.match(AUTH_MESSAGES.passwordResetUnavailable, /chưa được hỗ trợ/);
+test("reset password (plan 5.4): dead link, policy and transport errors", () => {
+  assert.deepEqual(getResetPasswordErrorMessage(httpError(400, "PASSWORD_RESET_TOKEN_INVALID")), {
+    form: AUTH_MESSAGES.resetLinkInvalid,
+    linkInvalid: true,
+  });
+  assert.deepEqual(
+    getResetPasswordErrorMessage(
+      httpError(400, "AUTH_INVALID_INPUT", { details: { newPassword: { _errors: ["too short"] } } }),
+    ),
+    { password: AUTH_MESSAGES.passwordPolicy },
+  );
+  assert.match(getResetPasswordErrorMessage(httpError(429, "RATE_LIMIT_EXCEEDED")).form, /giây/);
+  assert.deepEqual(getResetPasswordErrorMessage(httpError(500, "INTERNAL_SERVER_ERROR")), {
+    form: AUTH_MESSAGES.server,
+  });
+  // The forgot route exists now: a 404 is just a server problem.
+  assert.deepEqual(getPasswordResetErrorMessage(httpError(404, null)), { form: AUTH_MESSAGES.server });
+});
+
+test("validateNewPassword: registration policy and a matching confirmation", () => {
+  assert.deepEqual(validateNewPassword("mật khẩu mới đủ dài", "mật khẩu mới đủ dài"), {
+    ok: true,
+    password: "mật khẩu mới đủ dài",
+  });
+  assert.deepEqual(validateNewPassword("ngan", "ngan"), {
+    ok: false,
+    password: AUTH_MESSAGES.passwordTooShort,
+    confirm: undefined,
+  });
+  assert.deepEqual(validateNewPassword("mật khẩu mới đủ dài", ""), {
+    ok: false,
+    password: undefined,
+    confirm: AUTH_MESSAGES.passwordConfirmRequired,
+  });
+  assert.equal(validateNewPassword("mật khẩu mới đủ dài", "khác hẳn luôn nhé").confirm, AUTH_MESSAGES.passwordMismatch);
+  assert.equal(validateNewPassword("x".repeat(73), "x".repeat(73)).password, AUTH_MESSAGES.passwordTooLong);
+});
+
+test("password-reset notice on the login page", () => {
+  const params = (query) => new URLSearchParams(query);
+  assert.equal(readPasswordResetNotice(params("reason=password-reset")), true);
+  assert.equal(readPasswordResetNotice(params("reason=session-replaced")), false);
+  assert.equal(getOAuthErrorMessage("AUTH_SESSION_REPLACED"), AUTH_MESSAGES.sessionInvalid);
 });
 
 test("getGoogleLinkErrorMessage", () => {

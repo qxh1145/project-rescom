@@ -1,0 +1,89 @@
+{
+  "availability": "AVAILABLE",
+  "form": {
+    "id": "5b1d7c2e-3f4a-4b6c-8d9e-0f1a2b3c4d01",
+    "title": "Nhà trọ quanh trường",
+    "type": "INTERNAL",
+    "versionId": "0b8c3c3e-5f43-4a43-9a51-6f1f1d2b0a02",
+    "versionNumber": 2
+  },
+  "questions": [
+    {
+      "id": "q-budget",
+      "number": 1,
+      "title": "Ngân sách thuê trọ mỗi tháng",
+      "type": "single_choice",
+      "required": true,
+      "options": [
+        {
+          "value": "lt2",
+          "label": "Dưới 2 triệu"
+        },
+        {
+          "value": "2to4",
+          "label": "2–4 triệu"
+        }
+      ],
+      "allowOther": true,
+      "scale": null
+    },
+    {
+      "id": "q-sat",
+      "number": 2,
+      "title": "Mức hài lòng",
+      "type": "linear_scale",
+      "required": false,
+      "options": [],
+      "allowOther": false,
+      "scale": {
+        "min": 1,
+        "max": 5,
+        "minLabel": "Rất tệ",
+        "maxLabel": "Rất tốt"
+      }
+    },
+    {
+      "id": "q-note",
+      "number": 3,
+      "title": "Góp ý",
+      "type": "textarea",
+      "required": false,
+      "options": [],
+      "allowOther": false,
+      "scale": null
+    }
+  ],
+  "responses": [
+    {
+      "id": "6a1f0e57-91b6-4c0f-8f0e-3d1c2b4a5e01",
+      "code": "6A1F0E",
+      "formVersionId": "0b8c3c3e-5f43-4a43-9a51-6f1f1d2b0a02",
+      "submittedAt": "2026-09-29T09:30:00.000Z",
+      "durationSeconds": 412,
+      "integrity": {
+        "applicability": "NOT_ASSESSED"
+      },
+      "answers": {
+        "q-budget": "lt2",
+        "q-sat": 4,
+        "q-note": "Phòng hơi xa trường"
+      }
+    },
+    {
+      "id": "6a1f0e57-91b6-4c0f-8f0e-3d1c2b4a5e02",
+      "code": "6A1F0E",
+      "formVersionId": "0b8c3c3e-5f43-4a43-9a51-6f1f1d2b0a02",
+      "submittedAt": "2026-09-29T08:15:00.000Z",
+      "durationSeconds": null,
+      "integrity": {
+        "applicability": "NOT_ASSESSED"
+      },
+      "answers": {
+        "q-budget": "Ở ký túc xá",
+        "q-sat": 5
+      }
+    }
+  ],
+  "totalCount": 3,
+  "nextCursor": "eyJ2IjoxLCJ2ZXJzaW9uSWQiOiIwYjhjM2MzZS01ZjQzLTRhNDMtOWE1MS02ZjFmMWQyYjBhMDIiLCJzdWJtaXR0ZWRBdCI6IjIwMjYtMDktMjlUMDg6MTU6MDAuMDAwWiIsImlkIjoiNmExZjBlNTctOTFiNi00YzBmLThmMGUtM2QxYzJiNGE1ZTAyIn0"
+}

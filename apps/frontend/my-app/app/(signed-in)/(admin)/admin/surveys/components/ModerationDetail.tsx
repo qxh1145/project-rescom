@@ -25,6 +25,7 @@ import {
 } from "@/lib/admin/moderation-view";
 import type { useSurveyModeration } from "../hooks/use-survey-moderation";
 import { RejectSurveyDialog } from "./RejectSurveyDialog";
+import { topicLabel } from "@/lib/forms/topics";
 
 type Moderation = ReturnType<typeof useSurveyModeration>;
 
@@ -119,6 +120,11 @@ function SurveyDetailCard({ survey, moderation }: { survey: ModerationPreview; m
         </Fact>
         <Fact label="Hạn">{formatDeadline(survey.deadlineAt)}</Fact>
       </dl>
+      {topicLabel(survey.topic) ? (
+        <p className="mt-3 text-body-sm text-ink-strong">
+          <span className="font-bold text-ink">Chủ đề:</span> {topicLabel(survey.topic)}
+        </p>
+      ) : null}
 
       <h3 className="mt-5 text-label font-bold text-ink">Đối tượng</h3>
       <p className={`mt-1.5 text-body-sm ${survey.targetingInvalid ? "text-danger" : "text-ink-strong"}`}>
@@ -202,7 +208,7 @@ function StatusTag({ survey }: { survey: ModerationPreview }) {
   return <Tag>Không còn chờ duyệt</Tag>;
 }
 
-/** ASSUMED (not drawn): a survey opened by link after it was decided. */
+/** ASSUMED (design) (not drawn): a survey opened by link after it was decided. */
 function DecisionSummary({ survey }: { survey: ModerationPreview }) {
   const { decision } = survey;
   let text = "Khảo sát này không còn trong hàng chờ duyệt.";

@@ -463,6 +463,51 @@ describe('PrismaFormRepository', () => {
     expect(result[0].versions).toHaveLength(1);
   });
 
+  it('reads the survey summary from the form row and the newest published metadata only (review LOW-8)', async () => {
+    const { versions: _versions, ...formRow } = rawForm;
+    const findUnique = jest
+      .fn()
+      .mockResolvedValueOnce({ ...formRow, status: 'PUBLISHED' })
+      .mockResolvedValueOnce({ ...formRow, id: 'form-2' })
+      .mockResolvedValueOnce(null);
+    const $queryRaw = jest
+      .fn()
+      .mockResolvedValueOnce([
+        { id: 'version-3', versionNumber: 3, metadata: schema.metadata },
+      ])
+      .mockResolvedValueOnce([]);
+    const prisma = {
+      form: { findUnique },
+      $queryRaw,
+    } as unknown as PrismaService;
+    const repository = new PrismaFormRepository(prisma);
+
+    await expect(
+      repository.findPublishedSummaryById('form-1'),
+    ).resolves.toMatchObject({
+      form: { id: 'form-1', status: 'PUBLISHED' },
+      newestPublished: {
+        id: 'version-3',
+        versionNumber: 3,
+        metadata: { expectedEffortSeconds: 60, minTimeBarrierSeconds: 15 },
+      },
+    });
+    // The form row alone: no `include` of the versions and their schemaJson.
+    expect(findUnique).toHaveBeenCalledWith({ where: { id: 'form-1' } });
+    const sql = ($queryRaw.mock.calls[0][0] as TemplateStringsArray).join('?');
+    expect(sql).toContain("schema_json -> 'metadata'");
+    expect(sql).toContain('is_published = true');
+    expect(sql).toContain('LIMIT 1');
+    expect(sql).not.toMatch(/SELECT \*|schema_json\s*(,|FROM)/);
+
+    await expect(
+      repository.findPublishedSummaryById('form-2'),
+    ).resolves.toMatchObject({ form: { id: 'form-2' }, newestPublished: null });
+    await expect(
+      repository.findPublishedSummaryById('missing'),
+    ).resolves.toBeNull();
+  });
+
   it('propagates transaction failures without returning a partial result', async () => {
     const failure = new Error('transaction rolled back');
     const prisma = {

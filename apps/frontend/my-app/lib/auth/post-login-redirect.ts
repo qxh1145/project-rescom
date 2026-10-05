@@ -5,7 +5,7 @@ import {
 } from "../onboarding.ts";
 import { ERROR_PAGE_PATTERN } from "../feedback/error-pages.ts";
 
-const AUTH_PATH_PATTERN = /^\/(login|register|forgot-password|auth)(?:[/?#]|$)/;
+const AUTH_PATH_PATTERN = /^\/(login|register|forgot-password|reset-password|auth)(?:[/?#]|$)/;
 
 /**
  * A post-login target must not be an auth page (it would loop back to the

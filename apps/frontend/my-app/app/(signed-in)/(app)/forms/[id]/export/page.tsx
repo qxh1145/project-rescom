@@ -1,5 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { PILOT_BUILD } from "@/lib/pilot-scope";
 import { ExportDialog } from "./components/ExportDialog";
 
 export const metadata: Metadata = {
@@ -12,6 +14,7 @@ export const metadata: Metadata = {
  * The file is generated in the browser (see `lib/forms/results-export.ts`).
  */
 export default function FormExportPage() {
+  if (PILOT_BUILD) notFound();
   return (
     <Suspense>
       <ExportDialog />

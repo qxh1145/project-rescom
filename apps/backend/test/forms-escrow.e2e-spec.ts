@@ -35,6 +35,7 @@ import { backdateAttempt } from './fixtures/participation.fixture';
 import { SurveyAttemptEntity } from '../src/modules/participation/domain/survey-attempt.entity';
 import { ResponseEntity } from '../src/modules/participation/domain/response.entity';
 import { randomUUID } from 'crypto';
+import { formDetailSchema, pricingQuoteSchema } from '@rescom/schemas';
 
 describe('Story 6.3: Escrow Lock, Release & Refund E2E Tests (FR-14, FR-15, FR-19, FR-32, FR-33)', () => {
   let app: INestApplication;
@@ -323,6 +324,7 @@ describe('Story 6.3: Escrow Lock, Release & Refund E2E Tests (FR-14, FR-15, FR-1
         .set('Cookie', authCookie)
         .expect(200);
 
+      pricingQuoteSchema.parse(quoteRes.body.data);
       expect(quoteRes.body.data).toEqual({
         type: 'INTERNAL',
         expectedCompletions: 50,
@@ -355,6 +357,7 @@ describe('Story 6.3: Escrow Lock, Release & Refund E2E Tests (FR-14, FR-15, FR-1
         .expect(200);
 
       // Story 8.1: escrow is locked and the survey waits for moderation.
+      formDetailSchema.parse(publishRes.body.data);
       expect(publishRes.body.data.status).toBe('MODERATION_QUEUE');
 
       // Verify wallet reflects 400 points in escrow and 600 available
@@ -465,6 +468,7 @@ describe('Story 6.3: Escrow Lock, Release & Refund E2E Tests (FR-14, FR-15, FR-1
         .send({ reason: 'Target achieved early' })
         .expect(200);
 
+      formDetailSchema.parse(closeRes.body.data);
       expect(closeRes.body.data.status).toBe('CLOSED');
 
       // Verify wallet: available balance increased by 120 (from 600 to 720), escrow decreased to 280
@@ -488,6 +492,7 @@ describe('Story 6.3: Escrow Lock, Release & Refund E2E Tests (FR-14, FR-15, FR-1
         .send({ additionalCompletions: 20 })
         .expect(200);
 
+      formDetailSchema.parse(reopenRes.body.data);
       expect(reopenRes.body.data.status).toBe('PUBLISHED');
       expect(reopenRes.body.data.expectedCompletions).toBe(70); // 50 + 20
 
@@ -756,10 +761,19 @@ describe('Story 6.3: Escrow Lock, Release & Refund E2E Tests (FR-14, FR-15, FR-1
           .balance,
       ).toBe(issuanceBefore - 15);
 
-      // Nothing is left to refund on close.
+      // Plan 2.3 (decision A): the last submission closed the survey itself
+      // (QUOTA); nothing was left to refund, so no refund journal.
+      const detail = await request(app.getHttpServer())
+        .get(`/forms/${internalId}`)
+        .set('Cookie', authCookie)
+        .expect(200);
+      expect(detail.body.data).toMatchObject({
+        status: 'CLOSED',
+        closeKind: 'QUOTA',
+      });
       await post(`/forms/${internalId}/close`, authCookie, csrfToken, {
         reason: 'Quota reached',
-      }).expect(200);
+      }).expect(409);
       expect(
         await ledgerService.findJournalByIdempotencyKey(
           `close-refund:${internalId}:c1`,

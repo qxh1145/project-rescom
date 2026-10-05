@@ -11,16 +11,17 @@ import { Spinner } from "@/components/ui/Spinner";
 import { formatDayMonth } from "@/lib/format/date-time";
 import { useFormHeader } from "@/lib/forms/manage-header-context";
 import { progressErrorMessage } from "@/lib/forms/manage-messages";
-import { PAUSE_SUPPORTED, type FormProgress, type OpensRange, type PublisherForm } from "@/lib/forms/manage-service";
+import type { FormProgress, ProgressRange, PublisherForm } from "@/lib/forms/manage-service";
 import { canEditLive, canReopen, canWithdraw, resubmitHref, statusViewOf, type PublisherStatusView } from "@/lib/forms/manage-status";
-import { daysUntil, formatDuration, formatFullDate, opensSummary, percentOf } from "@/lib/forms/manage-view";
+import { daysUntil, formatFullDate, seriesBuckets, seriesSummary } from "@/lib/forms/manage-view";
+import { RESPONSE_EXPORT_ENABLED } from "@/lib/forms/results-scope";
 import { StatusPill } from "../../components/StatusPill";
 import { useFormActions } from "../hooks/use-form-actions";
 import { useFormProgress } from "../hooks/use-form-progress";
 import { OpensChart } from "./OpensChart";
-import { AnswersNote, CARD, CARD_TITLE, FeedbackCard, PendingAttemptsCard } from "./ProgressCards";
+import { AnswersNote, CARD, CARD_TITLE, PendingAttemptsCard } from "./ProgressCards";
 
-const RANGE_SEGMENTS: readonly { value: OpensRange; label: string }[] = [
+const RANGE_SEGMENTS: readonly { value: ProgressRange; label: string }[] = [
   { value: "hour", label: "Giờ" },
   { value: "day", label: "Ngày" },
   { value: "week", label: "Tuần" },
@@ -62,24 +63,17 @@ function deadlineFacts(form: PublisherForm, view: PublisherStatusView, now: numb
 
 /** Mobile status card buttons (Figma 62:3324–62:3328); ended surveys get the 10b/17 links. */
 function MobileStatusActions({ form, view }: { form: PublisherForm; view: PublisherStatusView }) {
-  const { requestClose, requestEdit, togglePause, pausing } = useFormActions();
+  const { requestClose, requestEdit } = useFormActions();
   const id = encodeURIComponent(form.id);
   const button =
     "inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-field border border-line-strong bg-surface text-label font-bold text-ink disabled:opacity-60";
-  if (view === "RUNNING" || view === "PAUSED") {
+  if (view === "RUNNING") {
     return (
       <div className="mt-3.5 flex gap-2">
         {canEditLive(form) ? (
           <button type="button" className={button} onClick={requestEdit}>
             <Icon name="pencil" size={16} />
             Chỉnh sửa
-          </button>
-        ) : null}
-        {/* Phase 5 M3: hidden until the backend has a pause route. */}
-        {PAUSE_SUPPORTED ? (
-          <button type="button" className={button} onClick={togglePause} disabled={pausing} aria-busy={pausing || undefined}>
-            <Icon name={form.pausedAt ? "play-circle" : "pause"} size={16} />
-            {form.pausedAt ? "Tiếp tục" : "Tạm dừng"}
           </button>
         ) : null}
         <button type="button" className={button} onClick={requestClose}>
@@ -98,7 +92,7 @@ function MobileStatusActions({ form, view }: { form: PublisherForm; view: Publis
       </div>
     );
   }
-  if ((view === "FULL" || view === "ENDED") && (canReopen(form) || form.type === "INTERNAL")) {
+  if ((view === "FULL" || view === "ENDED") && (canReopen(form) || (RESPONSE_EXPORT_ENABLED && form.type === "INTERNAL"))) {
     return (
       <div className="mt-3.5 flex gap-2">
         {canReopen(form) ? (
@@ -110,7 +104,7 @@ function MobileStatusActions({ form, view }: { form: PublisherForm; view: Publis
             Mở lại thêm mẫu
           </Link>
         ) : null}
-        {form.type === "INTERNAL" ? (
+        {RESPONSE_EXPORT_ENABLED && form.type === "INTERNAL" ? (
           <Link
             href={`/forms/${id}/export`}
             className="inline-flex h-11.5 flex-1 items-center justify-center gap-2 rounded-field bg-primary text-body font-bold text-primary-foreground"
@@ -131,7 +125,7 @@ function RejectedPanel({ form }: { form: PublisherForm }) {
       <h2 id="rejected-title" className={CARD_TITLE}>
         Khảo sát bị từ chối
       </h2>
-      {/* `rejection` is ASSUMED on the DTO: without it, show no reason and an amount-free refund line. */}
+      {/* `rejection` comes from `GET /forms/:id`; without it (legacy row), show no reason and an amount-free refund line. */}
       {form.rejection?.reason ? (
         <div className="mt-3 rounded-field bg-danger-soft px-3 py-2.5 text-caption leading-[18.9px]">
           <p className="font-bold text-danger-strong">Lý do từ Admin</p>
@@ -140,7 +134,7 @@ function RejectedPanel({ form }: { form: PublisherForm }) {
       ) : null}
       <p className="mt-3 text-caption font-semibold text-tone-teal-fg">
         {form.rejection
-          ? `Đã hoàn ${form.rejection.refundedPoints} điểm ký quỹ vào số dư`
+          ? `Đã hoàn ${form.rejection.refundAmount} điểm ký quỹ vào số dư`
           : "Ký quỹ đã được hoàn vào số dư"}
       </p>
       <Link
@@ -156,12 +150,12 @@ function RejectedPanel({ form }: { form: PublisherForm }) {
 type ProgressState = ReturnType<typeof useFormProgress>;
 
 function ProgressBody({ form, progress, state }: { form: PublisherForm; progress: FormProgress; state: ProgressState }) {
-  const { range, setRange, opens, opensLoading, opensError, reloadOpens, now } = state;
+  const { range, setRange, series, seriesLoading, seriesError, reloadSeries, now } = state;
   const view = statusViewOf(form);
   const deadline = deadlineFacts(form, view, now);
-  const pendingCount = progress.pendingAttempts.filter((attempt) => attempt.dispute === null).length;
-  const showPending = form.type === "EXTERNAL" && view !== "PENDING_REVIEW";
-  const summary = opens ? opensSummary(opens) : null;
+  const pendingCount = progress.pendingAttempts;
+  const showPending = form.type === "EXTERNAL" && view !== "PENDING_REVIEW" && pendingCount !== null;
+  const summary = series ? seriesSummary(series) : null;
   const windowShort = summary?.window.replace(/ qua$/, "") ?? "";
   const peakText = summary?.peak ? ` · nhiều nhất ${summary.peak}` : "";
 
@@ -202,7 +196,11 @@ function ProgressBody({ form, progress, state }: { form: PublisherForm; progress
         <StatCard
           label="Điểm đã chi"
           value={progress.pointsSpent}
-          sub={form.type === "EXTERNAL" ? `${pendingCount} lượt đang chờ 48 giờ` : `Cho ${progress.completed} lượt hoàn thành`}
+          sub={
+            form.type === "EXTERNAL" && pendingCount !== null
+              ? `${pendingCount} lượt đang chờ 48 giờ`
+              : `Cho ${progress.completed} lượt hoàn thành`
+          }
         />
         <StatCard label="Ký quỹ còn" value={progress.escrowRemaining} sub="Hoàn lại nếu chưa dùng hết" accent />
         <StatCard label="Hạn thu thập" value={deadline.value} sub={deadline.sub} />
@@ -236,44 +234,46 @@ function ProgressBody({ form, progress, state }: { form: PublisherForm; progress
         <MobileStatusActions form={form} view={view} />
       </section>
 
-      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[815fr_509fr] lg:items-start lg:gap-5">
+      <div
+        className={`flex flex-col gap-4 lg:items-start lg:gap-5 ${showPending ? "lg:grid lg:grid-cols-[815fr_509fr]" : ""}`}
+      >
         {showPending ? (
           <div className="lg:col-start-2 lg:row-start-1">
-            <PendingAttemptsCard formId={form.id} attempts={progress.pendingAttempts} now={now} />
+            <PendingAttemptsCard count={pendingCount ?? 0} />
           </div>
         ) : null}
 
         <section
           aria-labelledby="opens-title"
-          className={`${CARD} lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:self-stretch`}
+          className={`${CARD} lg:col-start-1 lg:row-start-1 lg:self-stretch`}
         >
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 id="opens-title" className={CARD_TITLE}>
-                Lượt mở khảo sát<span className="lg:hidden"> · {windowShort}</span>
+                Lượt hoàn thành<span className="lg:hidden"> · {windowShort}</span>
               </h2>
               {summary ? (
                 <p className="mt-1 text-caption text-ink-muted">
                   <span className="hidden lg:inline">{summary.window} · </span>
-                  {summary.total} lượt mở{peakText}
+                  {summary.total} lượt hoàn thành{peakText}
                 </p>
               ) : null}
             </div>
             <div className="hidden lg:block">{rangeControl}</div>
           </div>
-          <div className="relative mt-2" aria-busy={opensLoading || undefined}>
-            {opensError ? (
+          <div className="relative mt-2" aria-busy={seriesLoading || undefined}>
+            {seriesError ? (
               <div className="flex flex-col gap-2 py-6">
-                <Alert tone="danger">{progressErrorMessage(opensError)}</Alert>
-                <Button variant="secondary" size="sm" radius="field" onClick={reloadOpens} className="self-start">
+                <Alert tone="danger">{progressErrorMessage(seriesError)}</Alert>
+                <Button variant="secondary" size="sm" radius="field" onClick={reloadSeries} className="self-start">
                   Thử lại
                 </Button>
               </div>
-            ) : opens && summary ? (
+            ) : series && summary ? (
               <>
-                <OpensChart buckets={opens.buckets} summary={summary} />
+                <OpensChart buckets={seriesBuckets(series)} summary={summary} />
                 {summary.total === 0 ? (
-                  <p className="mt-2 text-caption text-ink-muted">Chưa có lượt mở nào trong khoảng này.</p>
+                  <p className="mt-2 text-caption text-ink-muted">Chưa có lượt hoàn thành nào trong khoảng này.</p>
                 ) : null}
               </>
             ) : (
@@ -284,29 +284,7 @@ function ProgressBody({ form, progress, state }: { form: PublisherForm; progress
             )}
           </div>
           <div className="mt-3 lg:hidden">{rangeControl}</div>
-          <div className="mt-3.5 grid grid-cols-2 gap-2.5 lg:grid-cols-3 lg:gap-3">
-            <MiniStat
-              className="hidden lg:block"
-              label="Bắt đầu làm"
-              value={String(progress.started)}
-              sub={`${percentOf(progress.started, progress.opens.total)}% số lượt mở`}
-            />
-            <MiniStat
-              label="Bỏ dở"
-              value={`${percentOf(progress.abandoned, progress.started)}%`}
-              sub={`${progress.abandoned} trong ${progress.started} người bắt đầu`}
-            />
-            <MiniStat
-              label="Thời gian làm TB"
-              value={progress.averageDurationSeconds === null ? "—" : formatDuration(progress.averageDurationSeconds)}
-              sub={form.estimatedDurationMinutes ? `Bạn khai ${form.estimatedDurationMinutes} phút` : undefined}
-            />
-          </div>
         </section>
-
-        <div className={`lg:col-start-2 ${showPending ? "lg:row-start-2" : "lg:row-start-1"}`}>
-          <FeedbackCard feedback={progress.feedback} />
-        </div>
       </div>
 
       <AnswersNote />

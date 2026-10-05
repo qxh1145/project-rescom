@@ -10,6 +10,10 @@ import { MAX_PAGINATION_OFFSET } from '../common/pagination.schema';
  *
  * `REWARD_EARNED` (decision E9-D2, 2026-09-26): FR-57 "Points earned" — an
  * Internal survey reward credited instantly to the Available balance.
+ *
+ * Story IR.4b B3 (appended, never reordered): `TOPUP_REJECTED` (a top-up
+ * rejection, previously `WARNING`), `ACCOUNT_LOCKED` and `ACCOUNT_UNLOCKED`
+ * (an Admin account status change).
  */
 export const NOTIFICATION_TYPES = [
   'SURVEY_APPROVED',
@@ -21,6 +25,9 @@ export const NOTIFICATION_TYPES = [
   'REWARD_RELEASED',
   'ACCOUNT_ACTIVATED',
   'WARNING',
+  'TOPUP_REJECTED',
+  'ACCOUNT_LOCKED',
+  'ACCOUNT_UNLOCKED',
 ] as const;
 
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);

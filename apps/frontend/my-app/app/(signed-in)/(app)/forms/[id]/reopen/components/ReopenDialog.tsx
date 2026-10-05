@@ -8,7 +8,15 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { useFormHeader } from "@/lib/forms/manage-header-context";
 import { formActionErrorMessage, reopenRefusalMessage } from "@/lib/forms/manage-messages";
-import { clampAdditional, REOPEN_DEFAULT_COMPLETIONS, reopenCost } from "@/lib/forms/manage-reopen";
+import {
+  clampAdditional,
+  REOPEN_DEADLINE_CHOICES,
+  REOPEN_DEFAULT_COMPLETIONS,
+  REOPEN_DEFAULT_DEADLINE_DAYS,
+  reopenCost,
+  reopenDeadlineAt,
+  reopenNeedsNewDeadline,
+} from "@/lib/forms/manage-reopen";
 import { reopenPublisherForm, type PublisherForm } from "@/lib/forms/manage-service";
 import { reopenRefusalOf } from "@/lib/forms/manage-status";
 import { useSession } from "@/lib/session/SessionProvider";
@@ -32,6 +40,9 @@ function ReopenForm({
   const [text, setText] = useState(String(REOPEN_DEFAULT_COMPLETIONS));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Story IR.2b Q3: a passed deadline must be replaced (or removed) on reopen.
+  const [needsDeadline] = useState(() => reopenNeedsNewDeadline(form.deadlineAt));
+  const [deadlineDays, setDeadlineDays] = useState<number | null>(REOPEN_DEFAULT_DEADLINE_DAYS);
 
   const quantity = Number(text);
   const cost = reopenCost({
@@ -49,7 +60,11 @@ function ReopenForm({
     onBusyChange(true);
     setError(null);
     try {
-      const updated = await reopenPublisherForm(form.id, quantity);
+      const updated = await reopenPublisherForm(
+        form.id,
+        quantity,
+        needsDeadline ? reopenDeadlineAt(deadlineDays) : undefined,
+      );
       applyForm(updated);
       // Points moved Khả dụng → Ký quỹ: refresh the header chip.
       refresh();
@@ -108,6 +123,27 @@ function ReopenForm({
           </p>
         </div>
       </div>
+
+      {needsDeadline ? (
+        <div className="mt-3.5">
+          <label htmlFor="reopen-deadline" className="text-label font-semibold text-ink">
+            Hạn thu thập mới
+          </label>
+          <select
+            id="reopen-deadline"
+            value={deadlineDays === null ? "none" : String(deadlineDays)}
+            onChange={(event) => setDeadlineDays(event.target.value === "none" ? null : Number(event.target.value))}
+            className="mt-2 h-12 w-full rounded-field border border-line-strong bg-surface px-3.5 text-body text-ink focus:border-primary focus:ring-3 focus:ring-primary/20 focus:outline-none"
+          >
+            {REOPEN_DEADLINE_CHOICES.map((choice) => (
+              <option key={choice.label} value={choice.value === null ? "none" : String(choice.value)}>
+                {choice.label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-caption text-ink-muted">Hạn cũ đã qua nên cần chọn hạn mới để khảo sát chạy tiếp.</p>
+        </div>
+      ) : null}
 
       <dl
         id="reopen-summary"

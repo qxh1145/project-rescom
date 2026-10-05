@@ -29,7 +29,7 @@ export function formatTransferReference(reference: string): string {
     : reference;
 }
 
-/** Requester label: ASSUMED `userName`, else the email's local part. */
+/** Requester label: ASSUMED (design) `userName`, else the email's local part. */
 export function requesterName(item: { userName?: string | null; userEmail: string | null }): string {
   if (item.userName) return item.userName;
   if (item.userEmail) return item.userEmail.split("@")[0];

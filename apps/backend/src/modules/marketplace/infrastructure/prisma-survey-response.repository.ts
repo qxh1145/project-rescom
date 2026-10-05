@@ -53,14 +53,24 @@ export class PrismaSurveyResponseRepository implements SurveyResponseRepositoryP
   ): Promise<CreateGuestResponseWithinQuotaResult> {
     return runInTransaction(this.prisma, async (tx) => {
       const forms = (await tx.$queryRaw`
-        SELECT status, type, expected_completions FROM forms WHERE id = ${params.formId}::uuid FOR NO KEY UPDATE
+        SELECT status, type, expected_completions, deadline_at, close_kind FROM forms WHERE id = ${params.formId}::uuid FOR NO KEY UPDATE
       `) as Array<{
         status: string;
         type: string;
         expected_completions: number;
+        deadline_at: Date | null;
+        close_kind: string | null;
       }>;
       const form = forms[0];
+      // Review LOW-8: closed by the QUOTA close while this guest was answering.
+      if (form?.status === 'CLOSED' && form.close_kind === 'QUOTA') {
+        return { outcome: 'QUOTA_FULL' as const };
+      }
       if (!form || form.status !== 'PUBLISHED' || form.type !== 'INTERNAL') {
+        return { outcome: 'NOT_OPEN' as const };
+      }
+      // Story IR.2b Task 9.2: no guest submission after the deadline.
+      if (form.deadline_at && form.deadline_at.getTime() <= Date.now()) {
         return { outcome: 'NOT_OPEN' as const };
       }
 
@@ -91,6 +101,11 @@ export class PrismaSurveyResponseRepository implements SurveyResponseRepositoryP
           submittedAt: new Date(),
         },
       });
+
+      // Plan 2.3: the QUOTA close, in this transaction.
+      if (params.afterCreate) {
+        await params.afterCreate();
+      }
 
       return {
         outcome: 'CREATED' as const,

@@ -344,8 +344,8 @@ const SURVEY_KINDS = new Set<MockTransactionKind>([
  * newest first, like `ledger.service.ts#getWallet`. A released Google Forms
  * reward stays the `external-completion:` Chờ duyệt credit it was posted as;
  * its release is the separate `release-pending:` journal (Chờ duyệt −N,
- * Khả dụng +N). `surveyTitle` is the ASSUMED extension documented in
- * `lib/wallet/wallet-service.ts`.
+ * Khả dụng +N). `surveyTitle` is mock-only (the admin ledger's `related`);
+ * the wallet handler strips it, as the backend sends none.
  */
 export function ledgerItemsFromRows(userId: string, rows: readonly MockTransaction[]): MockLedgerItem[] {
   const releasedRewardIds = new Set(

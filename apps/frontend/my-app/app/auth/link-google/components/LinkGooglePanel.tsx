@@ -17,12 +17,12 @@ const noEmailOnServer = () => null;
 const TEXT_LINK = "self-center text-label font-bold text-primary hover:underline";
 
 /**
- * 15d "Liên kết tài khoản" — Figma `63:2192` (mobile; desktop card ASSUMED).
+ * 15d "Liên kết tài khoản" — Figma `63:2192` (mobile; desktop card ASSUMED (design)).
  *
  * Reached when Google sign-in stops with AUTH_GOOGLE_LINK_REQUIRED
  * (`/auth/error?error=…` or the mock callback). The real backend does not send
  * the email back, so it is only known in mock mode; otherwise the visitor types
- * it (ASSUMED variant of the frame).
+ * it (ASSUMED (design) variant of the frame).
  */
 export function LinkGooglePanel() {
   const knownEmail = useSyncExternalStore(subscribePendingEmail, readEmail, noEmailOnServer);

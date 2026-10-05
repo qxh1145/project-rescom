@@ -1,5 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { PILOT_BUILD } from "@/lib/pilot-scope";
 import { QualityScreen } from "./components/QualityScreen";
 
 export const metadata: Metadata = {
@@ -11,6 +13,7 @@ export const metadata: Metadata = {
  * (63:4702 desktop; mobile ASSUMED: tiles 2×2, sections stacked).
  */
 export default function FormQualityPage() {
+  if (PILOT_BUILD) notFound();
   return (
     <Suspense>
       <QualityScreen />

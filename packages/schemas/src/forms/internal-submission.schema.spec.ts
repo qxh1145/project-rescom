@@ -163,6 +163,19 @@ describe('Internal Form Submission Schemas & Validation', () => {
       };
       const res = internalRewardRequestedPayloadSchema.safeParse(payload);
       expect(res.success).toBe(true);
+      // Story IR.2b: a free survey's submission pins rewardAmount 0.
+      expect(
+        internalRewardRequestedPayloadSchema.safeParse({
+          ...payload,
+          rewardAmount: 0,
+        }).success,
+      ).toBe(true);
+      expect(
+        internalRewardRequestedPayloadSchema.safeParse({
+          ...payload,
+          rewardAmount: -1,
+        }).success,
+      ).toBe(false);
     });
 
     it('validates integrityAssessmentRequestedPayloadSchema', () => {

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { DemoDataTag } from "@/components/ui/DemoDataTag";
 import { MobileBackBar } from "@/components/layout/app/MobileTopBar";
 import { buttonClassName } from "@/components/ui/Button";
 import { useApiQuery } from "@/lib/api/use-api-query";
@@ -48,7 +49,7 @@ function CurrentTierCard({ summary }: { summary: EngagementSummary }) {
             />
           </div>
           <p className="mt-1.5 text-caption">
-            {/* Level 1 → 2 also needs the profile (ASSUMED copy); otherwise Figma "Còn 18 khảo sát nữa." */}
+            {/* Level 1 → 2 also needs the profile (ASSUMED (design) copy); otherwise Figma "Còn 18 khảo sát nữa." */}
             {summary.tier.level === 1
               ? `${progress.next.requirement}.`
               : progress.remaining > 0
@@ -57,7 +58,7 @@ function CurrentTierCard({ summary }: { summary: EngagementSummary }) {
           </p>
         </>
       ) : (
-        // ASSUMED (not drawn): top tier.
+        // ASSUMED (design) (not drawn): top tier.
         <p className="mt-3 text-body-sm leading-normal">Bạn đang ở hạng cao nhất.</p>
       )}
     </section>
@@ -65,7 +66,7 @@ function CurrentTierCard({ summary }: { summary: EngagementSummary }) {
 }
 
 /**
- * Figma 16 "Hạng thành viên" (63:4981, mobile). Desktop is derived (ASSUMED):
+ * Figma 16 "Hạng thành viên" (63:4981, mobile). Desktop is derived (ASSUMED (design)):
  * the same cards in a 720px column under the app header.
  */
 export function TierScreen() {
@@ -79,6 +80,7 @@ export function TierScreen() {
       <MobileBackBar title="Hạng thành viên" backHref="/account" />
       <div className="mx-auto flex w-full max-w-[720px] flex-col px-4 pt-[18px] pb-8 lg:px-0 lg:pt-10 lg:pb-12">
         <h1 className="mb-6 hidden text-title font-extrabold text-ink lg:block">Hạng thành viên</h1>
+        <DemoDataTag className="mb-4 self-start" />
 
         {query.error && !summary && !sessionLost ? (
           <ErrorStatus message={ENGAGEMENT_MESSAGES.summaryLoadFailed} onRetry={query.reload} />

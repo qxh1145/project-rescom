@@ -11,8 +11,8 @@ interface BucketCardsProps {
 }
 
 function pendingNote(balance: WalletBalanceDto, hoursLeft: number | null, due: boolean): string {
-  if (balance.pending === 0) return "Không có điểm chờ"; // ASSUMED: not drawn
-  // The soonest reward decides: one already matured beats a countdown (ASSUMED copy).
+  if (balance.pending === 0) return "Không có điểm chờ"; // ASSUMED (design): not drawn
+  // The soonest reward decides: one already matured beats a countdown (ASSUMED (design) copy).
   if (due) return PENDING_DUE_LABEL;
   return hoursLeft !== null ? `Còn ${hoursLeft} giờ` : "Đang xét 48 giờ"; // fallback ASSUMED
 }
@@ -20,7 +20,7 @@ function pendingNote(balance: WalletBalanceDto, hoursLeft: number | null, due: b
 /**
  * Figma 7 balance tiles "Chờ duyệt · Đóng băng · Ký quỹ" (desktop 62:272,
  * 138.7 × 102; mobile 62:1092, 110 × 105). Integrity Hold has no tile in
- * Figma; it is shown as a note under the tiles when non-zero (ASSUMED).
+ * Figma; it is shown as a note under the tiles when non-zero (ASSUMED (design)).
  */
 export function BucketCards({ balance, pendingHoursLeft, pendingDue }: BucketCardsProps) {
   const tiles = [

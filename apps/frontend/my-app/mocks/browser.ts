@@ -1,5 +1,6 @@
 import { getResponse } from "msw";
-import { handlers } from "./handlers";
+import { isHybridMocking } from "@/lib/api/config";
+import { handlers, hybridHandlers } from "./handlers";
 
 const abortError = () => new DOMException("The operation was aborted.", "AbortError");
 
@@ -32,11 +33,11 @@ function logMocked(request: Request, response: Response): void {
  * `/api` proxy — a 500 when the backend is off. Trade-off: mocked calls show
  * in the console, not in the Network tab.
  */
-function patchFetch(): void {
+function patchFetch(active: typeof handlers): void {
   const networkFetch = window.fetch.bind(window);
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = new Request(input, init);
-    const mocked = await unlessAborted(getResponse(handlers, request.clone()), request.signal);
+    const mocked = await unlessAborted(getResponse(active, request.clone()), request.signal);
     if (!mocked) return networkFetch(request);
     logMocked(request, mocked);
     // `HttpResponse.error()` must surface as a network failure, like a real fetch.
@@ -60,7 +61,8 @@ async function unregisterMockWorkers(): Promise<void> {
   );
 }
 
+/** `hybrid` (gate G) registers only the deferred routes; every other request reaches the real backend. */
 export async function startMocking(): Promise<void> {
-  patchFetch();
+  patchFetch(isHybridMocking ? hybridHandlers : handlers);
   await unregisterMockWorkers().catch(() => undefined);
 }

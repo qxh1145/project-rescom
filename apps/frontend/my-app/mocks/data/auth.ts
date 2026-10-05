@@ -1,10 +1,10 @@
 import type { SanitizedUser } from "@rescom/schemas";
 import type { DemoAccount } from "@/lib/auth/types";
-import type { MockUser } from "@/lib/mock/types";
+import type { MockUser } from "../legacy/types";
 
 /**
  * Mock-only auth data. The users themselves live in the legacy demo store
- * (`lib/mock/fixtures.ts`) so every other page sees the same session.
+ * (`mocks/legacy/fixtures.ts`) so every other page sees the same session.
  */
 
 export const DEMO_PASSWORD = "Password123!";

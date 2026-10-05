@@ -347,6 +347,58 @@ describe('Story 6.4: RewardSettlementCoordinator', () => {
       expect(wallet.balance.available).toBe(30);
     });
 
+    it('T10: pages past persistently failing credits with the keyset cursor (Story IR.2b Task 6.2)', async () => {
+      const attempts = [
+        '44444444-4444-4444-8444-444444444451',
+        '44444444-4444-4444-8444-444444444452',
+        '44444444-4444-4444-8444-444444444453',
+      ];
+      for (const [index, id] of attempts.entries()) {
+        now = new Date(creditTime.getTime() + index * HOUR_MS);
+        await coordinator.settleExternalReward({
+          attemptId: id,
+          publisherId,
+          respondentId,
+          rewardPerResponse: 10,
+        });
+      }
+      now = new Date(creditTime.getTime() + 60 * HOUR_MS);
+      // The two oldest credits keep failing (dispute hold on both).
+      const failing = new RewardSettlementCoordinator(
+        ledgerService,
+        undefined,
+        undefined,
+        {
+          hasOpenDisputeHold: async (id: string) =>
+            id === attempts[0] || id === attempts[1],
+        } as unknown as ExternalDisputeHoldQueryPort,
+      );
+
+      const first = await failing.releaseMaturedPendingRewards({ limit: 2 });
+      expect(first).toMatchObject({
+        processed: 2,
+        releasedCount: 0,
+        hasMore: true,
+      });
+      expect(first.nextCursor).toEqual(expect.any(String));
+
+      // Without the cursor the same two block the head; with it the newer one is released.
+      const second = await failing.releaseMaturedPendingRewards({
+        limit: 2,
+        after: first.nextCursor ?? undefined,
+      });
+      expect(second).toMatchObject({
+        processed: 1,
+        releasedCount: 1,
+        hasMore: false,
+        nextCursor: null,
+      });
+
+      await expect(
+        failing.releaseMaturedPendingRewards({ after: 'not-a-cursor' }),
+      ).rejects.toThrow('Invalid release cursor');
+    });
+
     it('skips attempts under a server-side dispute hold and reports them', async () => {
       const disputed = new RewardSettlementCoordinator(
         ledgerService,
@@ -567,6 +619,40 @@ describe('Story 6.4: RewardSettlementCoordinator', () => {
       expect(await coordinator.getExternalCreditState(otherAttemptId)).toBe(
         'PENDING',
       );
+    });
+  });
+
+  describe('getExternalSettlementState (Story IR.2a, read-only)', () => {
+    it('delegates to the ledger and refines the credit state by dispute holds', async () => {
+      const read = jest.spyOn(ledgerService, 'getExternalSettlementState');
+      const post = jest.spyOn(ledgerRepo, 'postJournalTransaction');
+
+      expect(await coordinator.getExternalSettlementState(attemptId)).toBe(
+        'NONE',
+      );
+      await coordinator.settleExternalReward({
+        attemptId,
+        publisherId,
+        respondentId,
+        rewardPerResponse: 20,
+      });
+      const posted = post.mock.calls.length;
+      expect(await coordinator.getExternalSettlementState(attemptId)).toBe(
+        'PENDING',
+      );
+
+      await ledgerService.placeDisputeHold({
+        caseId: '66666666-6666-4666-8666-666666666666',
+        attemptId,
+        respondentId,
+        amount: 20,
+      });
+      expect(await coordinator.getExternalSettlementState(attemptId)).toBe(
+        'HELD',
+      );
+      expect(read).toHaveBeenCalledWith(attemptId);
+      // Only the credit and the hold were posted; the reads posted nothing.
+      expect(post).toHaveBeenCalledTimes(posted + 1);
     });
   });
 

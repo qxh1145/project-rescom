@@ -1,5 +1,8 @@
+import { StorageQuestionFullException } from './exceptions/storage.exceptions';
 import { InitiateUploadInput, InitiateUploadResponse } from '@rescom/schemas';
 import { StorageService } from './storage.service';
+import { runWithRequestId } from '../../../common/http/request-context';
+import { storageOutagesSinceBoot } from '../../../common/system/storage-outage-counter';
 import { InMemoryStorageRepository } from '../infrastructure/in-memory-storage.repository';
 import { InMemoryObjectStorageService } from '../infrastructure/in-memory-object-storage.service';
 import { StubMalwareScannerService } from '../infrastructure/stub-malware-scanner.service';
@@ -9,6 +12,7 @@ import {
   StorageObjectNotCleanException,
   StorageObjectNotFoundException,
   StorageScannerOutageException,
+  StorageUnavailableException,
 } from './exceptions/storage.exceptions';
 
 describe('StorageService', () => {
@@ -218,6 +222,73 @@ describe('StorageService', () => {
       const stored = await repository.findById(init.objectId);
       expect(stored?.status).toBe('QUARANTINED');
       expect(stored?.scanStatus).toBe('OUTAGE');
+    });
+
+    it('logs one structured scan_outage event with the request id and no key (IR.5 C3)', async () => {
+      const logger = { warn: jest.fn(), error: jest.fn() };
+      service = new StorageService(
+        repository,
+        objectStorage,
+        malwareScanner,
+        undefined,
+        undefined,
+        logger,
+      );
+      const init = await initiate({ fileName: 'secret-name.outage.pdf' });
+      putPdf(init.storageKey, 1024);
+      const before = storageOutagesSinceBoot();
+      const requestId = '7d5b0b32-6a43-4d63-9d7e-2f0e8f3a6c11';
+
+      await expect(
+        runWithRequestId(requestId, () =>
+          service.finalizeUpload(init.objectId),
+        ),
+      ).rejects.toThrow(StorageScannerOutageException);
+
+      expect(logger.error).toHaveBeenCalledTimes(1);
+      const raw = logger.error.mock.calls[0][0] as string;
+      expect(JSON.parse(raw)).toEqual({
+        event: 'storage.scan_outage',
+        objectId: init.objectId,
+        requestId,
+        reason: expect.any(String),
+      });
+      expect(raw).not.toContain(init.storageKey);
+      expect(raw).not.toContain('secret-name');
+      expect(storageOutagesSinceBoot()).toBe(before + 1);
+    });
+
+    it('maps a pre-claim storage failure to StorageUnavailableException and keeps INITIATED (IR.5 C2.1)', async () => {
+      const logger = { warn: jest.fn(), error: jest.fn() };
+      service = new StorageService(
+        repository,
+        objectStorage,
+        malwareScanner,
+        undefined,
+        undefined,
+        logger,
+      );
+      const init = await initiate();
+      putPdf(init.storageKey, 1024);
+      jest
+        .spyOn(objectStorage, 'getObjectMetadata')
+        .mockRejectedValueOnce(new Error('connect ECONNREFUSED'));
+
+      await expect(service.finalizeUpload(init.objectId)).rejects.toThrow(
+        StorageUnavailableException,
+      );
+      expect((await repository.findById(init.objectId))?.status).toBe(
+        'INITIATED',
+      );
+      expect(JSON.parse(logger.error.mock.calls[0][0])).toMatchObject({
+        event: 'storage.unavailable',
+        objectId: init.objectId,
+      });
+
+      // Retryable once storage is back.
+      await expect(
+        service.finalizeUpload(init.objectId),
+      ).resolves.toMatchObject({ status: 'CLEAN' });
     });
 
     it('should throw StorageObjectNotFoundException if objectId does not exist', async () => {
@@ -757,6 +828,18 @@ describe('StorageService', () => {
       );
     });
 
+    it('refuses a full question with its own code and details (Phase 7)', async () => {
+      await initiate();
+      await expect(initiate({ fileName: 'second.pdf' })).rejects.toMatchObject({
+        code: 'STORAGE_QUESTION_FULL',
+        questionId: 'upload-1',
+        maxFiles: 1,
+      });
+      await expect(initiate({ fileName: 'second.pdf' })).rejects.toBeInstanceOf(
+        StorageQuestionFullException,
+      );
+    });
+
     it('does not count an outage object toward maxFiles', async () => {
       const init = await initiate();
       putPdf(init.storageKey, 1024);
@@ -773,10 +856,10 @@ describe('StorageService', () => {
   });
 
   describe('rejected bytes (BE-11)', () => {
-    let logger: { warn: jest.Mock };
+    let logger: { warn: jest.Mock; error: jest.Mock };
 
     beforeEach(() => {
-      logger = { warn: jest.fn() };
+      logger = { warn: jest.fn(), error: jest.fn() };
       service = new StorageService(
         repository,
         objectStorage,
@@ -861,6 +944,61 @@ describe('StorageService', () => {
         'REJECTED',
       );
       expect(logger.warn).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('listUploads (Phase 7 re-adopt)', () => {
+    it('lists the live uploads of the owner record, per question, oldest first', async () => {
+      const first = await initiate();
+      putPdf(first.storageKey, 1024);
+      await service.finalizeUpload(first.objectId);
+      const other = await initiate({ questionId: 'upload-2' });
+      const rejected = await initiate({
+        questionId: 'upload-3',
+        fileName: 'eicar.pdf',
+      });
+      putPdf(rejected.storageKey, 1024);
+      await service.finalizeUpload(rejected.objectId);
+
+      const all = await service.listUploads({
+        ownerContext: 'participation',
+        ownerRecordId: validRecordId,
+      });
+      expect(all.map((object) => [object.id, object.status])).toEqual([
+        [first.objectId, 'CLEAN'],
+        [other.objectId, 'INITIATED'],
+      ]);
+      const one = await service.listUploads({
+        ownerContext: 'participation',
+        ownerRecordId: validRecordId,
+        questionId: 'upload-2',
+      });
+      expect(one.map((object) => object.id)).toEqual([other.objectId]);
+    });
+
+    it('authorizes the read like status and download', async () => {
+      const authorize = jest.fn().mockResolvedValue(undefined);
+      const guarded = new StorageService(
+        repository,
+        objectStorage,
+        malwareScanner,
+        {
+          authorize,
+          resolveUploadPolicy: jest.fn(),
+        },
+      );
+      await guarded.listUploads(
+        { ownerContext: 'participation', ownerRecordId: validRecordId },
+        'user-1',
+        'cap',
+      );
+      expect(authorize).toHaveBeenCalledWith(
+        'participation',
+        validRecordId,
+        'user-1',
+        'cap',
+        'read',
+      );
     });
   });
 

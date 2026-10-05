@@ -1,5 +1,6 @@
 import { ParticipationService } from './participation.service';
 import {
+  AttemptExpiredException,
   AttemptLockedException,
   CompletionCodeLimitReachedException,
   InvalidCompletionCodeException,
@@ -10,6 +11,7 @@ import { InMemoryDemographicProfileRepository } from '../../users/infrastructure
 import { FormEntity } from '../../forms/domain/form.entity';
 import { FormVersionEntity } from '../../forms/domain/form-version.entity';
 import { SurveyAttemptEntity } from '../domain/survey-attempt.entity';
+import { RESERVATION_EXPIRY_MS } from '@rescom/schemas';
 import { PassThroughUnitOfWork } from '../../../common/database/unit-of-work.port';
 import { seedCompleteDemographicProfile } from '../../../../test/fixtures/demographic-profile.fixture';
 
@@ -234,6 +236,37 @@ describe('ParticipationService completion-code limit (decision E5-D1)', () => {
       0,
     );
     expect(partRepo.attempts.get(attemptId)?.status).toBe('IN_PROGRESS');
+  });
+
+  it('answers ATTEMPT_EXPIRED, not a wrong-code reply, when the attempt was cancelled under the lock (review LOW-2)', async () => {
+    const attemptId = await start();
+    const lock = partRepo.lockAttemptForVerification.bind(partRepo);
+    // A cancel commits between the locked read and the strike.
+    jest
+      .spyOn(partRepo, 'lockAttemptForVerification')
+      .mockImplementationOnce(async (id: string) => {
+        const locked = await lock(id);
+        const now = new Date();
+        await partRepo.cancelAttempt({
+          attemptId: id,
+          respondentId: userId,
+          formId,
+          cutoffDate: new Date(now.getTime() - RESERVATION_EXPIRY_MS),
+          now,
+        });
+        return locked;
+      });
+
+    await expect(verify(attemptId)).rejects.toBeInstanceOf(
+      AttemptExpiredException,
+    );
+    const attempt = partRepo.attempts.get(attemptId)!;
+    expect(attempt.status).toBe('ABANDONED');
+    expect(attempt.closedReason).toBe('CANCELLED');
+    expect(attempt.codeVerification.failedCount).toBe(0);
+    expect(await partRepo.countCompletionCodeFailures(userId, versionId)).toBe(
+      0,
+    );
   });
 
   it('an Admin reset forgives the counted wrong codes, audited, and lets the account start again', async () => {

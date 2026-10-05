@@ -1,0 +1,16 @@
+# Automatic HTTPS (Let's Encrypt). Both DNS A records must point at the VPS first.
+
+# App: Next.js serves the UI and proxies /api/* to the backend (same-origin cookies + CSRF).
+{$APP_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy frontend:3000
+}
+
+# Browsers PUT/GET presigned URLs here. Host is preserved, so signatures made for
+# https://{$S3_DOMAIN} by the backend stay valid.
+{$S3_DOMAIN} {
+	request_body {
+		max_size 60MB
+	}
+	reverse_proxy minio:9000
+}
