@@ -43,7 +43,7 @@ const NO_CRITERIA: Partial<GoogleFormWizardDraft> = {
   ageMax: "",
   fieldsOfStudy: [],
   school: "",
-  location: "",
+  locations: [],
 };
 
 type AudienceMode = "all" | "custom";
@@ -171,23 +171,51 @@ export function AudienceStep({ draft, errors, update, estimate }: AudienceStepPr
             onChange={(event) => update({ school: event.target.value })}
           />
         ) : null}
-        <Select
-          id="audience-location"
-          label="Khu vực"
-          className="order-5 lg:order-none"
-          options={[
-            { value: "", label: "Tất cả khu vực" },
-            ...LOCATION_CHOICES.map((location) => ({ value: location, label: location })),
-          ]}
-          value={draft.location}
-          onChange={(event) => update({ location: event.target.value })}
-        />
+        <div className="order-5 flex flex-col gap-2.5 lg:order-none">
+          {/* 63 provinces: too many chips, so a select adds and chips remove. */}
+          <Select
+            id="audience-location"
+            label="Khu vực · chọn nhiều"
+            options={[
+              { value: "", label: draft.locations.length > 0 ? "Thêm khu vực…" : "Tất cả khu vực" },
+              ...LOCATION_CHOICES.filter((location) => !draft.locations.includes(location)).map((location) => ({
+                value: location,
+                label: location,
+              })),
+            ]}
+            value=""
+            onChange={(event) => {
+              if (event.target.value) update({ locations: [...draft.locations, event.target.value] });
+            }}
+          />
+          {draft.locations.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {draft.locations.map((location) => (
+                <ToggleChip
+                  key={location}
+                  selected
+                  aria-label={`Bỏ ${location}`}
+                  onSelectedChange={() => update({ locations: draft.locations.filter((item) => item !== location) })}
+                >
+                  {location}
+                </ToggleChip>
+              ))}
+            </div>
+          ) : null}
+        </div>
 
         <fieldset className="order-3 lg:order-none lg:col-span-2">
           <legend className="mb-2.5 text-label font-semibold text-ink">
             Ngành học <span className="font-medium text-ink-muted">· chọn nhiều</span>
           </legend>
           <div className="flex flex-wrap gap-2">
+            {/* No field picked = no fieldOfStudy criterion = every field. */}
+            <ToggleChip
+              selected={draft.fieldsOfStudy.length === 0}
+              onSelectedChange={() => update({ fieldsOfStudy: [] })}
+            >
+              Tất cả các ngành
+            </ToggleChip>
             {FIELD_OF_STUDY_CHOICES.map((field, index) => {
               const selected = draft.fieldsOfStudy.includes(field);
               const collapsed = !showAllFields && index >= FIELDS_SHOWN_COLLAPSED && !selected;

@@ -84,7 +84,7 @@ test("Google Forms wizard · step 2 targeting (Figma 9b)", async (t) => {
   await t.test("maps the choices onto surveyTargetingSchema (school hidden, never sent)", () => {
     assert.equal(wizard.SCHOOL_TARGETING_SUPPORTED, false);
     const targeting = wizard.toTargetingJson(
-      draft({ gender: "FEMALE", school: "Trường Đại học FPT – Đà Nẵng", location: "Đà Nẵng" }),
+      draft({ gender: "FEMALE", school: "Trường Đại học FPT – Đà Nẵng", locations: ["Đà Nẵng"] }),
     );
     assert.deepEqual(targeting, {
       ageRange: { min: 18, max: 25 },
@@ -117,7 +117,7 @@ test("Google Forms wizard · step 2 targeting (Figma 9b)", async (t) => {
   });
 
   await t.test("summaries leave the hidden school out", () => {
-    const withSchool = draft({ school: "Trường Đại học FPT – Đà Nẵng", location: "Đà Nẵng" });
+    const withSchool = draft({ school: "Trường Đại học FPT – Đà Nẵng", locations: ["Đà Nẵng"] });
     assert.deepEqual(wizard.criteriaSummary(withSchool), [
       { label: "Giới tính", value: "Tất cả" },
       { label: "Tuổi", value: "18 – 25" },
@@ -220,6 +220,19 @@ test("Google Forms wizard · request and storage", async (t) => {
       }).topic,
       "HEALTH",
     );
+  });
+
+  await t.test("several regions: all sent, summarised by count; single-region drafts migrate", () => {
+    const multi = draft({ locations: ["Đà Nẵng", "Hà Nội"] });
+    assert.deepEqual(wizard.toTargetingJson(multi).locations, ["Đà Nẵng", "Hà Nội"]);
+    assert.equal(wizard.criteriaSummary(multi).at(-1).value, "2 khu vực");
+    assert.equal(wizard.audienceSummaryLine(multi), "18–25 tuổi · 2 ngành · 2 khu vực");
+    const local = memoryStorage();
+    const { locations, ...legacy } = draft();
+    local.setItem("rescom:create-gform-draft:old", JSON.stringify({ ...legacy, location: "Huế" }));
+    assert.deepEqual(storage.loadWizardDraft(local, "old").locations, ["Huế"]);
+    local.setItem("rescom:create-gform-draft:none", JSON.stringify({ ...legacy, location: "" }));
+    assert.deepEqual(storage.loadWizardDraft(local, "none").locations, []);
   });
 
   await t.test("draft round-trips per user and ignores stale shapes", () => {
@@ -380,7 +393,7 @@ test("Google Forms wizard · Sửa & gửi lại prefill (?from=<id>)", async (t
       ageMin: "18",
       ageMax: "22",
       fieldsOfStudy: ["Marketing & Truyền thông"],
-      location: "Đà Nẵng",
+      locations: ["Đà Nẵng"],
       sampleSize: "10",
       rewardPerResponse: "12",
     });

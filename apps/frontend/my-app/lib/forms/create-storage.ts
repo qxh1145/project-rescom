@@ -40,7 +40,9 @@ const draftSchema = z.object({
   ageMax: z.string(),
   fieldsOfStudy: z.array(z.string()),
   school: z.string(),
-  location: z.string(),
+  locations: z.array(z.string()).optional(),
+  /** Drafts saved before multi-region targeting. */
+  location: z.string().optional(),
   sampleSize: z.string(),
   rewardPerResponse: z.string(),
   collectionDays: z
@@ -82,7 +84,12 @@ export function loadWizardDraft(storage: KeyValueStorage | null | undefined, use
   const parsed = draftSchema.safeParse(readJson(storage, DRAFT_PREFIX + userId));
   if (!parsed.success) return emptyWizardDraft();
   // Plan 2.2: drafts saved before the shared topic values keep their topic.
-  const draft = { ...parsed.data, topic: normalizeWizardTopic(parsed.data.topic) };
+  const { location, locations, ...rest } = parsed.data;
+  const draft = {
+    ...rest,
+    topic: normalizeWizardTopic(rest.topic),
+    locations: locations ?? (location ? [location] : []),
+  };
   return SCHOOL_TARGETING_SUPPORTED ? draft : { ...draft, school: "" };
 }
 
