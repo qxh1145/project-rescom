@@ -159,7 +159,6 @@ export type WizardField =
   | "description"
   | "durationBand"
   | "age"
-  | "criteria"
   | "sampleSize"
   | "rewardPerResponse";
 
@@ -259,8 +258,8 @@ export function criteriaCount(targeting: WizardTargeting): number {
 
 export function validateAudienceStep(draft: GoogleFormWizardDraft): WizardErrors {
   const age = checkAgeRange(draft);
-  if (!age.ok) return { age: age.error };
-  return criteriaCount(toTargetingJson(draft)) === 0 ? { criteria: CREATE_MESSAGES.criteriaRequired } : {};
+  // No criterion = `{}` = open to every user (surveyTargetingSchema).
+  return age.ok ? {} : { age: age.error };
 }
 
 /** "Trường Đại học FPT – Đà Nẵng" → "FPT – Đà Nẵng" (summaries). */
