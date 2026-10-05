@@ -122,8 +122,8 @@ export interface GoogleFormWizardDraft {
   fieldsOfStudy: string[];
   /** "" = every school. */
   school: string;
-  /** "" = every region. */
-  location: string;
+  /** [] = every region. */
+  locations: string[];
   /** Raw inputs. */
   sampleSize: string;
   /** Raw input; set to the band's suggested reward when a duration is chosen. */
@@ -146,7 +146,7 @@ export function emptyWizardDraft(): GoogleFormWizardDraft {
     ageMax: "",
     fieldsOfStudy: [],
     school: "",
-    location: "",
+    locations: [],
     sampleSize: String(DEFAULT_SAMPLE_SIZE),
     rewardPerResponse: "",
     collectionDays: DEFAULT_COLLECTION_DAYS,
@@ -238,7 +238,7 @@ export function toTargetingJson(draft: GoogleFormWizardDraft): WizardTargeting {
   if (age.ok && age.range) targeting.ageRange = age.range;
   if (draft.gender !== "ALL") targeting.genders = [draft.gender];
   if (draft.fieldsOfStudy.length > 0) targeting.fieldOfStudy = [...draft.fieldsOfStudy];
-  if (draft.location) targeting.locations = [draft.location];
+  if (draft.locations.length > 0) targeting.locations = [...draft.locations];
   if (SCHOOL_TARGETING_SUPPORTED && draft.school) targeting.schools = [draft.school];
   return targeting;
 }
@@ -267,11 +267,16 @@ export function shortSchoolName(school: string): string {
   return school.replace(/^(Trường )?Đại học /, "").trim() || school;
 }
 
+/** "Đà Nẵng" for one region, "3 khu vực" for more; "" for none. */
+function locationsLabel(locations: readonly string[]): string {
+  return locations.length > 1 ? `${locations.length} khu vực` : (locations[0] ?? "");
+}
+
 /** Rows of Figma 9b "Tiêu chí đã chọn". */
 export function criteriaSummary(draft: GoogleFormWizardDraft): { label: string; value: string }[] {
   const age = checkAgeRange(draft);
   const school = SCHOOL_TARGETING_SUPPORTED && draft.school ? shortSchoolName(draft.school) : "";
-  const place = [school, draft.location].filter(Boolean).join(" · ");
+  const place = [school, locationsLabel(draft.locations)].filter(Boolean).join(" · ");
   return [
     { label: "Giới tính", value: GENDER_CHOICES.find((choice) => choice.value === draft.gender)?.label ?? "Tất cả" },
     { label: "Tuổi", value: age.ok && age.range ? `${age.range.min} – ${age.range.max}` : "Tất cả" },
@@ -288,7 +293,7 @@ export function audienceSummaryLine(draft: GoogleFormWizardDraft): string {
   if (targeting.genders) parts.push(draft.gender === "MALE" ? "Nam" : "Nữ");
   if (targeting.fieldOfStudy) parts.push(`${targeting.fieldOfStudy.length} ngành`);
   if (targeting.schools) parts.push(shortSchoolName(targeting.schools[0]));
-  if (targeting.locations) parts.push(targeting.locations[0]);
+  if (targeting.locations) parts.push(locationsLabel(targeting.locations));
   return parts.length > 0 ? parts.join(" · ") : "Mọi người dùng";
 }
 
@@ -510,7 +515,6 @@ export function wizardDraftFromSurvey(source: WizardPrefillSource): GoogleFormWi
   const min = targeting.ageRange?.min;
   const max = targeting.ageRange?.max;
   const genders = strings(targeting.genders);
-  const location = strings(targeting.locations).find((item) => LOCATION_CHOICES.includes(item));
   return {
     ...draft,
     externalUrl: source.currentVersion.externalUrl ?? "",
@@ -522,7 +526,7 @@ export function wizardDraftFromSurvey(source: WizardPrefillSource): GoogleFormWi
     ageMin: typeof min === "number" && typeof max === "number" ? String(min) : "",
     ageMax: typeof min === "number" && typeof max === "number" ? String(max) : "",
     fieldsOfStudy: strings(targeting.fieldOfStudy).filter((field) => FIELD_OF_STUDY_CHOICES.includes(field)),
-    location: location ?? "",
+    locations: strings(targeting.locations).filter((item) => LOCATION_CHOICES.includes(item)),
     sampleSize: source.expectedCompletions > 0 ? String(source.expectedCompletions) : draft.sampleSize,
     rewardPerResponse: source.rewardPerResponse > 0 ? String(source.rewardPerResponse) : "",
   };
