@@ -5,6 +5,7 @@ import {
   checkFormDeadline,
   formDeadlineAtSchema,
   formTopicEnum,
+  formTopicReadSchema,
   matchesSurveySearch,
   normalizeSearchText,
 } from "./form-topic.schema";
@@ -22,6 +23,14 @@ describe("form topics (plan 2.2)", () => {
   it("every pre-2026-10-05 topic maps to a current one", () => {
     for (const topic of Object.values(LEGACY_FORM_TOPICS)) expect(FORM_TOPICS).toContain(topic);
     expect(LEGACY_FORM_TOPICS.HEALTH).toBe("MENTAL_HEALTH");
+  });
+
+  it("responses tolerate legacy and unknown topics (FE/BE deployed apart)", () => {
+    expect(formTopicReadSchema.parse("IT")).toBe("IT");
+    expect(formTopicReadSchema.parse("HEALTH")).toBe("MENTAL_HEALTH");
+    expect(formTopicReadSchema.parse("SOMETHING_NEW")).toBeNull();
+    expect(formTopicReadSchema.parse(null)).toBeNull();
+    expect(formTopicReadSchema.parse(undefined)).toBeUndefined();
   });
 
   it("normalizes Vietnamese text for search", () => {

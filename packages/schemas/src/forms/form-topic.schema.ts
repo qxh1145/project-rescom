@@ -75,6 +75,20 @@ export const LEGACY_FORM_TOPICS: Readonly<Record<string, FormTopic>> = {
 };
 
 /**
+ * `topic` as read from an API response: a legacy value reads as its
+ * replacement and any other unknown value as null, so a topic the reader does
+ * not know (frontend and backend deployed at different times) loses only its
+ * label instead of failing the whole response. Requests stay strict
+ * (`formTopicEnum`).
+ */
+export const formTopicReadSchema = z
+  .preprocess(
+    (value) => (typeof value === "string" && Object.hasOwn(LEGACY_FORM_TOPICS, value) ? LEGACY_FORM_TOPICS[value] : value),
+    formTopicEnum.nullable().optional(),
+  )
+  .catch(null);
+
+/**
  * Accent- and case-insensitive form of Vietnamese text for search: NFD,
  * combining marks removed, "đ" → "d", lower case, whitespace collapsed.
  */
