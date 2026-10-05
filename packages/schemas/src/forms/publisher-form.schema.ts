@@ -5,7 +5,7 @@ import {
   formTypeEnum,
 } from "./form-draft.schema";
 import { formCloseKindEnum } from "./form-publish.schema";
-import { formTopicEnum } from "./form-topic.schema";
+import { formTopicReadSchema } from "./form-topic.schema";
 
 /**
  * IR.1: response contracts of the Publisher form calls, shared by the
@@ -55,7 +55,7 @@ export const formDetailSchema = z
     expectedCompletions: count,
     estimatedDurationMinutes: z.number().nullable().optional(),
     closeKind: formCloseKindEnum.nullable().optional(),
-    topic: formTopicEnum.nullable().optional(),
+    topic: formTopicReadSchema,
     deadlineAt: isoDate.nullable().optional(),
     completedCompletions: count.optional(),
     escrowLocked: count.nullable().optional(),
@@ -82,7 +82,7 @@ export const formSummarySchema = z
     estimatedDurationMinutes: z.number().nullable().optional(),
     latestVersionNumber: z.number().int(),
     closeKind: formCloseKindEnum.nullable(),
-    topic: formTopicEnum.nullable().optional(),
+    topic: formTopicReadSchema,
     deadlineAt: isoDate.nullable().optional(),
     submittedAt: isoDate.nullable().optional(),
     closedAt: isoDate.nullable().optional(),

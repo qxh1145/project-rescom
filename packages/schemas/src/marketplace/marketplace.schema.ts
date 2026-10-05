@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { surveyTargetingSchema } from "../forms/form-targeting.schema";
-import { formTopicEnum } from "../forms/form-topic.schema";
+import { formTopicReadSchema } from "../forms/form-topic.schema";
 
 /**
  * Supported sorting options for the marketplace feed.
@@ -104,7 +104,7 @@ export const marketplaceSurveyCardSchema = z.object({
   hasTargeting: z.boolean(),
   isCompletedByCurrentUser: z.boolean().default(false),
   /** Plan 2.2: the survey topic (`FORM_TOPICS`); null when none was chosen. */
-  topic: formTopicEnum.nullable().optional(),
+  topic: formTopicReadSchema,
 });
 
 export const marketplaceFeedResponseSchema = z.object({
