@@ -1,37 +1,35 @@
-import { FORM_TOPICS, formTopicEnum, type FormTopic } from "@rescom/schemas";
+import { FORM_TOPICS, FORM_TOPIC_SEARCH_TERMS, LEGACY_FORM_TOPICS, formTopicEnum, type FormTopic } from "@rescom/schemas";
 
 /**
  * "Chủ đề" (Figma 9a select). Plan 2.2: the values are the shared
  * `FORM_TOPICS` (sent as `topic`, stored in `forms.topic`); the Vietnamese
- * labels live here, keyed by those values (also used by the Khám phá cards).
+ * labels are the first search term of each topic (the onboarding interests
+ * plus "Khác"), keyed by those values (also used by the Khám phá cards).
  */
-export const TOPIC_LABELS: Readonly<Record<FormTopic, string>> = {
-  MARKETING: "Marketing & Truyền thông",
-  BUSINESS: "Kinh tế & Quản trị kinh doanh",
-  IT: "Công nghệ thông tin",
-  ENGINEERING: "Kỹ thuật & Kiến trúc",
-  SOCIAL_SCIENCES: "Ngôn ngữ & Khoa học xã hội",
-  DESIGN: "Thiết kế đồ họa & Mỹ thuật",
-  HEALTH: "Y sinh & Sức khỏe",
-  STUDENT_LIFE: "Đời sống sinh viên",
-  OTHER: "Khác",
-};
+export const TOPIC_LABELS: Readonly<Record<FormTopic, string>> = Object.fromEntries(
+  FORM_TOPICS.map((topic) => [topic, FORM_TOPIC_SEARCH_TERMS[topic][0]]),
+) as Record<FormTopic, string>;
 
 export const TOPIC_OPTIONS: readonly { value: FormTopic; label: string }[] = FORM_TOPICS.map((value) => ({
   value,
   label: TOPIC_LABELS[value],
 }));
 
-/** Values the wizard stored before plan 2.2 (localStorage drafts), mapped to the shared ones. */
+/**
+ * Values stored before the current list, mapped to the shared ones: the
+ * wizard's pre-plan-2.2 labels (localStorage drafts) and the pre-2026-10-05
+ * topic values (`LEGACY_FORM_TOPICS`).
+ */
 const LEGACY_TOPIC_VALUES: Readonly<Record<string, FormTopic>> = {
+  ...LEGACY_FORM_TOPICS,
   Marketing: "MARKETING",
   "Kinh tế": "BUSINESS",
   CNTT: "IT",
-  "Kỹ thuật": "ENGINEERING",
-  "Xã hội": "SOCIAL_SCIENCES",
-  "Thiết kế": "DESIGN",
-  "Sức khỏe": "HEALTH",
-  "Đời sống": "STUDENT_LIFE",
+  "Kỹ thuật": "RESEARCH",
+  "Xã hội": "SCHOOL_PSYCHOLOGY",
+  "Thiết kế": "ARTS_MUSIC",
+  "Sức khỏe": "MENTAL_HEALTH",
+  "Đời sống": "EDUCATION",
   Khác: "OTHER",
 };
 

@@ -961,7 +961,7 @@ describe('MarketplaceService', () => {
     it('returns the topic on the card and searches it by value or Vietnamese label words, accent-insensitively', async () => {
       await publish('aaaaaaaa-0000-4000-8000-000000000001', {
         title: 'Thói quen ngủ',
-        topic: 'HEALTH',
+        topic: 'MENTAL_HEALTH',
       });
       await publish('aaaaaaaa-0000-4000-8000-000000000002', {
         title: 'Giấc mơ công nghệ',
@@ -969,7 +969,7 @@ describe('MarketplaceService', () => {
       });
 
       const all = await service.getFeed(respondentHanoiId);
-      expect(all.surveys.map((s) => s.topic).sort()).toEqual(['HEALTH', 'IT']);
+      expect(all.surveys.map((s) => s.topic).sort()).toEqual(['IT', 'MENTAL_HEALTH']);
 
       const bySynonym = await service.getFeed(respondentHanoiId, {
         search: 'suc khoe',

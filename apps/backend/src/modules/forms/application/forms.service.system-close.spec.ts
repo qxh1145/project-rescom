@@ -330,10 +330,10 @@ describe('FormsService system closes, deadline and topic', () => {
       ).toISOString();
       const draft = await service.createDraft(publisherId, {
         title: 'T',
-        topic: 'HEALTH',
+        topic: 'MENTAL_HEALTH',
         deadlineAt,
       });
-      expect(draft).toMatchObject({ topic: 'HEALTH', deadlineAt });
+      expect(draft).toMatchObject({ topic: 'MENTAL_HEALTH', deadlineAt });
 
       await expect(
         service.createDraft(publisherId, {
@@ -349,11 +349,11 @@ describe('FormsService system closes, deadline and topic', () => {
         { userId: publisherId, role: 'PUBLISHER' },
         {
           clientUpdatedAt: draft.updatedAt,
-          topic: 'DESIGN',
+          topic: 'ARTS_MUSIC',
           deadlineAt: new Date(now.getTime() + 3_600_000).toISOString(),
         },
       );
-      expect(updated.topic).toBe('DESIGN');
+      expect(updated.topic).toBe('ARTS_MUSIC');
       jest.setSystemTime(now.getTime() + 1);
       const cleared = await service.updateDraft(
         draft.id,

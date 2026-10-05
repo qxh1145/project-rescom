@@ -10,11 +10,11 @@ const TOPICS = [
   "IT",
   "MARKETING",
   "BUSINESS",
-  "HEALTH",
-  "STUDENT_LIFE",
-  "DESIGN",
-  "SOCIAL_SCIENCES",
-  "ENGINEERING",
+  "MENTAL_HEALTH",
+  "EDUCATION",
+  "ARTS_MUSIC",
+  "SCHOOL_PSYCHOLOGY",
+  "RESEARCH",
   "OTHER",
 ];
 
@@ -147,7 +147,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 70,
   },
   {
-    topic: "HEALTH",
+    topic: "MENTAL_HEALTH",
     title: "Nghiên cứu thực trạng chất lượng giấc ngủ và mức độ căng thẳng học đường",
     description: "Khảo sát thời gian ngủ trung bình, các yếu tố gây mất ngủ (deadline, điện thoại) và các biện pháp phục hồi sức khỏe tinh thần.",
     estimatedDurationMinutes: 7,
@@ -155,7 +155,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 50,
   },
   {
-    topic: "STUDENT_LIFE",
+    topic: "EDUCATION",
     title: "Khảo sát nhu cầu sử dụng ứng dụng tìm phòng trọ thông minh tại các thành phố lớn",
     description: "Đánh giá những khó khăn thường gặp khi tìm kiếm nhà trọ, chia phòng ở ghép và các tiêu chí an ninh, giá cả ưu tiên.",
     estimatedDurationMinutes: 6,
@@ -163,7 +163,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 100,
   },
   {
-    topic: "DESIGN",
+    topic: "ARTS_MUSIC",
     title: "Trải nghiệm người dùng đối với các ứng dụng ngân hàng số tại Việt Nam",
     description: "Đánh giá mức độ thân thiện, tốc độ xử lý và tính trực quan của giao diện UI/UX trên các ứng dụng Vietcombank, MB Bank, Techcombank.",
     estimatedDurationMinutes: 9,
@@ -171,7 +171,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 60,
   },
   {
-    topic: "SOCIAL_SCIENCES",
+    topic: "SCHOOL_PSYCHOLOGY",
     title: "Đánh giá hiệu quả các phương pháp tự học Tiếng Anh giao tiếp cho người mới bắt đầu",
     description: "Tìm hiểu các trở ngại tâm lý khi nói tiếng Anh, các app học tập phổ biến (Duolingo, ELSA) và thời gian tự học mỗi ngày.",
     estimatedDurationMinutes: 8,
@@ -179,7 +179,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 55,
   },
   {
-    topic: "ENGINEERING",
+    topic: "RESEARCH",
     title: "Khảo sát xu hướng lựa chọn xe máy điện thay thế xe xăng trong giới trẻ",
     description: "Khảo sát nhận thức về môi trường, sự tiện lợi của trạm sạc và các rào cản chi phí khi chuyển sang sử dụng xe điện.",
     estimatedDurationMinutes: 7,
@@ -219,7 +219,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 40,
   },
   {
-    topic: "HEALTH",
+    topic: "MENTAL_HEALTH",
     title: "Khảo sát thói quen tập luyện thể thao và rèn luyện thể chất của sinh viên",
     description: "Khảo sát các bộ môn thể thao được yêu thích (gym, chạy bộ, cầu lông) và rào cản thời gian trong quá trình duy trì tập luyện.",
     estimatedDurationMinutes: 5,
@@ -227,7 +227,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 75,
   },
   {
-    topic: "STUDENT_LIFE",
+    topic: "EDUCATION",
     title: "Thực trạng và nhu cầu làm thêm (Part-time) của sinh viên năm 1 và năm 2",
     description: "Tìm hiểu mức thu nhập kỳ vọng, sự cân bằng giữa học tập và đi làm thêm, cùng các kỹ năng thực tế tích lũy được.",
     estimatedDurationMinutes: 8,
@@ -235,7 +235,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 80,
   },
   {
-    topic: "DESIGN",
+    topic: "ARTS_MUSIC",
     title: "Khảo sát thẩm mỹ giao diện phẳng (Flat Design) và Neumorphism trong thiết kế UI",
     description: "Đánh giá xu hướng thẩm mỹ thị giác hiện đại, mức độ thu hút thị giác và khả năng ứng dụng thực tế trên thiết bị di động.",
     estimatedDurationMinutes: 7,
@@ -243,7 +243,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 50,
   },
   {
-    topic: "SOCIAL_SCIENCES",
+    topic: "SCHOOL_PSYCHOLOGY",
     title: "Đánh giá sự tự tin khi thuyết trình trước đám đông của sinh viên các khối ngành",
     description: "Khảo sát hội chứng sợ nói trước đám đông, phương pháp luyện tập chuẩn bị slide và phản xạ trả lời câu hỏi phản biện.",
     estimatedDurationMinutes: 6,
@@ -251,7 +251,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 70,
   },
   {
-    topic: "ENGINEERING",
+    topic: "RESEARCH",
     title: "Khảo sát ứng dụng Internet of Things (IoT) trong các khu ký túc xá thông minh",
     description: "Khảo sát nhu cầu quản lý điện nước tự động, hệ thống khóa cửa vân tay và giám sát phòng cháy chữa cháy thông minh.",
     estimatedDurationMinutes: 9,
@@ -291,7 +291,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 100,
   },
   {
-    topic: "HEALTH",
+    topic: "MENTAL_HEALTH",
     title: "Thực trạng sử dụng đồ uống có đường và nhận thức về sức khỏe ở người trẻ",
     description: "Khảo sát thói quen uống trà sữa, nước ngọt có ga và mức độ quan tâm đến bệnh lý tiểu đường, tim mạch giai đoạn sớm.",
     estimatedDurationMinutes: 6,
@@ -299,7 +299,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 90,
   },
   {
-    topic: "STUDENT_LIFE",
+    topic: "EDUCATION",
     title: "Khảo sát sự thích nghi tâm lý của tân sinh viên khi bắt đầu cuộc sống xa nhà",
     description: "Đánh giá cảm giác nhớ nhà, khả năng tự lập quản lý chi tiêu và các mối quan hệ bạn bè mới trong những tháng đầu tiên.",
     estimatedDurationMinutes: 8,
@@ -307,7 +307,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 60,
   },
   {
-    topic: "DESIGN",
+    topic: "ARTS_MUSIC",
     title: "Nghiên cứu trải nghiệm người dùng trên các nền tảng thương mại điện tử",
     description: "Đánh giá quy trình tìm kiếm sản phẩm, xem đánh giá người mua và thanh toán đơn hàng trên Shopee, Lazada và TikTok Shop.",
     estimatedDurationMinutes: 10,
@@ -315,7 +315,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 55,
   },
   {
-    topic: "SOCIAL_SCIENCES",
+    topic: "SCHOOL_PSYCHOLOGY",
     title: "Tác động của ngoại ngữ thứ hai (Nhật, Hàn, Trung) đến cơ hội việc làm sau tốt nghiệp",
     description: "Tìm hiểu động lực học thêm ngôn ngữ mới, các chứng chỉ hướng tới (JLPT, TOPIK, HSK) và mức lương kỳ vọng.",
     estimatedDurationMinutes: 7,
@@ -323,7 +323,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 50,
   },
   {
-    topic: "ENGINEERING",
+    topic: "RESEARCH",
     title: "Khảo sát xu hướng ứng dụng năng lượng mặt trời tại các hộ gia đình đô thị",
     description: "Đánh giá sự am hiểu về hệ thống điện mặt trời áp mái, chi phí đầu tư ban đầu và khả năng tiết kiệm hóa đơn tiền điện.",
     estimatedDurationMinutes: 8,
@@ -363,7 +363,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 45,
   },
   {
-    topic: "HEALTH",
+    topic: "MENTAL_HEALTH",
     title: "Khảo sát mức độ quan tâm đến sức khỏe tinh thần và tư vấn tâm lý học đường",
     description: "Đánh giá thái độ của sinh viên khi gặp khủng hoảng tâm lý và sự sẵn sàng tìm kiếm chuyên gia tư vấn hoặc phòng tâm lý trường.",
     estimatedDurationMinutes: 8,
@@ -371,7 +371,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 50,
   },
   {
-    topic: "STUDENT_LIFE",
+    topic: "EDUCATION",
     title: "Văn hóa câu lạc bộ sinh viên và kỹ năng mềm tích lũy được trong trường đại học",
     description: "Khảo sát lợi ích khi tham gia CLB (kết nối bạn bè, tổ chức sự kiện) và xung đột thời gian với việc học trên giảng đường.",
     estimatedDurationMinutes: 6,
@@ -379,7 +379,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 85,
   },
   {
-    topic: "DESIGN",
+    topic: "ARTS_MUSIC",
     title: "Xu hướng sử dụng linh vật (Mascot) thương hiệu trong thiết kế đồ họa đương đại",
     description: "Đánh giá sự ghi nhớ thương hiệu thông qua các nhân vật ngộ nghĩnh (Mascot) và cảm xúc kết nối tích cực với người dùng trẻ.",
     estimatedDurationMinutes: 7,
@@ -387,7 +387,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 50,
   },
   {
-    topic: "SOCIAL_SCIENCES",
+    topic: "SCHOOL_PSYCHOLOGY",
     title: "Tác động của việc giao lưu văn hóa đa quốc gia trong môi trường đại học",
     description: "Khảo sát kinh nghiệm tương tác với sinh viên quốc tế, khả năng thấu hiểu sự khác biệt và phát triển tư duy toàn cầu.",
     estimatedDurationMinutes: 8,
@@ -395,7 +395,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 40,
   },
   {
-    topic: "ENGINEERING",
+    topic: "RESEARCH",
     title: "Ứng dụng công nghệ in 3D trong nghiên cứu và chế tạo mô hình kỹ thuật",
     description: "Tìm hiểu mức độ tiếp cận máy in 3D của sinh viên khối kỹ thuật, chi phí vật liệu và ứng dụng vào đồ án môn học.",
     estimatedDurationMinutes: 9,
@@ -435,7 +435,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 60,
   },
   {
-    topic: "HEALTH",
+    topic: "MENTAL_HEALTH",
     title: "Khảo sát mức độ vận động thể chất và thói quen ngồi lâu trước màn hình máy tính",
     description: "Tìm hiểu hội chứng đau vai gáy, mỏi mắt ở sinh viên công nghệ và các bài tập giãn cơ tại chỗ được áp dụng.",
     estimatedDurationMinutes: 6,
@@ -443,7 +443,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 75,
   },
   {
-    topic: "STUDENT_LIFE",
+    topic: "EDUCATION",
     title: "Đánh giá tiện ích xe buýt điện và giao thông công cộng đối với sinh viên",
     description: "Khảo sát tần suất đi lại, sự tiện lợi của lộ trình, giá vé ưu đãi sinh viên và thái độ phục vụ của nhân viên.",
     estimatedDurationMinutes: 6,
@@ -451,7 +451,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 80,
   },
   {
-    topic: "DESIGN",
+    topic: "ARTS_MUSIC",
     title: "Thiết kế hệ thống nhận diện thương hiệu cho các sự kiện văn hóa học đường",
     description: "Đánh giá vai trò của poster, standee, merchandise và màu sắc chủ đạo trong việc thu hút sinh viên tham gia sự kiện.",
     estimatedDurationMinutes: 8,
@@ -459,7 +459,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 45,
   },
   {
-    topic: "SOCIAL_SCIENCES",
+    topic: "SCHOOL_PSYCHOLOGY",
     title: "Khảo sát phong cách học tập tối ưu: Visual, Auditory hay Kinesthetic?",
     description: "Tìm hiểu phương pháp tiếp thu kiến thức hiệu quả nhất của sinh viên qua sơ đồ tư duy, nghe giảng hay thực hành thí nghiệm.",
     estimatedDurationMinutes: 7,
@@ -467,7 +467,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 65,
   },
   {
-    topic: "ENGINEERING",
+    topic: "RESEARCH",
     title: "Khảo sát nhu cầu sử dụng trạm sạc xe điện thông minh tại khuôn viên đại học",
     description: "Khảo sát mức độ cần thiết của trạm sạc nhanh tại bãi đỗ xe trường học và các hình thức thanh toán tự động qua app.",
     estimatedDurationMinutes: 8,
@@ -507,7 +507,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 60,
   },
   {
-    topic: "HEALTH",
+    topic: "MENTAL_HEALTH",
     title: "Thực trạng sử dụng thực phẩm chức năng và viên uống bổ sung vitamin ở giới trẻ",
     description: "Khảo sát lý do sử dụng thực phẩm chức năng (đẹp da, tăng sức đề kháng, sáng mắt) và nguồn thông tin tư vấn tin cậy.",
     estimatedDurationMinutes: 6,
@@ -515,7 +515,7 @@ const SURVEY_TEMPLATES = [
     expectedCompletions: 70,
   },
   {
-    topic: "STUDENT_LIFE",
+    topic: "EDUCATION",
     title: "Khảo sát các áp lực thi cử và phương pháp giải tỏa mùa đồ án tốt nghiệp",
     description: "Đánh giá mức độ quá tải thời gian, các phương pháp xả stress (nghe nhạc, đi cà phê cùng bạn bè) và sự hỗ trợ từ gia đình.",
     estimatedDurationMinutes: 8,

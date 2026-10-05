@@ -38,6 +38,7 @@ import {
   FormTopic,
   formTopicEnum,
   FormTypeEnum,
+  LEGACY_FORM_TOPICS,
   SurveyTargetingCriteria,
 } from '@rescom/schemas';
 
@@ -62,10 +63,14 @@ function toFormEntity(raw: any, versions?: FormVersionEntity[]): FormEntity {
   );
 }
 
-/** Plan 2.2: `forms.topic` is free text; an unknown value reads as none. */
+/**
+ * Plan 2.2: `forms.topic` is free text; an unknown value reads as none. A
+ * pre-2026-10-05 value reads as its replacement (until the data migration runs).
+ */
 function toFormTopic(value: unknown): FormTopic | null {
   const parsed = formTopicEnum.safeParse(value);
-  return parsed.success ? parsed.data : null;
+  if (parsed.success) return parsed.data;
+  return typeof value === 'string' ? (LEGACY_FORM_TOPICS[value] ?? null) : null;
 }
 
 /** Phase 5 C6: the unique `(publisher_id, creation_idempotency_key)` index. */

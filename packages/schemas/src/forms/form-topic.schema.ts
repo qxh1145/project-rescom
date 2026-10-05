@@ -4,17 +4,28 @@ import { z } from "zod";
  * Plan 2.2: the survey topic ("Chủ đề", Figma 9a). Stable ASCII values shared
  * by the wizard, the backend (`forms.topic`) and the Explore feed; the
  * Vietnamese labels live in the frontend, keyed by these values. Adding a
- * topic needs no migration (`forms.topic` is free text validated here).
+ * topic needs no migration (`forms.topic` is free text validated here);
+ * renaming or removing one needs a data migration (see LEGACY_FORM_TOPICS).
  */
 export const FORM_TOPICS = [
-  "MARKETING",
-  "BUSINESS",
+  "AI",
   "IT",
-  "ENGINEERING",
-  "SOCIAL_SCIENCES",
-  "DESIGN",
-  "HEALTH",
-  "STUDENT_LIFE",
+  "BUSINESS",
+  "FINANCE",
+  "MARKETING",
+  "EDUCATION",
+  "TRAVEL_FOOD",
+  "SPORTS",
+  "SCHOOL_PSYCHOLOGY",
+  "MENTAL_HEALTH",
+  "GREEN_LIVING",
+  "ARTS_MUSIC",
+  "FASHION_BEAUTY",
+  "GAMING",
+  "ENTERTAINMENT",
+  "CAREER",
+  "VOLUNTEERING",
+  "RESEARCH",
   "OTHER",
 ] as const;
 
@@ -25,18 +36,42 @@ export type FormTopic = z.infer<typeof formTopicEnum>;
  * What the Explore search matches a topic by (besides its value): the
  * frontend label first, then common synonyms. Compared after
  * `normalizeSearchText`, so "cntt", "Công nghệ" and "cong nghe" all hit IT.
- * The frontend test pins every label to its first entry.
+ * The frontend test pins every label to its first entry. The labels are the
+ * onboarding interests (`INTEREST_OPTIONS`) plus "Khác".
  */
 export const FORM_TOPIC_SEARCH_TERMS: Record<FormTopic, readonly string[]> = {
-  MARKETING: ["Marketing & Truyền thông", "marketing", "truyền thông", "quảng cáo"],
-  BUSINESS: ["Kinh tế & Quản trị kinh doanh", "kinh tế", "kinh doanh", "quản trị", "QTKD", "tài chính"],
-  IT: ["Công nghệ thông tin", "CNTT", "công nghệ", "phần mềm", "lập trình"],
-  ENGINEERING: ["Kỹ thuật & Kiến trúc", "kỹ thuật", "kiến trúc", "xây dựng"],
-  SOCIAL_SCIENCES: ["Ngôn ngữ & Khoa học xã hội", "ngôn ngữ", "xã hội", "tâm lý", "giáo dục"],
-  DESIGN: ["Thiết kế đồ họa & Mỹ thuật", "thiết kế", "đồ họa", "mỹ thuật"],
-  HEALTH: ["Y sinh & Sức khỏe", "y sinh", "sức khỏe", "y tế", "y khoa"],
-  STUDENT_LIFE: ["Đời sống sinh viên", "đời sống", "sinh viên"],
+  AI: ["Trí tuệ nhân tạo (AI)", "trí tuệ nhân tạo", "AI", "chatgpt"],
+  IT: ["Công nghệ & Lập trình", "công nghệ", "lập trình", "CNTT", "công nghệ thông tin", "phần mềm"],
+  BUSINESS: ["Khởi nghiệp & Kinh doanh", "khởi nghiệp", "kinh doanh", "kinh tế", "quản trị", "startup"],
+  FINANCE: ["Tài chính & Đầu tư", "tài chính", "đầu tư", "chứng khoán", "ngân hàng"],
+  MARKETING: ["Marketing & Mạng xã hội", "marketing", "mạng xã hội", "truyền thông", "quảng cáo"],
+  EDUCATION: ["Giáo dục & Kỹ năng học tập", "giáo dục", "học tập", "kỹ năng", "sinh viên"],
+  TRAVEL_FOOD: ["Du lịch & Ẩm thực", "du lịch", "ẩm thực", "ăn uống"],
+  SPORTS: ["Thể thao & Rèn luyện sức khỏe", "thể thao", "rèn luyện", "tập luyện", "gym"],
+  SCHOOL_PSYCHOLOGY: ["Tâm lý học đường", "tâm lý", "học đường", "xã hội"],
+  MENTAL_HEALTH: ["Sức khỏe tinh thần", "sức khỏe", "tinh thần", "stress", "y tế"],
+  GREEN_LIVING: ["Tiêu dùng xanh & Bảo vệ môi trường", "tiêu dùng xanh", "môi trường", "bền vững"],
+  ARTS_MUSIC: ["Nghệ thuật & Âm nhạc", "nghệ thuật", "âm nhạc", "thiết kế", "mỹ thuật"],
+  FASHION_BEAUTY: ["Thời trang & Làm đẹp", "thời trang", "làm đẹp", "mỹ phẩm"],
+  GAMING: ["Trò chơi điện tử & Thể thao điện tử", "trò chơi", "game", "esports", "thể thao điện tử"],
+  ENTERTAINMENT: ["Phim ảnh & Giải trí", "phim", "giải trí", "điện ảnh"],
+  CAREER: ["Việc làm & Phát triển sự nghiệp", "việc làm", "sự nghiệp", "tuyển dụng", "thực tập"],
+  VOLUNTEERING: ["Tình nguyện & Hoạt động cộng đồng", "tình nguyện", "cộng đồng"],
+  RESEARCH: ["Nghiên cứu khoa học", "nghiên cứu", "khoa học", "kỹ thuật"],
   OTHER: ["Khác"],
+};
+
+/**
+ * Topic values that existed before the interest-based list (2026-10-05),
+ * mapped to their closest current topic. Migration
+ * 20261005120000_form_topic_interests rewrites stored rows the same way.
+ */
+export const LEGACY_FORM_TOPICS: Readonly<Record<string, FormTopic>> = {
+  HEALTH: "MENTAL_HEALTH",
+  STUDENT_LIFE: "EDUCATION",
+  DESIGN: "ARTS_MUSIC",
+  SOCIAL_SCIENCES: "SCHOOL_PSYCHOLOGY",
+  ENGINEERING: "RESEARCH",
 };
 
 /**
