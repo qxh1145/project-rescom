@@ -75,7 +75,8 @@ test("Google Forms wizard · step 1 (Figma 9a)", async (t) => {
   await t.test("a step opens only once the earlier steps are valid", () => {
     assert.equal(wizard.reachableStep(3, draft()), 3);
     assert.equal(wizard.reachableStep(3, draft({ title: "" })), 1);
-    assert.equal(wizard.reachableStep(3, draft({ ageMin: "", ageMax: "", fieldsOfStudy: [] })), 2);
+    assert.equal(wizard.reachableStep(3, draft({ ageMin: "12" })), 2);
+    assert.equal(wizard.reachableStep(3, draft({ ageMin: "", ageMax: "", fieldsOfStudy: [] })), 3);
   });
 });
 
@@ -97,17 +98,16 @@ test("Google Forms wizard · step 2 targeting (Figma 9b)", async (t) => {
   await t.test("a school alone is no criterion: the survey would reach everyone", () => {
     const schoolOnly = draft({ ageMin: "", ageMax: "", fieldsOfStudy: [], school: "Trường Đại học FPT – Đà Nẵng" });
     assert.equal(wizard.criteriaCount(wizard.toTargetingJson(schoolOnly)), 0);
-    assert.deepEqual(wizard.validateAudienceStep(schoolOnly), { criteria: messages.CREATE_MESSAGES.criteriaRequired });
+    assert.deepEqual(wizard.validateAudienceStep(schoolOnly), {});
     assert.equal(wizard.audienceSummaryLine(schoolOnly), "Mọi người dùng");
     assert.equal(wizard.criteriaSummary(schoolOnly).at(-1).value, "Tất cả");
   });
 
-  await t.test("'Tất cả' and empty fields add no criterion", () => {
+  await t.test("'Tất cả người dùng': no criterion is a valid open-to-everyone survey", () => {
     const targeting = wizard.toTargetingJson(draft({ ageMin: "", ageMax: "", fieldsOfStudy: [] }));
     assert.deepEqual(targeting, {});
-    assert.deepEqual(wizard.validateAudienceStep(draft({ ageMin: "", ageMax: "", fieldsOfStudy: [] })), {
-      criteria: messages.CREATE_MESSAGES.criteriaRequired,
-    });
+    assert.equal(surveyTargetingSchema.safeParse(targeting).success, true);
+    assert.deepEqual(wizard.validateAudienceStep(draft({ ageMin: "", ageMax: "", fieldsOfStudy: [] })), {});
   });
 
   await t.test("validates the age range", () => {

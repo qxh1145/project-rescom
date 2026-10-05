@@ -1,4 +1,6 @@
 // seed-50.js: Seed 10 users and 50 realistic surveys across 9 topics into RESCOM PostgreSQL
+// Writes rows only, never ledger balances: run deploy/fund-seed-escrow.js
+// (APPLY=1) right after, or every completion fails with INSUFFICIENT_ESCROW_BALANCE.
 const { PrismaClient } = require("@prisma/client");
 const bcrypt = require("bcryptjs");
 
@@ -626,7 +628,6 @@ async function main() {
             userId: user.id,
             accountClass,
             currency: "POINTS",
-            balance: accountClass === "USER_AVAILABLE" ? 5000 : 0,
           },
         });
       }
@@ -643,7 +644,6 @@ async function main() {
               userId: user.id,
               accountClass,
               currency: "POINTS",
-              balance: accountClass === "USER_AVAILABLE" ? 5000 : 0,
             },
           });
         }

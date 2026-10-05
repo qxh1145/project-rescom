@@ -22,7 +22,6 @@ export const CREATE_MESSAGES = {
   titleTooLong: (max: number) => `Tiêu đề tối đa ${max} ký tự.`,
   descriptionTooLong: (max: number) => `Mô tả tối đa ${max} ký tự.`,
   durationRequired: "Chọn thời gian làm ước tính.",
-  criteriaRequired: "Chọn ít nhất 1 tiêu chí.",
   ageIncomplete: "Nhập đủ tuổi từ và đến.",
   ageOutOfRange: "Độ tuổi phải là số nguyên từ 13 đến 100.",
   ageOrder: "Tuổi bắt đầu phải nhỏ hơn hoặc bằng tuổi kết thúc.",

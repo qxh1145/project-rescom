@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Select } from "@/components/ui/Select";
 import { fieldClassName } from "@/components/ui/TextField";
 import { ToggleChip } from "@/components/ui/ToggleChip";
@@ -14,7 +15,9 @@ import {
   LOCATION_CHOICES,
   SCHOOL_CHOICES,
   SCHOOL_TARGETING_SUPPORTED,
+  criteriaCount,
   criteriaSummary,
+  toTargetingJson,
   type GoogleFormWizardDraft,
   type WizardErrors,
 } from "@/lib/forms/create-wizard";
@@ -34,8 +37,28 @@ const NOT_SUPPORTED_NOTE = SCHOOL_TARGETING_SUPPORTED
   : "Chưa hỗ trợ lọc theo trường, thu nhập và sở thích.";
 
 /** Figma 9b "Bước 2 · đối tượng" (63:266 desktop, 63:1161 mobile) → `surveyTargetingSchema`. */
+const NO_CRITERIA: Partial<GoogleFormWizardDraft> = {
+  gender: "ALL",
+  ageMin: "",
+  ageMax: "",
+  fieldsOfStudy: [],
+  school: "",
+  location: "",
+};
+
+type AudienceMode = "all" | "custom";
+
 export function AudienceStep({ draft, errors, update, estimate }: AudienceStepProps) {
   const [showAllFields, setShowAllFields] = useState(false);
+  // UI-only: "custom" with nothing picked is still `{}` (everyone).
+  const [mode, setMode] = useState<AudienceMode>(() =>
+    criteriaCount(toTargetingJson(draft)) === 0 && !draft.school ? "all" : "custom",
+  );
+
+  function changeMode(next: AudienceMode) {
+    setMode(next);
+    if (next === "all") update(NO_CRITERIA);
+  }
 
   function toggleField(field: string, selected: boolean) {
     update({
@@ -47,16 +70,24 @@ export function AudienceStep({ draft, errors, update, estimate }: AudienceStepPr
 
   return (
     <div className="flex flex-col gap-6">
-      <p className="text-body-sm text-ink-muted lg:hidden">
-        Chọn ít nhất 1 tiêu chí. Chỉ người có hồ sơ phù hợp mới thấy khảo sát của bạn.
+      <SegmentedControl
+        label="Đối tượng khảo sát"
+        segments={[
+          { value: "all", label: "Tất cả người dùng" },
+          { value: "custom", label: "Chọn đối tượng" },
+        ]}
+        value={mode}
+        onChange={changeMode}
+        fullWidth
+        className="lg:w-auto"
+      />
+      <p className="text-body-sm text-ink-muted">
+        {mode === "all"
+          ? "Khảo sát hiển thị với mọi người dùng trên Marketplace."
+          : "Chỉ người có hồ sơ phù hợp mới thấy khảo sát của bạn."}
       </p>
-      {errors.criteria ? (
-        <p role="alert" className="text-caption text-danger">
-          {errors.criteria}
-        </p>
-      ) : null}
 
-      <div className="grid gap-x-6 gap-y-6 lg:grid-cols-2">
+      <div className={mode === "all" ? "hidden" : "grid gap-x-6 gap-y-6 lg:grid-cols-2"}>
         <fieldset className="order-1 lg:order-none">
           <legend className="mb-2.5 text-label font-semibold text-ink">Giới tính</legend>
           {/* Mobile: 40px pills; desktop: 48px buttons (Figma 9b). */}
