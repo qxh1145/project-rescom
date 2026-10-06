@@ -9,8 +9,8 @@ import type { Gender } from "@rescom/schemas";
  */
 
 /**
- * Onboarding 12.4 searches every province. ASSUMED: the 63 pre-2025 provinces,
- * the naming Figma uses ("Thừa Thiên Huế", "Quảng Nam"); stored as free text.
+ * The 34 province-level administrative units effective from 1 July 2025.
+ * Stored as free text so existing profiles with older names remain readable.
  */
 export const VIETNAM_LOCATIONS = [
   "Đà Nẵng",
@@ -18,75 +18,35 @@ export const VIETNAM_LOCATIONS = [
   "TP. Hồ Chí Minh",
   "Cần Thơ",
   "Hải Phòng",
-  "Thừa Thiên Huế",
-  "Quảng Nam",
-  "Bình Dương",
-  "Đồng Nai",
+  "Huế",
   "An Giang",
-  "Bà Rịa – Vũng Tàu",
-  "Bạc Liêu",
-  "Bắc Giang",
-  "Bắc Kạn",
   "Bắc Ninh",
-  "Bến Tre",
-  "Bình Định",
-  "Bình Phước",
-  "Bình Thuận",
   "Cà Mau",
   "Cao Bằng",
   "Đắk Lắk",
-  "Đắk Nông",
   "Điện Biên",
+  "Đồng Nai",
   "Đồng Tháp",
   "Gia Lai",
-  "Hà Giang",
-  "Hà Nam",
   "Hà Tĩnh",
-  "Hải Dương",
-  "Hậu Giang",
-  "Hòa Bình",
   "Hưng Yên",
   "Khánh Hòa",
-  "Kiên Giang",
-  "Kon Tum",
   "Lai Châu",
   "Lâm Đồng",
   "Lạng Sơn",
   "Lào Cai",
-  "Long An",
-  "Nam Định",
   "Nghệ An",
   "Ninh Bình",
-  "Ninh Thuận",
   "Phú Thọ",
-  "Phú Yên",
-  "Quảng Bình",
   "Quảng Ngãi",
   "Quảng Ninh",
   "Quảng Trị",
-  "Sóc Trăng",
   "Sơn La",
   "Tây Ninh",
-  "Thái Bình",
   "Thái Nguyên",
   "Thanh Hóa",
-  "Tiền Giang",
-  "Trà Vinh",
   "Tuyên Quang",
   "Vĩnh Long",
-  "Vĩnh Phúc",
-  "Yên Bái",
-  "Khác",
-] as const;
-
-/** Figma 12.4: shown before the user types a search. */
-export const POPULAR_LOCATIONS = [
-  "Đà Nẵng",
-  "Hà Nội",
-  "TP. Hồ Chí Minh",
-  "Thừa Thiên Huế",
-  "Quảng Nam",
-  "Khác",
 ] as const;
 
 export const FIELDS_OF_STUDY = [
@@ -101,11 +61,10 @@ export const FIELDS_OF_STUDY = [
 ] as const;
 
 export const OCCUPATIONS = [
-  "Sinh viên đại học",
-  "Học viên sau đại học",
+  "Học sinh / Sinh viên / Học viên",
   "Giảng viên / Nghiên cứu viên",
   "Nhân viên văn phòng",
-  "Lao động tự do (Freelancer)",
+  "Lao động tự do",
   "Khác",
 ] as const;
 
@@ -142,8 +101,27 @@ export const INTEREST_OPTIONS = [
   "Nghiên cứu khoa học",
 ] as const;
 
-/** Figma 12.5: these occupations also answer 12.6 (school) and 12.7 (school year). */
-export const STUDENT_OCCUPATIONS: readonly string[] = ["Sinh viên đại học", "Học viên sau đại học"];
+/** These occupations also answer the school and school-year questions. */
+export const STUDENT_OCCUPATIONS: readonly string[] = [
+  "Học sinh / Sinh viên / Học viên",
+  // Previously saved answers still need their school questions when edited.
+  "Sinh viên đại học",
+  "Học viên sau đại học",
+];
+
+/** Universities with a campus in Đà Nẵng, for the onboarding school question. */
+export const DANANG_UNIVERSITY_OPTIONS = [
+  "Trường Đại học FPT – Đà Nẵng",
+  "Trường Đại học Bách khoa – Đại học Đà Nẵng",
+  "Trường Đại học Kinh tế – Đại học Đà Nẵng",
+  "Trường Đại học Sư phạm – Đại học Đà Nẵng",
+  "Trường Đại học Ngoại ngữ – Đại học Đà Nẵng",
+  "Trường Đại học Sư phạm Kỹ thuật – Đại học Đà Nẵng",
+  "Trường Đại học Công nghệ Thông tin và Truyền thông Việt - Hàn – Đại học Đà Nẵng",
+  "Trường Đại học Duy Tân",
+  "Trường Đại học Đông Á",
+  "Trường Đại học Kiến trúc Đà Nẵng",
+] as const;
 
 /**
  * Figma 12.6 draws the four FPT campuses for the query "FPT". ASSUMED (design): the

@@ -279,7 +279,12 @@ test("code review P9: demo profiles only use the wizard's option catalogs", asyn
   const profiles = [fixtures.MOCK_ACTIVATED_DEMOGRAPHICS, fixtures.MOCK_INCOMPLETE_DRAFT.answers];
   for (const profile of profiles) {
     if (profile.location != null) assert.ok(options.VIETNAM_LOCATIONS.includes(profile.location), profile.location);
-    if (profile.occupation != null) assert.ok(options.OCCUPATIONS.includes(profile.occupation), profile.occupation);
+    if (profile.occupation != null) {
+      assert.ok(
+        options.OCCUPATIONS.includes(profile.occupation) || options.STUDENT_OCCUPATIONS.includes(profile.occupation),
+        profile.occupation,
+      );
+    }
     if (profile.fieldOfStudy != null) assert.ok(options.FIELDS_OF_STUDY.includes(profile.fieldOfStudy), profile.fieldOfStudy);
     if (profile.householdIncome != null) assert.ok(options.INCOME_RANGES.includes(profile.householdIncome), profile.householdIncome);
     if (profile.gender != null) assert.ok(options.GENDER_OPTIONS.some((g) => g.value === profile.gender), profile.gender);

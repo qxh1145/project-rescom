@@ -7,12 +7,11 @@ import { Icon } from "@/components/ui/Icon";
 import { Spinner } from "@/components/ui/Spinner";
 import {
   FIELDS_OF_STUDY,
+  DANANG_UNIVERSITY_OPTIONS,
   GENDER_OPTIONS,
   INCOME_RANGES,
   INTEREST_OPTIONS,
   OCCUPATIONS,
-  POPULAR_LOCATIONS,
-  SCHOOL_OPTIONS,
   SCHOOL_YEAR_OPTIONS,
   VIETNAM_LOCATIONS,
   withSavedOption,
@@ -157,17 +156,20 @@ function QuestionScreen({ step, flow }: { step: QuestionStep; flow: Flow }) {
       break;
     case "location":
       content = (
-        <SearchableChoice
-          name="onboarding-location"
-          labelledBy={titleId}
-          errorId={errorId}
-          catalog={VIETNAM_LOCATIONS}
-          popular={POPULAR_LOCATIONS}
-          value={answers.location}
-          onChange={(location) => setAnswers({ location })}
-          searchLabel="Tìm tỉnh/thành"
-          layout="grid"
-        />
+        <select
+          id="onboarding-location"
+          aria-labelledby={titleId}
+          aria-describedby={errorId}
+          aria-invalid={errorId ? true : undefined}
+          value={answers.location ?? ""}
+          onChange={(event) => setAnswers({ location: event.target.value })}
+          className="h-14 w-full rounded-control border border-line-strong bg-surface px-4 text-button text-ink focus:border-primary focus:outline-none"
+        >
+          <option value="" disabled>Chọn tỉnh/thành phố</option>
+          {withSavedOption(VIETNAM_LOCATIONS, answers.location).map((location) => (
+            <option key={location} value={location}>{location}</option>
+          ))}
+        </select>
       );
       break;
     case "occupation":
@@ -188,8 +190,8 @@ function QuestionScreen({ step, flow }: { step: QuestionStep; flow: Flow }) {
           name="onboarding-school"
           labelledBy={titleId}
           errorId={errorId}
-          catalog={SCHOOL_OPTIONS}
-          popular={SCHOOL_OPTIONS.slice(0, 4)}
+          catalog={DANANG_UNIVERSITY_OPTIONS}
+          popular={DANANG_UNIVERSITY_OPTIONS}
           value={answers.school}
           onChange={(school) => setAnswers({ school })}
           searchLabel="Tìm trường"
