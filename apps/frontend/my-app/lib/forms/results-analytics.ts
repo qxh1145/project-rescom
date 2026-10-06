@@ -52,7 +52,7 @@ export function formatPercent(value: number): string {
 
 /** Average / median: "4,1"; null → "—". */
 export function formatStat(value: number | null): string {
-  return value === null ? "—" : STAT_FORMAT.format(Math.round(value * 10) / 10);
+  return value === null ? "Chưa có" : STAT_FORMAT.format(Math.round(value * 10) / 10);
 }
 
 /** "321 câu trả lời". */
@@ -222,7 +222,7 @@ export function statItems(question: Pick<QuestionAnalytics, "summary" | "answere
       return [
         {
           label: "Trung bình",
-          value: summary.average === null ? "—" : `${formatStat(summary.average)} / ${formatCount(summary.max)}`,
+          value: summary.average === null ? "Chưa có" : `${formatStat(summary.average)} / ${formatCount(summary.max)}`,
         },
         { label: "Trung vị", value: formatStat(summary.median) },
         { label: "Tổng", value: formatCount(question.answeredCount) },

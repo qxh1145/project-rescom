@@ -114,7 +114,7 @@ export function completionCodeLine(code: string): string {
 /** "Sửa & gửi lại" (`?from=<id>`): the wizard was filled from the rejected survey. */
 export const PREFILL_MESSAGES = {
   filled: (title: string) =>
-    `Đã điền sẵn thông tin từ “${title}”. Sửa theo góp ý của Admin rồi gửi duyệt — Rescom tạo một khảo sát mới, khảo sát cũ giữ nguyên.`,
+    `Đã điền sẵn thông tin từ “${title}”. Sửa theo góp ý của Admin rồi gửi duyệt: Rescom tạo một khảo sát mới, khảo sát cũ giữ nguyên.`,
   replacedDraft: "Bản nháp Google Forms bạn đang soạn dở đã được thay bằng thông tin này.",
   notGoogleForms: "Khảo sát này tạo bằng Form Builder nên không điền sẵn vào mẫu Google Forms được.",
 } as const;

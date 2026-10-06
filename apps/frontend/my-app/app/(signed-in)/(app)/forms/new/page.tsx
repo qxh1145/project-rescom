@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ChooseMethodScreen } from "./components/ChooseMethodScreen";
 
 export const metadata: Metadata = {
-  title: "Tạo khảo sát — Rescom",
+  title: "Tạo khảo sát | Rescom",
 };
 
 /**

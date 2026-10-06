@@ -5,7 +5,7 @@ import { PILOT_BUILD } from "@/lib/pilot-scope";
 import { ExportDialog } from "./components/ExportDialog";
 
 export const metadata: Metadata = {
-  title: "Xuất câu trả lời — Rescom",
+  title: "Xuất câu trả lời | Rescom",
 };
 
 /**

@@ -24,7 +24,7 @@ const ACTION_MESSAGES: Record<string, string> = {
   CANNOT_DEMOTE_SELF: "Admin không thể tự đổi vai trò của mình.",
   CANNOT_DEMOTE_LAST_ADMIN: "Không thể hạ vai trò của Admin duy nhất còn hoạt động.",
   USER_ADMIN_ACTOR_NOT_ACTIVE_ADMIN: "Tài khoản của bạn không còn quyền Admin. Hãy đăng nhập lại.",
-  USER_NOT_FOUND: "Không tìm thấy người dùng này — có thể đã bị xoá.",
+  USER_NOT_FOUND: "Không tìm thấy người dùng này. Có thể tài khoản đã bị xoá.",
   VALIDATION_ERROR: "Thông tin gửi đi chưa hợp lệ. Kiểm tra lại rồi thử lại.",
 };
 

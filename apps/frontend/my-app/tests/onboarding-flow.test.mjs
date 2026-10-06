@@ -10,7 +10,7 @@ const { submitOnboarding, saveProfileExtras, isProfileSaveFailure, profileFixSte
 const { profileNotSavedMessage } = await import("../lib/onboarding/onboarding-messages.ts");
 const { searchOptions, foldVietnamese } = await import("../lib/onboarding/option-search.ts");
 const { resolvePostOnboardingPath } = await import("../lib/onboarding.ts");
-const { SCHOOL_YEAR_OPTIONS, VIETNAM_LOCATIONS, OCCUPATIONS, DANANG_UNIVERSITY_OPTIONS, ONBOARDING_GENDER_OPTIONS } = await import("../lib/demographic-options.ts");
+const { SCHOOL_YEAR_OPTIONS, VIETNAM_LOCATIONS, OCCUPATIONS, DANANG_UNIVERSITY_OPTIONS, ONBOARDING_GENDER_OPTIONS, displaySchoolName } = await import("../lib/demographic-options.ts");
 const { ApiError } = await import("../lib/api/api-error.ts");
 const { SCHOOL_YEAR_VALUES, submitDemographicSurveySchema, updateUserProfileSchema, userProfileSchema } = await import(
   "@rescom/schemas"
@@ -70,6 +70,7 @@ test("onboarding catalogs contain 34 current provinces, five occupations and Đ�
   assert.ok(DANANG_UNIVERSITY_OPTIONS.includes("Trường Đại học Ngoại ngữ – Đại học Đà Nẵng"));
   assert.ok(DANANG_UNIVERSITY_OPTIONS.includes("Trường Đại học Đông Á"));
   assert.ok(!DANANG_UNIVERSITY_OPTIONS.some((school) => school.includes("Hà Nội")));
+  assert.equal(displaySchoolName("Trường Đại học FPT – Đà Nẵng"), "Trường Đại học FPT, Đà Nẵng");
 });
 
 test("step position: part and 'câu x/y' as drawn in Figma", () => {

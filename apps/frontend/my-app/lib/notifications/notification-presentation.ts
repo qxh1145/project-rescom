@@ -107,10 +107,18 @@ const WARNING_TITLES: Record<WarningTopic, string> = {
 /** Title of a type added by a newer backend. */
 export const FALLBACK_NOTIFICATION_TITLE = "Thông báo mới";
 
-/** "Title — body" (Figma / mock copy) → both parts; otherwise the whole text is the title. */
+/** Split old mock notifications and current title/body copy without splitting backend reasons. */
 export function splitNotificationMessage(message: string): { title: string; body: string | null } {
-  const [title, ...rest] = message.split(" — ");
-  return { title, body: rest.length ? rest.join(" — ") : null };
+  const legacySeparator = message.indexOf(" — ");
+  if (legacySeparator >= 0) {
+    return { title: message.slice(0, legacySeparator), body: message.slice(legacySeparator + 3) };
+  }
+  const colon = message.indexOf(": ");
+  const title = colon >= 0 ? message.slice(0, colon) : "";
+  if (colon >= 0 && title.length <= 48 && /(điểm|khảo sát|tài khoản|yêu cầu|nạp|câu trả lời|khiếu nại|giới hạn)/i.test(title)) {
+    return { title, body: message.slice(colon + 2) };
+  }
+  return { title: message, body: null };
 }
 
 /**

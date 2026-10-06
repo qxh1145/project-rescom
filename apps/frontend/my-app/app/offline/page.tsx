@@ -3,7 +3,7 @@ import { firstParam, resolveReturnPath } from "@/lib/feedback/error-pages";
 import { OfflineScreen } from "./components/OfflineScreen";
 
 export const metadata: Metadata = {
-  title: "Mất kết nối — Rescom",
+  title: "Mất kết nối | Rescom",
 };
 
 interface OfflinePageProps {

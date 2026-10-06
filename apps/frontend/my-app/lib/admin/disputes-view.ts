@@ -342,7 +342,7 @@ export function sideNoteOf(kind: DisputeCaseKind): string {
 export function validateDecisionNote(note: string): string | null {
   const length = note.trim().length;
   if (length < DECISION_NOTE_MIN) {
-    return `Nhập lý do ít nhất ${DECISION_NOTE_MIN} ký tự — lý do được gửi cho cả hai bên.`;
+    return `Nhập lý do ít nhất ${DECISION_NOTE_MIN} ký tự: lý do được gửi cho cả hai bên.`;
   }
   if (length > DECISION_NOTE_MAX) return `Lý do tối đa ${DECISION_NOTE_MAX} ký tự.`;
   return null;

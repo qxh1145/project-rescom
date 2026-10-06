@@ -385,14 +385,14 @@ export function PublishScreen() {
             {showDurationHint ? (
               <>
                 <p className="mt-1.5 text-body-sm text-ink-muted">
-                  Giá gợi ý <b className="text-tone-green-fg">{hint.label}</b> cho khoảng {durationRaw || summary.minutes} phút — người làm nhận đủ số điểm này.
+                  Giá gợi ý <b className="text-tone-green-fg">{hint.label}</b> cho khoảng {durationRaw || summary.minutes} phút: người làm nhận đủ số điểm này.
                 </p>
                 <p className="mt-0.5 text-body-sm text-ink-muted">
                   Nhờ ưu đãi form tạo trong Rescom, <b className="text-ink">{hint.paidLabel}</b> (rẻ hơn 20% so với Google Forms).
                 </p>
               </>
             ) : (
-              <p className="mt-1.5 text-body-sm text-ink-muted">Nhập thời lượng từ 1–{MAX_PUBLISHABLE_DURATION_MINUTES} phút để xem giá gợi ý.</p>
+              <p className="mt-1.5 text-body-sm text-ink-muted">Nhập thời lượng từ 1 đến {MAX_PUBLISHABLE_DURATION_MINUTES} phút để xem giá gợi ý.</p>
             )}
             <div className="mt-4 flex flex-col gap-4">
               <TextField id="pub-completions" label="Số mẫu cần thu" inputMode="numeric" value={values.expectedCompletions} onChange={setValue("expectedCompletions")} error={errors.expectedCompletions} />
@@ -435,7 +435,7 @@ export function PublishScreen() {
             <dl className="mt-5 flex flex-col gap-2 rounded-[14px] bg-surface-muted p-4 text-body-sm">
               <div className="flex justify-between">
                 <dt className="text-ink-muted">{reversioned ? "Ký quỹ tối đa" : "Ký quỹ dự kiến"}</dt>
-                <dd className="font-bold text-ink">{escrow !== null ? `${escrow} điểm` : "—"}</dd>
+                <dd className="font-bold text-ink">{escrow !== null ? `${escrow} điểm` : "Chưa có"}</dd>
               </div>
               {reversioned ? (
                 <p className="text-[12px] text-ink-muted">
@@ -451,7 +451,7 @@ export function PublishScreen() {
               ) : null}
               <div className="flex justify-between">
                 <dt className="text-ink-muted">Điểm khả dụng của bạn</dt>
-                <dd className="font-bold text-ink">{balance ? `${balance.available} điểm` : "—"}</dd>
+                <dd className="font-bold text-ink">{balance ? `${balance.available} điểm` : "Chưa có"}</dd>
               </div>
             </dl>
             {balance && escrow !== null && escrow > balance.available ? (

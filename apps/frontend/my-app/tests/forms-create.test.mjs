@@ -120,11 +120,11 @@ test("Google Forms wizard · step 2 targeting (Figma 9b)", async (t) => {
     const withSchool = draft({ school: "Trường Đại học FPT – Đà Nẵng", locations: ["Đà Nẵng"] });
     assert.deepEqual(wizard.criteriaSummary(withSchool), [
       { label: "Giới tính", value: "Tất cả" },
-      { label: "Tuổi", value: "18 – 25" },
+      { label: "Tuổi", value: "18 đến 25" },
       { label: "Ngành", value: "2 ngành" },
       { label: "Khu vực", value: "Đà Nẵng" },
     ]);
-    assert.equal(wizard.audienceSummaryLine(withSchool), "18–25 tuổi · 2 ngành · Đà Nẵng");
+    assert.equal(wizard.audienceSummaryLine(withSchool), "18 đến 25 tuổi · 2 ngành · Đà Nẵng");
   });
 });
 
@@ -228,9 +228,10 @@ test("Google Forms wizard · request and storage", async (t) => {
     const multi = draft({ locations: ["Đà Nẵng", "Hà Nội"] });
     assert.deepEqual(wizard.toTargetingJson(multi).locations, ["Đà Nẵng", "Hà Nội"]);
     assert.equal(wizard.criteriaSummary(multi).at(-1).value, "2 khu vực");
-    assert.equal(wizard.audienceSummaryLine(multi), "18–25 tuổi · 2 ngành · 2 khu vực");
+    assert.equal(wizard.audienceSummaryLine(multi), "18 đến 25 tuổi · 2 ngành · 2 khu vực");
     const local = memoryStorage();
     const { locations, ...legacy } = draft();
+    void locations;
     local.setItem("rescom:create-gform-draft:old", JSON.stringify({ ...legacy, location: "Huế" }));
     assert.deepEqual(storage.loadWizardDraft(local, "old").locations, ["Huế"]);
     local.setItem("rescom:create-gform-draft:none", JSON.stringify({ ...legacy, location: "" }));

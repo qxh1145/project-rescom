@@ -377,15 +377,15 @@ export function decideQualityReview(
     notify(
       respondent.id,
       "WARNING",
-      `Câu trả lời chưa được tính điểm — Câu trả lời cho “${title}” chưa đạt yêu cầu chất lượng: ${reason}. ${settled.amount} điểm đang giữ đã được hoàn cho khảo sát. Bạn có thể khiếu nại nếu thấy chưa đúng.`,
+      `Câu trả lời chưa được tính điểm: Câu trả lời cho “${title}” chưa đạt yêu cầu chất lượng: ${reason}. ${settled.amount} điểm đang giữ đã được hoàn cho khảo sát. Bạn có thể khiếu nại nếu thấy chưa đúng.`,
     );
   } else {
-    notify(respondent.id, "REWARD_RELEASED", `+${settled.amount} điểm vào Khả dụng — Câu trả lời cho “${title}” đã được xét xong.`);
+    notify(respondent.id, "REWARD_RELEASED", `+${settled.amount} điểm vào Khả dụng: Câu trả lời cho “${title}” đã được xét xong.`);
     if (settled.activated) {
       notify(
         respondent.id,
         "ACCOUNT_ACTIVATED",
-        "Tài khoản đã kích hoạt — 100 điểm khởi đầu đã mở khoá. Bạn có thể dùng để đăng khảo sát.",
+        "Tài khoản đã kích hoạt: 100 điểm khởi đầu đã mở khoá. Bạn có thể dùng để đăng khảo sát.",
       );
     }
   }

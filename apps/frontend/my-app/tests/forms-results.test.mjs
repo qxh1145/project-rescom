@@ -168,10 +168,10 @@ test("answer formatting (detail, table, mobile summary)", () => {
   assert.equal(view.answerText(q3, "1,5–2,5 triệu đồng"), "1,5–2,5 triệu đồng");
   assert.equal(view.answerCompact(q3, "1,5–2,5 triệu đồng"), "1,5–2,5 triệu");
   assert.equal(view.answerCompact(q5, 3), "3/5");
-  assert.equal(view.answerCompact(q4, []), "—");
+  assert.equal(view.answerCompact(q4, []), "Chưa có");
   assert.deepEqual(view.answerChoices(q4, ["Giá thuê", "An ninh"]), ["Giá thuê", "An ninh"]);
   assert.equal(view.responseSummary(DATA.responses[1], [q1, q3, q5]), "Ký túc xá · dưới 1,5 triệu · mức hài lòng 4/5");
-  assert.equal(view.questionKindLabel(q5), "thang 1–5");
+  assert.equal(view.questionKindLabel(q5), "thang 1 đến 5");
   assert.equal(view.questionKindLabel(q1), null);
 });
 
@@ -179,10 +179,10 @@ test("durations, including an unknown (null) one", () => {
   assert.equal(view.formatDurationShort(348), "5p 48s");
   assert.equal(view.formatDurationShort(425), "7p 05s");
   assert.equal(view.formatDurationShort(45), "45s");
-  assert.equal(view.formatDurationShort(null), "—");
+  assert.equal(view.formatDurationShort(null), "Chưa có");
   assert.equal(view.formatDurationLong(362), "6 phút 02 giây");
   assert.equal(view.formatDurationLong(300), "5 phút");
-  assert.equal(view.formatDurationLong(null), "—");
+  assert.equal(view.formatDurationLong(null), "Chưa có");
   assert.equal(view.formatSubmittedAt("2026-09-22T14:14:00Z"), "22/09 21:14");
 });
 

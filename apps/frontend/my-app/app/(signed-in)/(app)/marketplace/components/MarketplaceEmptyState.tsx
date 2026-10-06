@@ -15,7 +15,7 @@ export function MarketplaceEmptyState({ availablePoints }: { availablePoints: nu
         Chưa có khảo sát phù hợp với bạn
       </h1>
       <p className="mt-4 text-body-relaxed text-ink-muted">
-        Bạn đã làm hết khảo sát đang mở cho hồ sơ của mình. Khảo sát mới được duyệt mỗi ngày — Rescom sẽ báo khi có.
+        Bạn đã làm hết khảo sát đang mở cho hồ sơ của mình. Khảo sát mới được duyệt mỗi ngày: Rescom sẽ báo khi có.
       </p>
       <div className="mt-6 flex w-full flex-col gap-2.5">
         <Link href="/account/profile" className={buttonClassName({ size: "lg", fullWidth: true })}>

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { GoogleFormAttempt } from "./components/GoogleFormAttempt";
 
 export const metadata: Metadata = {
-  title: "Khảo sát Google Forms — Rescom",
+  title: "Khảo sát Google Forms | Rescom",
 };
 
 /**

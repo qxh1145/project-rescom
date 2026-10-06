@@ -6,7 +6,7 @@ import { AuthSplitLayout } from "../login/components/AuthSplitLayout";
 import { RegisterPanel } from "./components/RegisterPanel";
 
 export const metadata: Metadata = {
-  title: "Tạo tài khoản — Rescom",
+  title: "Tạo tài khoản | Rescom",
 };
 
 /** Keeps the card footprint while search params resolve on the client. */

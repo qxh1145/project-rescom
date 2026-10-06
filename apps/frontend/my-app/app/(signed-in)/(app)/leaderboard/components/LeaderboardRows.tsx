@@ -19,7 +19,7 @@ function RankBadge({ rank, me = false }: { rank: number | null; me?: boolean }) 
       ].join(" ")}
     >
       <span className="sr-only">Hạng </span>
-      {rank ?? "–"}
+      {rank ?? "?"}
     </span>
   );
 }

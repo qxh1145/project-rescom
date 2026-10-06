@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { StartSurveyScreen } from "./components/StartSurveyScreen";
 
 export const metadata: Metadata = {
-  title: "Trước khi bắt đầu — Rescom",
+  title: "Trước khi bắt đầu | Rescom",
 };
 
 /**

@@ -3,7 +3,7 @@ import { ServerErrorScreen } from "@/components/feedback/ServerErrorScreen";
 import { firstParam, resolveReturnPath } from "@/lib/feedback/error-pages";
 
 export const metadata: Metadata = {
-  title: "Lỗi máy chủ — Rescom",
+  title: "Lỗi máy chủ | Rescom",
 };
 
 interface ServerErrorPageProps {

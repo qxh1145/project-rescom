@@ -42,7 +42,7 @@ test("Decision E6-D2: FR-14 pricing band hints for the builder and the External 
       [15, 25, 15],
     );
     assert.match(tooHigh.message, /từ 15 đến 25 điểm/);
-    assert.match(tooHigh.message, /10–15 phút/);
+    assert.match(tooHigh.message, /10 đến 15 phút/);
 
     const tooLow = describePricingBand({
       type: "INTERNAL",
@@ -61,8 +61,8 @@ test("Decision E6-D2: FR-14 pricing band hints for the builder and the External 
     });
     assert.equal(hint.blocksPublish, false);
     assert.equal(hint.tone, "info");
-    assert.match(hint.message, /trên 15 phút: 20–40 điểm/);
-    assert.equal(durationBandLabel("5–10 min"), "5–10 phút");
+    assert.match(hint.message, /trên 15 phút: 20 đến 40 điểm/);
+    assert.equal(durationBandLabel("5–10 min"), "5 đến 10 phút");
   });
 
   await t.test("follows the backend effective duration when the definition is given (review F5)", () => {

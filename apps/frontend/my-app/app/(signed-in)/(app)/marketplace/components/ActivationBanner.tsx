@@ -41,7 +41,7 @@ export function ActivationBanner({ view }: { view: VisibleActivation }) {
         <h2 id="activation-title" className="mt-2 text-[17px] font-extrabold leading-[23px] lg:mt-2.5 lg:text-[24px] lg:leading-normal lg:tracking-[-0.2px]">
           {waiting ? (
             // ASSUMED (design) copy: Google Forms completion under its 48h review (not drawn).
-            <>Khảo sát đầu tiên đang được đối soát — {view.amount} điểm sẽ mở khoá khi xác nhận</>
+            <>Khảo sát đầu tiên đang được đối soát: {view.amount} điểm sẽ mở khoá khi xác nhận</>
           ) : (
             <>
               Làm 1 khảo sát bất kỳ để mở khoá {view.amount} điểm<span className="hidden lg:inline"> khởi đầu</span>

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SubmittedScreen } from "./components/SubmittedScreen";
 
 export const metadata: Metadata = {
-  title: "Đã gửi khảo sát — Rescom",
+  title: "Đã gửi khảo sát | Rescom",
 };
 
 /**

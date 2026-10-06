@@ -1,4 +1,4 @@
-import { GENDER_OPTIONS } from "../demographic-options.ts";
+import { displaySchoolName, GENDER_OPTIONS } from "../demographic-options.ts";
 import type { EngagementSummary } from "../engagement/engagement-service.ts";
 import { nextTierProgress, tierOf } from "../engagement/tiers.ts";
 import {
@@ -48,7 +48,7 @@ export function profileFieldGroups(answers: OnboardingAnswers, currentYear: numb
   const study: ProfileField[] = [{ label: "Nghề nghiệp", value: or(answers.occupation), step: "occupation" }];
   if (student) {
     study.push(
-      { label: "Trường", value: or(answers.school), step: "school" },
+      { label: "Trường", value: answers.school ? displaySchoolName(answers.school) : EMPTY_FIELD_VALUE, step: "school" },
       { label: "Năm học", value: or(answers.schoolYear), step: "school-year" },
     );
   }

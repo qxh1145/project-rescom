@@ -216,7 +216,7 @@ function DecisionSummary({ survey }: { survey: ModerationPreview }) {
     text = `Đã duyệt lúc ${formatShortDateTime(decision.decidedAt)}.`;
   } else if (decision?.outcome === "REJECTED") {
     const refund = decision.refundAmount > 0 ? ` Đã hoàn ${decision.refundAmount} điểm ký quỹ.` : "";
-    text = `Đã từ chối lúc ${formatShortDateTime(decision.decidedAt)}. Lý do: ${decision.reason ?? "—"}.${refund}`;
+    text = `Đã từ chối lúc ${formatShortDateTime(decision.decidedAt)}. Lý do: ${decision.reason ?? "Chưa có"}.${refund}`;
   }
   return (
     <Alert tone="info" className="mt-5">

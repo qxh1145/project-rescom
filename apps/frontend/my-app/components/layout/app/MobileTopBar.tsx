@@ -21,7 +21,7 @@ export function MobileBrandBar() {
   return (
     <header className={BAR}>
       <div className="flex h-15 items-center gap-2.5 px-5">
-        <Link href="/marketplace" aria-label="Rescom — Khám phá" className="mr-auto">
+        <Link href="/marketplace" aria-label="Rescom: Khám phá" className="mr-auto">
           <RescomLogo size="sm" />
         </Link>
         <PointsChip variant="mobile" />

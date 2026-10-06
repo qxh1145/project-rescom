@@ -69,7 +69,7 @@ function QrPlaceholder() {
   return (
     <div
       role="img"
-      aria-label="Mã VietQR (chưa hiển thị — chuyển thủ công theo thông tin bên cạnh)"
+      aria-label="Mã VietQR (chưa hiển thị: chuyển thủ công theo thông tin bên cạnh)"
       className="flex size-[170px] items-center justify-center rounded-control border border-dashed border-line-strong bg-surface-subtle text-caption text-ink-muted"
     >
       [Mã VietQR]

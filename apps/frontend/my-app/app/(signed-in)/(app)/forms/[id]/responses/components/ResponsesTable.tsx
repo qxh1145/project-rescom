@@ -131,7 +131,7 @@ export function ResponsesTable({
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-subtle pt-3">
         <p className="text-caption text-ink-muted">
-          {page.total ? `Hiện ${page.from}–${page.to} trong ${page.total} câu trả lời` : "Không có câu trả lời phù hợp"}
+          {page.total ? `Hiện ${page.from} đến ${page.to} trong ${page.total} câu trả lời` : "Không có câu trả lời phù hợp"}
         </p>
         {page.pageCount > 1 ? (
           <nav aria-label="Phân trang" className="flex items-center gap-1.5">

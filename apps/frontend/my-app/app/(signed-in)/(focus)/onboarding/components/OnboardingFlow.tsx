@@ -8,6 +8,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import {
   FIELDS_OF_STUDY,
   DANANG_UNIVERSITY_OPTIONS,
+  displaySchoolName,
   ONBOARDING_GENDER_OPTIONS,
   INCOME_RANGES,
   INTEREST_OPTIONS,
@@ -192,6 +193,7 @@ function QuestionScreen({ step, flow }: { step: QuestionStep; flow: Flow }) {
           errorId={errorId}
           catalog={DANANG_UNIVERSITY_OPTIONS}
           popular={DANANG_UNIVERSITY_OPTIONS}
+          formatOption={displaySchoolName}
           value={answers.school}
           onChange={(school) => setAnswers({ school })}
           searchLabel="Tìm trường"

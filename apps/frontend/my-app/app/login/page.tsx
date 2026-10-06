@@ -5,7 +5,7 @@ import { AuthSplitLayout } from "./components/AuthSplitLayout";
 import { LoginPanel } from "./components/LoginPanel";
 
 export const metadata: Metadata = {
-  title: "Đăng nhập — Rescom",
+  title: "Đăng nhập | Rescom",
 };
 
 /** Keeps the panel footprint while search params resolve on the client. */

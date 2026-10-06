@@ -116,7 +116,7 @@ export function buildSurveyLayout(
 export function pageRangeLabel(page: Pick<SurveyPage, "firstNumber" | "lastNumber">, total: number): string {
   return page.firstNumber === page.lastNumber
     ? `Câu ${page.lastNumber} / ${total}`
-    : `Câu ${page.firstNumber} – ${page.lastNumber} / ${total}`;
+    : `Câu ${page.firstNumber} đến ${page.lastNumber} / ${total}`;
 }
 
 /** Desktop header "4/8 câu": questions reached so far (end of the current page). */

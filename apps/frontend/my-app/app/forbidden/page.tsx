@@ -4,7 +4,7 @@ import { ErrorScreen, errorActionClassName } from "@/components/feedback/ErrorSc
 import { SUPPORT_MAILTO } from "@/lib/feedback/error-pages";
 
 export const metadata: Metadata = {
-  title: "Không có quyền truy cập — Rescom",
+  title: "Không có quyền truy cập | Rescom",
 };
 
 /** Figma 18.5 "Không có quyền (403)" — desktop 63:4453, mobile 63:4674. `SessionGate` sends non-admins here. */

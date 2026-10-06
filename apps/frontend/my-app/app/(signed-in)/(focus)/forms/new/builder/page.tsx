@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { NewBuilderScreen } from "./components/NewBuilderScreen";
 
 export const metadata: Metadata = {
-  title: "Soạn form — Rescom",
+  title: "Soạn form | Rescom",
 };
 
 /**

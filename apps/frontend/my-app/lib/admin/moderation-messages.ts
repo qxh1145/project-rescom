@@ -50,8 +50,8 @@ export function moderationErrorMessage(error: unknown, fallback: string): string
   if (error.code === "MODERATION_ESCROW_NOT_FUNDED") {
     const shortfall = shortfallOf(error.details);
     return shortfall !== null
-      ? `Khảo sát chưa được ký quỹ đủ: còn thiếu ${shortfall} điểm. Không thể duyệt — hãy từ chối để hoàn phần ký quỹ hiện có.`
-      : "Khảo sát chưa được ký quỹ đủ. Không thể duyệt — hãy từ chối để hoàn phần ký quỹ hiện có.";
+      ? `Khảo sát chưa được ký quỹ đủ: còn thiếu ${shortfall} điểm. Không thể duyệt. Hãy từ chối để hoàn phần ký quỹ hiện có.`
+      : "Khảo sát chưa được ký quỹ đủ. Không thể duyệt. Hãy từ chối để hoàn phần ký quỹ hiện có.";
   }
   if (error.code && CODE_MESSAGES[error.code]) return CODE_MESSAGES[error.code];
   if (error.status === 403) return CODE_MESSAGES.FORBIDDEN;
@@ -72,8 +72,8 @@ export function isStaleDecisionError(error: unknown): boolean {
 export const REJECTION_DRAFT_MESSAGES: Record<RejectionDraftError, string> = {
   reasonRequired: "Chọn lý do từ chối.",
   noteRequired: "Ghi rõ lý do để người đăng biết cần sửa gì.",
-  noteTooShort: "Ghi chú quá ngắn — viết rõ hơn một chút.",
-  tooLong: "Lý do quá dài — rút gọn ghi chú.",
+  noteTooShort: "Ghi chú quá ngắn: viết rõ hơn một chút.",
+  tooLong: "Lý do quá dài: rút gọn ghi chú.",
 };
 
 /** Figma 11a checklist hint and the other reasons "Duyệt" is disabled. */
@@ -92,7 +92,7 @@ export const APPROVAL_BLOCKER_MESSAGES = {
 export function rejectionImpactWarning(survey: { isResubmission: boolean; versionNumber: number }): string | null {
   if (!survey.isResubmission) return null;
   const previous = survey.versionNumber > 1 ? ` (v${survey.versionNumber - 1})` : "";
-  return `Đây là phiên bản chỉnh sửa v${survey.versionNumber} của một khảo sát đã từng được duyệt. Từ chối sẽ đóng vĩnh viễn toàn bộ khảo sát — kể cả phiên bản đã duyệt trước đó${previous} — và người đăng không thể mở lại.`;
+  return `Đây là phiên bản chỉnh sửa v${survey.versionNumber} của một khảo sát đã từng được duyệt. Từ chối sẽ đóng vĩnh viễn toàn bộ khảo sát, kể cả phiên bản đã duyệt trước đó${previous}. Người đăng không thể mở lại.`;
 }
 
 /** ASSUMED (design) confirmation copy after a decision (not drawn in Figma). */

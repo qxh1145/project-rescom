@@ -13,7 +13,7 @@ interface RateLimitedPageProps {
 
 export async function generateMetadata({ searchParams }: RateLimitedPageProps): Promise<Metadata> {
   const reason = parseRateLimitReason(firstParam((await searchParams).reason));
-  return { title: reason === "session" ? "Quá nhiều yêu cầu — Rescom" : "Tạm dừng nhận khảo sát — Rescom" };
+  return { title: reason === "session" ? "Quá nhiều yêu cầu | Rescom" : "Tạm dừng nhận khảo sát | Rescom" };
 }
 
 /**

@@ -133,7 +133,7 @@ export function UserDetailPanel({ user, detailError, onRetryDetail, onUpdated }:
       </p>
 
       {fraudCount === undefined ? (
-        <p className="mt-3.5 text-label text-ink-muted">FraudLog: —</p>
+        <p className="mt-3.5 text-label text-ink-muted">FraudLog:,</p>
       ) : fraudCount > 0 ? (
         <Link
           href={`/admin/fraud-log?userId=${encodeURIComponent(user.id)}`}

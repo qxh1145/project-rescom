@@ -43,7 +43,7 @@ export function SurveyRunnerView({ attempt, form }: { attempt: AttemptDetails; f
       ) : null}
       {blocked ? (
         <Alert tone="info">
-          Bạn đang làm nhanh hơn thời gian tối thiểu của khảo sát. Hãy đọc lại câu trả lời — có thể nộp sau{" "}
+          Bạn đang làm nhanh hơn thời gian tối thiểu của khảo sát. Hãy đọc lại câu trả lời. Bạn có thể nộp sau{" "}
           <span aria-hidden="true">{run.barrierSeconds} giây</span>
           <span className="sr-only">khoảng {run.barrierStartSeconds} giây</span>.
         </Alert>

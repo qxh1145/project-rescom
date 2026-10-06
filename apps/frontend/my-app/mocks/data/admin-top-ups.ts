@@ -188,7 +188,7 @@ export function approveStoredTopUp(stored: StoredTopUp, adminId: string): Stored
   notify(
     stored.userId,
     "TOPUP_SUCCESS",
-    `Nạp điểm thành công — +${formatPoints(request.amount)} điểm đã vào Khả dụng. Chuyển khoản ${formatTransferReference(request.transferReference)} (${formatVnd(amountVnd)}) đã được xác nhận.`,
+    `Nạp điểm thành công: +${formatPoints(request.amount)} điểm đã vào Khả dụng. Chuyển khoản ${formatTransferReference(request.transferReference)} (${formatVnd(amountVnd)}) đã được xác nhận.`,
   );
   return updated;
 }
@@ -207,7 +207,7 @@ export function rejectStoredTopUp(stored: StoredTopUp, adminId: string, reason: 
   notify(
     stored.userId,
     "TOPUP_REJECTED",
-    `Yêu cầu nạp điểm chưa được duyệt — ${formatPoints(request.amount)} điểm, nội dung ${formatTransferReference(request.transferReference)}. Lý do: ${truncateText(reason, 300)}`,
+    `Yêu cầu nạp điểm chưa được duyệt: ${formatPoints(request.amount)} điểm, nội dung ${formatTransferReference(request.transferReference)}. Lý do: ${truncateText(reason, 300)}`,
   );
   return updated;
 }

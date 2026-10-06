@@ -81,7 +81,7 @@ function Suggestions({ quality, formId }: { quality: FormQuality; formId: string
       ) : (
         <p className="mt-3 text-body-sm text-ink-muted">
           {quality.status === "ENOUGH_DATA"
-            ? "Chưa có gợi ý nào — khảo sát đang chạy tốt."
+            ? "Chưa có gợi ý nào: khảo sát đang chạy tốt."
             : `Gợi ý sẽ có khi đủ ${quality.minimumResponses} câu trả lời.`}
         </p>
       )}

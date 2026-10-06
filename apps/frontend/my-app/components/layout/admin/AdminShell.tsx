@@ -63,7 +63,7 @@ function AdminSidebar({ counts }: { counts: AdminQueueCounts | undefined }) {
   return (
     <aside className="flex shrink-0 flex-col border-b border-line bg-surface lg:sticky lg:top-0 lg:h-dvh lg:w-70.25 lg:border-r lg:border-b-0">
       <div className="flex items-center gap-2 px-6 pt-6">
-        <Link href="/admin" aria-label="Rescom Admin — Tổng quan">
+        <Link href="/admin" aria-label="Rescom Admin: Tổng quan">
           {/* Figma logo is 26px high; `sm` (24px) is the closest shared size. */}
           <RescomLogo size="sm" />
         </Link>

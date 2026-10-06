@@ -24,6 +24,7 @@ interface SearchableChoiceProps {
   onChange: (value: string) => void;
   searchLabel: string;
   layout: "grid" | "list";
+  formatOption?: (option: string) => string;
   /** Free-text answer for values outside the catalog. */
   custom?: CustomEntry;
 }
@@ -42,6 +43,7 @@ export function SearchableChoice({
   onChange,
   searchLabel,
   layout,
+  formatOption = (option) => option,
   custom,
 }: SearchableChoiceProps) {
   const [query, setQuery] = useState("");
@@ -95,7 +97,7 @@ export function SearchableChoice({
           name={name}
           labelledBy={labelledBy}
           errorId={errorId}
-          options={shown.map((option) => ({ value: option, label: option }))}
+          options={shown.map((option) => ({ value: option, label: formatOption(option) }))}
           value={customOpen ? null : value}
           onChange={(next) => {
             setCustomOpen(false);

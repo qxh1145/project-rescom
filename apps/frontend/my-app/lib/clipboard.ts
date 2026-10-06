@@ -29,4 +29,4 @@ export async function copyTextToClipboard(
 }
 
 export const CLIPBOARD_COPY_FAILED_MESSAGE =
-  "Không thể sao chép tự động — vui lòng chọn và sao chép mã thủ công.";
+  "Không thể sao chép tự động: vui lòng chọn và sao chép mã thủ công.";

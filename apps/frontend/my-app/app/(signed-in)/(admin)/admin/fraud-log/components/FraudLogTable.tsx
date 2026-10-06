@@ -75,7 +75,7 @@ export function FraudLogTable({ items, loading }: FraudLogTableProps) {
                 </td>
                 <td className={`${CELL} text-body-sm text-ink`}>
                   <span className="block truncate" title={entry.survey?.title}>
-                    {entry.survey?.title ?? "—"}
+                    {entry.survey?.title ?? "Chưa có"}
                   </span>
                 </td>
                 <td className={`${CELL} text-body-sm text-ink-strong`}>

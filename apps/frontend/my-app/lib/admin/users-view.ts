@@ -32,7 +32,7 @@ export function userStatusView(user: Pick<AdminUserView, "status" | "activated">
  * still waiting for an Admin decision (active account); otherwise the plain count.
  */
 export function fraudCellOf(user: Pick<AdminUserView, "status" | "fraudLog">): { text: string; flagged: boolean } {
-  if (!user.fraudLog) return { text: "—", flagged: false };
+  if (!user.fraudLog) return { text: "Chưa có", flagged: false };
   const { count14d, repeated } = user.fraudLog;
   if (repeated && user.status === "ACTIVE") return { text: `${count14d} · lặp lại`, flagged: true };
   return { text: String(count14d), flagged: false };
@@ -43,14 +43,14 @@ const pad = (value: number) => String(value).padStart(2, "0");
 /** `20/09` (local time). */
 export function formatDayMonth(iso: string): string {
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return "Chưa có";
   return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}`;
 }
 
 /** `26/09 15:31` (local time). */
 export function formatDayMonthTime(iso: string): string {
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return "Chưa có";
   return `${formatDayMonth(iso)} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
@@ -89,7 +89,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 
 /** Numbers of the detail cards; "—" when the ASSUMED field is missing. */
 export function formatCount(value: number | undefined): string {
-  return value === undefined ? "—" : value.toLocaleString("vi-VN");
+  return value === undefined ? "Chưa có" : value.toLocaleString("vi-VN");
 }
 
 export const LOCK_REASON_MIN = 10;
@@ -102,7 +102,7 @@ export const LOCK_REASON_MAX = 500;
  */
 export function lockReasonError(reason: string): string | null {
   const length = reason.trim().length;
-  if (length === 0) return "Nhập lý do khoá — lý do được ghi vào nhật ký kiểm toán.";
+  if (length === 0) return "Nhập lý do khoá: lý do được ghi vào nhật ký kiểm toán.";
   if (length < LOCK_REASON_MIN) return `Lý do cần ít nhất ${LOCK_REASON_MIN} ký tự.`;
   if (length > LOCK_REASON_MAX) return `Lý do tối đa ${LOCK_REASON_MAX} ký tự.`;
   return null;
@@ -115,6 +115,6 @@ export function lockReasonError(reason: string): string | null {
 export function selfActionBlock(userId: string, actorId: string | null | undefined, action: "lock" | "role"): string | null {
   if (!actorId || userId !== actorId) return null;
   return action === "lock"
-    ? "Đây là tài khoản của bạn — Admin không thể tự khoá mình."
-    : "Đây là tài khoản của bạn — Admin không thể tự đổi vai trò của mình.";
+    ? "Đây là tài khoản của bạn: Admin không thể tự khoá mình."
+    : "Đây là tài khoản của bạn: Admin không thể tự đổi vai trò của mình.";
 }

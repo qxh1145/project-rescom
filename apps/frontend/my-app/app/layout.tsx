@@ -11,7 +11,7 @@ const beVietnamPro = Be_Vietnam_Pro({
 });
 
 export const metadata: Metadata = {
-  title: "RESCOM — Nền Tảng Trao Đổi Khảo Sát Học Thuật",
+  title: "RESCOM | Nền Tảng Trao Đổi Khảo Sát Học Thuật",
   description:
     "Nền tảng hai chiều kết nối sinh viên trao đổi khảo sát nghiên cứu học thuật dựa trên cơ chế điểm thưởng và cộng đồng tương trợ.",
 };

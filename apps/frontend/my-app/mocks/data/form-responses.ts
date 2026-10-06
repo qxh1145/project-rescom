@@ -32,11 +32,11 @@ const HOUSING = PUBLISHER_FORM_IDS.housingNearCampus;
 const READING = PUBLISHER_FORM_IDS.readingHabits;
 
 const Q1 = { tro: "Nhà trọ", ktx: "Ký túc xá", nguoiThan: "Nhà người thân", rieng: "Nhà riêng" };
-const Q2 = { duoi1: "Dưới 1 km", k13: "1–3 km", k35: "3–5 km", tren5: "Trên 5 km" };
+const Q2 = { duoi1: "Dưới 1 km", k13: "1 đến 3 km", k35: "3 đến 5 km", tren5: "Trên 5 km" };
 const Q3 = {
   duoi15: "Dưới 1,5 triệu đồng",
-  t1525: "1,5–2,5 triệu đồng",
-  t2535: "2,5–3,5 triệu đồng",
+  t1525: "1,5 đến 2,5 triệu đồng",
+  t2535: "2,5 đến 3,5 triệu đồng",
   tren35: "Trên 3,5 triệu đồng",
 };
 const Q6 = { co: "Có", khong: "Không", tuy: "Tuỳ người ở ghép" };

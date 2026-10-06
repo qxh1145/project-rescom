@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { GoogleFormWizard } from "./components/GoogleFormWizard";
 
 export const metadata: Metadata = {
-  title: "Tạo khảo sát Google Forms — Rescom",
+  title: "Tạo khảo sát Google Forms | Rescom",
 };
 
 /**

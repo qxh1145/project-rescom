@@ -158,12 +158,12 @@ function ReopenForm({
         </div>
         <div className="flex justify-between gap-3">
           <dt className="text-ink-muted">Số dư khả dụng</dt>
-          <dd className="font-bold text-ink">{balance ? `${balance.available} điểm` : "—"}</dd>
+          <dd className="font-bold text-ink">{balance ? `${balance.available} điểm` : "Chưa có"}</dd>
         </div>
         <div className="flex justify-between gap-3">
           <dt className="font-semibold text-ink">{cost.affordable ? "Còn lại" : "Còn thiếu"}</dt>
           <dd className={`font-extrabold ${cost.affordable ? "text-tone-teal-fg" : "text-danger"}`}>
-            {cost.remaining === null ? "—" : `${Math.abs(cost.remaining)} điểm`}
+            {cost.remaining === null ? "Chưa có" : `${Math.abs(cost.remaining)} điểm`}
           </dd>
         </div>
         {cost.discounted ? (

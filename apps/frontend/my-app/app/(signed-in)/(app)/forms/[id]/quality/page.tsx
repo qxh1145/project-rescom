@@ -5,7 +5,7 @@ import { PILOT_BUILD } from "@/lib/pilot-scope";
 import { QualityScreen } from "./components/QualityScreen";
 
 export const metadata: Metadata = {
-  title: "Chất lượng khảo sát — Rescom",
+  title: "Chất lượng khảo sát | Rescom",
 };
 
 /**

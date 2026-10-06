@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { FraudLogScreen } from "./components/FraudLogScreen";
 
 export const metadata: Metadata = {
-  title: "FraudLog — Rescom Admin",
+  title: "FraudLog | Rescom Admin",
 };
 
 /**

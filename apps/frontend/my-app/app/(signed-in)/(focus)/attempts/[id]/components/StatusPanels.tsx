@@ -29,7 +29,7 @@ export function SubmitFailedPanel({
         <div className="flex flex-col gap-1">
           <p className="text-body font-bold text-danger-strong">Chưa gửi được bài</p>
           <p className="text-body-sm text-ink">
-            Mất kết nối mạng. Câu trả lời của bạn vẫn được lưu trên máy — kiểm tra kết nối rồi bấm “Thử gửi lại”.
+            Mất kết nối mạng. Câu trả lời của bạn vẫn được lưu trên máy. Kiểm tra kết nối rồi bấm “Thử gửi lại”.
           </p>
         </div>
       </div>
@@ -118,7 +118,7 @@ export function FormUpdatedPanel({
           <Icon name="refresh" size={22} />
         </span>
         <h1 ref={headingRef} tabIndex={-1} className="text-[22px] font-extrabold text-ink focus:outline-none">
-          Khảo sát vừa được cập nhật — bắt đầu lại
+          Khảo sát vừa được cập nhật. Bắt đầu lại
         </h1>
         <p className="text-body-sm text-ink-muted">
           Người đăng đã sửa câu hỏi sau khi bạn bắt đầu, nên lượt làm này không nộp được nữa. Bắt đầu lại để làm theo

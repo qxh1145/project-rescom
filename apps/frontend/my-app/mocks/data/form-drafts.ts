@@ -65,7 +65,7 @@ function definition(
 
 function seed(): Record<string, MockFormDraft> {
   const blocks = [
-    choice("q-freq", "Bạn thường học nhóm bao nhiêu buổi mỗi tuần?", ["Không học nhóm", "1 buổi", "2–3 buổi", "Từ 4 buổi trở lên"]),
+    choice("q-freq", "Bạn thường học nhóm bao nhiêu buổi mỗi tuần?", ["Không học nhóm", "1 buổi", "2 đến 3 buổi", "Từ 4 buổi trở lên"]),
     choice("q-place", "Bạn hay học nhóm ở đâu?", ["Thư viện trường", "Quán cà phê", "Phòng tự học", "Online (Meet, Zoom)"], { multiple: true }),
     scale("q-help", "Học nhóm giúp bạn hiểu bài hơn đến mức nào?", "Không giúp gì", "Giúp rất nhiều"),
     stars("q-space", "Bạn chấm không gian tự học của trường mấy sao?"),
@@ -211,7 +211,7 @@ export function ensureDemoRunningForm(ownerEmail: string): void {
   const title = "Thói quen dùng thư viện của sinh viên";
   const description = "Khảo sát ngắn về cách sinh viên dùng thư viện trường. Khoảng 4 phút, câu trả lời được ẩn danh.";
   const blocks = [
-    choice("lib-freq", "Bạn đến thư viện trường bao nhiêu lần mỗi tuần?", ["Không đến", "1 lần", "2–3 lần", "Từ 4 lần trở lên"]),
+    choice("lib-freq", "Bạn đến thư viện trường bao nhiêu lần mỗi tuần?", ["Không đến", "1 lần", "2 đến 3 lần", "Từ 4 lần trở lên"]),
     choice("lib-purpose", "Bạn thường đến thư viện để làm gì?", ["Tự học", "Mượn sách", "Học nhóm", "Dùng máy tính / Wi-Fi"], {
       multiple: true,
     }),

@@ -70,8 +70,8 @@ export const OCCUPATIONS = [
 
 export const INCOME_RANGES = [
   "Dưới 5 triệu VNĐ/tháng",
-  "5 - 10 triệu VNĐ/tháng",
-  "10 - 20 triệu VNĐ/tháng",
+  "5 đến 10 triệu VNĐ/tháng",
+  "10 đến 20 triệu VNĐ/tháng",
   "Trên 20 triệu VNĐ/tháng",
   // Decision 2026-09-26: income stays required (FR-6) but is sensitive, so the
   // user may decline. Same wording as the gender opt-out. If income targeting is
@@ -149,6 +149,11 @@ export const SCHOOL_OPTIONS = [
   "Trường Đại học Cần Thơ",
   "Đại học Huế",
 ] as const;
+
+/** Keep saved school names intact while showing punctuation without dash separators. */
+export function displaySchoolName(school: string): string {
+  return school.replaceAll(" – ", ", ").replaceAll(" - ", " ");
+}
 
 /**
  * Figma 12.7. `value` is what `/users/me/profile.schoolYear` stores

@@ -18,7 +18,7 @@ export const FRAUD_LOG_LOAD_MORE_FAILED = "Không tải thêm được FraudLog.
 
 /** A bound cut the summary or the search (`truncated`): ask to narrow the filter. */
 export const FRAUD_LOG_TRUNCATED_NOTE =
-  "Kết quả quá nhiều nên phần tổng hợp chỉ tính trên các mục mới nhất — hãy thu hẹp bộ lọc (người dùng, thời gian, loại vi phạm).";
+  "Kết quả quá nhiều nên phần tổng hợp chỉ tính trên các mục mới nhất. Hãy thu hẹp bộ lọc (người dùng, thời gian, loại vi phạm).";
 
 /** "12 mục", or "10 000+ mục" when the backend count hit its cap. */
 export function fraudLogTotalText(page: { total: number; totalCapped: boolean }): string {

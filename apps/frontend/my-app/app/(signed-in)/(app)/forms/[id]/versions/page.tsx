@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { VersionsScreen } from "./components/VersionsScreen";
 
 export const metadata: Metadata = {
-  title: "Lịch sử phiên bản — Rescom",
+  title: "Lịch sử phiên bản | Rescom",
 };
 
 /**

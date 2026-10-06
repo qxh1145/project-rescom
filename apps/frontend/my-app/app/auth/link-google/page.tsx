@@ -5,7 +5,7 @@ import { AuthSplitLayout } from "../../login/components/AuthSplitLayout";
 import { LinkGooglePanel } from "./components/LinkGooglePanel";
 
 export const metadata: Metadata = {
-  title: "Liên kết tài khoản — Rescom",
+  title: "Liên kết tài khoản | Rescom",
 };
 
 /**

@@ -5,7 +5,7 @@ import { AuthSplitLayout } from "../../login/components/AuthSplitLayout";
 import { ResetLinkSentPanel } from "../components/ResetLinkSentPanel";
 
 export const metadata: Metadata = {
-  title: "Kiểm tra hộp thư — Rescom",
+  title: "Kiểm tra hộp thư | Rescom",
 };
 
 /** Figma `63:2089` "15c · Đã gửi link đặt lại · Mobile". Desktop ASSUMED (design) (split layout + card). */

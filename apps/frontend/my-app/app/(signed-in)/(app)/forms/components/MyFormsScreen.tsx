@@ -135,7 +135,7 @@ export function MyFormsScreen() {
               </div>
               <StatCard
                 label="Đang khoá ký quỹ"
-                value={stats.escrowLocked === null ? "—" : `${stats.escrowLocked} điểm`}
+                value={stats.escrowLocked === null ? "Chưa có" : `${stats.escrowLocked} điểm`}
                 accent
               />
               <StatCard label="Tổng lượt hoàn thành" value={String(stats.completed)} />

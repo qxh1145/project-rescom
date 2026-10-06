@@ -22,8 +22,8 @@ export interface PricingBandHint {
 
 const DURATION_BAND_LABELS: Record<RewardPricingRange["durationBand"], string> = {
   "< 5 min": "dưới 5 phút",
-  "5–10 min": "5–10 phút",
-  "10–15 min": "10–15 phút",
+  "5–10 min": "5 đến 10 phút",
+  "10–15 min": "10 đến 15 phút",
   "> 15 min": "trên 15 phút",
 };
 
@@ -79,7 +79,7 @@ export function describePricingBand(input: {
     case "WITHIN_BAND":
       return {
         tone: "info",
-        message: `Khung giá thưởng cho ${durationBandLabel(check.range.durationBand)}: ${check.range.min}–${check.range.max} điểm (gợi ý: ${check.range.suggested}).`,
+        message: `Khung giá thưởng cho ${durationBandLabel(check.range.durationBand)}: ${check.range.min} đến ${check.range.max} điểm (gợi ý: ${check.range.suggested}).`,
         blocksPublish: false,
         range: check.range,
       };

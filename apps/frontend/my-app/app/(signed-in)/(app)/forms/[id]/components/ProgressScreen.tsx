@@ -53,7 +53,7 @@ function deadlineFacts(form: PublisherForm, view: PublisherStatusView, now: numb
     return { value: "Đã kết thúc", sub: form.closedAt ? `Ngày ${formatFullDate(form.closedAt)}` : "", short: "Đã kết thúc" };
   }
   const days = daysUntil(form.deadlineAt, now);
-  if (days === null) return { value: "—", sub: "Không đặt hạn", short: null };
+  if (days === null) return { value: "Chưa có", sub: "Không đặt hạn", short: null };
   return {
     value: `${days} ngày`,
     sub: `Đến ${formatFullDate(form.deadlineAt)}`,

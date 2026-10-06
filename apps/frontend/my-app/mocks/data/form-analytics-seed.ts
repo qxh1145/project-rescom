@@ -91,7 +91,7 @@ const define = (raw: FormBlockInput[]): FormBlock[] => formBlockSchema.array().p
 
 export const RX = {
   gender: ["Nam", "Nữ", "Khác"],
-  age: ["Dưới 18", "18–24", "25–34", "35–44", "45+"],
+  age: ["Dưới 18", "18 đến 24", "25 đến 34", "35 đến 44", "45+"],
   platforms: ["Facebook", "TikTok", "Instagram", "YouTube", "Zalo"],
   redeemed: ["Có", "Không"],
   channels: [
@@ -157,7 +157,7 @@ export const GROUP_STUDY_BLOCKS = define([
     type: "single_choice",
     title: "Bạn thường học nhóm bao nhiêu buổi mỗi tuần?",
     required: true,
-    options: options("gs-freq", ["Không học nhóm", "1 buổi", "2–3 buổi", "Từ 4 buổi trở lên"]),
+    options: options("gs-freq", ["Không học nhóm", "1 buổi", "2 đến 3 buổi", "Từ 4 buổi trở lên"]),
   },
   {
     id: "gs-place",

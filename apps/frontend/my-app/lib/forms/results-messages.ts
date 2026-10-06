@@ -37,7 +37,7 @@ export const analyticsLoadErrorMessage = (error: unknown) => loadError(error, "t
 
 /** Empty Tóm tắt: "Sao chép liên kết khảo sát". */
 export const SURVEY_LINK_COPIED = "Đã sao chép liên kết khảo sát.";
-export const SURVEY_LINK_COPY_FAILED = "Không sao chép tự động được — hãy chọn và sao chép liên kết bên dưới.";
+export const SURVEY_LINK_COPY_FAILED = "Không sao chép tự động được. Hãy chọn và sao chép liên kết bên dưới.";
 
 /** Google Forms surveys (`NOT_APPLICABLE`): the answers stay in Google. */
 export const GOOGLE_FORMS_ANSWERS_NOTE =

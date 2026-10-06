@@ -362,7 +362,7 @@ function assertTimeBarrier(attempt: MockSurveyAttempt, survey: MockSurvey): void
       ? `, ${status.questionCount} câu hỏi × ${status.secondsPerQuestion} giây`
       : "";
   throw repositoryError(
-    `Thời gian làm bài quá ngắn (${status.elapsedSeconds}s / tối thiểu ${status.requiredSeconds}s${rule}). Hãy dành thời gian đọc kỹ từng câu hỏi — bạn có thể nộp lại sau ${status.remainingSeconds} giây nữa.`,
+    `Thời gian làm bài quá ngắn (${status.elapsedSeconds}s / tối thiểu ${status.requiredSeconds}s${rule}). Hãy dành thời gian đọc kỹ từng câu hỏi. Bạn có thể nộp lại sau ${status.remainingSeconds} giây nữa.`,
     SUBMISSION_TOO_FAST_CODE,
     details,
   );
@@ -424,7 +424,7 @@ function assertStartCapacity(userId: string, surveyId: string): void {
   throw repositoryError(
     evaluation.inProgressAttempts > 0
       ? `Bạn đã đạt giới hạn ${policy.completionLimit} khảo sát trong ${formatWaitDuration(policy.completionWindowSeconds)} (gồm ${evaluation.completionsInWindow} khảo sát đã hoàn thành và ${evaluation.inProgressAttempts} khảo sát đang làm dở). Hãy hoàn thành khảo sát đang làm, hoặc quay lại sau ${formatWaitDuration(evaluation.retryAfterSeconds)}.`
-      : `Bạn đã hoàn thành ${policy.completionLimit} khảo sát trong ${formatWaitDuration(policy.completionWindowSeconds)} gần đây — mức tối đa để bảo vệ chất lượng dữ liệu nghiên cứu. Vui lòng quay lại sau ${formatWaitDuration(evaluation.retryAfterSeconds)}.`,
+      : `Bạn đã hoàn thành ${policy.completionLimit} khảo sát trong ${formatWaitDuration(policy.completionWindowSeconds)} gần đây: mức tối đa để bảo vệ chất lượng dữ liệu nghiên cứu. Vui lòng quay lại sau ${formatWaitDuration(evaluation.retryAfterSeconds)}.`,
     PARTICIPATION_RATE_LIMITED_CODE,
     details,
   );
