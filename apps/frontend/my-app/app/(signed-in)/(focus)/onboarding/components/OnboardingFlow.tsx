@@ -8,7 +8,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import {
   FIELDS_OF_STUDY,
   DANANG_UNIVERSITY_OPTIONS,
-  GENDER_OPTIONS,
+  ONBOARDING_GENDER_OPTIONS,
   INCOME_RANGES,
   INTEREST_OPTIONS,
   OCCUPATIONS,
@@ -148,7 +148,7 @@ function QuestionScreen({ step, flow }: { step: QuestionStep; flow: Flow }) {
           name="onboarding-gender"
           labelledBy={titleId}
           errorId={errorId}
-          options={GENDER_OPTIONS}
+          options={ONBOARDING_GENDER_OPTIONS}
           value={answers.gender}
           onChange={(gender) => setAnswers({ gender: gender as Gender })}
         />

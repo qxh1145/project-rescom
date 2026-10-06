@@ -170,6 +170,9 @@ export const GENDER_OPTIONS: readonly { value: Gender; label: string }[] = [
   { value: "PREFER_NOT_TO_SAY", label: "Không chia sẻ" },
 ];
 
+/** The onboarding question offers three choices; the fourth label remains for saved profiles. */
+export const ONBOARDING_GENDER_OPTIONS = GENDER_OPTIONS.slice(0, 3);
+
 /**
  * The select's options plus a saved value that is not in the catalog, so the
  * wizard shows the profile actually being submitted instead of a placeholder.

@@ -10,7 +10,7 @@ const { submitOnboarding, saveProfileExtras, isProfileSaveFailure, profileFixSte
 const { profileNotSavedMessage } = await import("../lib/onboarding/onboarding-messages.ts");
 const { searchOptions, foldVietnamese } = await import("../lib/onboarding/option-search.ts");
 const { resolvePostOnboardingPath } = await import("../lib/onboarding.ts");
-const { SCHOOL_YEAR_OPTIONS, VIETNAM_LOCATIONS, OCCUPATIONS, DANANG_UNIVERSITY_OPTIONS } = await import("../lib/demographic-options.ts");
+const { SCHOOL_YEAR_OPTIONS, VIETNAM_LOCATIONS, OCCUPATIONS, DANANG_UNIVERSITY_OPTIONS, ONBOARDING_GENDER_OPTIONS } = await import("../lib/demographic-options.ts");
 const { ApiError } = await import("../lib/api/api-error.ts");
 const { SCHOOL_YEAR_VALUES, submitDemographicSurveySchema, updateUserProfileSchema, userProfileSchema } = await import(
   "@rescom/schemas"
@@ -109,10 +109,12 @@ test("birth year → age: 4 digits, age 13–100", () => {
 });
 
 test("validation per question, incl. the Figma 3-interest minimum", () => {
+  assert.deepEqual(ONBOARDING_GENDER_OPTIONS.map((option) => option.label), ["Nam", "Nữ", "Khác"]);
   assert.equal(answersLib.validateStep("name", STUDENT, YEAR), null);
   assert.ok(answersLib.validateStep("name", { ...STUDENT, displayName: "  " }, YEAR));
   assert.ok(answersLib.validateStep("name", { ...STUDENT, displayName: "x".repeat(51) }, YEAR));
   assert.ok(answersLib.validateStep("gender", { ...STUDENT, gender: null }, YEAR));
+  assert.ok(answersLib.validateStep("gender", { ...STUDENT, gender: "PREFER_NOT_TO_SAY" }, YEAR));
   assert.equal(
     answersLib.validateStep("interests", { ...STUDENT, interests: ["A"] }, YEAR),
     "Chọn thêm 2 chủ đề nữa để tiếp tục (tối thiểu 3).",

@@ -12,7 +12,7 @@ import {
   type UserGoal,
   type UserProfileDto,
 } from "@rescom/schemas";
-import { GENDER_OPTIONS } from "../demographic-options.ts";
+import { GENDER_OPTIONS, ONBOARDING_GENDER_OPTIONS } from "../demographic-options.ts";
 import { interestsShortfallMessage, ONBOARDING_MESSAGES } from "./onboarding-messages.ts";
 import {
   isStudentOccupation,
@@ -114,7 +114,9 @@ export function validateStep(step: QuestionStep, answers: OnboardingAnswers, cur
       return check.ok ? null : check.message;
     }
     case "gender":
-      return answers.gender ? null : ONBOARDING_MESSAGES.genderRequired;
+      return ONBOARDING_GENDER_OPTIONS.some((option) => option.value === answers.gender)
+        ? null
+        : ONBOARDING_MESSAGES.genderRequired;
     case "location":
       return answers.location?.trim() ? null : ONBOARDING_MESSAGES.locationRequired;
     case "occupation":
