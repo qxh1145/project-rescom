@@ -54,7 +54,7 @@ export function OfflineScreen({ returnPath }: { returnPath: string | null }) {
     <ErrorScreen
       pill="Mất kết nối"
       title="Bạn đang ngoại tuyến"
-      description="Kiểm tra Wi-Fi hoặc dữ liệu di động. Rescom sẽ tự tải lại khi có mạng trở lại."
+      description="Kiểm tra mạng không dây hoặc dữ liệu di động. Rescom sẽ tự tải lại khi có mạng trở lại."
       mascot="offline"
       extra={
         <StatusRow icon="wifi-off" role="status">

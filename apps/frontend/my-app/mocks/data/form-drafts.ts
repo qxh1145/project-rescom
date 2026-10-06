@@ -212,7 +212,7 @@ export function ensureDemoRunningForm(ownerEmail: string): void {
   const description = "Khảo sát ngắn về cách sinh viên dùng thư viện trường. Khoảng 4 phút, câu trả lời được ẩn danh.";
   const blocks = [
     choice("lib-freq", "Bạn đến thư viện trường bao nhiêu lần mỗi tuần?", ["Không đến", "1 lần", "2 đến 3 lần", "Từ 4 lần trở lên"]),
-    choice("lib-purpose", "Bạn thường đến thư viện để làm gì?", ["Tự học", "Mượn sách", "Học nhóm", "Dùng máy tính / Wi-Fi"], {
+    choice("lib-purpose", "Bạn thường đến thư viện để làm gì?", ["Tự học", "Mượn sách", "Học nhóm", "Dùng máy tính / mạng không dây"], {
       multiple: true,
     }),
     scale("lib-quiet", "Không gian thư viện yên tĩnh đến mức nào?", "Rất ồn", "Rất yên tĩnh"),
