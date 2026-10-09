@@ -48,7 +48,7 @@ export function SurveyCard({ survey, featured, starting, disabled, onStart }: Su
         completed ? "bg-surface-subtle" : "bg-surface",
       ].join(" ")}
     >
-      <div className="flex min-h-7.5 items-center gap-2">
+      <div className="flex min-h-7.5 flex-wrap items-center gap-x-2 gap-y-1.5">
         {completed ? (
           <Tag tone="teal" icon={<Icon name="check" size={14} />}>
             Đã hoàn thành
