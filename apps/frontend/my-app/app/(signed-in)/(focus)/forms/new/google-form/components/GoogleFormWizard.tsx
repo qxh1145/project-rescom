@@ -28,6 +28,21 @@ export function GoogleFormWizard() {
       : "Khoá điểm & gửi duyệt";
 
   function primaryButton(fullWidth: boolean) {
+    if (wizard.isAdmin) {
+      return (
+        <Button
+          size="lg"
+          fullWidth={fullWidth}
+          className={fullWidth ? "px-2" : "px-7"}
+          disabled={wizard.prefillLoading}
+          loading={wizard.submitting}
+          loadingLabel="Đang đăng…"
+          onClick={() => void wizard.submitOfficial()}
+        >
+          Đăng khảo sát chính thức
+        </Button>
+      );
+    }
     if (step < 3) {
       return (
         <Button
@@ -63,7 +78,7 @@ export function GoogleFormWizard() {
       title={TITLES[step]}
       subtitle={step === 2 ? "Chọn ít nhất 1 tiêu chí. Chỉ người có hồ sơ phù hợp mới thấy khảo sát của bạn." : undefined}
       aside={
-        step === 1 ? (
+        wizard.isAdmin ? null : step === 1 ? (
           <InfoAside draft={draft} available={wizard.available} />
         ) : step === 2 ? (
           <AudienceAside draft={draft} estimate={wizard.estimate} />
@@ -99,6 +114,11 @@ export function GoogleFormWizard() {
         )
       }
     >
+      {wizard.isAdmin ? (
+        <Alert tone="info" className="mb-6">
+          Khảo sát chính thức: miễn phí, không giới hạn, hiển thị cho mọi người.
+        </Alert>
+      ) : null}
       {wizard.prefillNotice ? (
         <Alert tone={wizard.prefillNotice.tone} className="mb-6">
           {wizard.prefillNotice.message}

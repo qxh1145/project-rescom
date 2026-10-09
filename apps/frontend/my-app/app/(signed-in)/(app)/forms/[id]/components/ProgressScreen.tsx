@@ -154,6 +154,8 @@ function ProgressBody({ form, progress, state }: { form: PublisherForm; progress
   const view = statusViewOf(form);
   const deadline = deadlineFacts(form, view, now);
   const pendingCount = progress.pendingAttempts;
+  // Official surveys have no quota: show the count only.
+  const official = form.isOfficial === true;
   const showPending = form.type === "EXTERNAL" && view !== "PENDING_REVIEW" && pendingCount !== null;
   const summary = series ? seriesSummary(series) : null;
   const windowShort = summary?.window.replace(/ qua$/, "") ?? "";
@@ -182,15 +184,20 @@ function ProgressBody({ form, progress, state }: { form: PublisherForm; progress
           label="Hoàn thành"
           value={
             <>
-              {progress.completed} <span className="text-[18px] leading-4.5 text-ink-muted">/ {progress.expected}</span>
+              {progress.completed}{" "}
+              {official ? null : <span className="text-[18px] leading-4.5 text-ink-muted">/ {progress.expected}</span>}
             </>
           }
           sub={
-            <ProgressBar
-              value={progress.completed}
-              max={progress.expected}
-              label={`Tiến độ ${progress.completed} trên ${progress.expected}`}
-            />
+            official ? (
+              "Khảo sát chính thức, không giới hạn"
+            ) : (
+              <ProgressBar
+                value={progress.completed}
+                max={progress.expected}
+                label={`Tiến độ ${progress.completed} trên ${progress.expected}`}
+              />
+            )
           }
         />
         <StatCard
@@ -214,15 +221,19 @@ function ProgressBody({ form, progress, state }: { form: PublisherForm; progress
         </div>
         <p className="mt-3 flex items-baseline gap-2">
           <span className="text-[40px] leading-10 font-extrabold text-ink">{progress.completed}</span>
-          <span className="text-[18px] font-bold text-ink-muted">/ {progress.expected} người hoàn thành</span>
+          <span className="text-[18px] font-bold text-ink-muted">
+            {official ? "người hoàn thành" : `/ ${progress.expected} người hoàn thành`}
+          </span>
         </p>
-        <ProgressBar
-          className="mt-3"
-          height={10}
-          value={progress.completed}
-          max={progress.expected}
-          label={`Tiến độ ${progress.completed} trên ${progress.expected}`}
-        />
+        {official ? null : (
+          <ProgressBar
+            className="mt-3"
+            height={10}
+            value={progress.completed}
+            max={progress.expected}
+            label={`Tiến độ ${progress.completed} trên ${progress.expected}`}
+          />
+        )}
         <div className="mt-3.5 grid grid-cols-2 gap-2.5">
           <MiniStat label="Điểm đã chi" value={String(progress.pointsSpent)} />
           <div className="rounded-xl bg-surface-muted px-3 py-2.5">

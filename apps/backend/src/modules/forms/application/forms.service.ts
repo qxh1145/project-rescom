@@ -118,6 +118,7 @@ export function toFormDetailDto(data: FormWithVersion): FormDetailDto {
     deadlineAt: data.form.deadlineAt
       ? data.form.deadlineAt.toISOString()
       : null,
+    isOfficial: data.form.isOfficial,
     currentVersion: toFormVersionDto(data.currentVersion),
     createdAt: data.form.createdAt.toISOString(),
     updatedAt: data.form.updatedAt.toISOString(),
@@ -964,8 +965,20 @@ export class FormsService {
     // Decision E6-D2: the publish request may set the estimated duration,
     // which is stored with the transition; the FR-14 band is enforced here
     // (publish time only — drafts stay editable).
-    const formToPublish =
-      dto.estimatedDurationMinutes !== undefined || dto.deadlineAt !== undefined
+    // An Admin publishing their own survey makes it Official: free, no cap, no
+    // deadline, no targeting, live without moderation.
+    const isOfficial =
+      requester.role === 'ADMIN' && existing.form.isOwnedBy(requester.userId);
+    const formToPublish = isOfficial
+      ? existing.form.copyWith({
+          estimatedDurationMinutes: dto.estimatedDurationMinutes,
+          rewardPerResponse: 0,
+          deadlineAt: null,
+          isOfficial: true,
+          updatedAt: existing.form.updatedAt,
+        })
+      : dto.estimatedDurationMinutes !== undefined ||
+          dto.deadlineAt !== undefined
         ? existing.form.copyWith({
             estimatedDurationMinutes: dto.estimatedDurationMinutes,
             deadlineAt: toDeadline(dto.deadlineAt),
@@ -994,6 +1007,7 @@ export class FormsService {
         existing.currentVersion.schemaJson,
         formToPublish.estimatedDurationMinutes,
       ),
+      ...(isOfficial ? { targetingJson: null } : {}),
     });
     assertFormPublishable(
       formToPublish,
@@ -1002,24 +1016,28 @@ export class FormsService {
     );
     // Review F3: after a first publication the reward is frozen (decision
     // D2), so the band minimum no longer applies; the maximum still does.
-    assertRewardWithinPricingBand(formToPublish, versionToPublish, {
-      frozenReward: existing.versions?.some((version) => version.isPublished),
-    });
+    if (!isOfficial) {
+      assertRewardWithinPricingBand(formToPublish, versionToPublish, {
+        frozenReward: existing.versions?.some((version) => version.isPublished),
+      });
+    }
 
     // Story 8.1: every publication enters the Admin moderation queue. An
     // explicit target is accepted only when the lifecycle table allows it
     // (DRAFT -> MODERATION_QUEUE), so nobody can publish around moderation.
-    const targetStatus: FormStatusEnum =
-      dto.targetStatus ??
+    const targetStatus: FormStatusEnum = isOfficial
+      ? 'PUBLISHED'
+      : (dto.targetStatus ??
       determinePublishTargetStatus({
         type: existing.form.type,
         rewardPerResponse: existing.form.rewardPerResponse,
-      });
+      }));
     // DRAFT -> CLOSED is a table edge for re-versioned drafts (decision D2),
     // but it is the close command, never a publication.
     if (
-      targetStatus !== 'MODERATION_QUEUE' ||
-      !existing.form.canTransitionTo(targetStatus)
+      !isOfficial &&
+      (targetStatus !== 'MODERATION_QUEUE' ||
+        !existing.form.canTransitionTo(targetStatus))
     ) {
       throw new InvalidFormStatusTransitionException(
         id,
@@ -1033,23 +1051,31 @@ export class FormsService {
     // The queued version stays unpublished (not startable, not in the
     // Marketplace) until an Admin approves it; approval sets publishedAt.
     const updatedVersion = versionToPublish.copyWith({
-      isPublished: false,
-      publishedAt: null,
+      isPublished: isOfficial,
+      publishedAt: isOfficial ? now : null,
       externalUrl: effectiveExternalUrl,
     });
 
-    const updatedForm = formToPublish.transitionTo(targetStatus, now);
+    // The lifecycle table has no DRAFT -> PUBLISHED edge: an Official survey
+    // passes through the queue state in memory and is written once.
+    const updatedForm = isOfficial
+      ? formToPublish
+          .transitionTo('MODERATION_QUEUE', now)
+          .transitionTo('PUBLISHED', now)
+      : formToPublish.transitionTo(targetStatus, now);
 
     // AD-16 Publish+Escrow: the Escrow journal and the queue entry commit or
     // roll back together (a lost optimistic update rolls the journal back).
     const saved = await this.unitOfWork.run(
       `publish:${updatedVersion.id}`,
       async () => {
-        await this.escrowCoordinator?.coordinatePublish(
-          existing.form,
-          updatedVersion,
-          existing.form.publisherId,
-        );
+        if (!isOfficial) {
+          await this.escrowCoordinator?.coordinatePublish(
+            existing.form,
+            updatedVersion,
+            existing.form.publisherId,
+          );
+        }
 
         const result = await this.formRepository.update(
           updatedForm,
@@ -1504,7 +1530,10 @@ export class FormsService {
     // Story IR.2b Q3: a survey whose deadline passed (a DEADLINE close, or an
     // owner close after the deadline) needs a new deadline — future or none —
     // or the deadline job would close it again at once.
-    const deadlineAt = toDeadline(dto.deadlineAt);
+    // An Official survey never has a deadline (see publishForm).
+    const deadlineAt = existing.form.isOfficial
+      ? null
+      : toDeadline(dto.deadlineAt);
     if (deadlineAt === undefined && existing.form.isPastDeadline(now)) {
       throw new FormValidationException(
         'The collection deadline has passed: reopening needs a new deadline (or none).',

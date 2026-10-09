@@ -53,11 +53,12 @@ export class PrismaSurveyResponseRepository implements SurveyResponseRepositoryP
   ): Promise<CreateGuestResponseWithinQuotaResult> {
     return runInTransaction(this.prisma, async (tx) => {
       const forms = (await tx.$queryRaw`
-        SELECT status, type, expected_completions, deadline_at, close_kind FROM forms WHERE id = ${params.formId}::uuid FOR NO KEY UPDATE
+        SELECT status, type, expected_completions, is_official, deadline_at, close_kind FROM forms WHERE id = ${params.formId}::uuid FOR NO KEY UPDATE
       `) as Array<{
         status: string;
         type: string;
         expected_completions: number;
+        is_official: boolean;
         deadline_at: Date | null;
         close_kind: string | null;
       }>;
@@ -85,7 +86,7 @@ export class PrismaSurveyResponseRepository implements SurveyResponseRepositoryP
         }),
       ]);
       const used = (completed.get(params.formId) ?? 0) + activeReservationCount;
-      if (used >= Number(form.expected_completions)) {
+      if (!form.is_official && used >= Number(form.expected_completions)) {
         return { outcome: 'QUOTA_FULL' as const };
       }
 

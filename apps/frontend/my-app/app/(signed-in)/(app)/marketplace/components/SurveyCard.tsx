@@ -61,7 +61,8 @@ export function SurveyCard({ survey, featured, starting, disabled, onStart }: Su
           // Mobile only in Figma (62:1313).
           <span className="text-[12px] font-semibold text-ink-muted lg:hidden">Phù hợp với bạn</span>
         ) : null}
-        {!completed ? (
+        {!completed && survey.isOfficial ? <Tag tone="solid">RESCOM chính thức</Tag> : null}
+        {!completed && !survey.isOfficial ? (
           <span className="ml-auto">
             <RewardPill points={survey.rewardPerResponse} />
           </span>
@@ -91,7 +92,7 @@ export function SurveyCard({ survey, featured, starting, disabled, onStart }: Su
           </span>
           {minutes} phút
         </span>
-        {!completed ? (
+        {!completed && !survey.isOfficial ? (
           <span>
             Còn {remainingSlots(survey)}/{survey.expectedCompletions} suất
           </span>
@@ -101,13 +102,15 @@ export function SurveyCard({ survey, featured, starting, disabled, onStart }: Su
 
       {!completed ? (
         <>
-          <ProgressBar
-            value={remainingSlots(survey)}
-            max={survey.expectedCompletions}
-            height={6}
-            tone="brand"
-            className="mt-3.5 hidden lg:block"
-          />
+          {survey.isOfficial ? null : (
+            <ProgressBar
+              value={remainingSlots(survey)}
+              max={survey.expectedCompletions}
+              height={6}
+              tone="brand"
+              className="mt-3.5 hidden lg:block"
+            />
+          )}
           <button
             type="button"
             onClick={() => onStart(survey)}

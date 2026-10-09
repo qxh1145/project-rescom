@@ -61,6 +61,7 @@ function toFormEntity(raw: any, versions?: FormVersionEntity[]): FormEntity {
     raw.deadlineAt ?? null,
     toFormTopic(raw.topic),
     raw.isPinned ?? false,
+    raw.isOfficial ?? false,
   );
 }
 
@@ -133,6 +134,7 @@ export class PrismaFormRepository implements FormRepositoryPort {
           estimatedDurationMinutes: form.estimatedDurationMinutes,
           deadlineAt: form.deadlineAt,
           topic: form.topic,
+          isOfficial: form.isOfficial,
           creationIdempotencyKey: creationKey?.key ?? null,
           creationRequestHash: creationKey?.requestHash ?? null,
           updatedAt: form.updatedAt,
@@ -343,6 +345,7 @@ export class PrismaFormRepository implements FormRepositoryPort {
           estimatedDurationMinutes: form.estimatedDurationMinutes,
           deadlineAt: form.deadlineAt,
           topic: form.topic,
+          isOfficial: form.isOfficial,
           updatedAt: form.updatedAt,
         },
       });
@@ -531,13 +534,15 @@ export class PrismaFormRepository implements FormRepositoryPort {
     const client = currentClient(this.prisma);
     const form = await client.form.findUnique({
       where: { id: formId },
-      select: { status: true, expectedCompletions: true },
+      select: { status: true, expectedCompletions: true, isOfficial: true },
     });
     if (!form) return null;
     const counts = await countCompletionsByFormIds(client, [formId]);
     return {
       status: form.status as FormStatusEnum,
-      expectedCompletions: form.expectedCompletions,
+      expectedCompletions: form.isOfficial
+        ? Infinity
+        : form.expectedCompletions,
       completedCount: counts.get(formId) ?? 0,
     };
   }

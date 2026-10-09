@@ -107,6 +107,8 @@ export const marketplaceSurveyCardSchema = z.object({
   topic: formTopicReadSchema,
   /** Ops-pinned survey: listed first under every sort. */
   isPinned: z.boolean().default(false),
+  /** Admin's own free survey: no response cap, no deadline, visible to all. */
+  isOfficial: z.boolean().default(false),
 });
 
 export const marketplaceFeedResponseSchema = z.object({

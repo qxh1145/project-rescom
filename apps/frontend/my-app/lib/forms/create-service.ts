@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { audienceEstimateSchema, externalSurveyResponseSchema, type AudienceEstimateDto } from "@rescom/schemas";
 import { apiRequest } from "../api/client.ts";
+import type { CreateExternalSurveyInput } from "@rescom/schemas";
 import type { CreateGoogleFormSurveyBody, WizardTargeting } from "./create-wizard.ts";
 
 export type CreatedExternalSurvey = z.infer<typeof externalSurveyResponseSchema>;
@@ -18,7 +19,7 @@ export type CreatedExternalSurvey = z.infer<typeof externalSurveyResponseSchema>
  * strict shared `createExternalSurveySchema` before it reaches this service.
  */
 export function createGoogleFormSurvey(
-  body: CreateGoogleFormSurveyBody,
+  body: CreateGoogleFormSurveyBody | CreateExternalSurveyInput,
   idempotencyKey?: string,
 ): Promise<CreatedExternalSurvey> {
   return apiRequest("/forms/external", {

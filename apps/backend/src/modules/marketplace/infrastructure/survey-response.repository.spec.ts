@@ -399,7 +399,7 @@ describe('Story 4.3: SurveyResponseRepository Implementations', () => {
 
       expect(result.outcome).toBe('CREATED');
       expect(log[0]).toMatch(
-        /SELECT status, type, expected_completions, deadline_at, close_kind FROM forms WHERE id = \? ?::uuid FOR NO KEY UPDATE/,
+        /SELECT status, type, expected_completions, is_official, deadline_at, close_kind FROM forms WHERE id = \? ?::uuid FOR NO KEY UPDATE/,
       );
       expect(tx.$queryRaw.mock.calls[0][1]).toBe(formId);
       expect(log.indexOf('response.create')).toBeGreaterThan(
