@@ -1,19 +1,53 @@
 "use client";
 
+import type { ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AdminPage } from "@/components/layout/admin/AdminPage";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Spinner } from "@/components/ui/Spinner";
 import { MODERATION_LOAD_QUEUE_FAILED, moderationErrorMessage } from "@/lib/admin/moderation-messages";
 import { useSurveyModeration } from "../hooks/use-survey-moderation";
 import { ModerationDetail } from "./ModerationDetail";
 import { ModerationQueueList } from "./ModerationQueueList";
+import { PublishedSurveysPanel } from "./PublishedSurveysPanel";
+
+type SurveysTab = "queue" | "published";
+const TABS = [
+  { value: "queue", label: "Chờ duyệt" },
+  { value: "published", label: "Đã đăng" },
+] as const;
+
+/** `?tab=published`: the pin toggle; otherwise the moderation queue. */
+export function SurveyModerationScreen() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const tab: SurveysTab = useSearchParams().get("tab") === "published" ? "published" : "queue";
+  const tabs = (
+    <SegmentedControl
+      label="Khảo sát"
+      segments={TABS}
+      value={tab}
+      onChange={(next) => router.replace(next === "published" ? `${pathname}?tab=published` : pathname, { scroll: false })}
+      variant="bordered"
+    />
+  );
+  if (tab === "published") {
+    return (
+      <AdminPage title="Khảo sát đã đăng" meta="Ghim để đưa lên đầu Marketplace" actions={tabs}>
+        <PublishedSurveysPanel />
+      </AdminPage>
+    );
+  }
+  return <ModerationQueueScreen tabs={tabs} />;
+}
 
 /**
  * Figma 11a (62:3406): 360px queue on the left, 715px detail card on the
  * right (20px apart). ASSUMED below lg: the two stack.
  */
-export function SurveyModerationScreen() {
+function ModerationQueueScreen({ tabs }: { tabs: ReactNode }) {
   const moderation = useSurveyModeration();
   const { queue } = moderation;
   const loaded = queue.items !== undefined;
@@ -22,6 +56,7 @@ export function SurveyModerationScreen() {
     <AdminPage
       title="Duyệt khảo sát"
       meta={loaded ? `${queue.total} khảo sát chờ · cũ nhất trước` : undefined}
+      actions={tabs}
     >
       {moderation.notice ? (
         <Alert tone="info" onDismiss={moderation.clearNotice} className="mb-5 max-w-268.75">

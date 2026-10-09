@@ -49,6 +49,7 @@ import {
 } from '../../common/security/rate-limit-counter-store.port';
 import { MODERATION_QUEUE_STATS_PORT } from './application/ports/moderation-queue-stats.port';
 import { FORM_TITLE_LOOKUP_PORT } from './application/ports/form-title-lookup.port';
+import { PUBLISHED_FORM_ADMIN_PORT } from './application/ports/published-form-admin.port';
 import { PrismaFormAdminReads } from './infrastructure/prisma-form-admin-reads';
 import {
   NOTIFICATION_PUBLISHER_PORT,
@@ -75,6 +76,7 @@ import { FormsSchedulerRegistrar } from './infrastructure/forms-scheduler.regist
     PrismaFormAdminReads,
     { provide: MODERATION_QUEUE_STATS_PORT, useExisting: PrismaFormAdminReads },
     { provide: FORM_TITLE_LOOKUP_PORT, useExisting: PrismaFormAdminReads },
+    { provide: PUBLISHED_FORM_ADMIN_PORT, useExisting: PrismaFormAdminReads },
     {
       provide: FORM_REPOSITORY_PORT,
       useClass: PrismaFormRepository,
@@ -206,6 +208,7 @@ import { FormsSchedulerRegistrar } from './infrastructure/forms-scheduler.regist
   exports: [
     MODERATION_QUEUE_STATS_PORT,
     FORM_TITLE_LOOKUP_PORT,
+    PUBLISHED_FORM_ADMIN_PORT,
     FormsService,
     FormModerationCommands,
     FORM_REPOSITORY_PORT,

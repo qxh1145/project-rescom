@@ -56,6 +56,7 @@ export function SurveyCard({ survey, featured, starting, disabled, onStart }: Su
         ) : (
           <Tag tone={survey.type === "INTERNAL" ? "teal" : "blue"}>{SURVEY_TYPE_LABELS[survey.type]}</Tag>
         )}
+        {!completed && survey.isPinned ? <Tag tone="solid">Đã ghim</Tag> : null}
         {!completed && survey.hasTargeting ? (
           // Mobile only in Figma (62:1313).
           <span className="text-[12px] font-semibold text-ink-muted lg:hidden">Phù hợp với bạn</span>

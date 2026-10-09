@@ -2,6 +2,8 @@ import { http, type RequestHandler } from "msw";
 import {
   approveSurveyModerationSchema,
   listModerationQueueQuerySchema,
+  listPublishedSurveysQuerySchema,
+  setSurveyPinnedSchema,
   rejectSurveyModerationSchema,
   type SurveyModerationOutcome,
 } from "@rescom/schemas";
@@ -17,7 +19,7 @@ import {
   toModerationQueueItem,
   toModerationResult,
 } from "../data/admin-moderation";
-import { findPublisherForm, type MockPublisherForm } from "../data/forms";
+import { findPublisherForm, publisherForms, updatePublisherForm, type MockPublisherForm } from "../data/forms";
 import type { MockSessionUser } from "../db/session";
 import { fail, missingCsrf, ok } from "../envelope";
 import { applyScenario } from "../scenarios";
@@ -85,6 +87,50 @@ function precheck(
 }
 
 export const adminModerationHandlers: RequestHandler[] = [
+  // VERIFIED: GET /admin/surveys/published?limit&offset&search → publishedSurveyPageSchema (pinned first)
+  http.get(apiUrl("/admin/surveys/published"), async ({ request }) => {
+    const admin = await guard();
+    if (admin instanceof Response) return admin;
+    const query = listPublishedSurveysQuerySchema.safeParse(
+      Object.fromEntries(new URL(request.url).searchParams.entries()),
+    );
+    if (!query.success) return fail(400, "VALIDATION_ERROR", query.error.errors[0]?.message ?? "Invalid query");
+    const { limit, offset, search } = query.data;
+    ensureModerationSeed();
+    const term = search?.toLowerCase() ?? "";
+    const all = publisherForms
+      .get()
+      .filter((form) => form.status === "PUBLISHED" && form.title.toLowerCase().includes(term))
+      .sort((a, b) => Number(!!b.isPinned) - Number(!!a.isPinned));
+    const items = all.slice(offset, offset + limit).map((form) => ({
+      formId: form.id,
+      title: form.title,
+      publisherEmail: form.ownerEmail,
+      updatedAt: form.publishedAt ?? form.createdAt,
+      isPinned: !!form.isPinned,
+    }));
+    return ok({ items, total: all.length, limit, offset, hasMore: offset + items.length < all.length });
+  }),
+
+  // VERIFIED: PUT /admin/surveys/:formId/pin { pinned } → surveyPinResultSchema
+  http.put(apiUrl("/admin/surveys/:formId/pin"), async ({ request, params }) => {
+    const admin = await guard();
+    if (admin instanceof Response) return admin;
+    const csrf = missingCsrf(request);
+    if (csrf) return csrf;
+    const body = setSurveyPinnedSchema.safeParse(await readJson(request));
+    if (!body.success) return fail(400, "VALIDATION_ERROR", body.error.errors[0]?.message ?? "Invalid body");
+    const form = formOrFail(String(params.formId));
+    if (form instanceof Response) return form;
+    if (body.data.pinned && form.status !== "PUBLISHED") {
+      return fail(409, "SURVEY_NOT_PUBLISHED", "Only a PUBLISHED survey can be pinned.");
+    }
+    updatePublisherForm(form.id, (target) => {
+      target.isPinned = body.data.pinned;
+    });
+    return ok({ formId: form.id, isPinned: body.data.pinned });
+  }),
+
   // VERIFIED: GET /admin/moderation/surveys?limit&offset → moderationQueueListSchema (oldest first)
   http.get(apiUrl("/admin/moderation/surveys"), async ({ request }) => {
     const admin = await guard();

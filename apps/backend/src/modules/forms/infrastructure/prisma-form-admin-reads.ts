@@ -8,17 +8,79 @@ import {
   FormTitleLookupPort,
   FormTitleLookupResult,
 } from '../application/ports/form-title-lookup.port';
+import {
+  PublishedFormAdminPort,
+  PublishedFormSummary,
+} from '../application/ports/published-form-admin.port';
 
 /**
  * Bounded admin reads of `forms` (Story IR.4b part C, mock-off plan 4.1-4.3):
  * one grouped count, one `findFirst` without versions, and title lookups by
- * primary key for at most one page of ids.
+ * primary key for at most one page of ids. Also the admin pin toggle.
  */
 @Injectable()
 export class PrismaFormAdminReads
-  implements ModerationQueueStatsPort, FormTitleLookupPort
+  implements
+    ModerationQueueStatsPort,
+    FormTitleLookupPort,
+    PublishedFormAdminPort
 {
   constructor(private readonly prisma: PrismaService) {}
+
+  async listPublished(params: {
+    limit: number;
+    offset: number;
+    search?: string;
+  }): Promise<{ items: PublishedFormSummary[]; total: number }> {
+    const where = {
+      status: 'PUBLISHED' as const,
+      ...(params.search
+        ? { title: { contains: params.search, mode: 'insensitive' as const } }
+        : {}),
+    };
+    const [rows, total] = await Promise.all([
+      this.prisma.form.findMany({
+        where,
+        orderBy: [{ isPinned: 'desc' }, { updatedAt: 'desc' }, { id: 'asc' }],
+        skip: params.offset,
+        take: params.limit,
+        select: {
+          id: true,
+          title: true,
+          publisherId: true,
+          updatedAt: true,
+          isPinned: true,
+        },
+      }),
+      this.prisma.form.count({ where }),
+    ]);
+    return {
+      items: rows.map((row) => ({
+        formId: row.id,
+        title: row.title,
+        publisherId: row.publisherId,
+        updatedAt: row.updatedAt,
+        isPinned: row.isPinned,
+      })),
+      total,
+    };
+  }
+
+  async findStatus(formId: string) {
+    const row = await this.prisma.form.findUnique({
+      where: { id: formId },
+      select: { status: true },
+    });
+    return row?.status ?? null;
+  }
+
+  async setPinned(formId: string, pinned: boolean): Promise<void> {
+    // Bumps `updatedAt` (@updatedAt); the Marketplace sorts by publishedAt.
+    await this.prisma.form.update({
+      where: { id: formId },
+      data: { isPinned: pinned },
+    });
+  }
 
   async countByStatus(): Promise<{ queued: number; published: number }> {
     const rows = await this.prisma.form.groupBy({

@@ -33,7 +33,11 @@ const CODE_MESSAGES: Record<string, string> = {
   FORM_NOT_FOUND: "Không tìm thấy khảo sát này. Có thể khảo sát đã bị xoá.",
   FORM_VALIDATION_ERROR: INELIGIBLE,
   EXTERNAL_COMPLETION_CODE_REQUIRED: INELIGIBLE,
+  SURVEY_NOT_PUBLISHED: "Chỉ ghim được khảo sát đang đăng. Hãy tải lại danh sách.",
 };
+
+export const PUBLISHED_LOAD_FAILED = "Không tải được danh sách khảo sát đã đăng.";
+export const PIN_FAILED = "Chưa đổi được trạng thái ghim. Vui lòng thử lại.";
 
 function shortfallOf(details: unknown): number | null {
   if (details && typeof details === "object" && "shortfall" in details) {

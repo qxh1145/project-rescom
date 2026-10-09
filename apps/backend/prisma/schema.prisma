@@ -470,7 +470,8 @@ model Form {
   /// Plan 2.2: survey topic chosen in the wizard. Validated in the app layer
   /// against the shared topic list in @rescom/schemas; NULL = not set.
   topic                    String?        @map("topic")
-  /// Ops-set (deploy/pin-form.js): Marketplace lists pinned surveys first.
+  /// Set by an Admin (PUT /admin/surveys/:id/pin) or deploy/pin-form.js:
+  /// Marketplace lists pinned surveys first.
   isPinned                 Boolean        @default(false) @map("is_pinned")
 
   createdAt DateTime @default(now()) @map("created_at")
