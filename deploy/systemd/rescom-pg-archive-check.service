@@ -1,0 +1,9 @@
+# Fails when WAL archiving to R2 is broken; `systemctl --failed` shows it. Alerting on it: Story 11.4.
+[Unit]
+Description=RESCOM pgBackRest archive check
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker exec -u postgres rescom-postgres-1 pgbackrest --stanza=rescom check

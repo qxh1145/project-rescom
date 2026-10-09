@@ -36,14 +36,34 @@ services:
       clamav: { condition: service_healthy }
 
   postgres:
-    image: postgres:15-alpine
+    # postgres:15-alpine + pgBackRest; WAL every <=5 min and daily full backups go to R2
+    # (RPO 15m, B2/B3). Runbook: _bmad-output/implementation-artifacts/11-2-hostinger-evidence/01-wal-backup-runbook.md
+    build:
+      context: .
+      dockerfile: postgres.Dockerfile
+    image: rescom-postgres:15.19-pgbackrest
     restart: always
+    command:
+      - postgres
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=pgbackrest --stanza=rescom archive-push %p
+      - -c
+      - archive_timeout=300
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
       POSTGRES_DB: ${POSTGRES_DB:?}
+      PGBACKREST_PG1_USER: ${POSTGRES_USER:?}
+      PGBACKREST_REPO1_S3_ENDPOINT: ${PGBACKREST_REPO1_S3_ENDPOINT:?}
+      PGBACKREST_REPO1_S3_BUCKET: ${PGBACKREST_REPO1_S3_BUCKET:?}
+      PGBACKREST_REPO1_S3_KEY: ${PGBACKREST_REPO1_S3_KEY:?}
+      PGBACKREST_REPO1_S3_KEY_SECRET: ${PGBACKREST_REPO1_S3_KEY_SECRET:?}
+      PGBACKREST_REPO1_CIPHER_PASS: ${PGBACKREST_REPO1_CIPHER_PASS:?}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
