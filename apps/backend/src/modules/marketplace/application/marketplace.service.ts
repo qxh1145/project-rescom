@@ -69,7 +69,7 @@ export class MarketplaceService {
       const isCompletedByCurrentUser = completedFormIds.has(formId);
 
       // Auto-hide when quota is completed (FR-38)
-      if (completedCompletions >= item.form.expectedCompletions) {
+      if (completedCompletions >= item.form.quotaLimit) {
         continue;
       }
 
@@ -166,6 +166,7 @@ export class MarketplaceService {
         isCompletedByCurrentUser,
         topic: item.form.topic,
         isPinned: item.form.isPinned,
+        isOfficial: item.form.isOfficial,
       });
     }
 

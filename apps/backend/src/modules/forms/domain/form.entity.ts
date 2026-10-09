@@ -52,7 +52,14 @@ export class FormEntity {
     public readonly topic: FormTopic | null = null,
     /** Ops-set (deploy/pin-form.js): sorts first in every Marketplace sort. */
     public readonly isPinned: boolean = false,
+    /** Admin's own free survey: reward 0, no escrow, no quota, no deadline. */
+    public readonly isOfficial: boolean = false,
   ) {}
+
+  /** Quota limit for start/submit/close checks; Official surveys have none. */
+  get quotaLimit(): number {
+    return this.isOfficial ? Infinity : this.expectedCompletions;
+  }
 
   /** Story IR.2b: true once `now` reached the deadline (no new starts). */
   isPastDeadline(now: Date): boolean {
@@ -154,6 +161,7 @@ export class FormEntity {
     deadlineAt?: Date | null;
     /** `undefined` keeps the current value; `null` clears it. */
     topic?: FormTopic | null;
+    isOfficial?: boolean;
   }): FormEntity {
     return new FormEntity(
       this.id,
@@ -177,6 +185,7 @@ export class FormEntity {
       updates.deadlineAt !== undefined ? updates.deadlineAt : this.deadlineAt,
       updates.topic !== undefined ? updates.topic : this.topic,
       this.isPinned,
+      updates.isOfficial ?? this.isOfficial,
     );
   }
 }

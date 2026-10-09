@@ -460,6 +460,27 @@ export function toCreateRequest(
   };
 }
 
+/**
+ * ADMIN "Official" survey: only step 1 matters. A draft (no `autoPublish`),
+ * published afterwards by `POST /forms/:id/publish`; the server forces reward 0,
+ * no deadline and no targeting, so the schema-required reward/sample are placeholders.
+ */
+export function toOfficialCreateRequest(draft: GoogleFormWizardDraft): CreateExternalSurveyInput | null {
+  const url = checkGoogleFormsUrl(draft.externalUrl);
+  const band = durationBandOf(draft.durationBand);
+  if (hasErrors(validateInfoStep(draft)) || !url.valid || !band) return null;
+  return {
+    title: draft.title.trim(),
+    description: draft.description.trim() || null,
+    externalUrl: url.url,
+    rewardPerResponse: 10,
+    expectedCompletions: 1,
+    expectedEffortSeconds: band.minutes * 60,
+    estimatedDurationMinutes: band.minutes,
+    topic: normalizeWizardTopic(draft.topic) || null,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // "Sửa & gửi lại" of a rejected Google Forms survey (`?from=<id>`)
 // ---------------------------------------------------------------------------

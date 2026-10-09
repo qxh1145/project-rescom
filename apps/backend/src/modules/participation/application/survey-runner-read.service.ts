@@ -158,10 +158,12 @@ export class SurveyRunnerReadService {
       }),
       expectedCompletions: form.expectedCompletions,
       completedCompletions: completedCount,
-      remainingSlots: Math.max(
-        0,
-        form.expectedCompletions - completedCount - activeReservationCount,
-      ),
+      remainingSlots: form.isOfficial
+        ? Number.MAX_SAFE_INTEGER
+        : Math.max(
+            0,
+            form.expectedCompletions - completedCount - activeReservationCount,
+          ),
     };
   }
 

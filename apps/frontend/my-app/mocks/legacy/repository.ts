@@ -481,6 +481,7 @@ function toSurveyCard(
     targetingJson: survey.targetingJson,
     hasTargeting: survey.hasTargeting,
     isPinned: false,
+    isOfficial: false,
     isCompletedByCurrentUser,
   };
 }

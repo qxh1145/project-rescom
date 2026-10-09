@@ -309,6 +309,8 @@ export interface FormDetailDto {
   topic?: FormTopic | null;
   /** Story IR.2b: collection deadline (ISO); null = no deadline. */
   deadlineAt?: string | null;
+  /** Admin's own free survey (no reward, escrow, cap or deadline). */
+  isOfficial?: boolean;
   /**
    * `GET /forms/:id` only (Phase 5 M1/M2): completed participations so far
    * (quota definition, guests included).

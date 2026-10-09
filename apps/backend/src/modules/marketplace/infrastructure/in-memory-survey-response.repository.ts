@@ -24,6 +24,7 @@ export interface InMemoryGuestQuotaForm {
   status: string;
   type: string;
   expectedCompletions: number;
+  isOfficial?: boolean;
 }
 
 /**
@@ -184,7 +185,10 @@ export class InMemorySurveyResponseRepository implements SurveyResponseRepositor
             attempt.formId === params.formId &&
             attempt.startedAt.getTime() >= params.cutoffDate.getTime(),
         ).length;
-    if (completed + activeReservationCount >= form.expectedCompletions) {
+    if (
+      !form.isOfficial &&
+      completed + activeReservationCount >= form.expectedCompletions
+    ) {
       return { outcome: 'QUOTA_FULL' };
     }
 

@@ -1952,6 +1952,54 @@ describe('FormsService', () => {
       expect(wallet.balance.escrow).toBe(400);
     });
 
+    it('publishes an Admin-owned survey as Official: PUBLISHED, free, no escrow, no deadline', async () => {
+      const adminId = randomUUID();
+      const draft = await escrowFormsService.createDraft(adminId, {
+        title: 'Official Survey',
+        type: 'INTERNAL',
+        rewardPerResponse: 10,
+        expectedCompletions: 50,
+        schema: {
+          schemaVersion: 1,
+          title: 'Official Survey',
+          blocks: [validBlock],
+        },
+      });
+
+      const published = await escrowFormsService.publishForm(draft.id, {
+        userId: adminId,
+        role: 'ADMIN',
+      });
+
+      expect(published.status).toBe('PUBLISHED');
+      expect(published.isOfficial).toBe(true);
+      expect(published.rewardPerResponse).toBe(0);
+      expect(published.deadlineAt).toBeNull();
+      expect(published.currentVersion.isPublished).toBe(true);
+      const wallet = await escrowLedgerService.getWallet(adminId);
+      expect(wallet.balance.escrow).toBe(0);
+
+      // A non-admin still goes through moderation.
+      const other = await escrowFormsService.createDraft(publisherId, {
+        title: 'Regular Survey',
+        type: 'INTERNAL',
+        rewardPerResponse: 10,
+        estimatedDurationMinutes: 8,
+        expectedCompletions: 5,
+        schema: {
+          schemaVersion: 1,
+          title: 'Regular Survey',
+          blocks: [validBlock],
+        },
+      });
+      const queued = await escrowFormsService.publishForm(other.id, {
+        userId: publisherId,
+        role: 'PUBLISHER',
+      });
+      expect(queued.status).toBe('MODERATION_QUEUE');
+      expect(queued.isOfficial).toBe(false);
+    });
+
     it('blocks publishing and throws InsufficientEscrowBalanceException when points are lacking', async () => {
       const draft = await escrowFormsService.createDraft(publisherId, {
         title: 'Overbudget Survey',
@@ -2190,11 +2238,12 @@ describe('FormsService', () => {
           expectedCompletions: 10,
           schema: { schemaVersion: 1, title, blocks: [validBlock] },
         });
-        await escrowFormsService.publishForm(draft.id, {
+        const published = await escrowFormsService.publishForm(draft.id, {
           userId: owner,
           role: owner === adminId ? 'ADMIN' : 'PUBLISHER',
         });
-        await approveQueued(draft.id);
+        // An Admin's own survey is Official: live without moderation.
+        if (published.status !== 'PUBLISHED') await approveQueued(draft.id);
         return draft;
       }
       const reopenAsOwner = (formId: string, owner = publisherId) =>

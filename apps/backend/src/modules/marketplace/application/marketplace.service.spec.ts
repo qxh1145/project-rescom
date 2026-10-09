@@ -439,6 +439,56 @@ describe('MarketplaceService', () => {
       expect(feed.surveys[0].id).toBe('form-alpha');
     });
 
+    it('does not auto-hide an Official survey whose completions exceed expectedCompletions', async () => {
+      const official = new FormEntity(
+        's-official',
+        publisherId,
+        'INTERNAL',
+        'PUBLISHED',
+        'Official Survey',
+        null,
+        0,
+        1,
+        new Date('2026-08-01T00:00:00Z'),
+        new Date('2026-08-01T00:00:00Z'),
+        undefined,
+        0,
+        null,
+        null,
+        null,
+        null,
+        false,
+        true,
+      );
+      await formRepo.create(
+        official,
+        new FormVersionEntity(
+          'vo',
+          's-official',
+          1,
+          { metadata: { expectedEffortSeconds: 60 } } as any,
+          null,
+          true,
+          null,
+          null,
+          new Date('2026-08-01T00:00:00Z'),
+          new Date('2026-08-01T00:00:00Z'),
+        ),
+      );
+      for (let i = 0; i < 3; i++) {
+        await responseRepo.recordResponse({
+          formId: 's-official',
+          formVersionId: 'vo',
+          respondentId: `other-user-${i}`,
+          status: 'SUBMITTED',
+        });
+      }
+
+      const feed = await service.getFeed(respondentHanoiId);
+      const card = feed.surveys.find((s) => s.id === 's-official');
+      expect(card?.isOfficial).toBe(true);
+    });
+
     it('hides an External survey the user completed (attempt COMPLETED, no Response) (review P3)', async () => {
       responseRepo.recordExternalCompletion('form-alpha', respondentHanoiId);
 

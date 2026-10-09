@@ -10,6 +10,7 @@ import {
   keepsIdempotencyKey,
   prefillErrorMessage,
 } from "@/lib/forms/create-messages";
+import { publishBuilderForm } from "@/lib/forms/builder-service";
 import { createGoogleFormSurvey, estimateAudience } from "@/lib/forms/create-service";
 import {
   browserStorage,
@@ -31,6 +32,7 @@ import {
   rewardOf,
   sampleSizeOf,
   toCreateRequest,
+  toOfficialCreateRequest,
   collectionDeadlineAt,
   toTargetingJson,
   validateAudienceStep,
@@ -69,6 +71,8 @@ export function useGoogleFormWizard() {
   const searchParams = useSearchParams();
   const { user, balance, refresh } = useSession();
   const userId = user?.id ?? "";
+  // ADMIN publishes an "Official" survey: step 1 only, no reward/audience/escrow.
+  const isAdmin = user?.role === "ADMIN";
 
   // SessionGate renders this only in the browser, once signed in.
   const [draft, setDraft] = useState<GoogleFormWizardDraft>(() => loadWizardDraft(browserStorage("local"), userId));
@@ -151,6 +155,34 @@ export function useGoogleFormWizard() {
   const quote = sample !== null && reward !== null && available !== null ? escrowQuote(sample, reward, available) : null;
   const insufficient = serverShortfall || (quote !== null && quote.shortfall > 0);
 
+  const submitOfficial = useCallback(async () => {
+    const built = toOfficialCreateRequest(draft);
+    if (!built) {
+      setAttempted(new Set([1]));
+      return;
+    }
+    if (submitting) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const created = await createGoogleFormSurvey(built);
+      await publishBuilderForm(created.id, { estimatedDurationMinutes: built.estimatedDurationMinutes });
+      stashSubmittedSurvey(browserStorage("session"), {
+        formId: created.id,
+        userId,
+        title: created.title,
+        completionCode: created.plaintextCompletionCode,
+        externalUrl: created.externalUrl,
+        escrowPoints: 0,
+      });
+      clearWizardDraft(browserStorage("local"), userId);
+      router.replace(`/forms/${created.id}/submitted`);
+    } catch (error) {
+      setSubmitError(error);
+      setSubmitting(false);
+    }
+  }, [draft, router, submitting, userId]);
+
   const submit = useCallback(async () => {
     const built = toCreateRequest(draft);
     if (!built) {
@@ -217,6 +249,8 @@ export function useGoogleFormWizard() {
     next,
     back,
     submit,
+    isAdmin,
+    submitOfficial,
     submitting: submitting || sessionLost,
     submitErrorMessage: submitError && !sessionLost ? createSurveyErrorMessage(submitError) : null,
     available,

@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AdminPage } from "@/components/layout/admin/AdminPage";
 import { Alert } from "@/components/ui/Alert";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonClassName } from "@/components/ui/Button";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Spinner } from "@/components/ui/Spinner";
 import { MODERATION_LOAD_QUEUE_FAILED, moderationErrorMessage } from "@/lib/admin/moderation-messages";
@@ -25,13 +26,18 @@ export function SurveyModerationScreen() {
   const pathname = usePathname();
   const tab: SurveysTab = useSearchParams().get("tab") === "published" ? "published" : "queue";
   const tabs = (
-    <SegmentedControl
-      label="Khảo sát"
-      segments={TABS}
-      value={tab}
-      onChange={(next) => router.replace(next === "published" ? `${pathname}?tab=published` : pathname, { scroll: false })}
-      variant="bordered"
-    />
+    <div className="flex flex-wrap items-center gap-3">
+      <SegmentedControl
+        label="Khảo sát"
+        segments={TABS}
+        value={tab}
+        onChange={(next) => router.replace(next === "published" ? `${pathname}?tab=published` : pathname, { scroll: false })}
+        variant="bordered"
+      />
+      <Link href="/forms/new" className={buttonClassName({ size: "md" })}>
+        Tạo khảo sát
+      </Link>
+    </div>
   );
   if (tab === "published") {
     return (

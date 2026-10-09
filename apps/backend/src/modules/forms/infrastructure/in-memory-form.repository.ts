@@ -371,7 +371,7 @@ export class InMemoryFormRepository implements FormRepositoryPort {
     const refs = await this.listRewardableCompletions(formId);
     return {
       status: form.status,
-      expectedCompletions: form.expectedCompletions,
+      expectedCompletions: form.quotaLimit,
       completedCount: refs.completedCount,
     };
   }

@@ -315,7 +315,7 @@ export class ParticipationService {
     // Quota: completed participations + active reservations < expectedCompletions
     const { completedCount, activeReservationCount } =
       await this.participationRepository.getQuotaStatus(form.id, cutoffDate);
-    if (completedCount + activeReservationCount >= form.expectedCompletions) {
+    if (completedCount + activeReservationCount >= form.quotaLimit) {
       throw new SurveyQuotaFullException();
     }
 
@@ -337,7 +337,7 @@ export class ParticipationService {
       clientContext: input.clientContext,
       ipAddress: clientIp,
       startedAt,
-      expectedCompletions: form.expectedCompletions,
+      expectedCompletions: form.quotaLimit,
       cutoffDate,
       ...(completionReservation ? { completionReservation } : {}),
       ...(userId && form.type === 'EXTERNAL'

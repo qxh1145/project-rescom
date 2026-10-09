@@ -57,6 +57,7 @@ export const formDetailSchema = z
     closeKind: formCloseKindEnum.nullable().optional(),
     topic: formTopicReadSchema,
     deadlineAt: isoDate.nullable().optional(),
+    isOfficial: z.boolean().optional(),
     completedCompletions: count.optional(),
     escrowLocked: count.nullable().optional(),
     submittedAt: isoDate.nullable().optional(),

@@ -58,6 +58,8 @@ function StatusPills({ escrowPoints }: { escrowPoints: number }) {
 function CodeView({ survey }: { survey: SubmittedSurvey }) {
   const router = useRouter();
   const line = completionCodeLine(survey.completionCode);
+  // Official surveys (ADMIN) are published at once and never lock Ký quỹ.
+  const official = survey.escrowPoints === 0;
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const [confirmed, setConfirmed] = useState(false);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -82,9 +84,9 @@ function CodeView({ survey }: { survey: SubmittedSurvey }) {
         <Mascot name="create" height={120} />
         <div className="flex flex-col gap-3 lg:gap-3.5">
           <h1 className="text-[22px] leading-[28.6px] font-extrabold text-ink lg:text-[30px] lg:leading-normal lg:tracking-[-0.3px]">
-            Đã gửi khảo sát cho Admin duyệt
+            {official ? "Đã đăng khảo sát chính thức" : "Đã gửi khảo sát cho Admin duyệt"}
           </h1>
-          <StatusPills escrowPoints={survey.escrowPoints} />
+          {official ? null : <StatusPills escrowPoints={survey.escrowPoints} />}
         </div>
       </div>
 

@@ -76,7 +76,9 @@ export function PublishScreen() {
   const router = useRouter();
   // Set by the builder's "Tiếp tục" after it validated and saved: never bounce back again.
   const checked = useSearchParams().get("checked") === "1";
-  const { refresh, balance } = useSession();
+  const { refresh, balance, user } = useSession();
+  // ADMIN publishes an "Official" survey: free, no cap, no deadline, no targeting, no moderation.
+  const isAdmin = user?.role === "ADMIN";
   const [form, setForm] = useState<BuilderForm | null>(null);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [step, setStep] = useState<1 | 2>(1);
@@ -175,6 +177,19 @@ export function PublishScreen() {
   // survey still holds — which no route exposes before publishing, so the full cost is an upper bound.
   const reversioned = form.currentVersion.versionNumber > 1;
 
+  if (published && isAdmin) {
+    return (
+      <main className="mx-auto flex min-h-dvh max-w-[520px] flex-col items-center justify-center gap-4 px-4 text-center">
+        <Mascot name="cheer" height={140} />
+        <h1 className="text-title font-extrabold text-ink">Đã đăng khảo sát chính thức</h1>
+        <p className="text-body text-ink-muted">“{published.title}” đã hiển thị cho mọi người trên Khám phá.</p>
+        <Link href={`/forms/${formId}`} className={buttonClassName({ size: "lg", radius: "field" })}>
+          Xem khảo sát
+        </Link>
+      </main>
+    );
+  }
+
   if (published) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-[520px] flex-col items-center justify-center gap-4 px-4 text-center">
@@ -209,6 +224,30 @@ export function PublishScreen() {
     }
     setTargetError(null);
     setStep(2);
+  };
+
+  const submitOfficial = async () => {
+    setPublishError(null);
+    const minutes = values.estimatedDurationMinutes.trim() === "" ? summary.minutes : Number(values.estimatedDurationMinutes);
+    if (!isValidDurationInput(String(minutes))) {
+      setErrors({ estimatedDurationMinutes: `Nhập thời lượng từ 1 đến ${MAX_PUBLISHABLE_DURATION_MINUTES} phút.` });
+      return;
+    }
+    setErrors({});
+    if (hasIssues(validateForPublish(doc, { estimatedDurationMinutes: minutes }))) {
+      setNotReady("invalid");
+      return;
+    }
+    setBusy(true);
+    try {
+      // The server forces reward 0, no deadline and no targeting for an ADMIN's form.
+      await saveBuilderDraft(formId, { estimatedDurationMinutes: minutes, topic: normalizeWizardTopic(topic) || null }, form.updatedAt);
+      setPublished(await publishBuilderForm(formId, { estimatedDurationMinutes: minutes }));
+    } catch (error) {
+      setPublishError(error);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const submit = async () => {
@@ -306,7 +345,51 @@ export function PublishScreen() {
           </Alert>
         ) : null}
 
-        {step === 1 ? (
+        {isAdmin ? (
+          <section aria-labelledby="step-official" className="rounded-card border border-line bg-surface p-5 lg:p-6">
+            <h1 id="step-official" className="text-title-sm font-extrabold text-ink">
+              Đăng khảo sát chính thức
+            </h1>
+            <p className="mt-1.5 text-body-sm text-ink-muted">Khảo sát chính thức: miễn phí, không giới hạn, hiển thị cho mọi người.</p>
+            <div className="mt-4 flex flex-col gap-4">
+              <TextField
+                id="pub-duration"
+                label="Thời lượng dự kiến (phút)"
+                inputMode="numeric"
+                min={1}
+                max={MAX_PUBLISHABLE_DURATION_MINUTES}
+                value={values.estimatedDurationMinutes}
+                onChange={setValue("estimatedDurationMinutes")}
+                error={errors.estimatedDurationMinutes}
+              />
+              <Select
+                id="pub-topic"
+                label="Chủ đề"
+                placeholder="Chọn chủ đề"
+                options={TOPIC_OPTIONS}
+                value={topic}
+                onChange={(event) => setTopic(normalizeWizardTopic(event.target.value))}
+              />
+            </div>
+            {publishError ? (
+              <Alert tone="danger" className="mt-4">
+                {publishErrorMessage(publishError)}
+              </Alert>
+            ) : null}
+            <Button
+              fullWidth
+              size="lg"
+              radius="field"
+              className="mt-5"
+              loading={busy}
+              loadingLabel="Đang đăng…"
+              disabled={form.status !== "DRAFT" || pendingCount > 0 || notReady !== null}
+              onClick={() => void submitOfficial()}
+            >
+              Đăng khảo sát
+            </Button>
+          </section>
+        ) : step === 1 ? (
           <section aria-labelledby="step-target" className="rounded-card border border-line bg-surface p-5 lg:p-6">
             <h1 id="step-target" className="text-title-sm font-extrabold text-ink">
               Ai sẽ làm khảo sát?

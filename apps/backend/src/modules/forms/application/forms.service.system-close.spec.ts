@@ -205,6 +205,16 @@ describe('FormsService system closes, deadline and topic', () => {
       expect(escrow.coordinateClose).not.toHaveBeenCalled();
     });
 
+    it('is a no-op for an Official survey past its expectedCompletions', async () => {
+      const form = await seedForm({ expectedCompletions: 3 });
+      await repository.update(form.copyWith({ isOfficial: true }));
+      repository.setCompletedResponsesCount(form.id, 10);
+      expect((await service.closeFormIfQuotaMet(form.id, now)).closed).toBe(
+        false,
+      );
+      expect(escrow.coordinateClose).not.toHaveBeenCalled();
+    });
+
     it('review HIGH-1: below the target it reads only the quota state (no form, versions or completion refs)', async () => {
       const stub = {
         findQuotaState: jest.fn().mockResolvedValue({

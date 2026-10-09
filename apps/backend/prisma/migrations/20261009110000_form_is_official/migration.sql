@@ -1,0 +1,1 @@
+ALTER TABLE "forms" ADD COLUMN "is_official" BOOLEAN NOT NULL DEFAULT false;
