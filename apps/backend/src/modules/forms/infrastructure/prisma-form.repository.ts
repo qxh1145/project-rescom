@@ -60,6 +60,7 @@ function toFormEntity(raw: any, versions?: FormVersionEntity[]): FormEntity {
     (raw.closeKind as FormCloseKind | null | undefined) ?? null,
     raw.deadlineAt ?? null,
     toFormTopic(raw.topic),
+    raw.isPinned ?? false,
   );
 }
 

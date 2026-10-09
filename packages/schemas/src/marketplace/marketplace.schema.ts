@@ -105,6 +105,8 @@ export const marketplaceSurveyCardSchema = z.object({
   isCompletedByCurrentUser: z.boolean().default(false),
   /** Plan 2.2: the survey topic (`FORM_TOPICS`); null when none was chosen. */
   topic: formTopicReadSchema,
+  /** Ops-pinned survey: listed first under every sort. */
+  isPinned: z.boolean().default(false),
 });
 
 export const marketplaceFeedResponseSchema = z.object({

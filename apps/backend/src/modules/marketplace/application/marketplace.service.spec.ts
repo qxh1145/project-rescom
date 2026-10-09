@@ -669,6 +669,58 @@ describe('MarketplaceService', () => {
       await formRepo.create(s3, v3);
     });
 
+    it('lists a pinned survey first under every sort', async () => {
+      const pinned = new FormEntity(
+        's-pinned',
+        publisherId,
+        'INTERNAL',
+        'PUBLISHED',
+        'Pinned Survey',
+        null,
+        1,
+        100,
+        new Date('2026-08-01T00:00:00Z'),
+        new Date('2026-08-01T00:00:00Z'),
+        undefined,
+        0,
+        null,
+        null,
+        null,
+        null,
+        true,
+      );
+      const pv = new FormVersionEntity(
+        'vp',
+        's-pinned',
+        1,
+        { metadata: { expectedEffortSeconds: 9999 } } as any,
+        null,
+        true,
+        null,
+        null,
+        new Date('2026-08-01T00:00:00Z'),
+        new Date('2026-08-01T00:00:00Z'),
+      );
+      await formRepo.create(pinned, pv);
+
+      for (const sortBy of [
+        'best_match',
+        'reward_desc',
+        'reward_asc',
+        'duration_asc',
+        'duration_desc',
+        'newest',
+      ] as const) {
+        const feed = await service.getFeed(respondentHanoiId, {
+          sortBy,
+          hideCompleted: true,
+          type: 'ALL',
+        });
+        expect(feed.surveys[0].id).toBe('s-pinned');
+        expect(feed.surveys[0].isPinned).toBe(true);
+      }
+    });
+
     it('should sort by highest reward first (reward_desc)', async () => {
       const feed = await service.getFeed(respondentHanoiId, {
         sortBy: 'reward_desc',
