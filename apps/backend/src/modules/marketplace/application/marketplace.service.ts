@@ -165,11 +165,16 @@ export class MarketplaceService {
         hasTargeting,
         isCompletedByCurrentUser,
         topic: item.form.topic,
+        isPinned: item.form.isPinned,
       });
     }
 
     // 6. Sort matching surveys
     matchingCards.sort((a, b) => {
+      // Pinned surveys lead under every sort.
+      if (a.isPinned !== b.isPinned) {
+        return a.isPinned ? -1 : 1;
+      }
       const dateA = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
       const dateB = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
 

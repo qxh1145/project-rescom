@@ -50,6 +50,8 @@ export class FormEntity {
     public readonly deadlineAt: Date | null = null,
     /** Plan 2.2: the survey topic (`FORM_TOPICS`); `null` = none chosen. */
     public readonly topic: FormTopic | null = null,
+    /** Ops-set (deploy/pin-form.js): sorts first in every Marketplace sort. */
+    public readonly isPinned: boolean = false,
   ) {}
 
   /** Story IR.2b: true once `now` reached the deadline (no new starts). */
@@ -174,6 +176,7 @@ export class FormEntity {
       updates.closeKind !== undefined ? updates.closeKind : this.closeKind,
       updates.deadlineAt !== undefined ? updates.deadlineAt : this.deadlineAt,
       updates.topic !== undefined ? updates.topic : this.topic,
+      this.isPinned,
     );
   }
 }
