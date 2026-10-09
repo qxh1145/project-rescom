@@ -480,6 +480,7 @@ function toSurveyCard(
     publishedAt: survey.publishedAt,
     targetingJson: survey.targetingJson,
     hasTargeting: survey.hasTargeting,
+    isPinned: false,
     isCompletedByCurrentUser,
   };
 }

@@ -58,6 +58,8 @@ export interface MockPublisherForm {
    */
   closeKind?: "OWNER" | "ADMIN" | "MODERATION" | null;
   questionCount?: number | null;
+  /** Admin pin (`PUT /admin/surveys/:formId/pin`): Marketplace lists it first. */
+  isPinned?: boolean;
 }
 
 const DEMO_PUBLISHER = "minh.le@fpt.edu.vn";

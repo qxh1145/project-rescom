@@ -6,6 +6,10 @@ import {
   FormTitleLookupPort,
   FormTitleLookupResult,
 } from '../application/ports/form-title-lookup.port';
+import {
+  PublishedFormAdminPort,
+  PublishedFormSummary,
+} from '../application/ports/published-form-admin.port';
 
 export interface InMemoryAdminForm {
   id: string;
@@ -16,11 +20,15 @@ export interface InMemoryAdminForm {
   publisherId: string;
   updatedAt: Date;
   versionIds?: string[];
+  isPinned?: boolean;
 }
 
 /** Test double of `PrismaFormAdminReads` over a seeded list of forms. */
 export class InMemoryFormAdminReads
-  implements ModerationQueueStatsPort, FormTitleLookupPort
+  implements
+    ModerationQueueStatsPort,
+    FormTitleLookupPort,
+    PublishedFormAdminPort
 {
   readonly forms: InMemoryAdminForm[] = [];
   calls = 0;
@@ -86,5 +94,46 @@ export class InMemoryFormAdminReads
       }
     }
     return { byFormId, byFormVersionId };
+  }
+
+  async listPublished(params: {
+    limit: number;
+    offset: number;
+    search?: string;
+  }): Promise<{ items: PublishedFormSummary[]; total: number }> {
+    this.calls += 1;
+    const term = params.search?.toLowerCase() ?? '';
+    const all = this.forms
+      .filter(
+        (form) =>
+          form.status === 'PUBLISHED' &&
+          form.title.toLowerCase().includes(term),
+      )
+      .sort(
+        (a, b) =>
+          Number(!!b.isPinned) - Number(!!a.isPinned) ||
+          b.updatedAt.getTime() - a.updatedAt.getTime(),
+      );
+    return {
+      items: all
+        .slice(params.offset, params.offset + params.limit)
+        .map((form) => ({
+          formId: form.id,
+          title: form.title,
+          publisherId: form.publisherId,
+          updatedAt: form.updatedAt,
+          isPinned: !!form.isPinned,
+        })),
+      total: all.length,
+    };
+  }
+
+  async findStatus(formId: string) {
+    return this.forms.find((form) => form.id === formId)?.status ?? null;
+  }
+
+  async setPinned(formId: string, pinned: boolean): Promise<void> {
+    const form = this.forms.find((candidate) => candidate.id === formId);
+    if (form) form.isPinned = pinned;
   }
 }

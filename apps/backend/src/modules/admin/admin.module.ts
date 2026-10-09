@@ -36,6 +36,12 @@ import { AdminLedgerController } from './presentation/admin-ledger.controller';
 import { AdminMissingCodeReportsController } from './presentation/admin-missing-code-reports.controller';
 import { AdminMissingCodeReportsService } from './application/admin-missing-code-reports.service';
 import { AdminOverviewService } from './application/admin-overview.service';
+import { AdminPublishedSurveysController } from './presentation/admin-published-surveys.controller';
+import { AdminPublishedSurveysService } from './application/admin-published-surveys.service';
+import {
+  PUBLISHED_FORM_ADMIN_PORT,
+  PublishedFormAdminPort,
+} from '../forms/application/ports/published-form-admin.port';
 import { AdminFraudLogService } from './application/admin-fraud-log.service';
 import { AdminLedgerService } from './application/admin-ledger.service';
 import {
@@ -85,6 +91,7 @@ import {
     AdminFraudLogController,
     AdminLedgerController,
     AdminMissingCodeReportsController,
+    AdminPublishedSurveysController,
   ],
   providers: [
     {
@@ -142,6 +149,19 @@ import {
         MISSING_CODE_REPORT_STATS_PORT,
         FORM_TITLE_LOOKUP_PORT,
         USER_PROFILE_REPOSITORY_PORT,
+      ],
+    },
+    {
+      provide: AdminPublishedSurveysService,
+      useFactory: (
+        forms: PublishedFormAdminPort,
+        directory: AdminUserDirectoryPort,
+        audit: AuditLogRepositoryPort,
+      ) => new AdminPublishedSurveysService({ forms, directory, audit }),
+      inject: [
+        PUBLISHED_FORM_ADMIN_PORT,
+        ADMIN_USER_DIRECTORY_PORT,
+        AUDIT_LOG_REPOSITORY_PORT,
       ],
     },
     {
