@@ -38,10 +38,11 @@ export function OtpInput({ value, onChange, length = 6, size = "lg", invalid = f
           ref={(node) => {
             refs.current[index] = node;
           }}
-          inputMode="numeric"
+          autoCapitalize="none"
+          spellCheck={false}
           autoComplete={index === 0 ? "one-time-code" : "off"}
           maxLength={length}
-          aria-label={`Chữ số ${index + 1}`}
+          aria-label={`Ký tự ${index + 1}`}
           aria-invalid={invalid || undefined}
           disabled={disabled}
           value={digit}

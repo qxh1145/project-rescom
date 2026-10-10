@@ -128,13 +128,23 @@ describe('CompletionCodeService', () => {
       expect(isValid).toBe(false);
     });
 
-    it('returns false for candidate codes that are not 6 digits', () => {
+    it('returns false for candidate codes that are not 6 letters/digits', () => {
       const verifier = service.computeVerifier(formVersionId, '123456');
       expect(service.verifyCode(formVersionId, '12345', verifier)).toBe(false);
       expect(service.verifyCode(formVersionId, '1234567', verifier)).toBe(
         false,
       );
       expect(service.verifyCode(formVersionId, 'abcdef', verifier)).toBe(false);
+      expect(service.verifyCode(formVersionId, '12-456', verifier)).toBe(false);
+    });
+
+    it('verifies alphanumeric codes case-insensitively', () => {
+      const verifier = service.computeVerifier(formVersionId, 'abc123');
+      expect(service.verifyCode(formVersionId, 'abc123', verifier)).toBe(true);
+      expect(service.verifyCode(formVersionId, ' ABC123 ', verifier)).toBe(
+        true,
+      );
+      expect(service.verifyCode(formVersionId, 'abc124', verifier)).toBe(false);
     });
 
     it('returns false for null or corrupted verifiers', () => {

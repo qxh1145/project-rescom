@@ -1,19 +1,20 @@
 /**
  * Pure slot logic of `OtpInput` (unit-tested in `tests/otp-slots.test.mjs`).
  *
- * The value is a fixed-length string: one character per box, a digit or
+ * The value is a fixed-length string: one character per box, a lowercase
+ * letter or digit, or
  * `OTP_EMPTY_SLOT` (a space). Clearing box 2 or typing in box 4 first never
  * shifts the other digits. `""` is accepted as "all empty". The code is
- * complete — and then digits only — when `isOtpComplete(value, length)`.
+ * complete — and then letters/digits only — when `isOtpComplete(value, length)`.
  */
 
 export const OTP_EMPTY_SLOT = " ";
 
-/** One entry per box: a digit or `""`. */
+/** One entry per box: a letter/digit (lowercased) or `""`. */
 export function otpSlots(value: string, length: number): string[] {
   return Array.from({ length }, (_, index) => {
-    const char = value[index] ?? "";
-    return /^\d$/.test(char) ? char : "";
+    const char = (value[index] ?? "").toLowerCase();
+    return /^[a-z0-9]$/.test(char) ? char : "";
   });
 }
 
@@ -22,7 +23,7 @@ function joinSlots(slots: readonly string[]): string {
 }
 
 export function isOtpComplete(value: string, length: number): boolean {
-  return value.length === length && /^\d+$/.test(value);
+  return value.length === length && /^[a-z0-9]+$/.test(value);
 }
 
 /**
@@ -40,7 +41,7 @@ export function typeIntoOtp(
   raw: string,
 ): { value: string; focus: number } {
   const slots = otpSlots(value, length);
-  let digits = raw.replace(/\D/g, "");
+  let digits = raw.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (!digits) {
     slots[index] = "";
     return { value: joinSlots(slots), focus: index };

@@ -1538,6 +1538,35 @@ describe('FormsService', () => {
     });
   });
 
+  describe('Admin fixed completion code', () => {
+    it('gives every Admin external survey the code abc123, kept across rotations', async () => {
+      const created = await service.createExternalSurvey(
+        publisherId,
+        {
+          title: 'Official External Form',
+          externalUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSc/viewform',
+        },
+        undefined,
+        'ADMIN',
+      );
+      expect(created.plaintextCompletionCode).toBe('abc123');
+      const stored = await repository.findById(created.id);
+      expect(
+        completionCodeService.verifyCode(
+          created.currentVersion.id,
+          'ABC123',
+          stored!.currentVersion.completionCode,
+        ),
+      ).toBe(true);
+
+      const rotated = await service.rotateCompletionCode(created.id, {
+        userId: publisherId,
+        role: 'ADMIN',
+      });
+      expect(rotated.plaintextCompletionCode).toBe('abc123');
+    });
+  });
+
   describe('rotateCompletionCode (Story 4.5)', () => {
     it('rotates completion code, creating a new immutable FormVersion and preserving prior verifier', async () => {
       const created = await service.createExternalSurvey(publisherId, {

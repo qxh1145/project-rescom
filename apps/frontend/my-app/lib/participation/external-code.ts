@@ -61,13 +61,13 @@ export function formatCountdown(totalSeconds: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
-/** "Xác nhận mã" is enabled only when the barrier passed AND 6 digits are entered. */
+/** "Xác nhận mã" is enabled only when the barrier passed AND 6 letters/digits are entered. */
 export function canConfirmCode(input: { remainingSeconds: number; code: string; busy?: boolean }): boolean {
   return (
     !input.busy &&
     input.remainingSeconds <= 0 &&
     input.code.length === COMPLETION_CODE_LENGTH &&
-    /^\d+$/.test(input.code)
+    /^[a-z0-9]+$/.test(input.code)
   );
 }
 
@@ -303,7 +303,7 @@ export function readGoogleFormDraft(storage: DraftStorage | null, attemptId: str
     if (!raw) return EMPTY_GOOGLE_FORM_DRAFT;
     const parsed = JSON.parse(raw) as Partial<GoogleFormDraft>;
     const code =
-      typeof parsed.code === "string" && parsed.code.length <= COMPLETION_CODE_LENGTH && /^[\d ]*$/.test(parsed.code)
+      typeof parsed.code === "string" && parsed.code.length <= COMPLETION_CODE_LENGTH && /^[a-z0-9 ]*$/.test(parsed.code)
         ? parsed.code
         : "";
     return { code, opened: parsed.opened === true };

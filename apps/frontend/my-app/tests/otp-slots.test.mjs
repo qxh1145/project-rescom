@@ -49,3 +49,9 @@ test("isOtpComplete requires every box to hold a digit", () => {
   assert.equal(isOtpComplete(`12345${_}`, 6), false);
   assert.equal(isOtpComplete("12345", 6), false);
 });
+
+test("letters are accepted and lowercased", () => {
+  const result = typeIntoOtp("", 6, 0, "ABC-123");
+  assert.equal(result.value, "abc123");
+  assert.equal(isOtpComplete(result.value, 6), true);
+});
