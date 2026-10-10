@@ -46,7 +46,10 @@ import {
   FormRepositoryPort,
   FormWithVersion,
 } from './ports/form-repository.port';
-import { CompletionCodePort } from './ports/completion-code.port';
+import {
+  ADMIN_COMPLETION_CODE,
+  CompletionCodePort,
+} from './ports/completion-code.port';
 import {
   PassThroughUnitOfWork,
   UnitOfWorkPort,
@@ -399,13 +402,19 @@ export class FormsService {
     publisherId: string,
     rawDto: CreateExternalSurveyInput,
     idempotencyKey?: string,
+    publisherRole?: string,
   ): Promise<ExternalSurveyResponseDto> {
+    const isAdmin = publisherRole === 'ADMIN';
     const dto = createExternalSurveySchema.parse(rawDto);
     const creationKey: FormCreationKey | undefined = idempotencyKey
       ? { key: idempotencyKey, requestHash: requestFingerprint(dto) }
       : undefined;
     if (creationKey) {
-      const replay = await this.replayExternalSurvey(publisherId, creationKey);
+      const replay = await this.replayExternalSurvey(
+        publisherId,
+        creationKey,
+        isAdmin,
+      );
       if (replay) return replay;
     }
 
@@ -415,9 +424,11 @@ export class FormsService {
     const deadlineAt = toDeadline(dto.deadlineAt) ?? null;
     assertDeadlineWindow(deadlineAt, now);
 
-    const plaintextCode = creationKey
-      ? this.creationKeyCode(publisherId, creationKey.key)
-      : this.getCompletionCodePort().generateSixDigitCode();
+    const plaintextCode = isAdmin
+      ? ADMIN_COMPLETION_CODE
+      : creationKey
+        ? this.creationKeyCode(publisherId, creationKey.key)
+        : this.getCompletionCodePort().generateSixDigitCode();
     const verifier = this.getCompletionCodePort().computeVerifier(
       versionId,
       plaintextCode,
@@ -523,6 +534,7 @@ export class FormsService {
         const replay = await this.replayExternalSurvey(
           publisherId,
           creationKey,
+          isAdmin,
         );
         if (replay) return replay;
       }
@@ -542,6 +554,7 @@ export class FormsService {
   private async replayExternalSurvey(
     publisherId: string,
     creationKey: FormCreationKey,
+    isAdmin: boolean,
   ): Promise<ExternalSurveyResponseDto | null> {
     const existing = await this.formRepository.findByCreationKey(
       publisherId,
@@ -557,7 +570,9 @@ export class FormsService {
     // The disclosed code belongs to the created version; after a rotation or
     // a new version it would be stale, so the replay is refused instead.
     const version = existing.currentVersion;
-    const plaintextCode = this.creationKeyCode(publisherId, creationKey.key);
+    const plaintextCode = isAdmin
+      ? ADMIN_COMPLETION_CODE
+      : this.creationKeyCode(publisherId, creationKey.key);
     if (
       version.versionNumber !== 1 ||
       !this.getCompletionCodePort().verifyCode(
@@ -1419,7 +1434,11 @@ export class FormsService {
     }
 
     const newVersionId = randomUUID();
-    const plaintextCode = this.getCompletionCodePort().generateSixDigitCode();
+    // An Admin's own survey keeps the fixed Admin code across rotations.
+    const plaintextCode =
+      requester.role === 'ADMIN' && existing.form.isOwnedBy(requester.userId)
+        ? ADMIN_COMPLETION_CODE
+        : this.getCompletionCodePort().generateSixDigitCode();
     const verifier = this.getCompletionCodePort().computeVerifier(
       newVersionId,
       plaintextCode,

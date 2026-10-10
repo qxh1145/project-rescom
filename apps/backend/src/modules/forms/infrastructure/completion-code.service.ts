@@ -68,7 +68,8 @@ export class CompletionCodeService implements CompletionCodePort {
     plaintextCode: string,
     keyVersion = CURRENT_COMPLETION_CODE_KEY_VERSION,
   ): string {
-    const payload = `${formVersionId}:${plaintextCode.trim()}`;
+    // Codes are case-insensitive: `ABC123` and `abc123` share one verifier.
+    const payload = `${formVersionId}:${plaintextCode.trim().toLowerCase()}`;
     const digest = crypto
       .createHmac('sha256', this.secretKey)
       .update(payload)
@@ -123,8 +124,8 @@ export class CompletionCodeService implements CompletionCodePort {
       return false;
     }
 
-    const trimmedCandidate = candidateCode.trim();
-    if (!/^\d{6}$/.test(trimmedCandidate)) {
+    const trimmedCandidate = candidateCode.trim().toLowerCase();
+    if (!/^[a-z0-9]{6}$/.test(trimmedCandidate)) {
       return false;
     }
 

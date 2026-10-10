@@ -1,5 +1,11 @@
 export const COMPLETION_CODE_PORT = Symbol('COMPLETION_CODE_PORT');
 
+/**
+ * Every external survey an Admin creates uses this fixed code (product
+ * decision 2026-10-10), so the Google Form confirmation text never changes.
+ */
+export const ADMIN_COMPLETION_CODE = 'abc123';
+
 export interface VerifierParts {
   keyVersion: string;
   digest: string;
