@@ -198,7 +198,7 @@ describe('Story 4.5: External Form Schemas Unit Tests', () => {
       expect(parsed.hasCompletionCode).toBe(true);
     });
 
-    it('rejects non-numeric or non-6-digit completion code', () => {
+    it('rejects a completion code that is not 6 letters or digits', () => {
       expect(() =>
         externalSurveyResponseSchema.parse({
           id: '11111111-1111-4111-8111-111111111111',
@@ -210,20 +210,20 @@ describe('Story 4.5: External Form Schemas Unit Tests', () => {
           currentVersionNumber: 1,
           status: 'DRAFT',
         }),
-      ).toThrow(/exactly 6 numeric digits/);
+      ).toThrow(/exactly 6 letters or digits/);
 
       expect(() =>
         externalSurveyResponseSchema.parse({
           id: '11111111-1111-4111-8111-111111111111',
           title: 'External Google Form',
           type: 'EXTERNAL',
-          plaintextCompletionCode: '12345A', // alphanumeric
+          plaintextCompletionCode: '1234-A', // punctuation
           hasCompletionCode: true,
           externalUrl: 'https://forms.gle/test',
           currentVersionNumber: 1,
           status: 'DRAFT',
         }),
-      ).toThrow(/exactly 6 numeric digits/);
+      ).toThrow(/exactly 6 letters or digits/);
     });
   });
 });

@@ -121,7 +121,7 @@ export const externalSurveyResponseSchema = z.object({
   type: z.literal("EXTERNAL"),
   plaintextCompletionCode: z
     .string()
-    .regex(/^\d{6}$/, "Completion code must be exactly 6 numeric digits"),
+    .regex(/^[a-z0-9]{6}$/i, "Completion code must be exactly 6 letters or digits"),
   hasCompletionCode: z.literal(true),
   externalUrl: z.string().url(),
   currentVersionNumber: z.number().int().positive(),
