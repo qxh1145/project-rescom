@@ -45,15 +45,16 @@ describe('External Completion Schemas', () => {
 
       expect(
         verifyExternalCompletionCodeInputSchema.safeParse({
-          completionCode: 'abcdef',
+          completionCode: '123-56',
         }).success,
       ).toBe(false);
 
+      // Admin surveys use the fixed alphanumeric code (2026-10-10).
       expect(
         verifyExternalCompletionCodeInputSchema.safeParse({
-          completionCode: '123a56',
+          completionCode: 'ABC123',
         }).success,
-      ).toBe(false);
+      ).toBe(true);
     });
 
     it('should reject invalid attemptId UUID if provided', () => {

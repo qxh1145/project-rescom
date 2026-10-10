@@ -1177,7 +1177,7 @@ class MockRepository {
     });
     if (!parsed.success) {
       throw repositoryError(
-        "Mã hoàn thành gồm đúng 6 chữ số.",
+        "Mã hoàn thành gồm đúng 6 ký tự (chữ hoặc số).",
         "VALIDATION_ERROR",
       );
     }

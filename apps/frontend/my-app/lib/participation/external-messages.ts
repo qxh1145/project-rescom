@@ -5,7 +5,7 @@
 export const EXTERNAL_MESSAGES = {
   // Figma 5b (62:784).
   wrongCodeTitle: (remainingTries: number) => `Mã chưa đúng · còn ${remainingTries} lần thử`,
-  wrongCodeBody: "Mở lại trang cảm ơn cuối Google Form và chép đúng 6 chữ số.",
+  wrongCodeBody: "Mở lại trang cảm ơn cuối Google Form và chép đúng 6 ký tự (chữ hoặc số).",
   // ASSUMED: the server clock is ahead of ours (422 SUBMISSION_TOO_FAST).
   tooFast: (countdown: string) => `Chưa đủ thời gian làm bài. Bạn có thể xác nhận mã sau ${countdown}.`,
   // ASSUMED (design) (not drawn).
@@ -15,7 +15,7 @@ export const EXTERNAL_MESSAGES = {
   rateLimited: "Bạn thao tác hơi nhanh. Đợi một chút rồi thử lại nhé.",
   // ASSUMED: the same, when the 429 carries a Retry-After ("45 giây", "3 phút").
   rateLimitedFor: (wait: string) => `Bạn thao tác hơi nhanh. Thử lại sau ${wait} nhé.`,
-  invalidFormat: "Mã hoàn thành gồm đúng 6 chữ số.",
+  invalidFormat: "Mã hoàn thành gồm đúng 6 ký tự (chữ hoặc số).",
   network: "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.",
   generic: "Chưa xác nhận được mã. Vui lòng thử lại sau ít phút.",
   loadFailed: "Không tải được lượt làm khảo sát.",

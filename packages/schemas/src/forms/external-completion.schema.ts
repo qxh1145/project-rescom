@@ -14,7 +14,7 @@ export const verifyExternalCompletionCodeInputSchema = z
     completionCode: z
       .string()
       .trim()
-      .regex(/^\d{6}$/, 'Completion code must be exactly 6 numeric digits'),
+      .regex(/^[a-z0-9]{6}$/i, 'Completion code must be exactly 6 letters or digits'),
     clientContext: clientContextSchema.optional(),
   })
   .strict();
