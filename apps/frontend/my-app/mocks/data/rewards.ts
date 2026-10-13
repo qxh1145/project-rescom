@@ -1,3 +1,4 @@
+import { adminStockOf, adminVoucherStatus, importCodesDecision, priceDeviationPercent, stockAdjustmentDecision, validateVoucherInput } from "./rewards-rules";
 import { createCollection, mockId } from "../db/store";
 import { idempotencyRecordKey, decideIdempotentRequest, type IdempotencyRecord } from "./idempotency";
 import { codeIssueDecision, decideRedemption, effectiveStatus, effectiveVoucherPrice, forcedError, historyMonthSummary, markUsedDecision, ticketStatus, undoUseDecision, type FlashInventory, type RedemptionQuote, type VoucherInventory } from "./rewards-rules";
@@ -104,7 +105,7 @@ function seed() {
   const demo: UserState = { tickets, history, issues: [{ id: id(493), redemptionId: id(490), ticketId: id(494), reason: "CODE_INVALID", note: "Mã lỗi",
     status: "REFUNDED", createdAt: iso(now - 7 * day), resolvedAt: iso(now - 6 * day), replacementCode: null, refundReference: "RFD-2610-7HC2" }] };
   return {
-    vouchers, flashes, codePools,
+    vouchers, flashes, codePools, priceHistory: Object.fromEntries(vouchers.map(v => [v.id, [{ version: 1, basePoints: v.basePoints, promoPoints: v.promoPoints, effectiveFrom: v.redeemStartsAt, changedBy: { id: id(999), name: "Admin Hùng" } }]])),
     quotes: {} as Record<string, RedemptionQuote>,
     users: { "user-active-002": demo, "00000000-0000-4000-8000-00000000d001": structuredClone(demo) } as Record<string, UserState>,
     idempotency: {} as Record<string, IdempotencyRecord<StoredResponse>>,
@@ -116,7 +117,7 @@ interface TicketRow { id: string; redemptionId: string; reference: string; vouch
 interface IssueRow { id: string; redemptionId: string; ticketId: string; reason: string; note: string | null; status: string; createdAt: string; resolvedAt: string | null; replacementCode: string | null; refundReference: string | null }
 interface UserState { tickets: TicketRow[]; history: HistoryRow[]; issues: IssueRow[] }
 interface StoredResponse { status: number; body: Record<string, unknown> }
-type CatalogState = Pick<ReturnType<typeof seed>, "vouchers" | "flashes" | "codePools">;
+type CatalogState = Pick<ReturnType<typeof seed>, "vouchers" | "flashes" | "codePools" | "priceHistory">;
 type UserSideState = Pick<ReturnType<typeof seed>, "quotes" | "users" | "idempotency">;
 
 type Failure = { ok: false; status: number; code: string; details: Record<string, unknown>; replayed?: boolean };
@@ -125,7 +126,7 @@ type QuoteDecision = { ok: true; result: Omit<RedemptionQuote, "userId"> } | Fai
 
 // Catalog inventory and per-user artifacts persist separately; one update per collection on redeem.
 export const rewardsCatalog = createCollection<CatalogState>("rewards-catalog", () => {
-  const { vouchers, flashes, codePools } = seed(); return { vouchers, flashes, codePools };
+  const { vouchers, flashes, codePools, priceHistory } = seed(); return { vouchers, flashes, codePools, priceHistory };
 });
 export const rewardsState = createCollection<UserSideState>("rewards-users", () => {
   const { quotes, users, idempotency } = seed(); return { quotes, users, idempotency };
@@ -326,4 +327,121 @@ export function historyOf(userId: string, query: { limit: number; offset: number
   const rows = rewardsState.get().users[userId]?.history ?? [];
   const { limit, offset } = query;
   return { items: rows.slice(offset, offset + limit), total: rows.length, limit, offset, hasMore: offset + limit < rows.length, monthSummary: historyMonthSummary(rows, now) };
+}
+
+// Admin voucher catalog (Story 12.5); one catalog update for every successful write.
+type AdminInput = { title: string; brandId: string; category: VoucherInventory["category"]; valueVnd: number; basePoints: number; promoPoints: number | null; isSharedCode: boolean; redeemStartsAt: string; redeemEndsAt: string; codeExpiresAt: string; terms: string[]; howToUse: string[]; imageUrl: string | null };
+const missingVoucher = () => ({ ok: false as const, status: 404, code: "VOUCHER_NOT_FOUND", details: {} });
+const archivedVoucher = () => ({ ok: false as const, status: 409, code: "VOUCHER_ARCHIVED", details: {} });
+const adminRow = (v: VoucherInventory, catalog: CatalogState, now: number) => ({
+  id: v.id, title: v.title, brand: v.brand, category: v.category, valueVnd: v.valueVnd,
+  price: effectiveVoucherPrice(v, catalog.flashes, now).price, basePoints: v.basePoints, promoPoints: v.promoPoints,
+  state: v.state, status: adminVoucherStatus(v, catalog.flashes, now), isVisible: v.isVisible, stock: adminStockOf(v, catalog.flashes, now), isSharedCode: v.isSharedCode,
+  redeemStartsAt: v.redeemStartsAt, redeemEndsAt: v.redeemEndsAt, codeExpiresAt: v.codeExpiresAt,
+  priceDeviationPercent: priceDeviationPercent(v.valueVnd, v.basePoints), createdAt: v.createdAt ?? v.redeemStartsAt,
+  updatedAt: v.updatedAt ?? v.redeemStartsAt,
+});
+
+export function adminBrands() { return { items: slugs.map((slug, index) => ({ id: slug, name: brands[index] })) }; }
+export function adminVouchersOf(query: { filter?: string; q?: string } = {}, now = Date.now()) {
+  const catalog = rewardsCatalog.get();
+  const all = catalog.vouchers.map(v => adminRow(v, catalog, now));
+  const statuses = catalog.vouchers.map(v => adminVoucherStatus(v, catalog.flashes, now));
+  const items = all.filter((v, index) => (!query.filter || query.filter === "ALL" || statuses[index] === query.filter) &&
+    (!query.q || `${v.title} ${v.brand.name}`.toLocaleLowerCase("vi").includes(query.q.toLocaleLowerCase("vi"))));
+  const count = (status: string) => statuses.filter(s => s === status).length;
+  return { items, summary: { total: all.length, active: count("ACTIVE"), paused: count("PAUSED"), soldOut: count("SOLD_OUT"),
+    expired: count("EXPIRED"), hidden: count("HIDDEN"), archived: count("ARCHIVED"),
+    lowStock: all.filter(v => v.stock.remaining > 0 && v.stock.remaining <= v.stock.total * 0.1).map(v => ({ voucherId: v.id, label: v.title })),
+    codesAvailable: all.reduce((n, v) => n + v.stock.codesAvailable, 0), flashReserved: all.reduce((n, v) => n + v.stock.flashReserved, 0),
+    activeFlashSales: catalog.flashes.filter(f => Date.parse(f.startsAt) <= now && now < Date.parse(f.endsAt) && !f.endedEarlyAt).length }, serverTime: iso(now) };
+}
+export function adminVoucherDetailOf(voucherId: string, now = Date.now()) {
+  const catalog = rewardsCatalog.get(), v = catalog.vouchers.find(v => v.id === voucherId);
+  if (!v) return missingVoucher();
+  const seen = new Set<string>();
+  const redemptions = Object.entries(rewardsState.get().users).flatMap(([userId, user]) => {
+    const tickets = user.tickets.filter(t => t.voucherId === voucherId);
+    const ticketReferences = new Set(tickets.map(t => t.reference));
+    const relevantHistory = user.history.filter(h => {
+      if (h.kind === "FAILED") return false;
+      if (ticketReferences.has(h.reference)) return true;
+      return false;
+    });
+    return relevantHistory.map(h => ({ reference: h.reference, userLabel: `#${userId.slice(-4).toUpperCase()}`,
+      points: Math.abs(h.points), kind: h.kind, createdAt: h.createdAt }));
+  }).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+    .filter(row => !seen.has(row.reference) && !!seen.add(row.reference)).slice(0, 50);
+  return { ok: true as const, result: { voucher: adminRow(v, catalog, now), priceHistory: catalog.priceHistory[v.id], redemptions } };
+}
+function changeAdminVoucher(id: string, now: number, mutate: (v: VoucherInventory, draft: CatalogState) => ReturnType<typeof archivedVoucher> | { ok: false; status: number; code: string; details?: unknown } | void) {
+  const catalog = rewardsCatalog.get(), v = catalog.vouchers.find(v => v.id === id);
+  if (!v) return missingVoucher();
+  if (v.state === "ARCHIVED") return archivedVoucher();
+  const draft = structuredClone(catalog), target = draft.vouchers.find(v => v.id === id)!;
+  const error = mutate(target, draft);
+  if (error) return error;
+  rewardsCatalog.update(state => { Object.assign(state, draft); });
+  return { ok: true as const, result: { voucher: adminRow(target, draft, now) } };
+}
+export function createAdminVoucher(input: AdminInput, admin: { id: string; name: string }, now = Date.now()) {
+  const errors = validateVoucherInput(input);
+  if (errors.length) return { ok: false as const, status: 400, code: "VALIDATION_ERROR", details: errors };
+  const catalog = rewardsCatalog.get(), id = mockId(), date = iso(now);
+  const v: VoucherInventory = { id, title: input.title, brand: { id: input.brandId, name: brands[slugs.indexOf(input.brandId)] }, category: input.category,
+    valueVnd: input.valueVnd, basePoints: input.basePoints, promoPoints: input.promoPoints, priceVersion: 1,
+    stockTotal: 0, stockRemaining: 0, codesAvailable: 0, state: "ACTIVE", isVisible: true, imageUrl: input.imageUrl,
+    description: "", whereToUse: "", terms: input.terms, howToUse: input.howToUse, isSharedCode: input.isSharedCode,
+    redeemStartsAt: input.redeemStartsAt, redeemEndsAt: input.redeemEndsAt, codeExpiresAt: input.codeExpiresAt, createdAt: date, updatedAt: date };
+  rewardsCatalog.update(draft => { draft.vouchers.push(v); draft.codePools[id] = []; draft.priceHistory[id] = [
+    { version: 1, basePoints: input.basePoints, promoPoints: input.promoPoints, effectiveFrom: date, changedBy: admin }]; });
+  return { ok: true as const, result: { voucher: adminRow(v, { ...catalog, vouchers: [...catalog.vouchers, v] }, now) } };
+}
+export function updateAdminVoucher(id: string, input: AdminInput, now = Date.now()) {
+  return changeAdminVoucher(id, now, (v, draft) => {
+    const errors = validateVoucherInput(input, { voucher: v, issued: adminStockOf(v, draft.flashes, now).issued, now });
+    if (errors.length) return { ok: false, status: errors.some(e => e.code === "SHARED_FLAG_LOCKED") ? 409 : 400,
+      code: errors.some(e => e.code === "SHARED_FLAG_LOCKED") ? "SHARED_FLAG_LOCKED" : "VALIDATION_ERROR", details: errors };
+    Object.assign(v, { title: input.title, brand: { id: input.brandId, name: brands[slugs.indexOf(input.brandId)] }, category: input.category,
+      valueVnd: input.valueVnd, isSharedCode: input.isSharedCode, redeemStartsAt: input.redeemStartsAt, redeemEndsAt: input.redeemEndsAt,
+      codeExpiresAt: input.codeExpiresAt, terms: input.terms.length ? input.terms : v.terms,
+      howToUse: input.howToUse.length ? input.howToUse : v.howToUse, imageUrl: input.imageUrl ?? v.imageUrl, updatedAt: iso(now) });
+  });
+}
+export function patchAdminVoucherState(id: string, patch: { state?: VoucherInventory["state"]; isVisible?: boolean }, now = Date.now()) {
+  if (patch.state === "ARCHIVED") {
+    const v = rewardsCatalog.get().vouchers.find(v => v.id === id);
+    if (!v) return missingVoucher();
+    if (v.state === "ARCHIVED") return archivedVoucher();
+  }
+  return changeAdminVoucher(id, now, v => { if (patch.state) v.state = patch.state; if (patch.isVisible !== undefined) v.isVisible = patch.isVisible; v.updatedAt = iso(now); });
+}
+export function changeAdminVoucherPrice(id: string, change: { basePoints: number; promoPoints: number | null }, admin: { id: string; name: string }, now = Date.now()) {
+  return changeAdminVoucher(id, now, (v, draft) => {
+    v.basePoints = change.basePoints; v.promoPoints = change.promoPoints; v.priceVersion++; v.updatedAt = iso(now);
+    draft.priceHistory[id].push({ version: v.priceVersion, ...change, effectiveFrom: iso(now), changedBy: admin });
+  });
+}
+export function adjustAdminVoucherStock(id: string, adjustment: { total: number; reason: string }, now = Date.now()) {
+  return changeAdminVoucher(id, now, (v, draft) => {
+    const decision = stockAdjustmentDecision(v, adminStockOf(v, draft.flashes, now), adjustment.total);
+    if (!decision.ok) return { ...decision, details: "details" in decision ? decision.details : {} };
+    if (!v.isSharedCode && decision.removeCodes > 0) draft.codePools[id].splice(-decision.removeCodes);
+    v.stockRemaining += adjustment.total - v.stockTotal; v.stockTotal = adjustment.total;
+    v.codesAvailable = draft.codePools[id].length; v.updatedAt = iso(now);
+  });
+}
+export function importAdminVoucherCodes(id: string, request: { codes: string[]; mode: "VALIDATE" | "COMMIT" }, now = Date.now()) {
+  const catalog = rewardsCatalog.get(), v = catalog.vouchers.find(v => v.id === id);
+  if (!v) return missingVoucher();
+  if (v.state === "ARCHIVED") return archivedVoucher();
+  if (v.isSharedCode) return { ok: false as const, status: 409, code: "SHARED_CODE_VOUCHER", details: {} };
+  const result = importCodesDecision(request.codes, Object.values(catalog.codePools).flat());
+  if (request.mode === "COMMIT" && result.accepted) {
+    rewardsCatalog.update(draft => { const voucher = draft.vouchers.find(v => v.id === id)!;
+      draft.codePools[id].push(...request.codes.map(code => code.trim())); voucher.stockTotal += result.accepted;
+      voucher.stockRemaining += result.accepted; voucher.codesAvailable = draft.codePools[id].length; voucher.updatedAt = iso(now); });
+    result.committed = true;
+  }
+  return { ok: true as const, result };
 }

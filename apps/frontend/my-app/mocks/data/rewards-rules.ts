@@ -1,10 +1,12 @@
+import { POINT_VND_RATE } from "@rescom/schemas";
+
 /** Pure pricing and redemption decisions; time is supplied by the caller. No state mutation. */
 export interface VoucherInventory {
   id: string; title: string; brand: { id: string; name: string }; category: string;
   valueVnd: number; basePoints: number; promoPoints: number | null; priceVersion: number;
   stockTotal: number; stockRemaining: number; redeemStartsAt: string; redeemEndsAt: string;
   codeExpiresAt: string; codesAvailable: number; state: "ACTIVE" | "PAUSED" | "ARCHIVED";
-  isVisible: boolean; imageUrl: string | null; description: string; whereToUse: string; terms: string[]; howToUse: string[]; isSharedCode: boolean;
+  createdAt?: string; updatedAt?: string; isVisible: boolean; imageUrl: string | null; description: string; whereToUse: string; terms: string[]; howToUse: string[]; isSharedCode: boolean;
 }
 export interface FlashInventory {
   id: string; code: string; startsAt: string; endsAt: string; endedEarlyAt: string | null;
@@ -16,6 +18,7 @@ export interface RedemptionQuote {
   price: VoucherPrice; flashSaleItemId: string | null;
   expiresAt: string; flashEndsAt: string | null; balance: { available: number; after: number }; serverTime: string;
 }
+export const VOUCHER_BRAND_IDS = ["highlands", "lotteria", "phuc-long", "kfc", "gong-cha", "the-coffee-house"];
 export const discountPercent = (points: number, base: number): number => Math.round((1 - points / base) * 100);
 
 export function effectiveVoucherPrice(voucher: VoucherInventory, flashes: FlashInventory[], now: number): { price: VoucherPrice; flash: { flash: FlashInventory; item: FlashInventory["items"][number] } | null } {
@@ -123,4 +126,53 @@ export function historyMonthSummary(rows: { kind: string; points: number; create
     else if (row.kind === "REFUNDED") { pointsSpent -= row.points; voucherCount--; }
   }
   return { month, pointsSpent, voucherCount };
+}
+
+/** Admin inventory keeps committed Flash quota separate from regular remaining. */
+export function adminStockOf(v: VoucherInventory, flashes: FlashInventory[], now: number) {
+  const flashReserved = flashes.filter(f => now < Date.parse(f.endsAt) && (!f.endedEarlyAt || now < Date.parse(f.endedEarlyAt)))
+    .flatMap(f => f.items).filter(i => i.voucherId === v.id).reduce((sum, i) => sum + i.quota - i.sold, 0);
+  return { total: v.stockTotal, issued: v.stockTotal - v.stockRemaining - flashReserved, flashReserved, remaining: v.stockRemaining, codesAvailable: v.codesAvailable };
+}
+
+export function adminVoucherStatus(v: VoucherInventory, flashes: FlashInventory[], now: number) {
+  if (v.state === "ARCHIVED") return "ARCHIVED";
+  const status = voucherAvailability(v.isSharedCode ? { ...v, codesAvailable: Math.max(v.codesAvailable, 1) } : v, now);
+  if (!v.isVisible) return "HIDDEN";
+  if (v.state === "PAUSED") return "PAUSED";
+  if (status === "EXPIRED") return "EXPIRED";
+  if (status === "SOLD_OUT") return "SOLD_OUT";
+  return "ACTIVE";
+}
+
+export function priceDeviationPercent(valueVnd: number, basePoints: number) {
+  return Math.round((basePoints / (valueVnd / POINT_VND_RATE) - 1) * 1000) / 10;
+}
+
+export function validateVoucherInput(input: { brandId: string; redeemEndsAt: string; isSharedCode: boolean }, existing?: { voucher: VoucherInventory; issued: number; now: number }) {
+  const errors: { path: string; code: string }[] = [];
+  if (!VOUCHER_BRAND_IDS.includes(input.brandId)) errors.push({ path: "brandId", code: "BRAND_NOT_FOUND" });
+  if (existing && input.redeemEndsAt !== existing.voucher.redeemEndsAt && Date.parse(input.redeemEndsAt) < existing.now) errors.push({ path: "redeemEndsAt", code: "REDEMPTION_WINDOW_ENDED" });
+  if (existing && existing.issued > 0 && input.isSharedCode !== existing.voucher.isSharedCode) errors.push({ path: "isSharedCode", code: "SHARED_FLAG_LOCKED" });
+  return errors;
+}
+
+export function stockAdjustmentDecision(v: VoucherInventory, stock: ReturnType<typeof adminStockOf>, nextTotal: number) {
+  if (nextTotal < stock.issued + stock.flashReserved) return { ok: false as const, status: 409, code: "STOCK_BELOW_COMMITTED", details: { minimum: stock.issued + stock.flashReserved } };
+  if (nextTotal > stock.total && !v.isSharedCode) return { ok: false as const, status: 409, code: "STOCK_INCREASE_NEEDS_CODES" };
+  const removeCodes = stock.total - nextTotal;
+  if (!v.isSharedCode && removeCodes > stock.codesAvailable) return { ok: false as const, status: 409, code: "STOCK_EXCEEDS_CODES" };
+  return { ok: true as const, removeCodes };
+}
+
+export function importCodesDecision(codes: string[], stored: string[]) {
+  const seen = new Set<string>(), duplicates = new Set<string>(), storedSet = new Set(stored), already = new Set<string>();
+  for (const raw of codes) {
+    const code = raw.trim();
+    if (seen.has(code)) duplicates.add(code);
+    if (storedSet.has(code)) already.add(code);
+    seen.add(code);
+  }
+  const duplicatesInFile = [...duplicates], alreadyStored = [...already];
+  return { received: codes.length, accepted: duplicates.size || already.size ? 0 : codes.length, duplicatesInFile, alreadyStored, committed: false };
 }

@@ -128,10 +128,10 @@ function parsed(schema, result, status = 200) {
 
 const routeKey = (route) => route.replace(/:[A-Za-z_]\w*/g, ":param");
 
-test("hybrid registers exactly the 26 DEFERRED_KEEP_MOCK handlers, once each", () => {
+test("hybrid registers exactly the 35 DEFERRED_KEEP_MOCK handlers, once each", () => {
   const registered = hybridHandlers.map((handler) => routeKey(`${handler.info.method} ${handler.info.path.replace(/^\/api/, "")}`));
   const deferred = Object.keys(ROUTE_ALLOWLIST.DEFERRED_KEEP_MOCK).map(routeKey);
-  assert.equal(deferred.length, 26);
+  assert.equal(deferred.length, 35);
   assert.deepEqual([...registered].sort(), [...deferred].sort());
   assert.ok(handlers.length > hybridHandlers.length, "full mocking (`enabled`) keeps every handler");
   // Nothing mock-only (demo accounts, mock Google, mock upload) runs next to the real backend.
@@ -200,6 +200,14 @@ test("admin disputes: demo queue and resolve without a mock session; unknown cas
   assert.equal(resolved.status, "RESOLVED");
   const unknown = await call("POST", `/admin/disputes/${randomUUID()}/resolve`, { body: { outcome, note } });
   assert.equal(unknown.body.error.code, "DISPUTE_CASE_NOT_FOUND");
+});
+
+test("admin vouchers answer hybrid admin without mock session and require CSRF", async () => {
+  const list = parsed(rewards.adminVoucherListSchema, await call("GET", "/admin/rewards/vouchers"));
+  assert.ok(list.items.length > 0);
+  parsed(rewards.adminVoucherBrandListSchema, await call("GET", "/admin/rewards/brands"));
+  parsed(rewards.adminVoucherDetailSchema, await call("GET", `/admin/rewards/vouchers/${list.items[0].id}`));
+  assert.equal((await call("PATCH", `/admin/rewards/vouchers/${list.items[0].id}`, { body: { isVisible: true }, csrf: false })).status, 403);
 });
 
 test("admin quality reviews: demo queue and decision without a mock session; CSRF on decision", async () => {

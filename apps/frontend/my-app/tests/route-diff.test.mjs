@@ -100,10 +100,10 @@ test("every allowlist entry still has its MSW handler", () => {
   assert.deepEqual(orphaned, [], `These allowlisted endpoints have no MSW handler left, delete them:\n  ${orphaned.join("\n  ")}`);
 });
 
-test("gate G: only MOCK_ONLY (3) and DEFERRED_KEEP_MOCK (26) remain; every other MSW route is a backend route", () => {
+test("gate G: only MOCK_ONLY (3) and DEFERRED_KEEP_MOCK (35) remain; every other MSW route is a backend route", () => {
   assert.deepEqual(
     Object.fromEntries(Object.entries(ROUTE_ALLOWLIST).map(([category, endpoints]) => [category, Object.keys(endpoints).length])),
-    { MOCK_ONLY: 3, DEFERRED_KEEP_MOCK: 26, PLANNED: 0, REMOVE: 0 },
+    { MOCK_ONLY: 3, DEFERRED_KEEP_MOCK: 35, PLANNED: 0, REMOVE: 0 },
   );
   const outside = [...new Set(handlers.map((handler) => handler.key))]
     .filter((key) => !backend.has(key) && !["MOCK_ONLY", "DEFERRED_KEEP_MOCK"].includes(allowlist.get(key)?.category))

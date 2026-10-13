@@ -21,6 +21,7 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
   { href: "/admin/users", label: "Người dùng", icon: "users" },
   { href: "/admin/fraud-log", label: "FraudLog", icon: "shield-alert" },
   { href: "/admin/transactions", label: "Giao dịch", icon: "arrows-swap" },
+  ...(PILOT_BUILD ? [] : [{ href: "/admin/vouchers", label: "Voucher", icon: "ticket" as const }]),
 ];
 
 /** `/admin` matches only itself; sections also match their detail pages. */

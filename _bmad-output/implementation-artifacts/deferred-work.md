@@ -409,3 +409,8 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 - Shared `Dialog` only syncs native state when `open` changes; Chrome close-watcher closes a non-dismissible dialog on a repeated Esc, desyncing it from `open=true` (later error view invisible, CTA dead because phase ≠ closed) [components/ui/Dialog.tsx:34].
 - Unmount during `submitting`/`checking` aborts the client request and drops the outcome (no session refresh) [use-redeem-flow.ts:393]. Spec 4.8 mandates the abort; server idempotency prevents a double charge.
 - PRICE_CHANGED caused only by quote expiry (same points, mock `decideRedemption` TTL check) shows "Giá vừa thay đổi" with identical old → new values [lib/rewards/redeem-flow.ts:517]. Contract details carry no reason; revisit when 12.8 defines one.
+
+## Deferred from: code review of 12-5-admin-voucher-catalog-codes (2026-10-13)
+
+- Edit form sends empty `terms/howToUse/imageUrl` via PUT because the detail API omits them; mock masks it with fallbacks. Backend 12.7 must either return these fields in detail or accept PATCH-like semantics, otherwise saving wipes data.
+- Admin voucher search is not debounced and the cache key uses untrimmed `q` [use-admin-vouchers.ts].
