@@ -3,7 +3,7 @@ baseline_commit: 54f10670f8f8a98ea02612263d99869b9a260452
 ---
 # Story 12.4: My Vouchers, Code/QR & History
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -368,3 +368,4 @@ Claude Opus 5.5 (lead: story, review, browser check, fixes) + 2 executor subagen
 - 2026-10-13: Story created (ready-for-dev).
 - 2026-10-13: Implemented Story 12.4 (contracts, mock routes/rules, service, My Vouchers, ticket code/QR, mark used/undo, code-issue report, history, badge, 12.3 hand-off); added `uqr`. Browser check run; fixed demo-user seed claim, desktop table wrapping and the aside link label. `npm test` 832/832, tsc, lint, pilot build pass. Status → review.
 - 2026-10-13: Code review fixes (7 of 10 findings). QR has a 4-module quiet zone and whole-pixel modules. `TICKET_NOT_FOUND` and new 409 `TICKET_REFUNDED` have copy; the mock rejects mark used, undo and report on a refunded ticket (`VOUCHER_TICKET_ERROR_CODES` extended). Ticket page and My Vouchers use the ticking `useServerNow` clock, so Hoàn tác hides when the undo window closes. Empty FAILED notes fall back to the short reason. The month summary clamps negative values. The desktop history panel mounts only at lg. Deferred: marketplace badge fetches the full ticket list (backend should return a count), `claimDemoRewards` duplicates the demo-account predicate, `howToUse` sniffs `terms` text. `npm test` 833/833, schemas 630/630, tsc, lint pass.
+- 2026-10-13: PR #20 merged into develop. Status → done.
