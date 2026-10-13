@@ -12,7 +12,7 @@ import {
   type RewardPricingRange,
   type SurveyTargetingCriteria,
 } from "@rescom/schemas";
-import { FIELDS_OF_STUDY, SCHOOL_OPTIONS, VIETNAM_LOCATIONS } from "../demographic-options.ts";
+import { displaySchoolName, FIELDS_OF_STUDY, SCHOOL_OPTIONS, VIETNAM_LOCATIONS } from "../demographic-options.ts";
 import { CREATE_MESSAGES } from "./create-messages.ts";
 import { normalizeWizardTopic } from "./topics.ts";
 
@@ -84,8 +84,8 @@ export interface DurationBand {
 
 export const DURATION_BANDS: readonly DurationBand[] = [
   { id: "UNDER_5", label: "Dưới 5 phút", shortLabel: "dưới 5 phút", minutes: 4 },
-  { id: "FROM_5_TO_10", label: "5 – 10 phút", shortLabel: "5–10 phút", minutes: 8 },
-  { id: "FROM_10_TO_15", label: "10 – 15 phút", shortLabel: "10–15 phút", minutes: 13 },
+  { id: "FROM_5_TO_10", label: "5 đến 10 phút", shortLabel: "5 đến 10 phút", minutes: 8 },
+  { id: "FROM_10_TO_15", label: "10 đến 15 phút", shortLabel: "10 đến 15 phút", minutes: 13 },
   { id: "OVER_15", label: "Trên 15 phút", shortLabel: "trên 15 phút", minutes: 20 },
 ];
 
@@ -264,7 +264,7 @@ export function validateAudienceStep(draft: GoogleFormWizardDraft): WizardErrors
 
 /** "Trường Đại học FPT – Đà Nẵng" → "FPT – Đà Nẵng" (summaries). */
 export function shortSchoolName(school: string): string {
-  return school.replace(/^(Trường )?Đại học /, "").trim() || school;
+  return displaySchoolName(school.replace(/^(Trường )?Đại học /, "").trim() || school);
 }
 
 /** "Đà Nẵng" for one region, "3 khu vực" for more; "" for none. */
@@ -279,7 +279,7 @@ export function criteriaSummary(draft: GoogleFormWizardDraft): { label: string; 
   const place = [school, locationsLabel(draft.locations)].filter(Boolean).join(" · ");
   return [
     { label: "Giới tính", value: GENDER_CHOICES.find((choice) => choice.value === draft.gender)?.label ?? "Tất cả" },
-    { label: "Tuổi", value: age.ok && age.range ? `${age.range.min} – ${age.range.max}` : "Tất cả" },
+    { label: "Tuổi", value: age.ok && age.range ? `${age.range.min} đến ${age.range.max}` : "Tất cả" },
     { label: "Ngành", value: draft.fieldsOfStudy.length > 0 ? `${draft.fieldsOfStudy.length} ngành` : "Tất cả" },
     { label: SCHOOL_TARGETING_SUPPORTED ? "Trường · Khu vực" : "Khu vực", value: place || "Tất cả" },
   ];
@@ -289,7 +289,7 @@ export function criteriaSummary(draft: GoogleFormWizardDraft): { label: string; 
 export function audienceSummaryLine(draft: GoogleFormWizardDraft): string {
   const targeting = toTargetingJson(draft);
   const parts: string[] = [];
-  if (targeting.ageRange) parts.push(`${targeting.ageRange.min}–${targeting.ageRange.max} tuổi`);
+  if (targeting.ageRange) parts.push(`${targeting.ageRange.min} đến ${targeting.ageRange.max} tuổi`);
   if (targeting.genders) parts.push(draft.gender === "MALE" ? "Nam" : "Nữ");
   if (targeting.fieldOfStudy) parts.push(`${targeting.fieldOfStudy.length} ngành`);
   if (targeting.schools) parts.push(shortSchoolName(targeting.schools[0]));

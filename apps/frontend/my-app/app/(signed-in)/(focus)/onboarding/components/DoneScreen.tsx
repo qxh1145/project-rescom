@@ -140,7 +140,7 @@ export function DoneScreen({
                     Tạo khảo sát cho nghiên cứu của bạn
                   </h2>
                   <p className="mt-1.5 text-caption leading-[18.9px] text-ink-muted lg:text-body-sm">
-                    100 điểm đủ cho 10 người trả lời một khảo sát 5–10 phút.
+                    100 điểm đủ cho 10 người trả lời một khảo sát 5 đến 10 phút.
                   </p>
                   <Link
                     href={CREATE_SURVEY_HREF}

@@ -155,7 +155,7 @@ export const UPLOAD_MESSAGES = {
   network: "Mất kết nối khi tải tệp. Kiểm tra mạng rồi thử lại.",
   storageFailed: "Không tải được tệp lên kho lưu trữ. Vui lòng thử lại.",
   invalidFile: "Tệp không được chấp nhận (sai định dạng, quá dung lượng hoặc nội dung không khớp). Hãy chọn tệp khác.",
-  scannerOutage: "Hệ thống quét virus đang tạm gián đoạn. Tệp đã được giữ lại an toàn — hãy thử lại sau ít phút.",
+  scannerOutage: "Hệ thống quét virus đang tạm gián đoạn. Tệp đã được giữ lại an toàn. Hãy thử lại sau ít phút.",
   storageUnavailable: "Kho lưu trữ tệp đang tạm gián đoạn. Hãy thử lại sau ít phút, tệp của bạn chưa bị mất.",
   storageDown: "Kho lưu trữ tệp vẫn chưa hoạt động lại. Hãy thử lại sau hoặc nộp bài mà không đính kèm nếu câu này không bắt buộc.",
   scannerDown:

@@ -72,7 +72,7 @@ export function ChoosePackageScreen() {
     >
       <form id={FORM_ID} onSubmit={submit} noValidate className="flex flex-col lg:mt-6">
         <p className="text-label font-normal text-ink-muted">Số dư khả dụng</p>
-        <p className="text-[30px] font-extrabold text-ink">{balance ? `${formatPoints(balance.available)} điểm` : "—"}</p>
+        <p className="text-[30px] font-extrabold text-ink">{balance ? `${formatPoints(balance.available)} điểm` : "Chưa có"}</p>
 
         <div className="mt-4">
           <PackageOptions
@@ -105,11 +105,11 @@ export function ChoosePackageScreen() {
         <dl className="mt-4.5 flex flex-col gap-1.5 rounded-2xl border border-line bg-surface px-4 py-3.5">
           <div className="flex items-center justify-between gap-3">
             <dt className="text-label font-normal text-ink-muted">Số điểm nhận</dt>
-            <dd className="text-label font-bold text-ink">{points !== null ? `${formatPoints(points)} điểm` : "—"}</dd>
+            <dd className="text-label font-bold text-ink">{points !== null ? `${formatPoints(points)} điểm` : "Chưa có"}</dd>
           </div>
           <div className="flex items-center justify-between gap-3">
             <dt className="text-label font-normal text-ink-muted">Số tiền chuyển</dt>
-            <dd className="text-[16px] font-extrabold text-ink">{points !== null ? formatVnd(topUpVnd(points)) : "—"}</dd>
+            <dd className="text-[16px] font-extrabold text-ink">{points !== null ? formatVnd(topUpVnd(points)) : "Chưa có"}</dd>
           </div>
         </dl>
 

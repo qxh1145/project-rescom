@@ -15,7 +15,7 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "Rescom — Từ câu hỏi, đến những góc nhìn lớn hơn.",
+  title: "Rescom | Từ câu hỏi, đến những góc nhìn lớn hơn.",
 };
 
 export default function Home() {

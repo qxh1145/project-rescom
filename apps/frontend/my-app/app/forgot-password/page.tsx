@@ -5,7 +5,7 @@ import { AuthSplitLayout } from "../login/components/AuthSplitLayout";
 import { ForgotPasswordPanel } from "./components/ForgotPasswordPanel";
 
 export const metadata: Metadata = {
-  title: "Quên mật khẩu — Rescom",
+  title: "Quên mật khẩu | Rescom",
 };
 
 /**

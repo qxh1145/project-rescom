@@ -10,7 +10,7 @@ import { OptionalSessionCsrfGuard } from './optional-session-csrf.guard';
 
 describe('OptionalSessionCsrfGuard (Epic 5 review P12)', () => {
   const envService = {
-    frontendOrigins: ['https://app.rescom.com.vn'],
+    frontendOrigins: ['https://app.rescom.io.vn'],
   } as EnvService;
   const secretProtection = {
     verifyCsrfToken: jest.fn(
@@ -46,7 +46,7 @@ describe('OptionalSessionCsrfGuard (Epic 5 review P12)', () => {
         guard.canActivate(
           context(
             {
-              origin: 'https://app.rescom.com.vn',
+              origin: 'https://app.rescom.io.vn',
               'x-csrf-token': 'csrf-token',
             },
             true,
@@ -58,14 +58,14 @@ describe('OptionalSessionCsrfGuard (Epic 5 review P12)', () => {
     it('rejects a missing or wrong CSRF token', () => {
       expect(() =>
         guard.canActivate(
-          context({ origin: 'https://app.rescom.com.vn' }, true),
+          context({ origin: 'https://app.rescom.io.vn' }, true),
         ),
       ).toThrow(InvalidCsrfTokenException);
       expect(() =>
         guard.canActivate(
           context(
             {
-              origin: 'https://app.rescom.com.vn',
+              origin: 'https://app.rescom.io.vn',
               'x-csrf-token': 'wrong-token',
             },
             true,
@@ -79,7 +79,7 @@ describe('OptionalSessionCsrfGuard (Epic 5 review P12)', () => {
     it('accepts an allowed origin without a token', () => {
       expect(
         guard.canActivate(
-          context({ origin: 'https://app.rescom.com.vn' }, false),
+          context({ origin: 'https://app.rescom.io.vn' }, false),
         ),
       ).toBe(true);
     });

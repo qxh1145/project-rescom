@@ -41,7 +41,7 @@ test("detail column per type (Figma 11e)", () => {
     view.fraudDetailText({ type: "COMPLAINT_UPHELD", details: { refundedPoints: 10, adminName: "Admin Hùng" } }),
     "Trả 10 điểm về ký quỹ · Admin Hùng",
   );
-  assert.equal(view.fraudDetailText({ type: "DEMO_MISMATCH", details: null }), "—");
+  assert.equal(view.fraudDetailText({ type: "DEMO_MISMATCH", details: null }), "Chưa có");
   assert.equal(view.formatSecondsVi(0), "0 giây");
   assert.equal(view.formatSecondsVi(120), "2 phút");
 });

@@ -101,7 +101,7 @@ const TOPICS: CannedTopic[] = [
           title: "Thói quen học nhóm",
           summary: "tần suất, địa điểm, mức hiệu quả",
           blocks: [
-            choice("ai-freq", "Bạn thường học nhóm bao nhiêu buổi mỗi tuần?", ["Không học nhóm", "1 buổi", "2–3 buổi", "Từ 4 buổi trở lên"]),
+            choice("ai-freq", "Bạn thường học nhóm bao nhiêu buổi mỗi tuần?", ["Không học nhóm", "1 buổi", "2 đến 3 buổi", "Từ 4 buổi trở lên"]),
             choice("ai-place", "Bạn hay học nhóm ở đâu?", ["Thư viện trường", "Quán cà phê", "Phòng tự học", "Online (Meet, Zoom)"], { multiple: true }),
             choice("ai-day", "Hãy chọn “Thứ Tư” để tiếp tục.", ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm"]),
             scale("ai-help", "Học nhóm giúp bạn hiểu bài hơn đến mức nào?", "Không giúp gì", "Giúp rất nhiều"),
@@ -133,7 +133,7 @@ const TOPICS: CannedTopic[] = [
           title: "Thói quen ăn uống",
           summary: "tần suất, bữa hay ăn, chi tiêu",
           blocks: [
-            choice("ai-often", "Bạn ăn ở căng tin trường bao nhiêu lần mỗi tuần?", ["Chưa bao giờ", "1–2 lần", "3–5 lần", "Gần như mỗi ngày"]),
+            choice("ai-often", "Bạn ăn ở căng tin trường bao nhiêu lần mỗi tuần?", ["Chưa bao giờ", "1 đến 2 lần", "3 đến 5 lần", "Gần như mỗi ngày"]),
             choice("ai-meal", "Bạn thường ăn bữa nào ở căng tin?", ["Sáng", "Trưa", "Chiều", "Tối"], { multiple: true }),
             numberBlock("ai-spend", "Mỗi bữa bạn chi khoảng bao nhiêu nghìn đồng?"),
           ],

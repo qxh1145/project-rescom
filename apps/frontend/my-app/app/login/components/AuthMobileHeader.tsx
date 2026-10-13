@@ -22,7 +22,7 @@ export function AuthMobileHeader() {
       </div>
       <div className="mx-auto max-w-[440px] px-6 pt-5 text-center">
         {/* Figma's one-line title is 343px in a 342px column; the bleed keeps it on one line at 390. */}
-        <h1 className="-mx-1 text-title font-extrabold text-ink">Nhận hỗ trợ — Đóng góp lại</h1>
+        <h1 className="-mx-1 text-title font-extrabold text-ink">Nhận hỗ trợ, Đóng góp lại</h1>
         <p className="mt-1.5 text-body-sm text-ink-muted">
           Làm khảo sát của bạn bè để nhận điểm, dùng điểm để tìm người trả lời khảo sát của bạn.
         </p>

@@ -100,7 +100,7 @@ export function ChooseMethodScreen() {
             tags={
               <>
                 <Pill tone="amber">
-                  {EXAMPLE_RANGE.min}–{EXAMPLE_RANGE.max} điểm/lượt · khảo sát 5–10 phút
+                  {EXAMPLE_RANGE.min} đến {EXAMPLE_RANGE.max} điểm/lượt · khảo sát 5 đến 10 phút
                 </Pill>
                 <Pill tone="neutral">Điểm chờ 48 giờ</Pill>
               </>
@@ -112,12 +112,12 @@ export function ChooseMethodScreen() {
             icon="layout-grid"
             iconTone="bg-tone-teal-bg text-tone-teal-fg"
             title="Tạo form trong Rescom"
-            subtitle={PILOT_BUILD ? "Kéo-thả câu hỏi" : "Kéo-thả câu hỏi, có AI gợi ý"}
+            subtitle={PILOT_BUILD ? "Kéo thả câu hỏi" : "Kéo thả câu hỏi, có AI gợi ý"}
             description="Người trả lời làm ngay trong app, bạn xem từng câu trả lời và đánh giá chất lượng."
             tags={
               <>
                 <Pill tone="green">
-                  Rẻ hơn 20% · {internalPoints(EXAMPLE_RANGE.min)}–{internalPoints(EXAMPLE_RANGE.max)} điểm/lượt
+                  Rẻ hơn 20% · {internalPoints(EXAMPLE_RANGE.min)} đến {internalPoints(EXAMPLE_RANGE.max)} điểm/lượt
                 </Pill>
                 <Pill tone="neutral">Điểm trả ngay</Pill>
               </>

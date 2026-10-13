@@ -8,6 +8,7 @@ import { fieldClassName } from "@/components/ui/TextField";
 import { ToggleChip } from "@/components/ui/ToggleChip";
 import type { ApiQueryState } from "@/lib/api/use-api-query";
 import type { AudienceEstimate } from "@/lib/forms/create-service";
+import { displaySchoolName } from "@/lib/demographic-options";
 import {
   FIELDS_SHOWN_COLLAPSED,
   FIELD_OF_STUDY_CHOICES,
@@ -134,7 +135,7 @@ export function AudienceStep({ draft, errors, update, estimate }: AudienceStepPr
               />
             </div>
             <span aria-hidden="true" className="pb-3 text-[16px] text-ink-muted">
-              <span className="lg:hidden">–</span>
+              <span className="lg:hidden">đến</span>
               <span className="hidden lg:inline">đến</span>
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -166,7 +167,7 @@ export function AudienceStep({ draft, errors, update, estimate }: AudienceStepPr
             id="audience-school"
             label="Trường"
             className="order-4 lg:order-none"
-            options={[{ value: "", label: "Tất cả trường" }, ...SCHOOL_CHOICES.map((school) => ({ value: school, label: school }))]}
+            options={[{ value: "", label: "Tất cả trường" }, ...SCHOOL_CHOICES.map((school) => ({ value: school, label: displaySchoolName(school) }))]}
             value={draft.school}
             onChange={(event) => update({ school: event.target.value })}
           />
@@ -264,7 +265,7 @@ export function AudienceStep({ draft, errors, update, estimate }: AudienceStepPr
 }
 
 function EstimateText({ estimate, format }: { estimate: EstimateState; format: "sentence" | "number" }) {
-  if (!estimate) return <>{format === "sentence" ? "Chọn tiêu chí để ước tính" : "—"}</>;
+  if (!estimate) return <>{format === "sentence" ? "Chọn tiêu chí để ước tính" : "Chưa có"}</>;
   if (estimate.data) {
     const { estimatedRespondents, minimumReportable } = estimate.data;
     // Below the minimum the backend withholds the number (k-anonymity).
@@ -274,7 +275,7 @@ function EstimateText({ estimate, format }: { estimate: EstimateState; format: "
     const count = estimatedRespondents.toLocaleString("vi-VN");
     return <>{format === "sentence" ? `Khoảng ${count} người phù hợp` : `${count} người`}</>;
   }
-  if (estimate.error) return <>{format === "sentence" ? "Chưa ước tính được số người" : "—"}</>;
+  if (estimate.error) return <>{format === "sentence" ? "Chưa ước tính được số người" : "Chưa có"}</>;
   return <>{format === "sentence" ? "Đang ước tính…" : "…"}</>;
 }
 

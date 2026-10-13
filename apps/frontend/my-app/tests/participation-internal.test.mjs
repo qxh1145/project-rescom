@@ -54,7 +54,7 @@ test("section paging: 2 questions per page, never across sections", () => {
   );
   assert.equal(layout.numbers.q4, 4);
   // Figma 4 headers: "Câu 3 – 4 / 8", "4/8 câu", 4b "Câu 8 / 8".
-  assert.equal(form.pageRangeLabel(layout.pages[1], layout.total), "Câu 3 – 4 / 8");
+  assert.equal(form.pageRangeLabel(layout.pages[1], layout.total), "Câu 3 đến 4 / 8");
   assert.equal(form.pageProgressLabel(layout.pages[1], layout.total), "4/8 câu");
   assert.equal(form.pageRangeLabel(layout.pages[4], layout.total), "Câu 8 / 8");
   assert.equal(form.firstPageWith(layout, ["q7", "q5"]), 2);

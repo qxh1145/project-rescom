@@ -71,11 +71,11 @@ project-rescom/                 # Monorepo root
 ## 4. Domain Architecture
 
 ```
-rescom.com.vn          → Landing / Main App (Vercel)
-app.rescom.com.vn      → Authenticated Application (Vercel)
-survey.rescom.com.vn   → Public Survey Access (Vercel)
-api.rescom.com.vn      → Backend API (VPS)
-admin.rescom.com.vn    → Admin Dashboard (Vercel)
+rescom.io.vn          → Landing / Main App (Vercel)
+app.rescom.io.vn      → Authenticated Application (Vercel)
+survey.rescom.io.vn   → Public Survey Access (Vercel)
+api.rescom.io.vn      → Backend API (VPS)
+admin.rescom.io.vn    → Admin Dashboard (Vercel)
 ```
 
 ---

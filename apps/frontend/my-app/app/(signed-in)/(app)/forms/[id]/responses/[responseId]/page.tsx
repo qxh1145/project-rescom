@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ResponsesScreen } from "../components/ResponsesScreen";
 
 export const metadata: Metadata = {
-  title: "Chi tiết câu trả lời — Rescom",
+  title: "Chi tiết câu trả lời | Rescom",
 };
 
 /**

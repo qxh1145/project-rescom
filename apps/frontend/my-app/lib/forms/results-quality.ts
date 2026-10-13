@@ -31,12 +31,12 @@ export function qualityTiles(quality: FormQuality): StatTile[] {
   return [
     {
       label: "Tỷ lệ bỏ dở",
-      value: rate === null ? "—" : `${rate}%`,
+      value: rate === null ? "Chưa có" : `${rate}%`,
       caption: quality.started ? `${quality.abandoned} trong ${quality.started} người bắt đầu` : "Chưa ai bắt đầu",
     },
     {
       label: "Thời gian thực tế (trung vị)",
-      value: quality.medianDurationSeconds === null ? "—" : formatDurationLong(quality.medianDurationSeconds),
+      value: quality.medianDurationSeconds === null ? "Chưa có" : formatDurationLong(quality.medianDurationSeconds),
       caption: `Bạn khai ${minutesOf(quality.declaredEffortSeconds)} phút`,
     },
     {
@@ -46,7 +46,7 @@ export function qualityTiles(quality: FormQuality): StatTile[] {
     },
     {
       label: "Phản hồi người trả lời",
-      value: quality.feedback.average === null ? "—" : `${formatDecimal(quality.feedback.average)} / 5`,
+      value: quality.feedback.average === null ? "Chưa có" : `${formatDecimal(quality.feedback.average)} / 5`,
       caption: quality.feedback.count ? `${quality.feedback.count} đánh giá` : "Chưa có đánh giá",
     },
   ];

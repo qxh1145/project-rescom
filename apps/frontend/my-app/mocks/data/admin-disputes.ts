@@ -550,9 +550,9 @@ function settleDispute(item: MockDisputeCase, outcome: DisputeCaseOutcome, note:
     notify(
       publisher,
       "ESCROW_RELEASED",
-      `Khiếu nại được chấp nhận — Lượt làm của ${code} trong “${title}” không hợp lệ. ${item.amount} điểm đã hoàn vào Khả dụng của bạn.`,
+      `Khiếu nại được chấp nhận: Lượt làm của ${code} trong “${title}” không hợp lệ. ${item.amount} điểm đã hoàn vào Khả dụng của bạn.`,
     );
-    notify(respondent, "WARNING", `Lượt làm bị thu hồi điểm — Khiếu nại về “${title}” được chấp nhận. Lý do: ${note}`);
+    notify(respondent, "WARNING", `Lượt làm bị thu hồi điểm: Khiếu nại về “${title}” được chấp nhận. Lý do: ${note}`);
   } else {
     if (respondent && heldByRespondent) {
       updateWallet(respondent, (wallet) => {
@@ -570,9 +570,9 @@ function settleDispute(item: MockDisputeCase, outcome: DisputeCaseOutcome, note:
     notify(
       publisher,
       "WARNING",
-      `Khiếu nại không được chấp nhận — Lượt làm của ${code} trong “${title}” hợp lệ. Lý do: ${note}`,
+      `Khiếu nại không được chấp nhận: Lượt làm của ${code} trong “${title}” hợp lệ. Lý do: ${note}`,
     );
-    notify(respondent, "REWARD_RELEASED", `+${item.amount} điểm vào Khả dụng — Khiếu nại về “${title}” đã được xem xét.`);
+    notify(respondent, "REWARD_RELEASED", `+${item.amount} điểm vào Khả dụng: Khiếu nại về “${title}” đã được xem xét.`);
   }
 
   // Keep the publisher's tracking view ("Khiếu nại" state of the attempt) in sync.
@@ -649,15 +649,15 @@ function settleReport(item: MockDisputeCase, outcome: DisputeCaseOutcome, note: 
       // Checked by an Admin: straight to Khả dụng (no second 48h review).
       creditSurveyReward(respondent, { ...reward, pending: false });
     }
-    notify(respondent, "REWARD_RELEASED", `+${item.amount} điểm vào Khả dụng — Admin đã xác nhận lượt làm “${title}”.`);
+    notify(respondent, "REWARD_RELEASED", `+${item.amount} điểm vào Khả dụng: Admin đã xác nhận lượt làm “${title}”.`);
   } else if (outcome === "CODE_LIMIT_RESET") {
     notify(
       respondent,
       "WARNING",
-      `Đã mở lại giới hạn mã hoàn thành — Bạn có thể bắt đầu lại “${title}”. Ghi chú của Admin: ${note}`,
+      `Đã mở lại giới hạn mã hoàn thành: Bạn có thể bắt đầu lại “${title}”. Ghi chú của Admin: ${note}`,
     );
   } else {
-    notify(respondent, "WARNING", `Báo cáo về “${title}” chưa được chấp nhận — Lý do: ${note}`);
+    notify(respondent, "WARNING", `Báo cáo về “${title}” chưa được chấp nhận: Lý do: ${note}`);
   }
 }
 

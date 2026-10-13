@@ -10,7 +10,7 @@ import type { CompletionKind } from "@/lib/participation/completion-view";
 export function CompletionDesktopHeader() {
   return (
     <header className="relative z-20 hidden h-18.25 items-center border-b border-line bg-surface px-12 lg:flex">
-      <Link href="/marketplace" aria-label="Rescom — Khám phá" className="mr-auto">
+      <Link href="/marketplace" aria-label="Rescom: Khám phá" className="mr-auto">
         <RescomLogo size="md" />
       </Link>
       <PointsChip variant="desktop" />

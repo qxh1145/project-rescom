@@ -74,8 +74,8 @@ export function ScaleAnswer({
 
 /** Accessible name of an end point that carries a label; `undefined` keeps the plain number. */
 function endLabel(option: number, index: number, count: number, minLabel?: string, maxLabel?: string): string | undefined {
-  if (index === 0 && minLabel) return `${option} – ${minLabel}`;
-  if (index === count - 1 && maxLabel) return `${option} – ${maxLabel}`;
+  if (index === 0 && minLabel) return `${option}: ${minLabel}`;
+  if (index === count - 1 && maxLabel) return `${option}: ${maxLabel}`;
   return undefined;
 }
 

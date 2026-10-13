@@ -6,7 +6,7 @@ import { AuthSplitLayout } from "../login/components/AuthSplitLayout";
 import { ResetPasswordPanel } from "./components/ResetPasswordPanel";
 
 export const metadata: Metadata = {
-  title: "Đặt lại mật khẩu — Rescom",
+  title: "Đặt lại mật khẩu | Rescom",
   // The URL carries the one-time reset token: never send it as a Referer.
   referrer: "no-referrer",
 };

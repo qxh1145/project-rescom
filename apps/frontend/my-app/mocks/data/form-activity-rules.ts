@@ -63,7 +63,7 @@ export function distribute(total: number, weights: readonly number[]): number[] 
 const COMMENTS = [
   "Nên có thêm chỗ ngồi gần ổ cắm điện.",
   "Mọi thứ ổn, mong duy trì như hiện tại.",
-  "Wi-Fi hay chập chờn vào giờ cao điểm.",
+  "Mạng không dây hay chập chờn vào giờ cao điểm.",
   "Giờ mở cửa nên kéo dài hơn vào mùa thi.",
   "Thông tin nên được cập nhật thường xuyên hơn.",
   "Mình thấy khá hài lòng, không có góp ý thêm.",

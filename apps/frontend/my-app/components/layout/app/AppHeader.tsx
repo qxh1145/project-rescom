@@ -19,7 +19,7 @@ export function AppHeader() {
 
   return (
     <header className="sticky top-0 z-30 hidden h-18.25 items-center border-b border-line bg-surface px-12 lg:flex">
-      <Link href="/marketplace" aria-label="Rescom — Khám phá" className="mr-10 shrink-0">
+      <Link href="/marketplace" aria-label="Rescom: Khám phá" className="mr-10 shrink-0">
         <RescomLogo size="md" />
       </Link>
       <nav aria-label="Điều hướng chính" className="flex items-center gap-1.5">

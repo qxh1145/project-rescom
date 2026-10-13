@@ -61,7 +61,7 @@ const onlineShopping = define(
       type: "single_choice",
       title: "Bạn mua sắm online bao nhiêu lần mỗi tháng?",
       required: true,
-      options: options("shop-q3", ["Ít hơn 1 lần", "1 – 3 lần", "4 – 6 lần", "Nhiều hơn 6 lần"]),
+      options: options("shop-q3", ["Ít hơn 1 lần", "1 đến 3 lần", "4 đến 6 lần", "Nhiều hơn 6 lần"]),
       integrity: { semanticCategory: "BEHAVIORAL" },
     },
     {
@@ -207,7 +207,7 @@ const studyStressSleep = define(
       type: "single_choice",
       title: "Học kỳ này bạn đăng ký bao nhiêu tín chỉ?",
       required: true,
-      options: options("sleep-q1", ["Dưới 15", "15 – 18", "19 – 22", "Trên 22"]),
+      options: options("sleep-q1", ["Dưới 15", "15 đến 18", "19 đến 22", "Trên 22"]),
     },
     {
       id: "sleep-q2",
@@ -237,7 +237,7 @@ const studyStressSleep = define(
       type: "single_choice",
       title: "Bạn thường đi ngủ lúc mấy giờ?",
       required: true,
-      options: options("sleep-q4", ["Trước 22 giờ", "22 – 24 giờ", "0 – 2 giờ sáng", "Sau 2 giờ sáng"]),
+      options: options("sleep-q4", ["Trước 22 giờ", "22 đến 24 giờ", "0 đến 2 giờ sáng", "Sau 2 giờ sáng"]),
     },
     {
       id: "sleep-q5",
@@ -302,7 +302,7 @@ const housingNearCampus = define(
       type: "single_choice",
       title: "Chỗ ở cách trường bao xa?",
       required: true,
-      options: options("house-q2", ["Dưới 1 km", "1–3 km", "3–5 km", "Trên 5 km"]),
+      options: options("house-q2", ["Dưới 1 km", "1 đến 3 km", "3 đến 5 km", "Trên 5 km"]),
     },
     {
       id: "house-q3",
@@ -312,8 +312,8 @@ const housingNearCampus = define(
       required: true,
       options: options("house-q3", [
         "Dưới 1,5 triệu đồng",
-        "1,5–2,5 triệu đồng",
-        "2,5–3,5 triệu đồng",
+        "1,5 đến 2,5 triệu đồng",
+        "2,5 đến 3,5 triệu đồng",
         "Trên 3,5 triệu đồng",
       ]),
     },
@@ -436,7 +436,7 @@ const canteenSatisfaction = define(
       type: "single_choice",
       title: "Bạn thường phải chờ bao lâu để nhận món?",
       required: true,
-      options: options("canteen-q6", ["Dưới 5 phút", "5 – 10 phút", "11 – 20 phút", "Trên 20 phút"]),
+      options: options("canteen-q6", ["Dưới 5 phút", "5 đến 10 phút", "11 đến 20 phút", "Trên 20 phút"]),
       integrity: { semanticCategory: "BEHAVIORAL" },
     },
     {

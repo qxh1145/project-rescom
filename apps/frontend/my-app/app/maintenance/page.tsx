@@ -4,7 +4,7 @@ import { ErrorScreen } from "@/components/feedback/ErrorScreen";
 import { firstParam, formatMaintenanceEnd } from "@/lib/feedback/error-pages";
 
 export const metadata: Metadata = {
-  title: "Đang bảo trì — Rescom",
+  title: "Đang bảo trì | Rescom",
 };
 
 interface MaintenancePageProps {

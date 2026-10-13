@@ -38,8 +38,8 @@ export type AiDurationBucket = (typeof AI_DURATION_BUCKETS)[number];
 
 export const AI_DURATION_LABELS: Record<AiDurationBucket, string> = {
   UNDER_5: "Dưới 5 phút",
-  FROM_5_TO_10: "5–10 phút",
-  FROM_10_TO_15: "10–15 phút",
+  FROM_5_TO_10: "5 đến 10 phút",
+  FROM_10_TO_15: "10 đến 15 phút",
   OVER_15: "Trên 15 phút",
 };
 

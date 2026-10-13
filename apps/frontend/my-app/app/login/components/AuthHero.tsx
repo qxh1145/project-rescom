@@ -35,7 +35,7 @@ export function AuthHero({ description = LOGIN_DESCRIPTION, showSteps = true }: 
       <div className="relative z-10 px-18 pt-14">
         <RescomLogo size="lg" highPriority />
         <h1 id="auth-hero-title" className="mt-16 max-w-[576px] text-display font-extrabold text-ink">
-          Nhận hỗ trợ —<br />
+          Nhận hỗ trợ,<br />
           <span className="text-primary">Đóng góp lại</span>
         </h1>
         <p className="mt-7 max-w-[460px] text-body-lg text-ink-muted">{description}</p>

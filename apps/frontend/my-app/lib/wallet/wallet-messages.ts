@@ -40,4 +40,4 @@ export function loadTopUpErrorMessage(error: unknown): string {
   return "Không tải được yêu cầu nạp. Vui lòng thử lại.";
 }
 
-export const COPY_FAILED_MESSAGE = "Không sao chép được tự động — hãy chọn và chép thủ công.";
+export const COPY_FAILED_MESSAGE = "Không sao chép được tự động. Hãy chọn và chép thủ công.";

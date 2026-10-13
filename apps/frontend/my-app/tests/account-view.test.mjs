@@ -40,7 +40,7 @@ test("15h field groups follow Figma, school fields only for students", () => {
         "Học tập & công việc",
         [
           "Nghề nghiệp: Sinh viên đại học",
-          "Trường: ĐH FPT – Đà Nẵng",
+          "Trường: ĐH FPT, Đà Nẵng",
           "Năm học: Năm 3",
           "Ngành: Marketing & Truyền thông",
           "Thu nhập hộ gia đình: Không chia sẻ",
@@ -82,7 +82,7 @@ test("15h shows the saved profile from a backend-shaped GET /users/me/profile", 
     .flatMap((group) => group.fields);
   const valueOf = (label) => fields.find((field) => field.label === label)?.value;
   assert.equal(valueOf("Tên hiển thị"), "Linh Nguyễn");
-  assert.equal(valueOf("Trường"), "ĐH FPT – Đà Nẵng");
+  assert.equal(valueOf("Trường"), "ĐH FPT, Đà Nẵng");
   assert.equal(valueOf("Năm học"), "Năm 3");
   assert.equal(valueOf("Mục tiêu"), "Cả hai");
   assert.ok(fields.every((field) => field.value !== view.EMPTY_FIELD_VALUE));

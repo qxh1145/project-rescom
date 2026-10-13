@@ -17,7 +17,7 @@ export function OpensChart({ buckets, summary }: OpensChartProps) {
     <figure className="w-full lg:max-w-[560px]">
       <div
         role="img"
-        aria-label={`Lượt hoàn thành theo thời gian — ${description}`}
+        aria-label={`Lượt hoàn thành theo thời gian: ${description}`}
         className="relative mt-5 h-26 border-b border-line lg:h-32.5"
       >
         <span aria-hidden="true" className="absolute inset-x-0 top-0 border-t border-line-subtle" />

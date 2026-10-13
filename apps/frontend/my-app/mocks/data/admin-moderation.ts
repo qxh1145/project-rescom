@@ -340,7 +340,7 @@ export function approveModeration(form: MockPublisherForm, admin: MockSessionUse
   notifyOwner(
     ownerOf(published),
     "SURVEY_APPROVED",
-    `Khảo sát đã được duyệt — “${published.title}” đã lên Khám phá và bắt đầu nhận câu trả lời.`,
+    `Khảo sát đã được duyệt: “${published.title}” đã lên Khám phá và bắt đầu nhận câu trả lời.`,
   );
   return { decision, form: published };
 }
@@ -377,7 +377,7 @@ export function rejectModeration(form: MockPublisherForm, admin: MockSessionUser
   });
   const refund = refundedPoints > 0 ? ` Đã hoàn ${refundedPoints} điểm.` : "";
   const sentence = reason.replace(/[.\s]+$/, "");
-  notifyOwner(owner, "SURVEY_REJECTED", `Khảo sát bị từ chối — “${form.title}”: ${sentence}.${refund}`);
+  notifyOwner(owner, "SURVEY_REJECTED", `Khảo sát bị từ chối: “${form.title}”: ${sentence}.${refund}`);
   return { decision, form: rejected };
 }
 

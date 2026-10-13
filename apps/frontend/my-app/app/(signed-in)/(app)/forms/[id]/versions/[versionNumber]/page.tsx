@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { VersionReadOnly } from "../components/VersionReadOnly";
 
 export const metadata: Metadata = {
-  title: "Xem phiên bản — Rescom",
+  title: "Xem phiên bản | Rescom",
 };
 
 /** `/forms/:id/versions/:versionNumber` — "Xem (chỉ đọc)" of 17a (not drawn; ASSUMED (design) simple question list). */

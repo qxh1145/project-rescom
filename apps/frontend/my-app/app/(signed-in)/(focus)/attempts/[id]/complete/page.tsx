@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { CompleteScreen } from "./components/CompleteScreen";
 
 export const metadata: Metadata = {
-  title: "Hoàn thành khảo sát — Rescom",
+  title: "Hoàn thành khảo sát | Rescom",
 };
 
 /**

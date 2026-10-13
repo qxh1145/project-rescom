@@ -21,7 +21,7 @@ The canonical authority chain is:
 
 The SRS v1.0 draft, `rescom.md`, the project-overview DOCX, the Sprint Change Proposal, and both “RESCOM Architecture V2 — Research Integrity Engine” documents are historical inputs only. They cannot override the canonical chain. This PRD includes **Internal Form Builder + AI Form Generator** in GO LIVE and supersedes the SRS deferral of those capabilities.
 
-Features are grouped with globally numbered Functional Requirements (FR-1 through FR-67). Glossary terms are used verbatim throughout. Unresolved product choices remain explicit owner-bound gates in §8; they are not implementation defaults.
+Features are grouped with globally numbered Functional Requirements (FR-1 through FR-75). Glossary terms are used verbatim throughout. Unresolved product choices remain explicit owner-bound gates in §8; they are not implementation defaults.
 
 ---
 
@@ -930,9 +930,98 @@ System explicitly records whether each integrity dimension applies.
 
 ---
 
+### 4.20 Rewards — Voucher Redemption & Flash Sale (Phase 2)
+
+> **Added 2026-10-13 by sprint-change-proposal-2026-10-13 (Phase 2, after pilot launch).** Design source: Figma Rescom pages 20–27; business rules BR-01…BR-24 in the planning doc "Rescom — Đổi điểm lấy voucher F&B & Flash Sale" (2026-10-13). Architecture: AD-24.
+
+**Description:** Users spend Available Points on F&B partner vouchers, which becomes the second way to spend Points after publishing surveys. 1 Point ≈ 200 VNĐ, the top-up rate. Every Point in Available Balance can be redeemed, including topped-up Points and unlocked starter Points. Pending, Frozen, Escrow, and Integrity Hold Points can never be redeemed. Admins manage the catalog, code inventory, and time-boxed Flash Sales. Behavior that depends on Open Questions 23–26 stays gated until those questions are answered.
+
+**Functional Requirements:**
+
+#### FR-68: Voucher Catalog and Discovery
+Users browse active vouchers, search by name or brand, filter by category, brand, point range, "on sale", and "I can afford", sort the results, and open a voucher detail page.
+
+**Consequences (testable):**
+- Every price is compared with the user's Available Balance, and the balance shown says that Pending Points are excluded
+- User-facing states are Available, Sold Out, Expired (redemption window ended), and Paused. A Paused voucher stays listed with the redeem action disabled
+- Hidden or archived vouchers are not listed, but vouchers already redeemed remain in the owner's account (BR-10)
+- A voucher that has any redemption cannot be deleted, only hidden or archived (BR-24)
+
+#### FR-69: Quote and Redemption
+Opening the confirmation step creates a server quote. Confirming the quote redeems the voucher exactly once, at the locked price.
+
+**Consequences (testable):**
+- A quote returns `quoteId`, effective price, `priceVersion`, and an expiry no later than the quote TTL (Open Question 26) or the Flash Sale end
+- The client creates one idempotency key per confirmation. Resending the same key returns the first result (BR-08)
+- Redemption succeeds only if Available Balance ≥ the price at commit (BR-01). The price is resolved on the server at commit time in the order Flash > promotion > base. A `priceVersion` that differs from the quote returns `PRICE_CHANGED` with the new price (BR-11)
+- A success posts exactly one balanced journal, USER_AVAILABLE → SYSTEM_SINK, for the integer price (BR-03). It decrements stock without ever going below zero (BR-04), assigns one unique code, and records one Redemption with its own RDM reference (BR-07, BR-14)
+- Any failure rolls back Points, stock, and code assignment together (BR-09). The failed attempt is still recorded, without a journal (BR-07)
+- Failure codes are `SOLD_OUT`, `PRICE_CHANGED`, `INSUFFICIENT_POINTS` (with the new balance), `VOUCHER_UNAVAILABLE`, and `ACCOUNT_NOT_ELIGIBLE`. Every failure message states that no Points were deducted
+- Successful redemptions cannot be cancelled or refunded, except under FR-75 (BR-22)
+
+#### FR-70: My Vouchers and Redemption History
+Users see their redeemed vouchers as tickets, can use a code, and can review their redemption history.
+
+**Consequences (testable):**
+- Tabs are Unused, Used, and Expired. Tickets are sorted by nearest expiry, and Expiring is shown 7 days before expiry
+- A ticket shows the code, a QR code, a copy action, and usage instructions
+- The user can mark a voucher as used and undo it within 24 hours (Open Question 25)
+- Reminders are sent 7 days and 1 day before expiry. An expired, unused voucher is not refunded (BR-23, Open Question 25)
+- Redemption history shows Success, Failed, and Refunded entries, and each links to its ledger entry
+
+#### FR-71: Flash Sale
+Admins schedule time-boxed Flash Sales with a reserved quota at a lower price.
+
+**Consequences (testable):**
+- A Flash Sale applies only within `[start, end)` server time, in Asia/Ho_Chi_Minh. When it ends, sells out, or is ended early, the regular price returns immediately (BR-17)
+- The Flash quota is reserved from regular stock at start, and unsold quota returns to stock at end. Start and end jobs run exactly once (BR-05)
+- One voucher cannot be in two overlapping Flash Sales. The Flash price must be lower than the regular price, and the quota cannot exceed unreserved stock (BR-18)
+- Each user may redeem at most N units per voucher per Flash Sale, default 1 (BR-19)
+- Countdowns use server time. The client clock never decides the price
+
+#### FR-72: Admin Voucher Management
+Admins create, edit, pause, hide, and archive vouchers, with a card preview, and manage code inventory.
+
+**Consequences (testable):**
+- Codes are uploaded as CSV. A file is rejected if it contains duplicates within itself or codes already stored for that voucher (BR-15). Shared codes require an explicit `isShared` setting (BR-14)
+- Stock can be reduced only within the unissued portion that is not reserved for Flash (BR-06)
+- A price change applies only to redemptions after it is saved. Price history is append-only, and each redemption stores the price it used (BR-12)
+- A point price that deviates more than 20% from value ÷ 200 VNĐ follows the approval rule in Open Question 23 (BR-13)
+- Code expiry must be at least 7 days after the redemption window ends (BR-16, Open Question 25)
+- Every Admin change is audited (FR-ADD-13)
+
+#### FR-73: Admin Flash Sale Operations and Rewards Statistics
+Admins create Flash Sales with a User Portal preview, monitor them, end them early, and view redemption statistics.
+
+**Consequences (testable):**
+- Scheduling rejects overlaps, a Flash price ≥ the regular price, and a quota above unreserved stock
+- Monitoring shows Scheduled, Upcoming, Active, Sold Out, and Ended programs, with sold/quota counts
+- Ending early requires confirmation. It returns unsold quota to stock, and users in confirmation receive `PRICE_CHANGED`
+- Statistics show redemptions by day and by brand, Points spent, Flash Sale performance, and the self-reported usage rate, labelled as self-reported
+
+#### FR-74: Redemption Limits and Abuse Controls
+Redemption is limited per user and blocked for ineligible accounts.
+
+**Consequences (testable):**
+- Only activated accounts that are not locked can redeem. Accounts flagged in FraudLog cannot redeem in a Flash Sale (BR-21)
+- Flash Sale eligibility requires at least one completed survey in the last 30 days, and Admin can disable this rule (BR-02)
+- Per-user limits apply per voucher (default 2 per 30 days) and per day (default 500 Points), counted inside the redemption transaction (BR-20, Open Question 23)
+- A redemption in a Flash Sale within 24 hours after a top-up creates a FraudLog flag for review. It does not block the redemption automatically
+
+#### FR-75: Faulty Code Resolution
+A user can report a code that does not work. An Admin resolves the report with a replacement code or a refund.
+
+**Consequences (testable):**
+- The report is linked to the Redemption and enters an Admin queue. Story 8.5 is deferred, so this queue is Rewards-owned
+- Admin either issues a replacement code or refunds through an Economy reversal journal (`reversesJournalId`). Each report has at most one outcome
+- The target resolution time is 1 business day (Open Question 25), and the user is notified of the outcome
+
+---
+
 ## 5. Non-Goals (Explicit)
 
-- **RESCOM is NOT a money-making app.** Points are internal tokens for platform exchange only — not currency, not cashable, not transferable between accounts.
+- **RESCOM is NOT a money-making app.** Points are internal tokens — not currency, not cashable, not transferable between accounts.
+  > **Amendment 2026-10-13 (sprint-change-proposal-2026-10-13, Phase 2 Rewards):** Available Points, including topped-up Points, may also be spent on partner vouchers in the Rewards catalog (§4.20). Points can never be withdrawn as cash or converted back to money. Accounting/tax treatment is Open Question 24.
 - **RESCOM does NOT sell survey responses.** It is a distribution service connecting surveys to the right audience.
 - **RESCOM does NOT replace SurveyMonkey or Typeform.** The Form Builder serves academic survey needs, not enterprise research.
 - **RESCOM does NOT support organizational accounts (v1).** B2B features for lecturers, departments, and research groups are deferred to Phase 3.
@@ -985,6 +1074,7 @@ System explicitly records whether each integrity dimension applies.
 
 - **Automated payment processing** — deferred to Phase 2. `[NOTE FOR PM]` This is the #1 user friction point for top-ups.
 - **Survey boost/promotion** — deferred to Phase 2.
+- **Rewards: voucher redemption + Flash Sale (§4.20)** — Phase 2, after pilot launch (Story 11.5). Approved by sprint-change-proposal-2026-10-13.
 - **Advanced dashboard analytics** (comparative reports, export to Excel/SPSS) — deferred to Phase 2/3. Basic response-file export and integrity-metadata export are not authorized for MVP unless Open Questions 6 and 11 are explicitly approved.
 - **Forced-attention mechanics** — deferred to Phase 2.
 - **B2B organizational accounts** — deferred to Phase 3.
@@ -1058,6 +1148,10 @@ No accuracy target is declared until RESCOM has reviewed ground-truth labels. A 
 20. `[NOTE FOR PM — Owner: Product Manager + UX owner; gate: before UI-heavy story readiness]` **Accessibility and content contract:** Approve the WCAG target, responsive breakpoints/state matrix, keyboard and screen-reader behavior, focus/error association, contrast, reduced motion, Vietnamese localization policy, and sensitive Integrity language. UI-heavy stories remain blocked until a canonical UX artifact defines them.
 21. `[NOTE FOR PM — Owner: Product Manager + Research Lead; gate: before external publication or launch-business-case use]` **Vision evidence:** Validate or replace the historical “over 2 million” statement and 60.6%/76.0%/68.3% figures with a cited source, sample, date, population, and method. Until then, treat them as discovery hypotheses rather than validated market facts.
 22. `[NOTE FOR PM — Owner: Product Manager + Platform owner + Operations/Admin Lead; gate: before release-test approval]` **Operational SLO profiles:** Define workloads, percentiles, measurement windows, data freshness for results/metrics/rankings, moderation pilot baseline, “normal load,” and “peak academic period.” Release testing cannot interpret the affected FR/NFR language until approved.
+23. `[NOTE FOR PM — Owner: Product Manager + Economy owner; gate: before Story 12.8 readiness]` **Rewards economics:** Can unlocked starter Points be redeemed (default: yes)? Who funds codes and Flash discounts (bought from partners or sponsored), and is the 200 VNĐ rate sustainable? Confirm per-user limits (default 2 per voucher per 30 days, 500 Points per day), Flash quota reserved from stock with 1 unit per user, whether tier affects eligibility (default: no), and the BR-13 rule for a point price that deviates more than 20% from value ÷ 200 VNĐ. The planning default is second-Admin approval; with one pilot Admin, the proposed default is a warning plus an audit record.
+24. `[NOTE FOR PM — Owner: Product Manager + Accounting/Legal reviewer; gate: before Rewards production enable (Story 12.11)]` **Rewards accounting and tax:** Redeemable top-up Points mean vouchers are effectively sold for top-up money. Confirm invoice, tax, and recipient-information obligations, and the Wallet wording that Points are never withdrawn as cash. This document is not legal advice.
+25. `[NOTE FOR PM — Owner: Product Manager + Tech lead; gate: before Story 12.7 readiness]` **Code supply and usage:** Confirm CSV code import without partner API (default), code expiry at least 7 days after the redemption window, no refund for expired unused vouchers, faulty-code resolution within 1 business day, and self-marked "used" with 24-hour undo.
+26. `[NOTE FOR PM — Owner: Tech lead; gate: before Story 12.8 readiness]` **Quote TTL:** Confirm the quote lifetime (default 5 minutes, capped at the Flash end).
 
 ---
 

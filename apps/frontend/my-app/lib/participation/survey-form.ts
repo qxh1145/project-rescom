@@ -116,7 +116,7 @@ export function buildSurveyLayout(
 export function pageRangeLabel(page: Pick<SurveyPage, "firstNumber" | "lastNumber">, total: number): string {
   return page.firstNumber === page.lastNumber
     ? `Câu ${page.lastNumber} / ${total}`
-    : `Câu ${page.firstNumber} – ${page.lastNumber} / ${total}`;
+    : `Câu ${page.firstNumber} đến ${page.lastNumber} / ${total}`;
 }
 
 /** Desktop header "4/8 câu": questions reached so far (end of the current page). */
@@ -177,13 +177,7 @@ export function validateAnswer(block: FormBlock, value: unknown): string | null 
         return `Cần ít nhất ${block.minLength} ký tự.`;
       }
       if (text.length > max) return `Tối đa ${max} ký tự.`;
-      if (block.type === "text" && block.pattern) {
-        try {
-          if (!new RegExp(block.pattern).test(text)) return "Câu trả lời chưa đúng định dạng.";
-        } catch {
-          return null;
-        }
-      }
+      // `pattern` is never executed (ReDoS, CWE-1333); see form-preview.ts.
       return null;
     }
     case "number": {

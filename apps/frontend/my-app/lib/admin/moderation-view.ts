@@ -41,15 +41,15 @@ export function queueCardMeta(survey: {
 export function effortBandLabel(seconds: number): string {
   const minutes = Math.round(seconds / 60);
   if (minutes < 5) return "Dưới 5 phút";
-  if (minutes <= 10) return "5–10 phút";
-  if (minutes <= 15) return "10–15 phút";
+  if (minutes <= 10) return "5 đến 10 phút";
+  if (minutes <= 15) return "10 đến 15 phút";
   return "Trên 15 phút";
 }
 
 /** Figma "Hạn 10/10/2026"; "—" when the survey has no deadline. */
 export function formatDeadline(iso: string | null | undefined): string {
   const parts = vietnamDateTimeParts(iso);
-  return parts ? `${parts.day}/${parts.month}/${parts.year}` : "—";
+  return parts ? `${parts.day}/${parts.month}/${parts.year}` : "Chưa có";
 }
 
 const GENDER_LABELS: Record<Gender, string> = {
@@ -73,7 +73,7 @@ export function shortSchool(school: string): string {
  * thông, Kinh tế & QTKD · ĐH FPT Đà Nẵng · Đà Nẵng".
  */
 export function targetingSummary(targeting: ModerationTargeting | null, invalid = false): string {
-  if (invalid) return "Tiêu chí đối tượng lưu trữ không hợp lệ — không thể duyệt khảo sát này.";
+  if (invalid) return "Tiêu chí đối tượng lưu trữ không hợp lệ: không thể duyệt khảo sát này.";
   if (!targeting) return "Mọi người dùng (không giới hạn đối tượng)";
   const parts: string[] = [];
   parts.push(
@@ -81,7 +81,7 @@ export function targetingSummary(targeting: ModerationTargeting | null, invalid 
   );
   if (targeting.ageRange) {
     const { min, max } = targeting.ageRange;
-    parts.push(min === max ? `${min} tuổi` : `${min}–${max} tuổi`);
+    parts.push(min === max ? `${min} tuổi` : `${min} đến ${max} tuổi`);
   }
   if (targeting.fieldOfStudy?.length) parts.push(targeting.fieldOfStudy.join(", "));
   if (targeting.occupations?.length) parts.push(targeting.occupations.join(", "));

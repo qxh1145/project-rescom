@@ -25,7 +25,7 @@ export type DurationFilter = (typeof DURATION_FILTERS)[number];
 export const DURATION_LABELS: Record<DurationFilter, string> = {
   all: "Tất cả",
   under5: "Dưới 5 phút",
-  "5to10": "5 – 10 phút",
+  "5to10": "5 đến 10 phút",
 };
 
 export interface SurveyTypeFilter {

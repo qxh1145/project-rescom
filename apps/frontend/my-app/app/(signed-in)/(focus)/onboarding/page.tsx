@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { OnboardingFlow } from "./components/OnboardingFlow";
 
 export const metadata: Metadata = {
-  title: "Hoàn tất hồ sơ — Rescom",
+  title: "Hoàn tất hồ sơ | Rescom",
 };
 
 /**

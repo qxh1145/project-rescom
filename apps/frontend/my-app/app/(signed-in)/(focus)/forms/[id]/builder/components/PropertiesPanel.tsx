@@ -96,7 +96,7 @@ function Tips() {
   return (
     <ul className="mt-4 flex flex-col gap-2.5 rounded-[14px] bg-surface-muted px-4 py-3.5 text-caption leading-[18.9px] text-ink-strong">
       <li>
-        <b>Form ngắn dễ đủ mẫu hơn.</b> 5–10 phút là mức người làm sẵn sàng nhất.
+        <b>Form ngắn dễ đủ mẫu hơn.</b> 5 đến 10 phút là mức người làm sẵn sàng nhất.
       </li>
       <li>
         <b>Form tạo ở đây rẻ hơn 20%</b> so với Google Forms cùng thời lượng.

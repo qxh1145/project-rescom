@@ -206,13 +206,13 @@ test("Figma 11a presentation rules", () => {
   assert.equal(view.publisherLabel({ publisherEmail: null }), "Người đăng");
 
   assert.equal(view.effortBandLabel(4 * 60), "Dưới 5 phút");
-  assert.equal(view.effortBandLabel(6 * 60), "5–10 phút");
-  assert.equal(view.effortBandLabel(13 * 60), "10–15 phút");
+  assert.equal(view.effortBandLabel(6 * 60), "5 đến 10 phút");
+  assert.equal(view.effortBandLabel(13 * 60), "10 đến 15 phút");
   assert.equal(view.effortBandLabel(20 * 60), "Trên 15 phút");
 
   assert.equal(view.formatDeadline("2026-10-10T12:30:00.000Z"), "10/10/2026");
-  assert.equal(view.formatDeadline(null), "—");
-  assert.equal(view.formatDeadline(undefined), "—");
+  assert.equal(view.formatDeadline(null), "Chưa có");
+  assert.equal(view.formatDeadline(undefined), "Chưa có");
 
   assert.equal(
     view.targetingSummary({
@@ -221,7 +221,7 @@ test("Figma 11a presentation rules", () => {
       schools: ["Trường Đại học FPT – Đà Nẵng"],
       locations: ["Đà Nẵng"],
     }),
-    "Tất cả giới tính · 18–25 tuổi · Marketing & Truyền thông, Kinh tế & Quản trị kinh doanh · ĐH FPT Đà Nẵng · Đà Nẵng",
+    "Tất cả giới tính · 18 đến 25 tuổi · Marketing & Truyền thông, Kinh tế & Quản trị kinh doanh · ĐH FPT Đà Nẵng · Đà Nẵng",
   );
   assert.equal(view.targetingSummary({ genders: ["FEMALE"], ageRange: { min: 20, max: 20 } }), "Nữ · 20 tuổi");
   assert.match(view.targetingSummary(null), /Mọi người dùng/);

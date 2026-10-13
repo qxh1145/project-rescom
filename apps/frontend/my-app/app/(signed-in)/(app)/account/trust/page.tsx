@@ -4,7 +4,7 @@ import { PILOT_BUILD } from "@/lib/pilot-scope";
 import { TrustScreen } from "./components/TrustScreen";
 
 export const metadata: Metadata = {
-  title: "Độ tin cậy câu trả lời — Rescom",
+  title: "Độ tin cậy câu trả lời | Rescom",
 };
 
 /** Figma 17d "Độ tin cậy câu trả lời" (63:5117) — read-only, inside the app shell. */

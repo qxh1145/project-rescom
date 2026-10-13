@@ -20,7 +20,7 @@ export function GoogleFormHeader({ title, subtitle, reward, onCancel }: GoogleFo
   return (
     <>
       <header className="hidden h-18.25 shrink-0 items-center justify-between border-b border-line bg-surface px-12 lg:flex">
-        <Link href="/marketplace" aria-label="Rescom — Khám phá">
+        <Link href="/marketplace" aria-label="Rescom: Khám phá">
           <RescomLogo size="md" highPriority />
         </Link>
         {onCancel ? (

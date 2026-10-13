@@ -11,7 +11,7 @@ export default function GlobalError({ error, retry }: { error: Error & { digest?
   return (
     <html lang="vi">
       <body>
-        <title>Đã có lỗi xảy ra — Rescom</title>
+        <title>Đã có lỗi xảy ra: Rescom</title>
         <ServerErrorScreen digest={error.digest} onRetry={retry} />
       </body>
     </html>

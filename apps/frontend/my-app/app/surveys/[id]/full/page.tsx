@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SurveyFullContent } from "./SurveyFullContent";
 
 export const metadata: Metadata = {
-  title: "Khảo sát đã đủ người — Rescom",
+  title: "Khảo sát đã đủ người | Rescom",
 };
 
 interface SurveyFullPageProps {

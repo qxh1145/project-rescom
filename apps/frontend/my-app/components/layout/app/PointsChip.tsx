@@ -17,7 +17,7 @@ export function PointsChip({ variant }: PointsChipProps) {
   const { kind, amount } = headerPoints(balance);
   const frozen = kind === "frozen";
   const text = variant === "mobile" ? String(amount) : frozen ? `${amount} đóng băng` : `${amount} điểm`;
-  const label = frozen ? `${amount} điểm đang đóng băng — mở Ví điểm` : `${amount} điểm khả dụng — mở Ví điểm`;
+  const label = frozen ? `${amount} điểm đang đóng băng: mở Ví điểm` : `${amount} điểm khả dụng: mở Ví điểm`;
 
   return (
     <Link

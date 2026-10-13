@@ -6,7 +6,7 @@ import { ServerErrorScreen } from "@/components/feedback/ServerErrorScreen";
 export default function RouteError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   return (
     <>
-      <title>Đã có lỗi xảy ra — Rescom</title>
+      <title>Đã có lỗi xảy ra: Rescom</title>
       <ServerErrorScreen digest={error.digest} onRetry={retry} />
     </>
   );

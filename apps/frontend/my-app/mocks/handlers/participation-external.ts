@@ -209,7 +209,7 @@ export const externalParticipationHandlers = [
       items.unshift({
         id: mockId(),
         type: "REWARD_PENDING",
-        message: `+${survey.rewardPerResponse} điểm đang chờ 48 giờ — Từ “${survey.title}”. Còn 48 giờ trước khi vào Khả dụng.`,
+        message: `+${survey.rewardPerResponse} điểm đang chờ 48 giờ: Từ “${survey.title}”. Còn 48 giờ trước khi vào Khả dụng.`,
         isRead: false,
         createdAt: nowIso(),
         readAt: null,

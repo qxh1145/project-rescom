@@ -106,7 +106,7 @@ export function ChoiceAnswer({
             {option.longLabel ? (
               <>
                 <span className="lg:hidden">{option.longLabel}</span>
-                <span className="hidden lg:inline">{option.label}</span>
+                <span className="hidden whitespace-nowrap lg:inline">{option.label}</span>
               </>
             ) : (
               <span>{option.label}</span>

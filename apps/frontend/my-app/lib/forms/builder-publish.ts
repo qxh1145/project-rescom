@@ -57,10 +57,10 @@ export function internalPriceHint(minutes: number, definition?: RewardBandDefini
   return {
     min: band.min,
     max: band.max,
-    label: `${band.min}–${band.max} điểm/lượt`,
+    label: `${band.min} đến ${band.max} điểm/lượt`,
     paidMin,
     paidMax,
-    paidLabel: `bạn trả ${paidMin}–${paidMax} điểm/lượt`,
+    paidLabel: `bạn trả ${paidMin} đến ${paidMax} điểm/lượt`,
   };
 }
 

@@ -18,8 +18,8 @@ const REVIEW_MESSAGES: Record<string, string> = {
   FORBIDDEN: "Tài khoản của bạn không có quyền duyệt nạp điểm.",
   // The code `RolesGuard` actually sends for a non-admin (`auth.exceptions.ts`).
   FORBIDDEN_RESOURCE: "Tài khoản của bạn không có quyền duyệt nạp điểm.",
-  TOPUP_INVALID_REQUEST: "Lý do từ chối chưa hợp lệ (5–500 ký tự).",
-  VALIDATION_ERROR: "Lý do từ chối chưa hợp lệ (5–500 ký tự).",
+  TOPUP_INVALID_REQUEST: "Lý do từ chối chưa hợp lệ (5 đến 500 ký tự).",
+  VALIDATION_ERROR: "Lý do từ chối chưa hợp lệ (5 đến 500 ký tự).",
 };
 
 export function topUpReviewErrorMessage(error: unknown, action: "approve" | "reject"): string {

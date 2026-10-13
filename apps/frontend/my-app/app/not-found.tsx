@@ -4,7 +4,7 @@ import { HistoryBackButton } from "@/components/feedback/ErrorActions";
 import { ErrorScreen, errorActionClassName } from "@/components/feedback/ErrorScreen";
 
 export const metadata: Metadata = {
-  title: "Không tìm thấy trang — Rescom",
+  title: "Không tìm thấy trang: Rescom",
 };
 
 /** Figma 18.1 "Không tìm thấy trang (404)" — desktop 63:5152, mobile 63:5232. */

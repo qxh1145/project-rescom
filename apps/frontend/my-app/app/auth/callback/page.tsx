@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { AuthCallbackHandler, AuthCallbackStatus } from "./AuthCallbackHandler";
 
 export const metadata: Metadata = {
-  title: "Đang đăng nhập — Rescom",
+  title: "Đang đăng nhập | Rescom",
 };
 
 export default function AuthCallbackPage() {

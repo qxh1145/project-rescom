@@ -205,16 +205,16 @@ test("publish helpers: price hint = reward band + Internal price, and settings v
   assert.deepEqual(publish.internalPriceHint(5), {
     min: 10,
     max: 20,
-    label: "10–20 điểm/lượt",
+    label: "10 đến 20 điểm/lượt",
     paidMin: 8,
     paidMax: 16,
-    paidLabel: "bạn trả 8–16 điểm/lượt",
+    paidLabel: "bạn trả 8 đến 16 điểm/lượt",
   });
-  assert.equal(publish.internalPriceHint(3).label, "5–10 điểm/lượt");
+  assert.equal(publish.internalPriceHint(3).label, "5 đến 10 điểm/lượt");
   // The band follows the backend's effective duration: effort longer than the estimate wins.
   const definition = { blocks: [{ type: "rating" }], metadata: { expectedEffortSeconds: 12 * 60, minTimeBarrierSeconds: 15 } };
-  assert.equal(publish.internalPriceHint(3, definition).label, "15–25 điểm/lượt");
-  assert.equal(publish.internalPriceHint(3, definition).paidLabel, "bạn trả 12–20 điểm/lượt");
+  assert.equal(publish.internalPriceHint(3, definition).label, "15 đến 25 điểm/lượt");
+  assert.equal(publish.internalPriceHint(3, definition).paidLabel, "bạn trả 12 đến 20 điểm/lượt");
   assert.equal(publish.estimateEscrow({ expectedCompletions: 30, rewardPerResponse: 12 }), 30 * 10);
   const ok = publish.validatePublishSettings({ expectedCompletions: "30", rewardPerResponse: "12", estimatedDurationMinutes: "5" });
   assert.deepEqual(ok, { ok: true, value: { expectedCompletions: 30, rewardPerResponse: 12, estimatedDurationMinutes: 5 } });

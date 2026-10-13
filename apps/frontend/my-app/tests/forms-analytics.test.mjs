@@ -348,7 +348,7 @@ test("formatPercent / formatCount / formatStat use vi-VN with at most one decima
   assert.equal(view.formatPercent(0.3), "0,3%");
   assert.equal(view.formatCount(1234), "1.234");
   assert.equal(view.formatStat(4.140186), "4,1");
-  assert.equal(view.formatStat(null), "—");
+  assert.equal(view.formatStat(null), "Chưa có");
   assert.equal(view.responsesLabel(321), "321 câu trả lời");
 });
 

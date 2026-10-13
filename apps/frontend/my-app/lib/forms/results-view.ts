@@ -119,7 +119,7 @@ const pad2 = (value: number) => String(value).padStart(2, "0");
 
 /** Table cell: "5p 48s", "7p 05s", "45s"; "—" when unknown (no attempt start, e.g. a guest). */
 export function formatDurationShort(totalSeconds: number | null): string {
-  if (totalSeconds === null) return "—";
+  if (totalSeconds === null) return "Chưa có";
   const seconds = Math.max(0, Math.round(totalSeconds));
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
@@ -128,7 +128,7 @@ export function formatDurationShort(totalSeconds: number | null): string {
 
 /** "6 phút 02 giây", "5 phút", "45 giây"; "—" when unknown. */
 export function formatDurationLong(totalSeconds: number | null): string {
-  if (totalSeconds === null) return "—";
+  if (totalSeconds === null) return "Chưa có";
   const seconds = Math.max(0, Math.round(totalSeconds));
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
@@ -207,7 +207,7 @@ export function answerText(question: ResultQuestion, value: AnswerValue | undefi
 
 /** Table cell / mobile card: "1,5–2,5 triệu", "3/5". ASSUMED: a trailing currency word is dropped. */
 export function answerCompact(question: ResultQuestion, value: AnswerValue | undefined): string {
-  if (isEmpty(value)) return "—";
+  if (isEmpty(value)) return "Chưa có";
   if (question.type === "linear_scale" || question.type === "rating") {
     return `${Number(value)}/${question.scale?.max ?? 5}`;
   }
@@ -237,7 +237,7 @@ export function questionKindLabel(question: Pick<ResultQuestion, "type" | "scale
     case "multiple_choice":
       return "nhiều lựa chọn";
     case "linear_scale":
-      return `thang ${question.scale?.min ?? 1}–${question.scale?.max ?? 5}`;
+      return `thang ${question.scale?.min ?? 1} đến ${question.scale?.max ?? 5}`;
     case "rating":
       return `${question.scale?.max ?? 5} sao`;
     case "text":

@@ -4,7 +4,7 @@ import { PILOT_BUILD } from "@/lib/pilot-scope";
 import { AiChatScreen } from "../../../[id]/builder/ai/components/AiChatScreen";
 
 export const metadata: Metadata = {
-  title: "Soạn bằng AI — Rescom",
+  title: "Soạn bằng AI | Rescom",
 };
 
 /** Figma 13b / 13g entry before a draft exists: the first prompt creates it. */

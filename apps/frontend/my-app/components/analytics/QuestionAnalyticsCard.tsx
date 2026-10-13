@@ -17,7 +17,7 @@ import { DonutChart } from "./DonutChart";
 import { StatList } from "./StatList";
 import { TextAnswerList } from "./TextAnswerList";
 
-const MULTIPLE_NOTE = "Một người có thể chọn nhiều đáp án — tổng tỷ lệ có thể vượt 100%.";
+const MULTIPLE_NOTE = "Một người có thể chọn nhiều đáp án: tổng tỷ lệ có thể vượt 100%.";
 
 type Variant = "summary" | "detail";
 

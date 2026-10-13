@@ -142,7 +142,7 @@ export function InfoStep({ draft, errors, update }: InfoStepProps) {
             <span>
               Khảo sát {band.shortLabel}: thưởng{" "}
               <strong className="font-bold">
-                {range.min}–{range.max} điểm
+                {range.min} đến {range.max} điểm
               </strong>{" "}
               mỗi lượt. Khai đúng thời gian để người làm không đánh giá thấp.
             </span>
@@ -163,14 +163,14 @@ export function InfoAside({ draft, available }: { draft: GoogleFormWizardDraft; 
         <p className="text-caption font-bold text-ink-muted">Cách tạo</p>
         <div aria-current="page" className="rounded-control border-2 border-primary bg-tone-green-bg px-3 py-2">
           <p className="text-[15px] font-extrabold text-primary-strong">Link Google Forms</p>
-          <p className="text-[12px] text-ink-strong">10–20 điểm/lượt · điểm chờ 48 giờ</p>
+          <p className="text-[12px] text-ink-strong">10 đến 20 điểm/lượt · điểm chờ 48 giờ</p>
         </div>
         <Link
           href="/forms/new/builder"
           className="rounded-control border border-line-strong bg-surface px-3 py-2 transition-colors hover:bg-surface-subtle"
         >
           <p className="text-[15px] font-extrabold text-ink">Form Builder trong Rescom</p>
-          <p className="text-[12px] text-ink-muted">Rẻ hơn 20% · 8–16 điểm/lượt</p>
+          <p className="text-[12px] text-ink-muted">Rẻ hơn 20% · 8 đến 16 điểm/lượt</p>
         </Link>
       </div>
 
@@ -179,7 +179,7 @@ export function InfoAside({ draft, available }: { draft: GoogleFormWizardDraft; 
           {band ? `Mức thưởng cho ${band.shortLabel}` : "Mức thưởng mỗi lượt"}
         </p>
         <p className="mt-1 text-title font-extrabold text-ink">
-          {range ? `${range.min}–${range.max} điểm/lượt` : "Chọn thời gian làm"}
+          {range ? `${range.min} đến ${range.max} điểm/lượt` : "Chọn thời gian làm"}
         </p>
         {available !== null ? (
           <p className="mt-2 text-caption-relaxed text-tone-amber-ink">Bạn có {available} điểm khả dụng.</p>

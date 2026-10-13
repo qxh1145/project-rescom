@@ -22,7 +22,7 @@ const HOW_IT_WORKS = [
     icon: "points-coin",
     tile: "bg-tone-amber-bg text-tone-amber-fg",
     title: "2. Nhận điểm cho mỗi lượt hợp lệ",
-    body: "Khảo sát 5–10 phút thường được 10–20 điểm.",
+    body: "Khảo sát 5 đến 10 phút thường được 10 đến 20 điểm.",
   },
   {
     icon: "bar-chart",

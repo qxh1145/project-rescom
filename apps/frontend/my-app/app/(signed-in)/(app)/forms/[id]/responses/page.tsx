@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { SummaryScreen } from "./components/SummaryScreen";
 
 export const metadata: Metadata = {
-  title: "Tóm tắt câu trả lời — Rescom",
+  title: "Tóm tắt câu trả lời | Rescom",
 };
 
 /** Query keys of the response table (before it moved to `/individual`). */

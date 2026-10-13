@@ -276,16 +276,16 @@ export const internalParticipationHandlers: RequestHandler[] = [
       pushNotification(
         user.id,
         "REWARD_PENDING",
-        `+${reward.amount} điểm đang giữ để xét — Từ “${survey.title}”. Rescom đang xét chất lượng câu trả lời.`,
+        `+${reward.amount} điểm đang giữ để xét: Từ “${survey.title}”. Rescom đang xét chất lượng câu trả lời.`,
       );
     } else {
       const { activated } = creditSurveyReward(user, { ...reward, pending: false });
-      pushNotification(user.id, "REWARD_EARNED", `+${reward.amount} điểm vào Khả dụng — Từ “${survey.title}”.`);
+      pushNotification(user.id, "REWARD_EARNED", `+${reward.amount} điểm vào Khả dụng: Từ “${survey.title}”.`);
       if (activated) {
         pushNotification(
           user.id,
           "ACCOUNT_ACTIVATED",
-          "Tài khoản đã kích hoạt — 100 điểm khởi đầu đã mở khoá. Bạn có thể dùng để đăng khảo sát.",
+          "Tài khoản đã kích hoạt: 100 điểm khởi đầu đã mở khoá. Bạn có thể dùng để đăng khảo sát.",
         );
       }
     }

@@ -51,7 +51,7 @@ test("FraudLog cell flags only an active repeat offender", () => {
     text: "2",
     flagged: false,
   });
-  assert.deepEqual(view.fraudCellOf({ status: "ACTIVE" }), { text: "—", flagged: false });
+  assert.deepEqual(view.fraudCellOf({ status: "ACTIVE" }), { text: "Chưa có", flagged: false });
 });
 
 test("profile and account lines", () => {
@@ -63,7 +63,7 @@ test("profile and account lines", () => {
   assert.equal(view.profileLineOf(null), null);
   assert.equal(view.accountLineOf({ email: "khang.do@gmail.com", signInMethod: "GOOGLE" }), "khang.do@gmail.com · đăng nhập Google");
   assert.equal(view.accountLineOf({ email: "x@y.vn" }), "x@y.vn");
-  assert.equal(view.formatCount(undefined), "—");
+  assert.equal(view.formatCount(undefined), "Chưa có");
   assert.equal(view.formatCount(1340), "1.340");
 });
 
@@ -71,7 +71,7 @@ test("dates are local day/month", () => {
   const iso = new Date(2026, 8, 26, 15, 31).toISOString();
   assert.equal(view.formatDayMonth(iso), "26/09");
   assert.equal(view.formatDayMonthTime(iso), "26/09 15:31");
-  assert.equal(view.formatDayMonth("nope"), "—");
+  assert.equal(view.formatDayMonth("nope"), "Chưa có");
 });
 
 test("lock reason is required and self actions are blocked", () => {

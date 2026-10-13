@@ -27,7 +27,7 @@ const RESOLVE_MESSAGES: Record<string, string> = {
   INSUFFICIENT_BALANCE: "Điểm đang giữ hoặc ký quỹ của khảo sát không đủ để xử lý. Kiểm tra lại sổ cái.",
   // Distinct from INSUFFICIENT_BALANCE: the respondent has no held points at all (not merely short).
   DISPUTE_NO_HELD_POINTS:
-    "Người làm không còn điểm đang giữ cho lượt này — không thể hoàn. Hãy bác bỏ hoặc kiểm tra sổ cái.",
+    "Người làm không còn điểm đang giữ cho lượt này: không thể hoàn. Hãy bác bỏ hoặc kiểm tra sổ cái.",
   IDEMPOTENCY_CONFLICT: "Khiếu nại này đã được xử lý theo hướng khác.",
   INVALID_LEDGER_OPERATION: "Không còn điểm đang giữ cho khiếu nại này.",
   LEDGER_COMMAND_IN_PROGRESS: "Sổ cái đang xử lý một thao tác khác trên lượt làm này. Thử lại sau giây lát.",

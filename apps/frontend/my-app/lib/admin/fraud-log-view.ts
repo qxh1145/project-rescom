@@ -67,7 +67,7 @@ export function fraudDetailText(entry: Pick<FraudLogEntry, "type" | "details">):
     case "TIME_BARRIER": {
       const elapsed = numberOf(details.elapsedSeconds);
       const required = numberOf(details.requiredSeconds);
-      if (elapsed === null) return "—";
+      if (elapsed === null) return "Chưa có";
       return required === null
         ? formatSecondsVi(elapsed)
         : `${formatSecondsVi(elapsed)} · tối thiểu ${formatSecondsVi(required)}`;
@@ -75,7 +75,7 @@ export function fraudDetailText(entry: Pick<FraudLogEntry, "type" | "details">):
     case "COMPLETION_CODE": {
       // Backend keys: failureCount (wrong codes on this attempt), isLocked.
       const failures = numberOf(details.failureCount);
-      if (failures === null) return "—";
+      if (failures === null) return "Chưa có";
       const count = `Lần ${failures}/${COMPLETION_CODE_POLICY.maxFailuresPerAttempt}`;
       return details.isLocked === true ? `${count} · lượt làm bị khoá` : count;
     }
@@ -83,10 +83,10 @@ export function fraudDetailText(entry: Pick<FraudLogEntry, "type" | "details">):
       const points = numberOf(details.refundedPoints);
       const admin = textOf(details.adminName);
       const parts = [points === null ? null : `Trả ${points} điểm về ký quỹ`, admin];
-      return parts.filter(Boolean).join(" · ") || "—";
+      return parts.filter(Boolean).join(" · ") || "Chưa có";
     }
     default:
-      return textOf(details.policyVersion) ?? "—";
+      return textOf(details.policyVersion) ?? "Chưa có";
   }
 }
 
