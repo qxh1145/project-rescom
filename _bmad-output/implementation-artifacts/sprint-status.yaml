@@ -135,7 +135,7 @@ development_status:
   12-1-rewards-contracts-msw-mock-domain: review
   12-2-voucher-marketplace-filters-detail: done
   12-3-confirm-redemption-result: done
-  12-4-my-vouchers-code-qr-history: review
+  12-4-my-vouchers-code-qr-history: done
   12-5-admin-voucher-catalog-codes: backlog
   12-6-admin-flash-sale-rewards-stats: backlog
   12-7-rewards-schema-catalog-code-inventory-api: backlog
