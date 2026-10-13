@@ -21,8 +21,9 @@ const PREFIX = "rescom:mockdb:";
  * 5: Rewards mock domain (Story 12.1); demo wallet 186 available.
  * 6: Voucher detail copy + Flash item category (Story 12.2).
  * 7: Voucher tickets carry `category`; Figma "how to use" steps (Story 12.4).
+ * 8: Admin voucher price history (Story 12.5).
  */
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 interface Persisted<T> {
   version: number;

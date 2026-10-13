@@ -1,4 +1,4 @@
-import { adminVoucherStateSchema, adminVoucherStockSchema, adminVoucherInputSchema, adminVoucherSchema, adminVoucherDetailSchema, adminVoucherPriceVersionSchema, adminVoucherPriceChangeSchema, adminStockAdjustmentSchema, adminCodeImportRequestSchema, adminCodeImportResultSchema, adminFlashSaleStatusSchema, adminFlashSaleInputSchema, adminFlashSaleSchema, rewardsStatsQuerySchema, rewardsStatsSchema } from "./rewards-admin.schema";
+import { adminVoucherStateSchema, adminVoucherStockSchema, adminVoucherInputSchema, adminVoucherSchema, adminVoucherDetailSchema, adminVoucherListSchema, adminVoucherListQuerySchema, adminVoucherStatePatchSchema, adminVoucherBrandListSchema, adminVoucherCreatedSchema, adminVoucherPriceVersionSchema, adminVoucherPriceChangeSchema, adminStockAdjustmentSchema, adminCodeImportRequestSchema, adminCodeImportResultSchema, adminFlashSaleStatusSchema, adminFlashSaleInputSchema, adminFlashSaleSchema, rewardsStatsQuerySchema, rewardsStatsSchema } from "./rewards-admin.schema";
 const id = "11111111-1111-4111-8111-111111111111";
 const start = "2026-10-01T00:00:00.000Z";
 const end = "2026-10-02T00:00:00.000Z";
@@ -6,9 +6,28 @@ const expires = "2026-10-09T00:00:00.000Z";
 const brand = { id: "highlands", name: "Highlands" };
 const input = { title: "Coffee", brandId: "highlands", category: "COFFEE", valueVnd: 50000, basePoints: 250, promoPoints: null, isSharedCode: false, redeemStartsAt: start, redeemEndsAt: end, codeExpiresAt: expires, terms: [], howToUse: [], imageUrl: null };
 const stock = { total: 10, issued: 1, flashReserved: 2, remaining: 7, codesAvailable: 7 };
-const voucher = { ...input, id, brand, price: { points: 250, basePoints: 250, source: "BASE", discountPercent: 0, priceVersion: 1 }, state: "ACTIVE", isVisible: true, stock, priceDeviationPercent: 0, createdAt: start, updatedAt: start };
+const voucher = { ...input, id, brand, price: { points: 250, basePoints: 250, source: "BASE", discountPercent: 0, priceVersion: 1 }, state: "ACTIVE", status: "ACTIVE", isVisible: true, stock, priceDeviationPercent: 0, createdAt: start, updatedAt: start };
 const flashItem = { id, voucherId: id, voucherTitle: "Coffee", brand, category: "COFFEE", valueVnd: 50000, flashPoints: 150, basePoints: 250, discountPercent: 40, quota: 2, sold: 0, perUserCap: 1, state: "ACTIVE" };
 describe("admin rewards contracts (Story 12.1, FR-73)", () => {
+  it("validates admin voucher list, query, patch, brands, and write response", () => {
+    const summary = { total: 1, active: 1, paused: 0, soldOut: 0, expired: 0, hidden: 0, archived: 0, lowStock: [{ voucherId: id, label: "Coffee" }], codesAvailable: 7, flashReserved: 2, activeFlashSales: 1 };
+    const list = { items: [voucher], summary, serverTime: start };
+    expect(adminVoucherListSchema.safeParse(list).success).toBe(true);
+    for (const key of Object.keys(summary)) expect(adminVoucherListSchema.safeParse({ ...list, summary: { ...summary, [key]: undefined } }).success).toBe(false);
+    expect(adminVoucherListSchema.safeParse({ ...list, serverTime: "invalid" }).success).toBe(false);
+    expect(adminVoucherListQuerySchema.parse({}).filter).toBe("ALL");
+    expect(adminVoucherListQuerySchema.parse({ q: " Coffee " }).q).toBe("Coffee");
+    expect(adminVoucherListQuerySchema.safeParse({ filter: "ARCHIVED" }).success).toBe(false);
+    expect(adminVoucherListQuerySchema.safeParse({ q: "  " }).success).toBe(false);
+    expect(adminVoucherStatePatchSchema.safeParse({ state: "PAUSED" }).success).toBe(true);
+    expect(adminVoucherStatePatchSchema.safeParse({ isVisible: false }).success).toBe(true);
+    expect(adminVoucherStatePatchSchema.safeParse({}).success).toBe(false);
+    expect(adminVoucherStatePatchSchema.safeParse({ state: "HIDDEN" }).success).toBe(false);
+    expect(adminVoucherBrandListSchema.safeParse({ items: [brand] }).success).toBe(true);
+    expect(adminVoucherBrandListSchema.safeParse({ items: [{ id: "!", name: "" }] }).success).toBe(false);
+    expect(adminVoucherCreatedSchema.safeParse({ voucher }).success).toBe(true);
+    expect(adminVoucherCreatedSchema.safeParse({ voucher: { ...voucher, stock: { ...stock, remaining: 8 } } }).success).toBe(false);
+  });
   it("validates voucher input and field-level date, price, and stock issues", () => {
     expect(adminVoucherStateSchema.safeParse("PAUSED").success).toBe(true);
     expect(adminVoucherInputSchema.safeParse(input).success).toBe(true);
