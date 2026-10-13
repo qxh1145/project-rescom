@@ -1,4 +1,5 @@
-import { adminStockOf, adminVoucherStatus, importCodesDecision, priceDeviationPercent, stockAdjustmentDecision, validateVoucherInput } from "./rewards-rules";
+import { adminFlashStatus, endEarlyDecision, flashConflicts, flashItemState, flashProgress, statsRange, vietnamDayOf, adminStockOf, adminVoucherStatus, importCodesDecision, priceDeviationPercent, stockAdjustmentDecision, validateVoucherInput } from "./rewards-rules";
+import { POINT_VND_RATE } from "@rescom/schemas";
 import { createCollection, mockId } from "../db/store";
 import { idempotencyRecordKey, decideIdempotentRequest, type IdempotencyRecord } from "./idempotency";
 import { codeIssueDecision, decideRedemption, effectiveStatus, effectiveVoucherPrice, forcedError, historyMonthSummary, markUsedDecision, ticketStatus, undoUseDecision, type FlashInventory, type RedemptionQuote, type VoucherInventory } from "./rewards-rules";
@@ -23,6 +24,7 @@ function makeCodes(slug: string, count: number): string[] {
   return Array.from({ length: count }, (_, n) => `${prefix}-${String(n + 1000)}-${String(n + 2000)}`);
 }
 
+const flashDefaults = (title: string, extra: Partial<Pick<FlashInventory, "remindCount" | "participants" | "failures" | "afterTopUp">> = {}) => ({ title, createdBy: { id: id(999), name: "Admin Hùng" }, rules: { requireRecentSurvey: true, remindBefore10m: true, blockFlagged: true }, remindCount: 0, endReason: null, settledAt: null, failures: { SOLD_OUT: 0, INSUFFICIENT_POINTS: 0, OTHER: 0 }, afterTopUp: { count: 0, rate: 0, flagged: 0 }, participants: 0, ...extra });
 function seed() {
   const now = Date.now();
   const vouchers: VoucherInventory[] = specs.map(([brand, title, category, valueVnd, basePoints, promoPoints, stockTotal, stockRemaining, ends], index) => {
@@ -66,12 +68,20 @@ function seed() {
   vouchers.forEach((v, index) => { codePools[v.id] = index === 5 ? [] : makeCodes(slugs[specs[index][0]], 15); });
 
   const flashes: FlashInventory[] = [
-    { id: id(101), code: "FS-1013-A", startsAt: iso(now - 3 * 3600000), endsAt: iso(now + 135 * 60000), endedEarlyAt: null,
+    { ...flashDefaults("Flash trưa 13/10", { remindCount: 312, participants: 148, failures: { SOLD_OUT: 14, INSUFFICIENT_POINTS: 7, OTHER: 0 }, afterTopUp: { count: 9, rate: 0.05, flagged: 1 } }), id: id(101), code: "FS-1013-A", startsAt: iso(now - 3 * 3600000), endsAt: iso(now + 135 * 60000), endedEarlyAt: null,
       items: ([[1, 150, 100, 75], [2, 90, 80, 48], [5, 70, 50, 50]] as const).map(([n, flashPoints, quota, sold]) =>
-        ({ id: id(110 + n), voucherId: id(n), flashPoints, quota, sold, perUserCap: 1 })) },
-    { id: id(102), code: "FS-1013-B", startsAt: iso(now + 7 * 3600000), endsAt: iso(now + 10 * 3600000), endedEarlyAt: null,
+        ({ id: id(110 + n), voucherId: id(n), flashPoints, quota, sold, perUserCap: 1, soldOutAt: sold >= quota ? iso(now - 3 * 3600000 + 38 * 60000) : null })) },
+    { ...flashDefaults("Flash tối 13/10", { remindCount: 184 }), id: id(102), code: "FS-1013-B", startsAt: iso(now + 7 * 3600000), endsAt: iso(now + 10 * 3600000), endedEarlyAt: null,
       items: [{ id: id(114), voucherId: id(4), flashPoints: 140, quota: 50, sold: 0, perUserCap: 1 }] },
+    { ...flashDefaults("Flash tuần sau", { remindCount: 37 }), id: id(103), code: "FS-1020-A", startsAt: iso(now + 7 * day), endsAt: iso(now + 7 * day + 3 * 3600000), endedEarlyAt: null, items: [{ id: id(115), voucherId: id(3), flashPoints: 90, quota: 20, sold: 0, perUserCap: 1 }] },
+    { ...flashDefaults("Flash tuần trước", { remindCount: 220, participants: 61, failures: { SOLD_OUT: 3, INSUFFICIENT_POINTS: 5, OTHER: 0 }, afterTopUp: { count: 4, rate: 0.27, flagged: 0 } }), id: id(104), code: "FS-1006-A", startsAt: iso(now - 7 * day), endsAt: iso(now - 7 * day + 3 * 3600000), endedEarlyAt: null, settledAt: iso(now - 7 * day + 3 * 3600000), items: [{ id: id(116), voucherId: id(3), flashPoints: 90, quota: 20, sold: 15, perUserCap: 1 }] },
+    { ...flashDefaults("Flash tháng trước", { remindCount: 540, participants: 74, failures: { SOLD_OUT: 22, INSUFFICIENT_POINTS: 9, OTHER: 1 }, afterTopUp: { count: 6, rate: 0.3, flagged: 2 } }), id: id(105), code: "FS-0928-A", startsAt: iso(now - 15 * day), endsAt: iso(now - 15 * day + 3 * 3600000), endedEarlyAt: null, settledAt: iso(now - 15 * day + 3 * 3600000), items: [{ id: id(117), voucherId: id(4), flashPoints: 120, quota: 20, sold: 20, perUserCap: 1, soldOutAt: iso(now - 15 * day + 38 * 60000) }] },
   ];
+  // Mock reserves quota at create, so every unsettled seed program must already be carved out of regular stock.
+  for (const flash of flashes.filter(f => !f.settledAt)) for (const item of flash.items) {
+    const v = vouchers.find(v => v.id === item.voucherId)!;
+    if (v.stockRemaining >= item.quota) v.stockRemaining -= item.quota; else v.stockTotal += item.quota; // low-stock voucher: grow the pool, keep its visible remaining
+  }
 
   const tickets = ([
     [5, 100, 5, "RDM-2610-1MZ4", "GCHA-4T8P-2LQW", now + 7 * day - 3600000, null] as const,
@@ -105,7 +115,7 @@ function seed() {
   const demo: UserState = { tickets, history, issues: [{ id: id(493), redemptionId: id(490), ticketId: id(494), reason: "CODE_INVALID", note: "Mã lỗi",
     status: "REFUNDED", createdAt: iso(now - 7 * day), resolvedAt: iso(now - 6 * day), replacementCode: null, refundReference: "RFD-2610-7HC2" }] };
   return {
-    vouchers, flashes, codePools, priceHistory: Object.fromEntries(vouchers.map(v => [v.id, [{ version: 1, basePoints: v.basePoints, promoPoints: v.promoPoints, effectiveFrom: v.redeemStartsAt, changedBy: { id: id(999), name: "Admin Hùng" } }]])),
+    vouchers, flashes, codePools, statsSeededAt: now, priceHistory: Object.fromEntries(vouchers.map(v => [v.id, [{ version: 1, basePoints: v.basePoints, promoPoints: v.promoPoints, effectiveFrom: v.redeemStartsAt, changedBy: { id: id(999), name: "Admin Hùng" } }]])),
     quotes: {} as Record<string, RedemptionQuote>,
     users: { "user-active-002": demo, "00000000-0000-4000-8000-00000000d001": structuredClone(demo) } as Record<string, UserState>,
     idempotency: {} as Record<string, IdempotencyRecord<StoredResponse>>,
@@ -117,7 +127,7 @@ interface TicketRow { id: string; redemptionId: string; reference: string; vouch
 interface IssueRow { id: string; redemptionId: string; ticketId: string; reason: string; note: string | null; status: string; createdAt: string; resolvedAt: string | null; replacementCode: string | null; refundReference: string | null }
 interface UserState { tickets: TicketRow[]; history: HistoryRow[]; issues: IssueRow[] }
 interface StoredResponse { status: number; body: Record<string, unknown> }
-type CatalogState = Pick<ReturnType<typeof seed>, "vouchers" | "flashes" | "codePools" | "priceHistory">;
+type CatalogState = Pick<ReturnType<typeof seed>, "vouchers" | "flashes" | "codePools" | "priceHistory" | "statsSeededAt">;
 type UserSideState = Pick<ReturnType<typeof seed>, "quotes" | "users" | "idempotency">;
 
 type Failure = { ok: false; status: number; code: string; details: Record<string, unknown>; replayed?: boolean };
@@ -126,7 +136,7 @@ type QuoteDecision = { ok: true; result: Omit<RedemptionQuote, "userId"> } | Fai
 
 // Catalog inventory and per-user artifacts persist separately; one update per collection on redeem.
 export const rewardsCatalog = createCollection<CatalogState>("rewards-catalog", () => {
-  const { vouchers, flashes, codePools, priceHistory } = seed(); return { vouchers, flashes, codePools, priceHistory };
+  const { vouchers, flashes, codePools, priceHistory, statsSeededAt } = seed(); return { vouchers, flashes, codePools, priceHistory, statsSeededAt };
 });
 export const rewardsState = createCollection<UserSideState>("rewards-users", () => {
   const { quotes, users, idempotency } = seed(); return { quotes, users, idempotency };
@@ -179,7 +189,7 @@ export function flashSalesAt(now = Date.now()) {
     items: f.items.map((item) => { const v = catalog.vouchers.find((v) => v.id === item.voucherId)!;
       return { id: item.id, voucherId: item.voucherId, voucherTitle: v.title, brand: v.brand, category: v.category, valueVnd: v.valueVnd,
         flashPoints: item.flashPoints, basePoints: v.basePoints, discountPercent: Math.round((1 - item.flashPoints / v.basePoints) * 100), quota: item.quota, sold: item.sold, perUserCap: item.perUserCap,
-        state: now < Date.parse(f.startsAt) ? "UPCOMING" : now >= Date.parse(f.endsAt) || f.endedEarlyAt && now >= Date.parse(f.endedEarlyAt) ? "ENDED" : item.sold >= item.quota ? "SOLD_OUT" : "ACTIVE" }; }) })) };
+        state: flashItemState(f, item, now) }; }) })) };
 }
 
 export function createVoucherQuote(userId: string, voucherId: string, viewer: { available: number; pending?: number }, now = Date.now()): QuoteDecision {
@@ -246,7 +256,7 @@ export function redeemVoucherQuote(userId: string, quoteId: string, viewer: { av
 
   // Success: mutate catalog (stock, codes) and user state (ticket, history, idempotency)
   const flash = quote.flashSaleItemId && catalog.flashes.flatMap((f) => f.items).find((item) => item.id === quote.flashSaleItemId);
-  if (flash) flash.sold++; else v.stockRemaining--;
+  if (flash) { flash.sold++; if (flash.sold >= flash.quota) flash.soldOutAt = iso(now); } else v.stockRemaining--;
   const codePool = catalog.codePools[v.id];
   const code = codePool.shift()!;
   v.codesAvailable = codePool.length;
@@ -444,4 +454,138 @@ export function importAdminVoucherCodes(id: string, request: { codes: string[]; 
     result.committed = true;
   }
   return { ok: true as const, result };
+}
+
+// Mock reserves quota on create, unlike production's start-time job (Story 12.9).
+type AdminFlashInput = { title: string; startsAt: string; endsAt: string; rules: FlashInventory["rules"]; items: { voucherId: string; flashPoints: number; quota: number; perUserCap: number }[] };
+const flashMissing = () => ({ ok: false as const, status: 404, code: "FLASH_SALE_NOT_FOUND", details: {} });
+function settleEndedFlashes(state: CatalogState, now: number) {
+  for (const flash of state.flashes) {
+    if (flash.settledAt || now < Date.parse(flash.endsAt)) continue;
+    for (const item of flash.items) state.vouchers.find(v => v.id === item.voucherId)!.stockRemaining += item.quota - item.sold;
+    flash.settledAt = iso(now);
+  }
+}
+/** Settles ended programs first so a create/edit never sees quota that an ended program still holds. */
+function settledCatalog(now: number) {
+  if (rewardsCatalog.get().flashes.some(f => !f.settledAt && now >= Date.parse(f.endsAt))) rewardsCatalog.update(draft => settleEndedFlashes(draft, now));
+  return rewardsCatalog.get();
+}
+function adminFlashRow(flash: FlashInventory, catalog: CatalogState, now: number) {
+  const status = adminFlashStatus(flash, now), progress = flashProgress(flash, now);
+  const items = flash.items.map((item, index) => {
+    const voucher = catalog.vouchers.find(v => v.id === item.voucherId)!;
+    return { ...item, soldOutAt: progress[index].soldOutAt, voucherTitle: voucher.title, brand: voucher.brand, category: voucher.category, valueVnd: voucher.valueVnd,
+      basePoints: voucher.basePoints, regularPoints: voucher.promoPoints ?? voucher.basePoints, discountPercent: Math.round((1 - item.flashPoints / voucher.basePoints) * 100),
+      state: flashItemState(flash, item, now), unsold: item.quota - item.sold, pointsSpent: item.sold * item.flashPoints,
+      perMinute: progress[index].perMinute, etaAt: progress[index].etaAt };
+  });
+  return { id: flash.id, code: flash.code, title: flash.title, createdBy: flash.createdBy, rules: flash.rules,
+    remindCount: flash.remindCount, endReason: flash.endReason, succeededCount: items.reduce((sum, item) => sum + item.sold, 0),
+    participants: flash.participants, failures: flash.failures, afterTopUp: flash.afterTopUp, startsAt: flash.startsAt, endsAt: flash.endsAt,
+    status, endedEarlyAt: flash.endedEarlyAt, items, pointsSpent: items.reduce((sum, item) => sum + item.pointsSpent, 0) };
+}
+export function adminFlashSalesOf(query: { status?: string } = {}, now = Date.now()) {
+  // ponytail: this GET settles lazily (mock-only write); Story 12.9's scheduler replaces it.
+  const catalog = settledCatalog(now);
+  const all = catalog.flashes.map(f => adminFlashRow(f, catalog, now));
+  return { ok: true as const, result: { items: query.status ? all.filter(f => f.status === query.status) : all,
+    summary: { active: all.filter(f => f.status === "ACTIVE").length, upcoming: all.filter(f => f.status === "UPCOMING" || f.status === "SCHEDULED").length,
+      scheduled: all.filter(f => f.status === "SCHEDULED").length, soldOut: all.filter(f => f.status === "SOLD_OUT").length,
+      ended: all.filter(f => f.status === "ENDED").length }, serverTime: iso(now) } };
+}
+export function adminFlashSaleDetailOf(id: string, now = Date.now()) {
+  const catalog = rewardsCatalog.get(), flash = catalog.flashes.find(f => f.id === id);
+  return flash ? { ok: true as const, result: { flashSale: adminFlashRow(flash, catalog, now) } } : flashMissing();
+}
+export function createAdminFlashSale(input: AdminFlashInput, admin: { id: string; name: string }, now = Date.now()) {
+  const catalog = settledCatalog(now), conflicts = flashConflicts(input, catalog.vouchers, catalog.flashes, now);
+  if (conflicts.length) return { ok: false as const, status: 409, code: conflicts[0].code, details: { conflicts } };
+  const prefix = `FS-${vietnamDayOf(input.startsAt).slice(5).replace("-", "")}-`;
+  const letter = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"].find(l => !catalog.flashes.some(f => f.code === prefix + l)) ?? "Z"; // ponytail: 26 programs per start day
+  const flash: FlashInventory = { ...flashDefaults(input.title), title: input.title, rules: input.rules, createdBy: admin, id: mockId(),
+    code: prefix + letter, startsAt: input.startsAt, endsAt: input.endsAt, endedEarlyAt: null, items: input.items.map(item => ({ ...item, id: mockId(), sold: 0 })) };
+  rewardsCatalog.update(draft => { draft.flashes.push(flash);
+    for (const item of flash.items) draft.vouchers.find(v => v.id === item.voucherId)!.stockRemaining -= item.quota; });
+  return { ok: true as const, result: { flashSale: adminFlashRow(flash, rewardsCatalog.get(), now) } };
+}
+export function updateAdminFlashSale(id: string, input: AdminFlashInput, now = Date.now()) {
+  const catalog = settledCatalog(now), flash = catalog.flashes.find(f => f.id === id);
+  if (!flash) return flashMissing();
+  if (now >= Date.parse(flash.startsAt)) return { ok: false as const, status: 409, code: "FLASH_ALREADY_STARTED", details: {} };
+  const conflicts = flashConflicts(input, catalog.vouchers, catalog.flashes, now, id);
+  if (conflicts.length) return { ok: false as const, status: 409, code: conflicts[0].code, details: { conflicts } };
+  rewardsCatalog.update(draft => { const target = draft.flashes.find(f => f.id === id)!;
+    for (const item of target.items) draft.vouchers.find(v => v.id === item.voucherId)!.stockRemaining += item.quota - item.sold;
+    target.title = input.title; target.startsAt = input.startsAt; target.endsAt = input.endsAt; target.rules = input.rules;
+    target.items = input.items.map(item => ({ ...item, id: target.items.find(old => old.voucherId === item.voucherId)?.id ?? mockId(), sold: target.items.find(old => old.voucherId === item.voucherId)?.sold ?? 0 }));
+    for (const item of target.items) draft.vouchers.find(v => v.id === item.voucherId)!.stockRemaining -= item.quota - item.sold; });
+  const state = rewardsCatalog.get();
+  return { ok: true as const, result: { flashSale: adminFlashRow(state.flashes.find(f => f.id === id)!, state, now) } };
+}
+export function endAdminFlashSale(id: string, request: { reason: FlashInventory["endReason"]; note?: string }, now = Date.now()) {
+  const catalog = settledCatalog(now), flash = catalog.flashes.find(f => f.id === id);
+  if (!flash) return flashMissing();
+  const decision = endEarlyDecision(flash, now);
+  if (!decision.ok) return decision;
+  rewardsCatalog.update(draft => { const target = draft.flashes.find(f => f.id === id)!;
+    for (const item of target.items) draft.vouchers.find(v => v.id === item.voucherId)!.stockRemaining += item.quota - item.sold;
+    target.endedEarlyAt = iso(now); target.settledAt = iso(now); target.endReason = request.reason; });
+  const state = rewardsCatalog.get();
+  return { ok: true as const, result: { flashSale: adminFlashRow(state.flashes.find(f => f.id === id)!, state, now) } };
+}
+
+// Deterministic baseline slides with `now` (so flash days stay aligned); live redemptions append by distinct reference after the persisted `statsSeededAt`.
+const BASELINE_FLASH_DAYS: Record<number, number> = { 14: 70, 22: 85, 29: 100 }, POINTS_PER_REDEMPTION = 150, SEEDED_USAGE_RATE = 0.82;
+const statsBaselineOf = (now: number) => Array.from({ length: 30 }, (_, index) => { const count = BASELINE_FLASH_DAYS[index] ?? 20 + index % 8;
+  return { date: vietnamDayOf(now - (29 - index) * day), count, voucherId: id(index % 5 + 1), points: count * POINTS_PER_REDEMPTION }; });
+const eachDay = (from: string, to: string) => { const days: string[] = []; for (let t = Date.parse(`${from}T00:00:00Z`); t <= Date.parse(`${to}T00:00:00Z`); t += day) days.push(new Date(t).toISOString().slice(0, 10)); return days; };
+export function rewardsStatsOf(query: { from: string; to: string }, now = Date.now()) {
+  const catalog = rewardsCatalog.get(), range = statsRange(query, now), seededAt = catalog.statsSeededAt;
+  const baseline = statsBaselineOf(now).filter(row => row.date >= range.from && row.date <= range.to);
+  const refunded = new Set(Object.values(rewardsState.get().users).flatMap(user => user.issues).filter(issue => issue.status === "REFUNDED").map(issue => issue.redemptionId));
+  const seen = new Set<string>();
+  const live = Object.values(rewardsState.get().users).flatMap(user => user.tickets).filter(ticket => {
+    if (seen.has(ticket.reference)) return false;
+    seen.add(ticket.reference);
+    return Date.parse(ticket.redeemedAt) > seededAt && ticket.openIssue?.status !== "REFUNDED" && !refunded.has(ticket.redemptionId) && vietnamDayOf(ticket.redeemedAt) >= range.from && vietnamDayOf(ticket.redeemedAt) <= range.to;
+  });
+  // Only programs that have started mark a Flash day or count as performance.
+  const started = catalog.flashes.filter(f => Date.parse(f.startsAt) <= now);
+  const codesByDay = new Map<string, string[]>();
+  for (const flash of started) { const key = vietnamDayOf(flash.startsAt);
+    if (key >= range.from && key <= range.to) codesByDay.set(key, [...(codesByDay.get(key) ?? []), flash.code]); }
+  const byDay = new Map(eachDay(range.from, range.to).map(date => [date, 0]));
+  baseline.forEach(row => byDay.set(row.date, (byDay.get(row.date) ?? 0) + row.count));
+  live.forEach(ticket => { const key = vietnamDayOf(ticket.redeemedAt); byDay.set(key, (byDay.get(key) ?? 0) + 1); });
+  const daily = [...byDay].map(([date, count]) => ({ date, count, flashSaleCodes: codesByDay.get(date) ?? [] }));
+  const regular = daily.filter(row => !row.flashSaleCodes.length);
+  const totals = new Map<string, { count: number; points: number }>();
+  for (const row of baseline) { const item = totals.get(row.voucherId) ?? { count: 0, points: 0 }; item.count += row.count; item.points += row.points; totals.set(row.voucherId, item); }
+  for (const ticket of live) { const item = totals.get(ticket.voucherId) ?? { count: 0, points: 0 }; item.count++; item.points += ticket.pointsSpent; totals.set(ticket.voucherId, item); }
+  const count = [...totals.values()].reduce((sum, item) => sum + item.count, 0), points = [...totals.values()].reduce((sum, item) => sum + item.points, 0);
+  const top = [...totals].sort((a, b) => b[1].count - a[1].count)[0];
+  // Offered = stock of every voucher whose redemption window overlaps the range (Flash quota is carved out of that stock).
+  const opened = catalog.vouchers.filter(v => v.state !== "ARCHIVED" && vietnamDayOf(v.redeemStartsAt) <= range.to && vietnamDayOf(v.redeemEndsAt) >= range.from);
+  const offered = Math.max(count, opened.reduce((sum, v) => sum + v.stockTotal, 0));
+  const voucherStates = catalog.vouchers.map(v => adminVoucherStatus(v, catalog.flashes, now));
+  const brands = new Map<string, { voucher: VoucherInventory; redemptions: number; pointsSpent: number; offered: number }>();
+  for (const [voucherId, tally] of totals) { const voucher = catalog.vouchers.find(v => v.id === voucherId)!;
+    const item = brands.get(voucher.brand.id) ?? { voucher, redemptions: 0, pointsSpent: 0, offered: 0 };
+    item.redemptions += tally.count; item.pointsSpent += tally.points; item.offered += Math.max(tally.count, voucher.stockTotal); brands.set(voucher.brand.id, item); }
+  const flashSales = started.filter(f => vietnamDayOf(f.startsAt) >= range.from && vietnamDayOf(f.startsAt) <= range.to).map(f => {
+    const row = adminFlashRow(f, catalog, now), sold = row.items.reduce((sum, item) => sum + item.sold, 0), quota = row.items.reduce((sum, item) => sum + item.quota, 0);
+    const soldOutTimes = row.items.map(item => item.soldOutAt), allSoldOut = soldOutTimes.every(time => time !== null);
+    return { flashSaleId: f.id, code: f.code, startsAt: f.startsAt, itemsLabel: row.items.map(i => `${i.brand.name} ${Math.round(i.valueVnd / 1000)}k`).join(" · "), sold, quota, status: row.status,
+      pointsSpent: row.pointsSpent, soldOutAfterMinutes: allSoldOut ? Math.max(0, Math.round((Math.max(...soldOutTimes.map(time => Date.parse(time!))) - Date.parse(f.startsAt)) / 60000)) : null }; });
+  const baselineCount = count - live.length;
+  return { ok: true as const, result: { range, updatedAt: iso(now), kpis: {
+    activeVouchers: { active: voucherStates.filter(s => s === "ACTIVE").length, total: voucherStates.length,
+      soldOut: voucherStates.filter(s => s === "SOLD_OUT").length, expired: voucherStates.filter(s => s === "EXPIRED").length },
+    redemptions: { count, avgPerRegularDay: regular.length ? regular.reduce((sum, row) => sum + row.count, 0) / regular.length : 0 },
+    pointsSpent: { points, vndEquivalent: points * POINT_VND_RATE }, redemptionRate: { redeemed: count, offered, rate: offered ? count / offered : 0 },
+    topVoucher: top ? { voucherId: top[0], label: catalog.vouchers.find(v => v.id === top[0])!.title, count: top[1].count, share: count ? top[1].count / count : 0 } : null,
+    selfReportedUsageRate: count ? Math.min(1, (Math.round(baselineCount * SEEDED_USAGE_RATE) + live.filter(ticket => ticket.usedAt).length) / count) : 0 },
+    daily, byBrand: [...brands.values()].map(row => ({ brand: row.voucher.brand, redemptions: row.redemptions, pointsSpent: row.pointsSpent,
+      soldRatio: row.offered ? row.redemptions / row.offered : 0 })), flashSales } };
 }

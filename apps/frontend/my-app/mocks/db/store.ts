@@ -22,8 +22,10 @@ const PREFIX = "rescom:mockdb:";
  * 6: Voucher detail copy + Flash item category (Story 12.2).
  * 7: Voucher tickets carry `category`; Figma "how to use" steps (Story 12.4).
  * 8: Admin voucher price history (Story 12.5).
+ * 9: Admin Flash Sale lifecycle fields (Story 12.6).
+ * 10: Flash sell-out time, persisted stats seed time, seed stock net of Flash quota (Story 12.6 review).
  */
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 10;
 
 interface Persisted<T> {
   version: number;

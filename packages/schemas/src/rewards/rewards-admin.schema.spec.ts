@@ -1,4 +1,4 @@
-import { adminVoucherStateSchema, adminVoucherStockSchema, adminVoucherInputSchema, adminVoucherSchema, adminVoucherDetailSchema, adminVoucherListSchema, adminVoucherListQuerySchema, adminVoucherStatePatchSchema, adminVoucherBrandListSchema, adminVoucherCreatedSchema, adminVoucherPriceVersionSchema, adminVoucherPriceChangeSchema, adminStockAdjustmentSchema, adminCodeImportRequestSchema, adminCodeImportResultSchema, adminFlashSaleStatusSchema, adminFlashSaleInputSchema, adminFlashSaleSchema, rewardsStatsQuerySchema, rewardsStatsSchema } from "./rewards-admin.schema";
+import { adminVoucherStateSchema, adminVoucherStockSchema, adminVoucherInputSchema, adminVoucherSchema, adminVoucherDetailSchema, adminVoucherListSchema, adminVoucherListQuerySchema, adminVoucherStatePatchSchema, adminVoucherBrandListSchema, adminVoucherCreatedSchema, adminVoucherPriceVersionSchema, adminVoucherPriceChangeSchema, adminStockAdjustmentSchema, adminCodeImportRequestSchema, adminCodeImportResultSchema, adminFlashSaleStatusSchema, adminFlashSaleInputSchema, adminFlashSaleSchema, adminFlashEndRequestSchema, adminFlashSaleListQuerySchema, adminFlashSaleListSchema, adminFlashSaleCreatedSchema, rewardsStatsQuerySchema, rewardsStatsSchema } from "./rewards-admin.schema";
 const id = "11111111-1111-4111-8111-111111111111";
 const start = "2026-10-01T00:00:00.000Z";
 const end = "2026-10-02T00:00:00.000Z";
@@ -51,11 +51,17 @@ describe("admin rewards contracts (Story 12.1, FR-73)", () => {
     expect(adminCodeImportResultSchema.safeParse({ received: 1, accepted: 1, duplicatesInFile: [], alreadyStored: [], committed: true }).success).toBe(true);
     expect(adminCodeImportResultSchema.safeParse({ received: 1, accepted: 0, duplicatesInFile: ["CODE"], alreadyStored: [], committed: true }).success).toBe(false);
     expect(adminFlashSaleStatusSchema.safeParse("UPCOMING").success).toBe(true);
-    const flash = { startsAt: start, endsAt: end, items: [{ voucherId: id, flashPoints: 150, quota: 2 }] };
+    expect(adminFlashEndRequestSchema.safeParse({ reason: "OTHER" }).success).toBe(false);
+    expect(adminFlashEndRequestSchema.safeParse({ reason: "OTHER", note: "Khác" }).success).toBe(true);
+    expect(adminFlashSaleListQuerySchema.safeParse({ status: "BROKEN" }).success).toBe(false);
+    const flash = { title: "Flash trưa", startsAt: start, endsAt: "2026-10-01T06:00:00.000Z", items: [{ voucherId: id, flashPoints: 150, quota: 2 }] };
     expect(adminFlashSaleInputSchema.parse(flash).items[0].perUserCap).toBe(1);
+    expect(adminFlashSaleInputSchema.safeParse({ ...flash, startsAt: "2026-10-01T03:00:00.000Z", endsAt: "2026-10-01T03:00:00Z" }).success).toBe(false);
     expect(adminFlashSaleInputSchema.safeParse({ ...flash, endsAt: start }).success).toBe(false);
+    expect(adminFlashSaleInputSchema.safeParse({ ...flash, endsAt: end }).success).toBe(false);
+    expect(adminFlashSaleInputSchema.safeParse({ ...flash, title: " " }).success).toBe(false);
     expect(adminFlashSaleInputSchema.safeParse({ ...flash, items: [flash.items[0], flash.items[0]] }).success).toBe(false);
-    expect(adminFlashSaleSchema.safeParse({ id, code: "FS-1013-A", startsAt: start, endsAt: end, status: "ACTIVE", endedEarlyAt: null, items: [flashItem], pointsSpent: 150 }).success).toBe(true);
+    expect(adminFlashSaleSchema.safeParse({ id, code: "FS-1013-A", title: "Flash trưa", createdBy: { id, name: "Admin" }, rules: { requireRecentSurvey: true, remindBefore10m: true, blockFlagged: true }, remindCount: 0, endReason: null, succeededCount: 0, participants: 0, failures: { SOLD_OUT: 0, INSUFFICIENT_POINTS: 0, OTHER: 0 }, afterTopUp: { count: 0, rate: 0, flagged: 0 }, startsAt: start, endsAt: end, status: "ACTIVE", endedEarlyAt: null, items: [{ ...flashItem, unsold: 2, pointsSpent: 0, perMinute: 0, soldOutAt: null, etaAt: null, regularPoints: 250 }], pointsSpent: 150 }).success).toBe(true);
   });
   it("validates date span and statistics payload", () => {
     expect(rewardsStatsQuerySchema.safeParse({ from: "2026-01-01", to: "2026-12-31" }).success).toBe(true);

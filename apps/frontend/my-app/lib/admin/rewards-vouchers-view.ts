@@ -1,6 +1,7 @@
 import { POINT_VND_RATE, type adminVoucherInputSchema, type adminVoucherSchema, type AdminVoucherListDto } from "@rescom/schemas";
 import type { z } from "zod";
 import { formatDayMonth } from "../format/date-time.ts";
+import { PILOT_BUILD } from "../pilot-scope.ts";
 import { formatPoints, formatVnd } from "../rewards/voucher-display.ts";
 
 type Voucher = z.infer<typeof adminVoucherSchema>;
@@ -40,6 +41,7 @@ export function STATUS_FILTERS(summary: Summary) {
 export function voucherActionsOf(voucher: Voucher) {
   if (voucher.state === "ARCHIVED") return [{ key: "history", label: "Xem lịch sử đổi" }];
   return [
+    ...PILOT_BUILD ? [] : [{ key: "flash", label: "Tạo Flash Sale", href: `/admin/flash-sales/new?voucherId=${encodeURIComponent(voucher.id)}` }],
     { key: "edit", label: "Sửa thông tin" }, { key: "price", label: "Điều chỉnh giá điểm" },
     { key: "stock", label: "Điều chỉnh tồn kho" }, { key: "history", label: "Xem lịch sử đổi" },
     { key: "state", label: voucher.state === "PAUSED" ? "Tiếp tục phân phối" : "Tạm ngừng" },

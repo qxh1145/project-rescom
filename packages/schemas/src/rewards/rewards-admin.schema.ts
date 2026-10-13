@@ -37,7 +37,27 @@ export const adminStockAdjustmentSchema = z.object({ total: count, reason: z.str
 export const adminCodeImportRequestSchema = z.object({ codes: z.array(z.string().regex(/^[A-Za-z0-9-]{4,64}$/)).min(1).max(5000), mode: z.enum(["VALIDATE", "COMMIT"]) });
 export const adminCodeImportResultSchema = z.object({ received: count, accepted: count, duplicatesInFile: z.array(z.string()), alreadyStored: z.array(z.string()), committed: z.boolean() }).refine(v => !v.committed || (v.duplicatesInFile.length === 0 && v.alreadyStored.length === 0));
 export const adminFlashSaleStatusSchema = z.enum(["SCHEDULED", "UPCOMING", "ACTIVE", "SOLD_OUT", "ENDED"]);
-export const adminFlashSaleInputSchema = z.object({ startsAt: instant, endsAt: instant, items: z.array(z.object({ voucherId: id, flashPoints: positive, quota: positive, perUserCap: positive.default(1) })).min(1) }).refine(v => v.endsAt > v.startsAt, { path: ["endsAt"] }).refine(v => new Set(v.items.map(i => i.voucherId)).size === v.items.length, { path: ["items"] });
-export const adminFlashSaleSchema = z.object({ id, code: z.string().regex(/^FS-\d{4}-[A-Z]$/), startsAt: instant, endsAt: instant, status: adminFlashSaleStatusSchema, endedEarlyAt: instant.nullable(), items: z.array(flashSaleItemSchema), pointsSpent: count });
+export const adminFlashEndReasonSchema = z.enum(["WRONG_PRICE", "STOCK_ISSUE", "PARTNER_REQUEST", "OTHER"]);
+export const adminFlashEndRequestSchema = z.object({ reason: adminFlashEndReasonSchema, note: z.string().trim().max(200).optional() }).refine(v => v.reason !== "OTHER" || !!v.note, { path: ["note"] });
+export const adminFlashRulesSchema = z.object({ requireRecentSurvey: z.boolean().default(true), remindBefore10m: z.boolean().default(true), blockFlagged: z.boolean().default(true) });
+export const adminFlashSaleInputSchema = z.object({ title: z.string().trim().min(1).max(60), startsAt: instant, endsAt: instant, rules: adminFlashRulesSchema.default({}), items: z.array(z.object({ voucherId: id, flashPoints: positive, quota: positive, perUserCap: positive.default(1) })).min(1) })
+  .refine(v => Date.parse(v.endsAt) > Date.parse(v.startsAt), { path: ["endsAt"], message: "End must follow start" })
+  .refine(v => Date.parse(v.endsAt) - Date.parse(v.startsAt) <= 6 * 3600000, { path: ["endsAt"], message: "Flash Sale maximum six hours" })
+  .refine(v => new Set(v.items.map(i => i.voucherId)).size === v.items.length, { path: ["items"] });
+export const adminFlashSaleItemSchema = z.intersection(flashSaleItemSchema, z.object({ unsold: count, pointsSpent: count, perMinute: z.number().nonnegative(), soldOutAt: instant.nullable(), etaAt: instant.nullable(), regularPoints: positive }));
+export const adminFlashSaleSchema = z.object({ id, code: z.string().regex(/^FS-\d{4}-[A-Z]$/), title: z.string().min(1), createdBy: z.object({ id, name: z.string().min(1) }), rules: adminFlashRulesSchema, remindCount: count, endReason: adminFlashEndReasonSchema.nullable(), succeededCount: count, participants: count, failures: z.object({ SOLD_OUT: count, INSUFFICIENT_POINTS: count, OTHER: count }), afterTopUp: z.object({ count, rate: ratio, flagged: count }), startsAt: instant, endsAt: instant, status: adminFlashSaleStatusSchema, endedEarlyAt: instant.nullable(), items: z.array(adminFlashSaleItemSchema), pointsSpent: count });
+export const adminFlashSaleListQuerySchema = z.object({ status: adminFlashSaleStatusSchema.optional() });
+export const adminFlashSaleListSchema = z.object({ items: z.array(adminFlashSaleSchema), summary: z.object({ active: count, upcoming: count, scheduled: count, soldOut: count, ended: count }), serverTime: instant });
+export const adminFlashSaleCreatedSchema = z.object({ flashSale: adminFlashSaleSchema });
+export type AdminFlashSaleDto = z.infer<typeof adminFlashSaleSchema>;
+export type AdminFlashSaleInputDto = z.infer<typeof adminFlashSaleInputSchema>;
+export type AdminFlashSaleListDto = z.infer<typeof adminFlashSaleListSchema>;
+export type AdminFlashSaleListQueryDto = z.infer<typeof adminFlashSaleListQuerySchema>;
+export type AdminFlashSaleCreatedDto = z.infer<typeof adminFlashSaleCreatedSchema>;
+export type AdminFlashEndRequestDto = z.infer<typeof adminFlashEndRequestSchema>;
+
 export const rewardsStatsQuerySchema = z.object({ from: date, to: date }).refine(v => v.to >= v.from && (Date.parse(v.to) - Date.parse(v.from)) / 86400000 <= 366, { path: ["to"] });
 export const rewardsStatsSchema = z.object({ range: z.object({ from: date, to: date }), updatedAt: instant, kpis: z.object({ activeVouchers: z.object({ active: count, total: count, soldOut: count, expired: count }), redemptions: z.object({ count, avgPerRegularDay: z.number().nonnegative() }), pointsSpent: z.object({ points: count, vndEquivalent: count }), redemptionRate: z.object({ redeemed: count, offered: count, rate: ratio }), topVoucher: z.object({ voucherId: id, label: z.string(), count, share: ratio }).nullable(), selfReportedUsageRate: ratio }), daily: z.array(z.object({ date, count, flashSaleCodes: z.array(z.string()) })), byBrand: z.array(z.object({ brand: voucherBrandSchema, redemptions: count, pointsSpent: count, soldRatio: ratio })), flashSales: z.array(z.object({ flashSaleId: id, code: z.string(), startsAt: instant, itemsLabel: z.string(), sold: count, quota: count, status: adminFlashSaleStatusSchema, pointsSpent: count, soldOutAfterMinutes: count.nullable() })) });
+
+export type RewardsStatsDto = z.infer<typeof rewardsStatsSchema>;
+export type RewardsStatsQueryDto = z.infer<typeof rewardsStatsQuerySchema>;
