@@ -136,6 +136,21 @@ test("wallet history rows (Figma 7)", async (t) => {
     assert.equal(rows[1].note, "Chuyển khoản RESCOMK7Q2M9XA");
   });
 
+  await t.test("voucher redemption journal shows Đổi voucher and outgoing points", () => {
+    const journal = uuid();
+    const [row] = history.toHistoryRows(
+      [entry(journal, "USER_AVAILABLE", -150, "redemption:redeem-key-1", {
+        description: "Voucher redemption: Voucher mua đồ uống",
+      })],
+      NOW,
+    );
+    assert.equal(row.kind, "VOUCHER_REDEMPTION");
+    assert.equal(row.title, "Đổi voucher");
+    assert.equal(row.direction, "out");
+    assert.equal(row.amount, -150);
+    assert.equal(row.note, "Voucher mua đồ uống");
+  });
+
   await t.test("filters Tất cả / Nhận / Chi / Nạp", () => {
     const rows = [
       { id: "1", kind: "SURVEY_REWARD", direction: "in" },

@@ -18,8 +18,9 @@ const PREFIX = "rescom:mockdb:";
  * 2: attempts use the backend `AttemptStatus` values (Phase 3 review).
  * 3: survey response analytics seed (321-response and empty publisher surveys).
  * 4: the empty analytics survey is also a respondent survey (surveys + survey-content).
+ * 5: Rewards mock domain (Story 12.1); demo wallet 186 available.
  */
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 interface Persisted<T> {
   version: number;

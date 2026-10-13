@@ -1,0 +1,31 @@
+// ASSUMED API CONTRACT: backend Stories 12.7–12.10 must match or update these schemas.
+import { z } from "zod";
+import { voucherBrandSchema, voucherCategorySchema, voucherPriceSchema, flashSaleItemSchema } from "./voucher-catalog.schema";
+import { redemptionHistoryKindSchema } from "./redemption.schema";
+const id = z.string().uuid();
+const instant = z.string().datetime();
+const count = z.number().int().nonnegative();
+const positive = z.number().int().positive();
+const ratio = z.number().min(0).max(1);
+const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v);
+export const REWARDS_CODE_EXPIRY_MIN_DAYS = 7;
+export const adminVoucherStateSchema = z.enum(["ACTIVE", "PAUSED", "ARCHIVED"]);
+export const adminVoucherStockSchema = z.object({ total: count, issued: count, flashReserved: count, remaining: count, codesAvailable: count }).refine(v => v.remaining === v.total - v.issued - v.flashReserved, { path: ["remaining"] });
+const pointsInput = z.object({ basePoints: positive, promoPoints: positive.nullable() }).refine(v => v.promoPoints === null || v.promoPoints < v.basePoints, { path: ["promoPoints"] });
+export const adminVoucherInputSchema = z.object({ title: z.string().min(1).max(80), brandId: voucherBrandSchema.shape.id, category: voucherCategorySchema, valueVnd: positive, basePoints: positive, promoPoints: positive.nullable(), isSharedCode: z.boolean(), redeemStartsAt: instant, redeemEndsAt: instant, codeExpiresAt: instant, terms: z.array(z.string()).max(10), howToUse: z.array(z.string()).max(10), imageUrl: z.string().url().nullable() }).superRefine((v, ctx) => {
+  if (v.promoPoints !== null && v.promoPoints >= v.basePoints) ctx.addIssue({ code: "custom", path: ["promoPoints"], message: "Promo must be below base" });
+  if (v.redeemEndsAt <= v.redeemStartsAt) ctx.addIssue({ code: "custom", path: ["redeemEndsAt"], message: "End must follow start" });
+  if (Date.parse(v.codeExpiresAt) < Date.parse(v.redeemEndsAt) + REWARDS_CODE_EXPIRY_MIN_DAYS * 86400000) ctx.addIssue({ code: "custom", path: ["codeExpiresAt"], message: "Codes must remain valid for seven days" });
+});
+export const adminVoucherSchema = z.object({ id, title: z.string().min(1), brand: voucherBrandSchema, category: voucherCategorySchema, valueVnd: positive, price: voucherPriceSchema, basePoints: positive, promoPoints: positive.nullable(), state: adminVoucherStateSchema, isVisible: z.boolean(), stock: adminVoucherStockSchema, isSharedCode: z.boolean(), redeemStartsAt: instant, redeemEndsAt: instant, codeExpiresAt: instant, priceDeviationPercent: z.number(), createdAt: instant, updatedAt: instant });
+export const adminVoucherPriceVersionSchema = pointsInput.innerType().extend({ version: positive, effectiveFrom: instant, changedBy: z.object({ id, name: z.string().min(1) }) }).refine(v => v.promoPoints === null || v.promoPoints < v.basePoints, { path: ["promoPoints"] });
+export const adminVoucherDetailSchema = z.object({ voucher: adminVoucherSchema, priceHistory: z.array(adminVoucherPriceVersionSchema), redemptions: z.array(z.object({ reference: z.string(), userLabel: z.string(), points: z.number().int(), kind: redemptionHistoryKindSchema, createdAt: instant })) });
+export const adminVoucherPriceChangeSchema = pointsInput;
+export const adminStockAdjustmentSchema = z.object({ total: count, reason: z.string().trim().min(5).max(500) });
+export const adminCodeImportRequestSchema = z.object({ codes: z.array(z.string().regex(/^[A-Za-z0-9-]{4,64}$/)).min(1).max(5000), mode: z.enum(["VALIDATE", "COMMIT"]) });
+export const adminCodeImportResultSchema = z.object({ received: count, accepted: count, duplicatesInFile: z.array(z.string()), alreadyStored: z.array(z.string()), committed: z.boolean() }).refine(v => !v.committed || (v.duplicatesInFile.length === 0 && v.alreadyStored.length === 0));
+export const adminFlashSaleStatusSchema = z.enum(["SCHEDULED", "UPCOMING", "ACTIVE", "SOLD_OUT", "ENDED"]);
+export const adminFlashSaleInputSchema = z.object({ startsAt: instant, endsAt: instant, items: z.array(z.object({ voucherId: id, flashPoints: positive, quota: positive, perUserCap: positive.default(1) })).min(1) }).refine(v => v.endsAt > v.startsAt, { path: ["endsAt"] }).refine(v => new Set(v.items.map(i => i.voucherId)).size === v.items.length, { path: ["items"] });
+export const adminFlashSaleSchema = z.object({ id, code: z.string().regex(/^FS-\d{4}-[A-Z]$/), startsAt: instant, endsAt: instant, status: adminFlashSaleStatusSchema, endedEarlyAt: instant.nullable(), items: z.array(flashSaleItemSchema), pointsSpent: count });
+export const rewardsStatsQuerySchema = z.object({ from: date, to: date }).refine(v => v.to >= v.from && (Date.parse(v.to) - Date.parse(v.from)) / 86400000 <= 366, { path: ["to"] });
+export const rewardsStatsSchema = z.object({ range: z.object({ from: date, to: date }), updatedAt: instant, kpis: z.object({ activeVouchers: z.object({ active: count, total: count, soldOut: count, expired: count }), redemptions: z.object({ count, avgPerRegularDay: z.number().nonnegative() }), pointsSpent: z.object({ points: count, vndEquivalent: count }), redemptionRate: z.object({ redeemed: count, offered: count, rate: ratio }), topVoucher: z.object({ voucherId: id, label: z.string(), count, share: ratio }).nullable(), selfReportedUsageRate: ratio }), daily: z.array(z.object({ date, count, flashSaleCodes: z.array(z.string()) })), byBrand: z.array(z.object({ brand: voucherBrandSchema, redemptions: count, pointsSpent: count, soldRatio: ratio })), flashSales: z.array(z.object({ flashSaleId: id, code: z.string(), startsAt: instant, itemsLabel: z.string(), sold: count, quota: count, status: adminFlashSaleStatusSchema, pointsSpent: count, soldOutAfterMinutes: count.nullable() })) });

@@ -1,5 +1,5 @@
 # generated: 2026-08-16 17:09:30
-# last_updated: 2026-10-03
+# last_updated: 2026-10-13
 # project: project-rescom
 # project_key: NOKEY
 # tracking_system: file-system
@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: "2026-08-16 17:09:30"
-last_updated: "2026-10-03 14:00:00"
+last_updated: "2026-10-13 15:10:00"
 project: "project-rescom"
 project_key: "NOKEY"
 tracking_system: "file-system"
@@ -122,12 +122,28 @@ development_status:
   # Added 2026-09-26 by sprint-change-proposal-2026-09-26 (pilot hosting, Architecture AD-23)
   epic-11: in-progress
   11-1-deployment-ready-backend-packaging: done  # code-reviewed 2026-10-03; AC7 GCS run deferred to 11.2 (Q3); evidence in 11-1-evidence/
-  11-2-google-cloud-pilot-infrastructure-provisioning: backlog
+  11-2-hostinger-vps-pilot-infrastructure-provisioning: in-progress  # re-scoped 2026-10-05 to Hostinger VPS (proposal 2026-10-04 APPROVED: B1 greenfield, B2/B4 Cloudflare R2, B3 RPO 15m/RTO 4h); ACs rewritten; evidence in 11-2-hostinger-evidence/
   11-3-ci-cd-pipeline-with-rollback: backlog
   11-4-observability-alerting-backup-restore-drill: backlog
   11-5-pilot-launch-readiness: backlog
-  11-6-post-trial-hosting-decision-portability-rehearsal: backlog
+  11-6-post-pilot-hosting-review-portability-rehearsal: backlog  # re-scoped 2026-10-05: GCP trial clock removed
   epic-11-retrospective: optional
+
+  # Added 2026-10-13 by sprint-change-proposal-2026-10-13 (Rewards: voucher redemption + Flash Sale, Phase 2, AD-24)
+  # FE-mock stories 12.1-12.6 may start now; backend 12.7+ gated by PRD OQ-23..26; production enable after 11.5
+  epic-12: in-progress
+  12-1-rewards-contracts-msw-mock-domain: review
+  12-2-voucher-marketplace-filters-detail: backlog
+  12-3-confirm-redemption-result: backlog
+  12-4-my-vouchers-code-qr-history: backlog
+  12-5-admin-voucher-catalog-codes: backlog
+  12-6-admin-flash-sale-rewards-stats: backlog
+  12-7-rewards-schema-catalog-code-inventory-api: backlog
+  12-8-quote-redemption-transaction: backlog
+  12-9-flash-sale-lifecycle: backlog
+  12-10-my-vouchers-reminders-faulty-code-resolution: backlog
+  12-11-rewards-integration-without-mocks-enable-gate: backlog
+  epic-12-retrospective: optional
 
 # ==============================================================================
 # PHASE 2 DEFERRED EPICS & SUB-EPICS (Post-MVP Scope)

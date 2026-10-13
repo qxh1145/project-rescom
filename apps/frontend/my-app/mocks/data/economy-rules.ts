@@ -22,6 +22,7 @@ export type MockTransactionKind =
   | "SURVEY_PAYOUT"
   | "REWARD_RELEASE" // "Điểm chờ duyệt đã mở" · Chờ duyệt → Khả dụng (`release-pending:` journal)
   | "TOP_UP" // "Nạp điểm"
+  | "VOUCHER_REDEMPTION" // "Đổi voucher" · Khả dụng −N
   | "SURVEY_ESCROW" // "Ký quỹ khảo sát" (publisher spend)
   | "ESCROW_REFUND" // "Hoàn ký quỹ"
   // Phase 6 admin disputes: `dispute-resolution:{caseId}:refund|release` (see `dispute` below).
@@ -47,6 +48,8 @@ export interface MockTransaction {
   releasesAt: string | null;
   /** REWARD_RELEASE rows: id of the SURVEY_REWARD row whose 48h review it ended. */
   rewardRowId?: string;
+  /** Voucher redeem idempotency key; journal key survives retries. */
+  redemptionKey?: string;
   /**
    * DISPUTE_RESOLUTION rows (Phase 6, `mocks/data/admin-disputes.ts`): the case
    * and the backend action. `refund` + positive amount = the publisher's side
@@ -241,6 +244,8 @@ function entriesOf(row: MockTransaction, postedAsPending: boolean): Array<[Ledge
       return [["ESCROW", -amount]];
     case "TOP_UP":
       return [["USER_AVAILABLE", amount]];
+    case "VOUCHER_REDEMPTION":
+      return [["USER_AVAILABLE", -amount]];
     case "SURVEY_ESCROW":
       return [
         ["USER_AVAILABLE", -amount],
@@ -291,6 +296,8 @@ function journalOf(userId: string, row: MockTransaction, postedAsPending: boolea
     case "SURVEY_PAYOUT":
       // Same journal as the respondent's confirmed credit (`creditReward` with `pending: false`).
       return { key: `internal-reward:${ref}`, description: `Internal survey reward: ${ref}` };
+    case "VOUCHER_REDEMPTION":
+      return { key: `redemption:${row.redemptionKey ?? row.id}`, description: `Voucher redemption: ${row.note}` };
     case "TOP_UP":
       return {
         key: `topup-approval:${row.id}`,

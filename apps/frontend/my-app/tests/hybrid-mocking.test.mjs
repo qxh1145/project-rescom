@@ -101,6 +101,8 @@ const { disputeResultSchema } = await import("../lib/forms/dispute-service.ts");
 const { formQualitySchema } = await import("../lib/forms/results-service.ts");
 const ai = await import("../lib/forms/builder-ai.ts");
 
+const rewards = await import("@rescom/schemas");
+
 const ORIGIN = "http://localhost";
 const CSRF = { "X-CSRF-Token": "real-session-token" };
 
@@ -126,10 +128,10 @@ function parsed(schema, result, status = 200) {
 
 const routeKey = (route) => route.replace(/:[A-Za-z_]\w*/g, ":param");
 
-test("hybrid registers exactly the 14 DEFERRED_KEEP_MOCK handlers, once each", () => {
+test("hybrid registers exactly the 20 DEFERRED_KEEP_MOCK handlers, once each", () => {
   const registered = hybridHandlers.map((handler) => routeKey(`${handler.info.method} ${handler.info.path.replace(/^\/api/, "")}`));
   const deferred = Object.keys(ROUTE_ALLOWLIST.DEFERRED_KEEP_MOCK).map(routeKey);
-  assert.equal(deferred.length, 14);
+  assert.equal(deferred.length, 20);
   assert.deepEqual([...registered].sort(), [...deferred].sort());
   assert.ok(handlers.length > hybridHandlers.length, "full mocking (`enabled`) keeps every handler");
   // Nothing mock-only (demo accounts, mock Google, mock upload) runs next to the real backend.
@@ -231,4 +233,47 @@ test("AI builder (5 routes) works on real form ids the mock DB never saw", async
   assert.equal(adopted.formId, formId);
   assert.equal(parsed(ai.aiConversationSchema, await call("GET", `/forms/${formId}/ai/conversation`)).formId, formId);
   parsed(ai.aiSuggestedBlockSchema, await call("POST", `/forms/${formId}/ai/suggest-block`, { body: {} }));
+});
+
+test("rewards answer without a mock session: quote, idempotent redeem, poll, conflict, CSRF", async () => {
+  const catalog = parsed(rewards.voucherCatalogSchema, await call("GET", "/rewards/vouchers"));
+  assert.ok(catalog.items.length > 0);
+  const voucher = catalog.items.find(item => item.status === "AVAILABLE" && item.price.points * 2 <= catalog.viewer.available);
+  assert.ok(voucher);
+  parsed(rewards.voucherDetailResponseSchema, await call("GET", `/rewards/vouchers/${voucher.id}`));
+  parsed(rewards.flashSaleListSchema, await call("GET", "/rewards/flash-sales"));
+  assert.equal((await call("POST", "/rewards/quotes", { body: { voucherId: voucher.id }, csrf: false })).status, 403);
+  const quote = parsed(rewards.redemptionQuoteSchema, await call("POST", "/rewards/quotes", { body: { voucherId: voucher.id } }), 201);
+  const key = randomUUID();
+  const request = (quoteId, csrf = true) => new Request(`${ORIGIN}/api/rewards/redemptions`, {
+    method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key, ...(csrf ? CSRF : {}) },
+    body: JSON.stringify({ quoteId }),
+  });
+  const redeem = async (quoteId, csrf = true) => {
+    const response = await getResponse(hybridHandlers, request(quoteId, csrf), { baseUrl: ORIGIN });
+    return { status: response.status, body: await response.json() };
+  };
+  assert.equal((await redeem(quote.quoteId, false)).status, 403);
+  const first = await redeem(quote.quoteId);
+  const result = parsed(rewards.redemptionResultSchema, first, 201);
+  const replay = await redeem(quote.quoteId);
+  assert.deepEqual(replay, first);
+  const after = parsed(rewards.voucherCatalogSchema, await call("GET", "/rewards/vouchers"));
+  assert.equal(after.viewer.available, catalog.viewer.available - result.pointsSpent);
+  const wallet = await import("../mocks/data/economy.ts");
+  const hybrid = await import("../mocks/hybrid.ts");
+  assert.equal(wallet.walletOf(hybrid.HYBRID_MEMBER).available, after.viewer.available);
+  assert.equal(wallet.transactionsOf(hybrid.HYBRID_MEMBER).filter(row => row.redemptionKey === key).length, 1);
+  assert.equal(parsed(rewards.redemptionResultSchema, await call("GET", `/rewards/redemptions/by-key/${key}`), 201).redemptionId, result.redemptionId);
+  const another = parsed(rewards.redemptionQuoteSchema, await call("POST", "/rewards/quotes", { body: { voucherId: voucher.id } }), 201);
+  assert.equal((await redeem(another.quoteId)).body.error.code, "IDEMPOTENCY_KEY_CONFLICT");
+  const secondKey = randomUUID();
+  const secondResponse = await getResponse(hybridHandlers, new Request(`${ORIGIN}/api/rewards/redemptions`, {
+    method: "POST", headers: { ...CSRF, "Content-Type": "application/json", "Idempotency-Key": secondKey },
+    body: JSON.stringify({ quoteId: another.quoteId }),
+  }), { baseUrl: ORIGIN });
+  assert.equal(secondResponse.status, 201);
+  const second = rewards.redemptionResultSchema.parse((await secondResponse.json()).data);
+  assert.equal(wallet.walletOf(hybrid.HYBRID_MEMBER).available, after.viewer.available - second.pointsSpent);
+  assert.equal(wallet.transactionsOf(hybrid.HYBRID_MEMBER).filter(row => row.redemptionKey === secondKey).length, 1);
 });

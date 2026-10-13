@@ -36,6 +36,12 @@ export const ROUTE_ALLOWLIST: Record<"MOCK_ONLY" | "DEFERRED_KEEP_MOCK" | "PLANN
     "POST /forms/:id/ai/conversation": "AI builder, Epic 3 (attach a new chat to its draft)",
     "GET /engagement/me": "streak and tier, Stories 7.4-7.6",
     "GET /engagement/leaderboard": "leaderboard, Stories 7.4-7.6",
+    "GET /rewards/vouchers": "rewards, Epic 12 (Phase 2; backend Stories 12.7-12.10)",
+    "GET /rewards/vouchers/:id": "rewards, Epic 12 (Phase 2; backend Stories 12.7-12.10)",
+    "GET /rewards/flash-sales": "rewards, Epic 12 (Phase 2; backend Stories 12.7-12.10)",
+    "POST /rewards/quotes": "rewards, Epic 12 (Phase 2; backend Stories 12.7-12.10)",
+    "POST /rewards/redemptions": "rewards, Epic 12 (Phase 2; backend Stories 12.7-12.10)",
+    "GET /rewards/redemptions/by-key/:key": "rewards, Epic 12 (Phase 2; backend Stories 12.7-12.10)",
   },
 
   /** Backend still to build, tagged with the plan item that builds it. */

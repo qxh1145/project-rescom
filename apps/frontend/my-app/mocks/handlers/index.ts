@@ -28,6 +28,7 @@ import { externalParticipationHandlers } from "./participation-external";
 import { internalParticipationHandlers } from "./participation-internal";
 import { productTourHandlers } from "./product-tours";
 import { profileHandlers } from "./profile";
+import { rewardHandlers } from "./rewards";
 import { storageHandlers } from "./storage";
 import { topUpHandlers } from "./top-up";
 
@@ -60,6 +61,7 @@ export const handlers = [
   ...externalParticipationHandlers,
   ...productTourHandlers,
   ...profileHandlers,
+  ...rewardHandlers,
   ...storageHandlers,
   ...topUpHandlers,
 ];
