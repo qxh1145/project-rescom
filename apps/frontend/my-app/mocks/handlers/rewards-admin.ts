@@ -1,7 +1,7 @@
 import { http, type RequestHandler } from "msw";
-import { adminCodeImportRequestSchema, adminStockAdjustmentSchema, adminVoucherInputSchema, adminVoucherListQuerySchema, adminVoucherPriceChangeSchema, adminVoucherStatePatchSchema } from "@rescom/schemas";
+import { adminCodeImportRequestSchema, adminFlashSaleInputSchema, adminFlashSaleListQuerySchema, adminFlashEndRequestSchema, rewardsStatsQuerySchema, adminStockAdjustmentSchema, adminVoucherInputSchema, adminVoucherListQuerySchema, adminVoucherPriceChangeSchema, adminVoucherStatePatchSchema } from "@rescom/schemas";
 import { apiUrl, isHybridMocking } from "@/lib/api/config";
-import { adminBrands, adminVoucherDetailOf, adminVouchersOf, adjustAdminVoucherStock, changeAdminVoucherPrice, createAdminVoucher, importAdminVoucherCodes, patchAdminVoucherState, updateAdminVoucher } from "../data/rewards";
+import { adminBrands, adminFlashSalesOf, adminFlashSaleDetailOf, createAdminFlashSale, updateAdminFlashSale, endAdminFlashSale, rewardsStatsOf, adminVoucherDetailOf, adminVouchersOf, adjustAdminVoucherStock, changeAdminVoucherPrice, createAdminVoucher, importAdminVoucherCodes, patchAdminVoucherState, updateAdminVoucher } from "../data/rewards";
 import { fail, missingCsrf, ok } from "../envelope";
 import { HYBRID_ADMIN } from "../hybrid";
 import { applyScenario } from "../scenarios";
@@ -72,5 +72,39 @@ export const rewardsAdminHandlers: RequestHandler[] = [
     const checked = await guarded(request, true); if (checked.error) return checked.error;
     const parsed = await body(request, adminCodeImportRequestSchema); if (parsed.error) return parsed.error;
     return respond(importAdminVoucherCodes(String(params.id), parsed.value as Parameters<typeof importAdminVoucherCodes>[1]));
+  }),
+  // ASSUMED API CONTRACT: backend Story 12.9. 400 VALIDATION_ERROR; 409 flash rule conflicts with details.conflicts.
+  http.get(apiUrl("/admin/rewards/flash-sales"), async ({ request }) => {
+    const checked = await guarded(request); if (checked.error) return checked.error;
+    const query = adminFlashSaleListQuerySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+    return query.success ? respond(adminFlashSalesOf(query.data)) : fail(400, "VALIDATION_ERROR", "Invalid query.", { details: query.error.format() });
+  }),
+  // ASSUMED API CONTRACT: backend Story 12.9. 400 VALIDATION_ERROR; 409 flash rule conflicts with details.conflicts.
+  http.post(apiUrl("/admin/rewards/flash-sales"), async ({ request }) => {
+    const checked = await guarded(request, true); if (checked.error) return checked.error;
+    const parsed = await body(request, adminFlashSaleInputSchema); if (parsed.error) return parsed.error;
+    return respond(createAdminFlashSale(parsed.value as Parameters<typeof createAdminFlashSale>[0], checked.admin!), 201);
+  }),
+  // ASSUMED API CONTRACT: backend Story 12.9. 404 FLASH_SALE_NOT_FOUND.
+  http.get(apiUrl("/admin/rewards/flash-sales/:id"), async ({ request, params }) => {
+    const checked = await guarded(request); return checked.error ?? respond(adminFlashSaleDetailOf(String(params.id)));
+  }),
+  // ASSUMED API CONTRACT: backend Story 12.9. 400 VALIDATION_ERROR; 404 FLASH_SALE_NOT_FOUND; 409 FLASH_ALREADY_STARTED or rule conflicts.
+  http.put(apiUrl("/admin/rewards/flash-sales/:id"), async ({ request, params }) => {
+    const checked = await guarded(request, true); if (checked.error) return checked.error;
+    const parsed = await body(request, adminFlashSaleInputSchema); if (parsed.error) return parsed.error;
+    return respond(updateAdminFlashSale(String(params.id), parsed.value as Parameters<typeof updateAdminFlashSale>[1]));
+  }),
+  // ASSUMED API CONTRACT: backend Story 12.9. 400 VALIDATION_ERROR; 404 FLASH_SALE_NOT_FOUND; 409 FLASH_NOT_ACTIVE or FLASH_ALREADY_ENDED.
+  http.post(apiUrl("/admin/rewards/flash-sales/:id/end"), async ({ request, params }) => {
+    const checked = await guarded(request, true); if (checked.error) return checked.error;
+    const parsed = await body(request, adminFlashEndRequestSchema); if (parsed.error) return parsed.error;
+    return respond(endAdminFlashSale(String(params.id), parsed.value as Parameters<typeof endAdminFlashSale>[1]));
+  }),
+  // ASSUMED API CONTRACT: backend Story 12.7. 400 VALIDATION_ERROR.
+  http.get(apiUrl("/admin/rewards/stats"), async ({ request }) => {
+    const checked = await guarded(request); if (checked.error) return checked.error;
+    const query = rewardsStatsQuerySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+    return query.success ? respond(rewardsStatsOf(query.data)) : fail(400, "VALIDATION_ERROR", "Invalid query.", { details: query.error.format() });
   }),
 ];

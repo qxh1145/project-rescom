@@ -128,10 +128,10 @@ function parsed(schema, result, status = 200) {
 
 const routeKey = (route) => route.replace(/:[A-Za-z_]\w*/g, ":param");
 
-test("hybrid registers exactly the 35 DEFERRED_KEEP_MOCK handlers, once each", () => {
+test("hybrid registers exactly the 41 DEFERRED_KEEP_MOCK handlers, once each", () => {
   const registered = hybridHandlers.map((handler) => routeKey(`${handler.info.method} ${handler.info.path.replace(/^\/api/, "")}`));
   const deferred = Object.keys(ROUTE_ALLOWLIST.DEFERRED_KEEP_MOCK).map(routeKey);
-  assert.equal(deferred.length, 35);
+  assert.equal(deferred.length, 41);
   assert.deepEqual([...registered].sort(), [...deferred].sort());
   assert.ok(handlers.length > hybridHandlers.length, "full mocking (`enabled`) keeps every handler");
   // Nothing mock-only (demo accounts, mock Google, mock upload) runs next to the real backend.
@@ -208,6 +208,23 @@ test("admin vouchers answer hybrid admin without mock session and require CSRF",
   parsed(rewards.adminVoucherBrandListSchema, await call("GET", "/admin/rewards/brands"));
   parsed(rewards.adminVoucherDetailSchema, await call("GET", `/admin/rewards/vouchers/${list.items[0].id}`));
   assert.equal((await call("PATCH", `/admin/rewards/vouchers/${list.items[0].id}`, { body: { isVisible: true }, csrf: false })).status, 403);
+});
+
+test("admin flash sales and stats use hybrid admin without mock session; writes enforce CSRF and validation", async () => {
+  const list = parsed(rewards.adminFlashSaleListSchema, await call("GET", "/admin/rewards/flash-sales"));
+  assert.ok(list.items.length > 0);
+  const id = list.items[0].id;
+  parsed(rewards.adminFlashSaleCreatedSchema, await call("GET", `/admin/rewards/flash-sales/${id}`));
+  const stats = await call("GET", "/admin/rewards/stats?from=2026-10-01&to=2026-10-31");
+  parsed(rewards.rewardsStatsSchema, stats);
+  const input = { startsAt: new Date(Date.now() + 86_400_000).toISOString(), endsAt: new Date(Date.now() + 90_000_000).toISOString(), items: [] };
+  assert.equal((await call("POST", "/admin/rewards/flash-sales", { body: input, csrf: false })).status, 403);
+  const invalid = await call("POST", "/admin/rewards/flash-sales", { body: input });
+  assert.equal(invalid.status, 400);
+  assert.ok(invalid.body.error.details);
+  const missing = await call("GET", `/admin/rewards/flash-sales/${randomUUID()}`);
+  assert.equal(missing.status, 404);
+  assert.equal(missing.body.error.code, "FLASH_SALE_NOT_FOUND");
 });
 
 test("admin quality reviews: demo queue and decision without a mock session; CSRF on decision", async () => {

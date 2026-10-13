@@ -39,3 +39,8 @@ test("row status comes from the server field", () => {
   const voucher = { state: "ACTIVE", status: "SOLD_OUT", isVisible: true, stock: { remaining: 5, total: 5, flashReserved: 0 }, basePoints: 250, valueVnd: 50000, promoPoints: null, price: { source: "BASE", points: 250 }, redeemStartsAt: "2026-09-01T00:00:00Z", redeemEndsAt: "2026-11-30T00:00:00Z" };
   assert.equal(voucherRowView(voucher).statusLabel, "Hết hàng");
 });
+
+test("active voucher offers Flash Sale deep link, archived does not", () => {
+  assert.deepEqual(voucherActionsOf({ id: "voucher-id", state: "ACTIVE", isVisible: true }).find(action => action.key === "flash"), { key: "flash", label: "Tạo Flash Sale", href: "/admin/flash-sales/new?voucherId=voucher-id" });
+  assert.equal(voucherActionsOf({ state: "ARCHIVED" }).some(action => action.key === "flash"), false);
+});

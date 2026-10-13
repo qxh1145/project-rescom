@@ -9,8 +9,8 @@ export interface VoucherInventory {
   createdAt?: string; updatedAt?: string; isVisible: boolean; imageUrl: string | null; description: string; whereToUse: string; terms: string[]; howToUse: string[]; isSharedCode: boolean;
 }
 export interface FlashInventory {
-  id: string; code: string; startsAt: string; endsAt: string; endedEarlyAt: string | null;
-  items: { id: string; voucherId: string; flashPoints: number; quota: number; sold: number; perUserCap: number }[];
+  id: string; code: string; title: string; createdBy: { id: string; name: string }; rules: { requireRecentSurvey: boolean; remindBefore10m: boolean; blockFlagged: boolean }; remindCount: number; endReason: "WRONG_PRICE" | "STOCK_ISSUE" | "PARTNER_REQUEST" | "OTHER" | null; settledAt: string | null; failures: { SOLD_OUT: number; INSUFFICIENT_POINTS: number; OTHER: number }; afterTopUp: { count: number; rate: number; flagged: number }; participants: number; startsAt: string; endsAt: string; endedEarlyAt: string | null;
+  items: { id: string; voucherId: string; flashPoints: number; quota: number; sold: number; perUserCap: number; soldOutAt?: string | null }[];
 }
 export type VoucherPrice = { points: number; basePoints: number; source: "BASE" | "PROMO" | "FLASH"; discountPercent: number; priceVersion: number };
 export interface RedemptionQuote {
@@ -175,4 +175,63 @@ export function importCodesDecision(codes: string[], stored: string[]) {
   }
   const duplicatesInFile = [...duplicates], alreadyStored = [...already];
   return { received: codes.length, accepted: duplicates.size || already.size ? 0 : codes.length, duplicatesInFile, alreadyStored, committed: false };
+}
+
+/** Vietnam uses a fixed UTC+7 offset; no daylight saving time. */
+export const vietnamDayOf = (instant: string | number) => new Date((typeof instant === "number" ? instant : Date.parse(instant)) + 7 * 3600000).toISOString().slice(0, 10);
+export function bucketByVietnamDay(instants: string[]) {
+  return instants.reduce<Record<string, number>>((days, instant) => { const key = vietnamDayOf(instant); days[key] = (days[key] ?? 0) + 1; return days; }, {});
+}
+export function statsRange(query: { from: string; to: string }, now: number) {
+  const today = vietnamDayOf(now);
+  const to = query.to < today ? query.to : today;
+  return { from: query.from > to ? to : query.from, to };
+}
+/** UPCOMING starts within 24 h; all program/item windows remain half-open. */
+export function adminFlashStatus(flash: FlashInventory, now: number): "SCHEDULED" | "UPCOMING" | "ACTIVE" | "SOLD_OUT" | "ENDED" {
+  const start = Date.parse(flash.startsAt);
+  if (now >= Date.parse(flash.endsAt) || flash.endedEarlyAt && now >= Date.parse(flash.endedEarlyAt)) return "ENDED";
+  if (now < start) return start - now <= 86400000 ? "UPCOMING" : "SCHEDULED";
+  return flash.items.every(item => item.sold >= item.quota) ? "SOLD_OUT" : "ACTIVE";
+}
+export const flashItemState = (flash: FlashInventory, item: FlashInventory["items"][number], now: number) => {
+  const status = adminFlashStatus(flash, now);
+  return status === "SCHEDULED" || status === "UPCOMING" ? "UPCOMING" : status === "ENDED" ? "ENDED" : item.sold >= item.quota ? "SOLD_OUT" : "ACTIVE";
+};
+export interface FlashInput { startsAt: string; endsAt: string; items: { voucherId: string; flashPoints: number; quota: number; perUserCap: number }[] }
+export function flashConflicts(input: FlashInput, vouchers: VoucherInventory[], flashes: FlashInventory[], now: number, selfId?: string) {
+  const conflicts: { path: string; code: string; details: Record<string, unknown> }[] = [];
+  if (Date.parse(input.startsAt) <= now) conflicts.push({ path: "startsAt", code: "FLASH_STARTS_IN_PAST", details: {} });
+  input.items.forEach((item, index) => {
+    const v = vouchers.find(v => v.id === item.voucherId), old = flashes.find(f => f.id === selfId)?.items.find(i => i.voucherId === item.voucherId);
+    const path = (field: string) => `items.${index}.${field}`;
+    if (!v || v.state !== "ACTIVE" || !v.isVisible || Date.parse(v.redeemStartsAt) > Date.parse(input.startsAt) || Date.parse(v.redeemEndsAt) < Date.parse(input.endsAt) || v.isSharedCode && v.stockRemaining + (old ? old.quota - old.sold : 0) === 0)
+      conflicts.push({ path: path("voucherId"), code: "VOUCHER_NOT_FLASHABLE", details: {} });
+    if (!v) return;
+    const regular = v.promoPoints ?? v.basePoints;
+    if (item.flashPoints >= regular) conflicts.push({ path: path("flashPoints"), code: "FLASH_PRICE_NOT_BELOW_REGULAR", details: { regular } });
+    const available = v.stockRemaining + (old ? old.quota - old.sold : 0);
+    if (item.quota > available) conflicts.push({ path: path("quota"), code: "FLASH_QUOTA_EXCEEDS_STOCK", details: { available } });
+    if (old && item.quota < old.sold) conflicts.push({ path: path("quota"), code: "FLASH_QUOTA_BELOW_SOLD", details: { sold: old.sold } });
+    const other = flashes.find(f => f.id !== selfId && f.items.some(i => i.voucherId === item.voucherId) &&
+      Date.parse(f.startsAt) < Date.parse(input.endsAt) && Date.parse(input.startsAt) < Math.min(Date.parse(f.endsAt), f.endedEarlyAt ? Date.parse(f.endedEarlyAt) : Infinity));
+    if (other) conflicts.push({ path: path("voucherId"), code: "FLASH_OVERLAP", details: { code: other.code } });
+  });
+  return conflicts;
+}
+export function flashProgress(flash: FlashInventory, now: number) {
+  const start = Date.parse(flash.startsAt);
+  return flash.items.map(item => {
+    const soldOutAt = item.sold >= item.quota ? item.soldOutAt ?? null : null;
+    // Rate stops at the real end of selling: sell-out, early end or window end.
+    const stop = Math.min(now, Date.parse(flash.endsAt), flash.endedEarlyAt ? Date.parse(flash.endedEarlyAt) : Infinity, soldOutAt ? Date.parse(soldOutAt) : Infinity);
+    const perMinute = Math.round(item.sold / Math.max(1, (stop - start) / 60000) * 10) / 10;
+    const etaAt = flashItemState(flash, item, now) === "ACTIVE" && perMinute > 0 ? new Date(now + (item.quota - item.sold) / perMinute * 60000).toISOString() : null;
+    return { perMinute, etaAt, soldOutAt };
+  });
+}
+export function endEarlyDecision(flash: FlashInventory, now: number) {
+  const status = adminFlashStatus(flash, now);
+  if (status !== "ACTIVE") return { ok: false as const, status: 409, code: status === "ENDED" ? "FLASH_ALREADY_ENDED" : "FLASH_NOT_ACTIVE", details: {} };
+  return { ok: true as const, result: { returned: flash.items.reduce((sum, item) => sum + item.quota - item.sold, 0), items: flash.items.map(item => ({ voucherId: item.voucherId, unsold: item.quota - item.sold })) } };
 }
