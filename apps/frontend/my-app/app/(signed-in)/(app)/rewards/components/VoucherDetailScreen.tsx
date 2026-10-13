@@ -23,23 +23,24 @@ import {
 import { listVouchers } from "@/lib/rewards/rewards-service";
 import { useServerNow } from "../hooks/use-server-now";
 import { useVoucherDetail } from "../hooks/use-voucher-detail";
+import { useRedeemFlow } from "../hooks/use-redeem-flow";
+import { RedeemSheet } from "./RedeemSheet";
+import { RedemptionSuccess } from "./RedemptionSuccess";
 import { Countdown } from "./Countdown";
 import { VoucherCard } from "./VoucherCard";
 import { VoucherThumb } from "./VoucherThumb";
 
 interface VoucherDetailScreenProps {
   voucherId: string;
-  /** Story 12.3 opens the confirmation step here. Without it the CTA stays disabled. */
-  onRedeem?: () => void;
 }
 
-const REDEEM_PENDING_TITLE = "Sẽ mở ở bước xác nhận (Story 12.3)";
 const DISABLED_DASHED =
   "rounded-control border border-dashed border-line-strong text-center text-label font-medium text-ink-muted cursor-not-allowed";
 
-export function VoucherDetailScreen({ voucherId, onRedeem }: VoucherDetailScreenProps) {
+export function VoucherDetailScreen({ voucherId }: VoucherDetailScreenProps) {
   const { voucher, viewer, flashItem, loading, error, offsetMs, reloadAll } = useVoucherDetail(voucherId);
   const nowMs = useServerNow(offsetMs);
+  const flow = useRedeemFlow({ voucherId, reloadAll });
 
   // Similar vouchers are only shown for SOLD_OUT; results are tagged with the
   // voucher they were fetched for, so a previous voucher's list never shows.
@@ -63,6 +64,8 @@ export function VoucherDetailScreen({ voucherId, onRedeem }: VoucherDetailScreen
     })();
     return () => controller.abort();
   }, [voucherId, soldOutCategory]);
+
+  if (flow.phase === "success" && flow.quote && flow.result && voucher) return <RedemptionSuccess quote={flow.quote} result={flow.result} voucher={voucher} />;
 
   if (loading && !voucher) {
     return (
@@ -149,9 +152,8 @@ export function VoucherDetailScreen({ voucherId, onRedeem }: VoucherDetailScreen
     <Button
       variant="primary"
       size={size}
-      disabled={!onRedeem}
-      title={onRedeem ? undefined : REDEEM_PENDING_TITLE}
-      onClick={onRedeem}
+      data-redeem-cta
+      onClick={flow.open}
       className={className}
     >
       Đổi ngay
@@ -450,6 +452,8 @@ export function VoucherDetailScreen({ voucherId, onRedeem }: VoucherDetailScreen
         </div>
       </main>
 
+      <RedeemSheet flow={flow} voucher={voucher} viewer={viewer} nowMs={nowMs} />
+
       {/* Fixed bottom action bar on mobile (< lg) */}
       <div className="fixed bottom-[calc(62px+env(safe-area-inset-bottom))] left-0 right-0 z-20 border-t border-line-subtle bg-surface/95 backdrop-blur-md px-4 py-3 lg:hidden shadow-md">
         <div className="mx-auto flex max-w-md flex-col gap-2">
@@ -486,7 +490,7 @@ export function VoucherDetailScreen({ voucherId, onRedeem }: VoucherDetailScreen
                 )}
               </div>
 
-              {isAvailable && renderRedeemButton("md")}
+              {isAvailable && isAffordable && renderRedeemButton("md")}
               {isSoldOut && (
                 <button type="button" disabled className={`px-4 py-2 ${DISABLED_DASHED}`}>
                   Hết hàng

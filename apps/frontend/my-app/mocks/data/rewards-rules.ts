@@ -66,7 +66,8 @@ export function decideRedemption(voucher: VoucherInventory, flashes: FlashInvent
 export function forcedError(code: string, voucher: VoucherInventory, flashes: FlashInventory[], available: number, now: number): RedemptionError {
   const { price } = effectiveVoucherPrice(voucher, flashes, now);
   switch (code) {
-    case "INSUFFICIENT_POINTS": return { code, details: { required: price.points, available } };
+    // Forced on an affordable voucher: simulate another transaction spending the difference.
+    case "INSUFFICIENT_POINTS": return { code, details: { required: price.points, available: Math.min(available, price.points - 1) } };
     case "PRICE_CHANGED": return { code, details: { voucherId: voucher.id, price: { ...price, priceVersion: price.priceVersion + 1 } } };
     case "VOUCHER_UNAVAILABLE": return { code, details: { voucherId: voucher.id, status: "PAUSED" } };
     case "ACCOUNT_NOT_ELIGIBLE": return { code, details: { reason: "ACCOUNT_LOCKED" } };

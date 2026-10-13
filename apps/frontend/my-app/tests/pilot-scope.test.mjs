@@ -115,12 +115,8 @@ test("no pilot-visible code reaches a DEFERRED_KEEP_MOCK service without a PILOT
   }
   const covered = new Set([...services.values()].flatMap((service) => service.keys));
   const uncalled = deferredRoutes.filter((route) => !covered.has(route));
-  const expectedUncalled = [
-    "GET /rewards/redemptions/by-key/:param",
-    "POST /rewards/quotes",
-    "POST /rewards/redemptions",
-  ];
-  assert.deepEqual(uncalled.sort(), expectedUncalled.sort(), "Only uncalled redemption routes (Story 12.3) lack frontend service callers");
+  const expectedUncalled = [];
+  assert.deepEqual(uncalled.sort(), expectedUncalled.sort(), "Every deferred route has a self-gated frontend service caller");
   assert.ok(services.size >= 12, `only ${services.size} deferred service functions found`);
 
   // A function that is only reachable through another one stays unguarded itself, but that one must be self-gated.

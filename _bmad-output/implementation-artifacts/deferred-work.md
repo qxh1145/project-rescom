@@ -401,3 +401,11 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 
 - Placeholder `EDGE_KEY=CHANGE_ME` (or a short key) is not rejected: compose `${EDGE_KEY:?}` only rejects empty, Caddy compares strings. Add a pre-flight in the Story 11.3 deploy workflow that refuses `CHANGE_ME*` and keys shorter than 32 chars in `deploy/.env.prod`.
 - GCS S3-interoperability round trip unverified (AC 7) [11-1-deployment-ready-backend-packaging.md:123-127] — deferred to Story 11.2 (needs GCP bucket + HMAC credentials in trial project).
+
+## Deferred from: code review of 12-3-confirm-redemption-result (2026-10-13)
+
+- Recheck re-POSTs the same key + quoteId; a non-domain 4xx on a key that already had an ambiguous attempt (e.g. 409 in-progress, QUOTE_NOT_FOUND) is classified `failed` and shows "Bạn chưa bị trừ điểm", then "Thử lại" mints a new key [lib/rewards/redeem-flow.ts:485, use-redeem-flow.ts:454]. The mock replays correctly; Story 12.8 backend must guarantee the same key always replays the stored outcome (never a non-domain 4xx), or the client must treat non-domain 4xx after an ambiguous attempt as `unknown`.
+- `apiRequest` has no timeout; a hung redeem POST leaves the non-dismissible sheet in `submitting` until reload [use-redeem-flow.ts:402, lib/api/client.ts]. App-wide client concern. Since the review, `checking` is also non-dismissible until polls finish, so a hung by-key GET traps the sheet too.
+- Shared `Dialog` only syncs native state when `open` changes; Chrome close-watcher closes a non-dismissible dialog on a repeated Esc, desyncing it from `open=true` (later error view invisible, CTA dead because phase ≠ closed) [components/ui/Dialog.tsx:34].
+- Unmount during `submitting`/`checking` aborts the client request and drops the outcome (no session refresh) [use-redeem-flow.ts:393]. Spec 4.8 mandates the abort; server idempotency prevents a double charge.
+- PRICE_CHANGED caused only by quote expiry (same points, mock `decideRedemption` TTL check) shows "Giá vừa thay đổi" with identical old → new values [lib/rewards/redeem-flow.ts:517]. Contract details carry no reason; revisit when 12.8 defines one.
