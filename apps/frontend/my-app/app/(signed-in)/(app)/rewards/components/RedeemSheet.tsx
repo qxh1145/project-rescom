@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { VoucherDetailDto } from "@rescom/schemas";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
@@ -26,7 +27,7 @@ export function RedeemSheet({ flow, voucher, viewer, nowMs }: { flow: RedeemFlow
       <p className="mt-3 text-body-sm text-ink-muted">Mạng bị gián đoạn khi đang đổi. Rescom tự kiểm tra lại giao dịch. Bạn sẽ không bị trừ điểm 2 lần.</p>
       <div className="mt-5 space-y-4 rounded-[16px] bg-subtle p-4 text-left text-body-sm"><p><Icon name="check" size={16} /> Đã gửi yêu cầu đổi</p><p role="status">{flow.pollExhausted ? <Icon name="alert-circle" size={16} /> : <Spinner />} {flow.pollExhausted ? "Chưa nhận được kết quả sau 3 lần kiểm tra." : `Đang xác nhận với hệ thống (lần ${Math.max(1, flow.pollAttempt)}/3)`}</p><p><Icon name="ticket" size={16} /> Nếu thành công, voucher hiện trong Voucher của tôi</p></div>
       {flow.pollExhausted && <Button fullWidth size="base" className="mt-6" onClick={flow.recheck}>Kiểm tra lại</Button>}
-      {!polling && <button type="button" className="mt-3 p-3 font-semibold text-primary" onClick={flow.close}>Đóng</button>}
+      {!polling && <div className="mt-3 flex items-center justify-center gap-2"><button type="button" className="p-3 font-semibold text-primary" onClick={flow.close}>Đóng</button>{flow.pollExhausted && <Link href="/rewards/my-vouchers" className="p-3 font-semibold text-primary">Mở Voucher của tôi</Link>}</div>}
     </div> : <div className="px-6 pb-7 pt-5">
       <div className="flex items-start justify-between"><div><h2 id="redeem-confirm-title" className="text-title-sm font-bold">Xác nhận đổi voucher</h2><p className="mt-1 text-body-sm text-ink-muted">Kiểm tra lại trước khi trừ điểm.</p></div><IconButton icon="x" label="Đóng" className="max-lg:hidden" disabled={busy} onClick={flow.close} /></div>
       <div aria-busy={phase === "quoting"}>

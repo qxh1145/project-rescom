@@ -65,7 +65,7 @@ export function VoucherDetailScreen({ voucherId }: VoucherDetailScreenProps) {
     return () => controller.abort();
   }, [voucherId, soldOutCategory]);
 
-  if (flow.phase === "success" && flow.quote && flow.result && voucher) return <RedemptionSuccess quote={flow.quote} result={flow.result} voucher={voucher} />;
+  if (flow.phase === "success" && flow.quote && flow.result && voucher) return <RedemptionSuccess quote={flow.quote} result={flow.result} />;
 
   if (loading && !voucher) {
     return (

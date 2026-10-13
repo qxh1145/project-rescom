@@ -41,5 +41,8 @@ export const config = {
     "/f/:id",
     "/rewards",
     "/rewards/:id",
+    "/rewards/my-vouchers",
+    "/rewards/my-vouchers/:ticketId",
+    "/rewards/history",
   ],
 };

@@ -1,6 +1,6 @@
 import { createCollection, mockId } from "../db/store";
 import { idempotencyRecordKey, decideIdempotentRequest, type IdempotencyRecord } from "./idempotency";
-import { decideRedemption, effectiveStatus, effectiveVoucherPrice, forcedError, ticketStatus, type FlashInventory, type RedemptionQuote, type VoucherInventory } from "./rewards-rules";
+import { codeIssueDecision, decideRedemption, effectiveStatus, effectiveVoucherPrice, forcedError, historyMonthSummary, markUsedDecision, ticketStatus, undoUseDecision, type FlashInventory, type RedemptionQuote, type VoucherInventory } from "./rewards-rules";
 
 const day = 86_400_000;
 const iso = (time: number) => new Date(time).toISOString();
@@ -55,7 +55,9 @@ function seed() {
       redeemEndsAt: iso(now + ends * day),
       codeExpiresAt: iso(now + (index === 6 ? -26 : index === 4 ? 12 : index === 2 ? 48 : index === 3 ? 63 : 79) * day),
       codesAvailable: codes.length, state: "ACTIVE", isVisible: true, imageUrl: null,
-      description, whereToUse, terms, howToUse: ["Xuất trình mã tại quầy"], isSharedCode: false,
+      description, whereToUse, terms, isSharedCode: false,
+      howToUse: [`Gọi món như bình thường${terms.some((t) => t.includes("60.000đ")) ? ", hoá đơn từ 60.000đ." : "."}`,
+        "Trước khi thanh toán, đưa QR hoặc đọc mã cho thu ngân.", `Thu ngân quét mã, trừ ${valueVnd.toLocaleString("vi-VN")}đ vào hoá đơn.`],
     };
   });
   // ponytail: codes stored separately from inventory; codesAvailable is the count for pure rules
@@ -78,7 +80,7 @@ function seed() {
     [50, 100, 7, "RDM-2608-6HCX", "HLRC-9K2M-9QXA", now - 26 * day, null] as const,
   ] as const).map(([ago, points, vIndex, reference, code, expires, used], n) => {
     const v = vouchers[vIndex - 1];
-    return { id: id(300 + n), redemptionId: id(400 + n), reference: String(reference), voucherId: v.id, title: v.title, brand: v.brand,
+    return { id: id(300 + n), redemptionId: id(400 + n), reference: String(reference), voucherId: v.id, title: v.title, brand: v.brand, category: v.category,
       valueVnd: v.valueVnd, code: String(code), isSharedCode: false,
       status: ticketStatus({ usedAt: used as string | null, expiresAt: iso(expires) }, now),
       redeemedAt: iso(now - ago * day), expiresAt: iso(expires), usedAt: used as string | null,
@@ -110,7 +112,7 @@ function seed() {
 }
 
 interface HistoryRow { id: string; reference: string; kind: string; voucherTitle: string; brand: { id: string; name: string }; valueVnd: number; isFlash: boolean; points: number; failureCode: string | null; journalId: string | null; note: string | null; createdAt: string }
-interface TicketRow { id: string; redemptionId: string; reference: string; voucherId: string; title: string; brand: { id: string; name: string }; valueVnd: number; code: string; isSharedCode: boolean; status: string; redeemedAt: string; expiresAt: string; usedAt: string | null; undoUntil: string | null; pointsSpent: number; priceSource: string; howToUse: string[]; openIssue: { id: string; status: string } | null }
+interface TicketRow { id: string; redemptionId: string; reference: string; voucherId: string; title: string; brand: { id: string; name: string }; category: string; valueVnd: number; code: string; isSharedCode: boolean; status: string; redeemedAt: string; expiresAt: string; usedAt: string | null; undoUntil: string | null; pointsSpent: number; priceSource: string; howToUse: string[]; openIssue: { id: string; status: string } | null }
 interface IssueRow { id: string; redemptionId: string; ticketId: string; reason: string; note: string | null; status: string; createdAt: string; resolvedAt: string | null; replacementCode: string | null; refundReference: string | null }
 interface UserState { tickets: TicketRow[]; history: HistoryRow[]; issues: IssueRow[] }
 interface StoredResponse { status: number; body: Record<string, unknown> }
@@ -132,6 +134,13 @@ export const rewardsState = createCollection<UserSideState>("rewards-users", () 
 const failure = (code: string, details: Record<string, unknown>): Failure => ({ ok: false, status: code === "ACCOUNT_NOT_ELIGIBLE" ? 403 : 409, code, details });
 const viewerOf = (viewer: { available: number; pending?: number }) => ({ available: viewer.available, pending: viewer.pending ?? 0 });
 const userRows = (users: Record<string, UserState>, userId: string): UserState => users[userId] ??= { tickets: [], history: [], issues: [] };
+
+/** The mock session gives the demo account a generated id; it gets its own copy of the seeded tickets/history (same email rule as `seedWallet`). */
+export function claimDemoRewards(user: { id: string; email: string }): void {
+  const { users } = rewardsState.get();
+  if (users[user.id] || user.email !== "minh.le@fpt.edu.vn" || !users["user-active-002"]) return;
+  rewardsState.update((draft) => { draft.users[user.id] = structuredClone(draft.users["user-active-002"]); });
+}
 
 function listed(v: VoucherInventory, catalog: CatalogState, available: number, now: number) {
   const { price, flash } = effectiveVoucherPrice(v, catalog.flashes, now);
@@ -242,7 +251,7 @@ export function redeemVoucherQuote(userId: string, quoteId: string, viewer: { av
   v.codesAvailable = codePool.length;
   const redemptionId = mockId();
   const reference = generateReference(userRows(users, userId).history, now);
-  const ticket = { id: mockId(), redemptionId, reference, voucherId: v.id, title: v.title, brand: v.brand, valueVnd: v.valueVnd, code,
+  const ticket = { id: mockId(), redemptionId, reference, voucherId: v.id, title: v.title, brand: v.brand, category: v.category, valueVnd: v.valueVnd, code,
     isSharedCode: v.isSharedCode, status: ticketStatus({ usedAt: null, expiresAt: v.codeExpiresAt }, now), redeemedAt: iso(now), expiresAt: v.codeExpiresAt,
     usedAt: null, undoUntil: null, pointsSpent: quote.price.points, priceSource: quote.price.source, howToUse: v.howToUse, openIssue: null };
   const rows = userRows(users, userId);
@@ -266,4 +275,55 @@ function generateReference(history: HistoryRow[], now: number): string {
   do { reference = `RDM-${iso(now).slice(2, 4)}${iso(now).slice(5, 7)}-${mockId().replaceAll("-", "").slice(-4).toUpperCase()}`; }
   while (usedReferences.has(reference));
   return reference;
+}
+
+// My vouchers (Story 12.4). ASSUMED API CONTRACT; statuses are recomputed at `now`, never trusted from storage.
+const withStatus = (ticket: TicketRow, now: number) => ({ ...ticket, status: ticketStatus(ticket, now) });
+const findTicket = (userId: string, ticketId: string) => rewardsState.get().users[userId]?.tickets.find((t) => t.id === ticketId);
+
+export function ticketsOf(userId: string, now = Date.now()) {
+  const items = (rewardsState.get().users[userId]?.tickets ?? []).filter((t) => t.openIssue?.status !== "REFUNDED")
+    .map((t) => withStatus(t, now)).sort((a, b) => Date.parse(a.expiresAt) - Date.parse(b.expiresAt));
+  return { items, total: items.length, serverTime: iso(now) };
+}
+
+/** Refunded tickets are returned here so a deep link still explains what happened. */
+export function ticketOf(userId: string, ticketId: string, now = Date.now()) {
+  const ticket = findTicket(userId, ticketId);
+  return ticket ? { ticket: withStatus(ticket, now), serverTime: iso(now) } : null;
+}
+
+function changeTicket(userId: string, ticketId: string, now: number, decide: typeof markUsedDecision, apply: (ticket: TicketRow, decision: { usedAt?: string; undoUntil?: string }) => void) {
+  const ticket = findTicket(userId, ticketId);
+  if (!ticket) return { ok: false as const, status: 404, code: "TICKET_NOT_FOUND" };
+  const decision = decide(ticket, now);
+  if (!decision.ok) return decision;
+  if (decision.changed) rewardsState.update((draft) => { apply(draft.users[userId].tickets.find((t) => t.id === ticketId)!, decision); });
+  return { ok: true as const, result: ticketOf(userId, ticketId, now)! };
+}
+
+export const markTicketUsed = (userId: string, ticketId: string, now = Date.now()) =>
+  changeTicket(userId, ticketId, now, markUsedDecision, (t, d) => { t.usedAt = d.usedAt!; t.undoUntil = d.undoUntil!; });
+export const undoTicketUse = (userId: string, ticketId: string, now = Date.now()) =>
+  changeTicket(userId, ticketId, now, undoUseDecision, (t) => { t.usedAt = null; t.undoUntil = null; });
+
+export function reportCodeIssue(userId: string, ticketId: string, input: { reason: string; note?: string }, now = Date.now()) {
+  const ticket = findTicket(userId, ticketId);
+  if (!ticket) return { ok: false as const, status: 404, code: "TICKET_NOT_FOUND" };
+  const decision = codeIssueDecision(ticket, now);
+  if (!decision.ok) return decision;
+  const report = { id: mockId(), redemptionId: ticket.redemptionId, ticketId, reason: input.reason, note: input.note?.trim() || null,
+    status: "OPEN", createdAt: iso(now), resolvedAt: null, replacementCode: null, refundReference: null };
+  rewardsState.update((draft) => {
+    const rows = draft.users[userId];
+    rows.issues.push(report);
+    rows.tickets.find((t) => t.id === ticketId)!.openIssue = { id: report.id, status: "OPEN" };
+  });
+  return { ok: true as const, result: report };
+}
+
+export function historyOf(userId: string, query: { limit: number; offset: number }, now = Date.now()) {
+  const rows = rewardsState.get().users[userId]?.history ?? [];
+  const { limit, offset } = query;
+  return { items: rows.slice(offset, offset + limit), total: rows.length, limit, offset, hasMore: offset + limit < rows.length, monthSummary: historyMonthSummary(rows, now) };
 }

@@ -80,3 +80,47 @@ export function ticketStatus(ticket: { usedAt: string | null; expiresAt: string 
   const remaining = Date.parse(ticket.expiresAt) - now;
   return remaining <= 0 ? "EXPIRED" : remaining <= 7 * 86_400_000 ? "EXPIRING" : "UNUSED";
 }
+
+const VN_OFFSET = 7 * 3_600_000;
+const UNDO_WINDOW = 86_400_000;
+type TicketFacts = { usedAt: string | null; undoUntil: string | null; expiresAt: string; openIssue?: { status: string } | null };
+type TicketDecision = { ok: false; status: number; code: string } | { ok: true; changed: boolean; usedAt?: string; undoUntil?: string };
+
+/** A REFUNDED code issue ends the ticket: points are back, so no mark/undo/report. */
+const REFUNDED: TicketDecision = { ok: false, status: 409, code: "TICKET_REFUNDED" };
+const isRefunded = (ticket: TicketFacts) => ticket.openIssue?.status === "REFUNDED";
+
+/** Mark used (24 h undo window); idempotent: an already used ticket keeps its first `usedAt`. */
+export function markUsedDecision(ticket: TicketFacts, now: number): TicketDecision {
+  if (isRefunded(ticket)) return REFUNDED;
+  if (ticketStatus(ticket, now) === "EXPIRED") return { ok: false, status: 409, code: "TICKET_EXPIRED" };
+  if (ticket.usedAt) return { ok: true, changed: false };
+  return { ok: true, changed: true, usedAt: new Date(now).toISOString(), undoUntil: new Date(now + UNDO_WINDOW).toISOString() };
+}
+
+export function undoUseDecision(ticket: TicketFacts, now: number): TicketDecision {
+  if (isRefunded(ticket)) return REFUNDED;
+  if (!ticket.usedAt) return { ok: true, changed: false };
+  if (!ticket.undoUntil || now >= Date.parse(ticket.undoUntil)) return { ok: false, status: 409, code: "UNDO_WINDOW_CLOSED" };
+  return { ok: true, changed: true };
+}
+
+export function codeIssueDecision(ticket: TicketFacts, now: number): TicketDecision {
+  if (isRefunded(ticket)) return REFUNDED;
+  if (ticketStatus(ticket, now) === "EXPIRED") return { ok: false, status: 409, code: "TICKET_EXPIRED" };
+  if (ticket.openIssue?.status === "OPEN") return { ok: false, status: 409, code: "CODE_ISSUE_ALREADY_OPEN" };
+  return { ok: true, changed: true };
+}
+
+/** Current Asia/Ho_Chi_Minh month: pointsSpent = SUCCEEDED spend minus REFUNDED points; voucherCount = #SUCCEEDED - #REFUNDED. */
+export function historyMonthSummary(rows: { kind: string; points: number; createdAt: string }[], now: number) {
+  const monthOf = (time: number) => new Date(time + VN_OFFSET).toISOString().slice(0, 7);
+  const month = monthOf(now);
+  let pointsSpent = 0, voucherCount = 0;
+  for (const row of rows) {
+    if (monthOf(Date.parse(row.createdAt)) !== month) continue;
+    if (row.kind === "SUCCEEDED") { pointsSpent -= row.points; voucherCount++; }
+    else if (row.kind === "REFUNDED") { pointsSpent -= row.points; voucherCount--; }
+  }
+  return { month, pointsSpent, voucherCount };
+}
