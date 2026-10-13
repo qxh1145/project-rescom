@@ -7,6 +7,15 @@ import {
   type RedemptionQuoteDto,
   type RedemptionResultDto,
   voucherCatalogSchema,
+  voucherTicketListSchema,
+  voucherTicketResponseSchema,
+  codeIssueReportSchema,
+  redemptionHistoryListSchema,
+  type CodeIssueReportDto,
+  type CreateCodeIssueReportDto,
+  type RedemptionHistoryListDto,
+  type VoucherTicketListDto,
+  type VoucherTicketResponseDto,
   voucherDetailResponseSchema,
   type FlashSaleListDto,
   type VoucherCatalogDto,
@@ -15,6 +24,8 @@ import {
 import { ApiError } from "../api/api-error.ts";
 import { apiRequest } from "../api/client.ts";
 import { PILOT_BUILD } from "../pilot-scope.ts";
+
+export const REDEMPTION_HISTORY_PAGE_SIZE = 20;
 
 function rejectPilot(): never {
   throw new ApiError({
@@ -55,4 +66,34 @@ export function redeemVoucher(quoteId: string, idempotencyKey: string, signal?: 
 export function getRedemptionByKey(idempotencyKey: string, signal?: AbortSignal): Promise<RedemptionResultDto> {
   if (PILOT_BUILD) rejectPilot();
   return apiRequest(`/rewards/redemptions/by-key/${encodeURIComponent(idempotencyKey)}`, { schema: redemptionResultSchema, signal });
+}
+
+export function listMyVouchers(signal?: AbortSignal): Promise<VoucherTicketListDto> {
+  if (PILOT_BUILD) rejectPilot();
+  return apiRequest("/rewards/my-vouchers", { schema: voucherTicketListSchema, signal });
+}
+
+export function getMyVoucher(ticketId: string, signal?: AbortSignal): Promise<VoucherTicketResponseDto> {
+  if (PILOT_BUILD) rejectPilot();
+  return apiRequest(`/rewards/my-vouchers/${encodeURIComponent(ticketId)}`, { schema: voucherTicketResponseSchema, signal });
+}
+
+export function markVoucherUsed(ticketId: string, signal?: AbortSignal): Promise<VoucherTicketResponseDto> {
+  if (PILOT_BUILD) rejectPilot();
+  return apiRequest(`/rewards/my-vouchers/${encodeURIComponent(ticketId)}/use`, { method: "POST", schema: voucherTicketResponseSchema, signal });
+}
+
+export function undoVoucherUse(ticketId: string, signal?: AbortSignal): Promise<VoucherTicketResponseDto> {
+  if (PILOT_BUILD) rejectPilot();
+  return apiRequest(`/rewards/my-vouchers/${encodeURIComponent(ticketId)}/undo-use`, { method: "POST", schema: voucherTicketResponseSchema, signal });
+}
+
+export function reportCodeIssue(ticketId: string, input: CreateCodeIssueReportDto, signal?: AbortSignal): Promise<CodeIssueReportDto> {
+  if (PILOT_BUILD) rejectPilot();
+  return apiRequest(`/rewards/my-vouchers/${encodeURIComponent(ticketId)}/issues`, { method: "POST", body: input, schema: codeIssueReportSchema, signal });
+}
+
+export function listRedemptionHistory(offset = 0, signal?: AbortSignal): Promise<RedemptionHistoryListDto> {
+  if (PILOT_BUILD) rejectPilot();
+  return apiRequest(`/rewards/redemptions?limit=${REDEMPTION_HISTORY_PAGE_SIZE}&offset=${offset}`, { schema: redemptionHistoryListSchema, signal });
 }

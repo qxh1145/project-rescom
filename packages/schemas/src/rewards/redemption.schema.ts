@@ -1,6 +1,7 @@
 // ASSUMED API CONTRACT: backend Stories 12.7–12.10 must match or update these schemas.
 import { z } from "zod";
-import { voucherPriceSchema, voucherPriceSourceSchema, voucherBrandSchema } from "./voucher-catalog.schema";
+import { MAX_PAGINATION_OFFSET } from "../common/pagination.schema";
+import { voucherPriceSchema, voucherPriceSourceSchema, voucherBrandSchema, voucherCategorySchema } from "./voucher-catalog.schema";
 const id = z.string().uuid();
 const instant = z.string().datetime();
 const count = z.number().int().nonnegative();
@@ -24,17 +25,33 @@ export const REDEMPTION_ERROR_HTTP_STATUS = { SOLD_OUT: 409, PRICE_CHANGED: 409,
 export const voucherTicketStatusSchema = z.enum(["UNUSED", "EXPIRING", "USED", "EXPIRED"]);
 export const codeIssueStatusSchema = z.enum(["OPEN", "REPLACED", "REFUNDED", "REJECTED"]);
 export const codeIssueReasonSchema = z.enum(["CODE_INVALID", "CODE_ALREADY_USED", "STORE_REFUSED", "OTHER"]);
-export const voucherTicketSchema = z.object({ id, redemptionId: id, reference: redemptionReference, voucherId: id, title: z.string().min(1), brand: voucherBrandSchema, valueVnd: z.number().int().positive(), code: z.string().min(4).max(64), isSharedCode: z.boolean(), status: voucherTicketStatusSchema, redeemedAt: instant, expiresAt: instant, usedAt: instant.nullable(), undoUntil: instant.nullable(), pointsSpent: z.number().int().positive(), priceSource: voucherPriceSourceSchema, howToUse: z.array(z.string()), openIssue: z.object({ id, status: codeIssueStatusSchema }).nullable() }).refine(v => (v.status === "USED") === (v.usedAt !== null), { path: ["usedAt"] });
+export const voucherTicketSchema = z.object({ id, redemptionId: id, reference: redemptionReference, voucherId: id, title: z.string().min(1), brand: voucherBrandSchema, category: voucherCategorySchema, valueVnd: z.number().int().positive(), code: z.string().min(4).max(64), isSharedCode: z.boolean(), status: voucherTicketStatusSchema, redeemedAt: instant, expiresAt: instant, usedAt: instant.nullable(), undoUntil: instant.nullable(), pointsSpent: z.number().int().positive(), priceSource: voucherPriceSourceSchema, howToUse: z.array(z.string()), openIssue: z.object({ id, status: codeIssueStatusSchema }).nullable() }).refine(v => (v.status === "USED") === (v.usedAt !== null), { path: ["usedAt"] });
 export const redemptionResultSchema = z.object({ redemptionId: id, reference: redemptionReference, status: z.literal("SUCCEEDED"), voucherId: id, pointsSpent: z.number().int().positive(), priceSource: voucherPriceSourceSchema, balanceAfter: count, ticket: voucherTicketSchema, createdAt: instant });
 export const redemptionHistoryKindSchema = z.enum(["SUCCEEDED", "FAILED", "REFUNDED"]);
 export const redemptionHistoryEntrySchema = z.object({ id, reference: z.string().refine(v => REDEMPTION_REFERENCE_PATTERN.test(v) || REFUND_REFERENCE_PATTERN.test(v)), kind: redemptionHistoryKindSchema, voucherTitle: z.string().min(1), brand: voucherBrandSchema, valueVnd: z.number().int().positive(), isFlash: z.boolean(), points: z.number().int(), failureCode: redemptionErrorCodeSchema.nullable(), journalId: id.nullable(), note: z.string().nullable(), createdAt: instant }).refine(v => v.kind === "FAILED" ? v.points === 0 && v.journalId === null && v.failureCode !== null : v.kind === "SUCCEEDED" ? v.points < 0 && REDEMPTION_REFERENCE_PATTERN.test(v.reference) : v.points > 0 && REFUND_REFERENCE_PATTERN.test(v.reference), { path: ["points"] });
 export const createCodeIssueReportSchema = z.object({ reason: codeIssueReasonSchema, note: z.string().trim().max(500).optional() });
 export const codeIssueReportSchema = z.object({ id, redemptionId: id, ticketId: id, reason: codeIssueReasonSchema, note: z.string().nullable(), status: codeIssueStatusSchema, createdAt: instant, resolvedAt: instant.nullable(), replacementCode: z.string().nullable(), refundReference: z.string().nullable() }).refine(v => v.status === "REPLACED" ? !!v.replacementCode && v.refundReference === null && v.resolvedAt !== null : v.status === "REFUNDED" ? v.replacementCode === null && v.refundReference !== null && REFUND_REFERENCE_PATTERN.test(v.refundReference) && v.resolvedAt !== null : v.status === "OPEN" ? v.replacementCode === null && v.refundReference === null && v.resolvedAt === null : v.replacementCode === null && v.refundReference === null && v.resolvedAt !== null);
 export const voucherTicketListSchema = z.object({ items: z.array(voucherTicketSchema), total: count, serverTime: instant });
-export const redemptionHistoryListSchema = z.object({ items: z.array(redemptionHistoryEntrySchema), total: count, limit: z.number().int().positive(), offset: count, hasMore: z.boolean() });
+export const voucherTicketResponseSchema = z.object({ ticket: voucherTicketSchema, serverTime: instant });
+export const redemptionHistoryQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(50).default(20), offset: z.coerce.number().int().min(0).max(MAX_PAGINATION_OFFSET).default(0) });
+// monthSummary: current Asia/Ho_Chi_Minh month at server time; pointsSpent = sum|points| of SUCCEEDED minus sum points of REFUNDED rows created in it; voucherCount = #SUCCEEDED - #REFUNDED (both may be <= 0).
+export const redemptionHistoryListSchema = z.object({ items: z.array(redemptionHistoryEntrySchema), total: count, limit: z.number().int().positive(), offset: count, hasMore: z.boolean(), monthSummary: z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/), pointsSpent: z.number().int(), voucherCount: z.number().int() }) });
+// ASSUMED API CONTRACT: HTTP 404 for TICKET_NOT_FOUND, 409 for the others (TICKET_REFUNDED: the ticket's code issue was refunded); no details payload.
+export const VOUCHER_TICKET_ERROR_CODES = ["TICKET_NOT_FOUND", "TICKET_EXPIRED", "UNDO_WINDOW_CLOSED", "CODE_ISSUE_ALREADY_OPEN", "TICKET_REFUNDED"] as const;
 export type RedemptionQuoteDto = z.infer<typeof redemptionQuoteSchema>;
 export type RedemptionResultDto = z.infer<typeof redemptionResultSchema>;
 export type RedemptionErrorDto = z.infer<typeof redemptionErrorSchema>;
 export type RedemptionErrorCode = z.infer<typeof redemptionErrorCodeSchema>;
 export type AccountNotEligibleReason = z.infer<typeof accountNotEligibleReasonSchema>;
 export type VoucherTicketDto = z.infer<typeof voucherTicketSchema>;
+export type VoucherTicketStatus = z.infer<typeof voucherTicketStatusSchema>;
+export type VoucherTicketListDto = z.infer<typeof voucherTicketListSchema>;
+export type VoucherTicketResponseDto = z.infer<typeof voucherTicketResponseSchema>;
+export type RedemptionHistoryEntryDto = z.infer<typeof redemptionHistoryEntrySchema>;
+export type RedemptionHistoryListDto = z.infer<typeof redemptionHistoryListSchema>;
+export type RedemptionHistoryQuery = z.infer<typeof redemptionHistoryQuerySchema>;
+export type CodeIssueReason = z.infer<typeof codeIssueReasonSchema>;
+export type CodeIssueStatus = z.infer<typeof codeIssueStatusSchema>;
+export type CodeIssueReportDto = z.infer<typeof codeIssueReportSchema>;
+export type CreateCodeIssueReportDto = z.infer<typeof createCodeIssueReportSchema>;
+export type VoucherTicketErrorCode = (typeof VOUCHER_TICKET_ERROR_CODES)[number];

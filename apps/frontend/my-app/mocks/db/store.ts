@@ -20,8 +20,9 @@ const PREFIX = "rescom:mockdb:";
  * 4: the empty analytics survey is also a respondent survey (surveys + survey-content).
  * 5: Rewards mock domain (Story 12.1); demo wallet 186 available.
  * 6: Voucher detail copy + Flash item category (Story 12.2).
+ * 7: Voucher tickets carry `category`; Figma "how to use" steps (Story 12.4).
  */
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 interface Persisted<T> {
   version: number;

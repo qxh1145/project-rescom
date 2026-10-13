@@ -42,6 +42,12 @@ export const ROUTE_ALLOWLIST: Record<"MOCK_ONLY" | "DEFERRED_KEEP_MOCK" | "PLANN
     "POST /rewards/quotes": "rewards, Epic 12 (Phase 2; backend Stories 12.7-12.10)",
     "POST /rewards/redemptions": "rewards, Epic 12 (Phase 2; backend Stories 12.7-12.10)",
     "GET /rewards/redemptions/by-key/:key": "rewards, Epic 12 (Phase 2; backend Stories 12.7-12.10)",
+    "GET /rewards/my-vouchers": "rewards, Epic 12 (Phase 2; backend Stories 12.7-12.10)",
+    "GET /rewards/my-vouchers/:id": "rewards, Epic 12 (Phase 2; backend Stories 12.7-12.10)",
+    "POST /rewards/my-vouchers/:id/use": "rewards, Epic 12 (Phase 2; backend Stories 12.7-12.10)",
+    "POST /rewards/my-vouchers/:id/undo-use": "rewards, Epic 12 (Phase 2; backend Stories 12.7-12.10)",
+    "POST /rewards/my-vouchers/:id/issues": "rewards, Epic 12 (Phase 2; backend Stories 12.7-12.10)",
+    "GET /rewards/redemptions": "rewards, Epic 12 (Phase 2; backend Stories 12.7-12.10)",
   },
 
   /** Backend still to build, tagged with the plan item that builds it. */

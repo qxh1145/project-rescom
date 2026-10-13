@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { VOUCHER_CATEGORIES, VOUCHER_SORTS, type VoucherCategory, type VoucherSort } from "@rescom/schemas";
 import { MobileBackBar } from "@/components/layout/app/MobileTopBar";
 import { Icon } from "@/components/ui/Icon";
-import { IconButton } from "@/components/ui/IconButton";
+import { IconButton, IconLink } from "@/components/ui/IconButton";
 import { Select } from "@/components/ui/Select";
 import { ToggleChip } from "@/components/ui/ToggleChip";
 import { Button } from "@/components/ui/Button";
@@ -18,6 +19,7 @@ import {
   CATEGORY_LABELS,
   SORT_LABELS,
 } from "@/lib/rewards/voucher-display";
+import { useMyVouchers } from "../hooks/use-my-vouchers";
 import { useRewardsCatalog } from "../hooks/use-rewards-catalog";
 import { useRewardsFilters } from "../hooks/use-rewards-filters";
 import { BalanceCard } from "./BalanceCard";
@@ -100,6 +102,10 @@ export function RewardsScreen() {
 
   const filterCount = activeFilterCount(filters);
 
+  // The unused-voucher badge never blocks the marketplace: while loading or on error it shows no count.
+  const { unused } = useMyVouchers();
+  const unusedBadge = unused > 99 ? "99+" : String(unused);
+
   // A failed query for new filters shows the error, not the previous filters' list.
   const catalogFailed = Boolean(error) && (stale || !catalog);
   const isEmpty = Boolean(catalog) && !catalogFailed && catalog?.items.length === 0;
@@ -142,7 +148,19 @@ export function RewardsScreen() {
   return (
     <div className="min-h-full pb-24 lg:pb-12">
       {/* Mobile Back Bar (< lg) */}
-      <MobileBackBar title="Đổi quà" backHref="/wallet" />
+      <MobileBackBar
+        title="Đổi quà"
+        backHref="/wallet"
+        action={
+          <IconLink href="/rewards/my-vouchers" icon="ticket" label={unused > 0 ? `Voucher của tôi, ${unused} chưa dùng` : "Voucher của tôi"}>
+            {unused > 0 && (
+              <span aria-hidden className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold text-white shadow-xs">
+                {unusedBadge}
+              </span>
+            )}
+          </IconLink>
+        }
+      />
 
       <main className="mx-auto max-w-7xl px-4 py-4 md:px-6 md:py-6 lg:px-8">
         <div className="flex flex-col lg:flex-row lg:items-start lg:gap-8">
@@ -152,6 +170,15 @@ export function RewardsScreen() {
               available={catalog?.viewer.available ?? null}
               pending={catalog?.viewer.pending ?? 0}
             />
+            <Link
+              href="/rewards/my-vouchers"
+              className="flex h-[50px] items-center gap-3 rounded-[16px] border border-line bg-surface px-4 font-semibold text-ink transition-colors hover:border-line-strong"
+            >
+              <Icon name="ticket" size={20} />
+              <span className="flex-1">Voucher của tôi</span>
+              {unused > 0 && <strong><span aria-hidden>{unusedBadge}</span><span className="sr-only">, {unused} chưa dùng</span></strong>}
+              <Icon name="chevron-right" size={18} />
+            </Link>
             <FilterPanel
               filters={filters}
               onChange={(patch) => setFilters(patch)}

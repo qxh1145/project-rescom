@@ -128,10 +128,10 @@ function parsed(schema, result, status = 200) {
 
 const routeKey = (route) => route.replace(/:[A-Za-z_]\w*/g, ":param");
 
-test("hybrid registers exactly the 20 DEFERRED_KEEP_MOCK handlers, once each", () => {
+test("hybrid registers exactly the 26 DEFERRED_KEEP_MOCK handlers, once each", () => {
   const registered = hybridHandlers.map((handler) => routeKey(`${handler.info.method} ${handler.info.path.replace(/^\/api/, "")}`));
   const deferred = Object.keys(ROUTE_ALLOWLIST.DEFERRED_KEEP_MOCK).map(routeKey);
-  assert.equal(deferred.length, 20);
+  assert.equal(deferred.length, 26);
   assert.deepEqual([...registered].sort(), [...deferred].sort());
   assert.ok(handlers.length > hybridHandlers.length, "full mocking (`enabled`) keeps every handler");
   // Nothing mock-only (demo accounts, mock Google, mock upload) runs next to the real backend.
@@ -276,4 +276,37 @@ test("rewards answer without a mock session: quote, idempotent redeem, poll, con
   const second = rewards.redemptionResultSchema.parse((await secondResponse.json()).data);
   assert.equal(wallet.walletOf(hybrid.HYBRID_MEMBER).available, after.viewer.available - second.pointsSpent);
   assert.equal(wallet.transactionsOf(hybrid.HYBRID_MEMBER).filter(row => row.redemptionKey === secondKey).length, 1);
+});
+
+test("my vouchers (6 routes) answer without a mock session: list, mark used, undo, code issue, history", async () => {
+  const list = parsed(rewards.voucherTicketListSchema, await call("GET", "/rewards/my-vouchers"));
+  const seedRefs = ["RDM-2610-1MZ4", "RDM-2610-8F2K", "RDM-2610-3QK7"];
+  const unused = list.items.filter(item => ["UNUSED", "EXPIRING"].includes(item.status));
+  assert.deepEqual(seedRefs.filter(ref => !unused.some(item => item.reference === ref)), [], "the 3 unused seed tickets are listed");
+  assert.equal(list.items.some(item => item.openIssue?.status === "REFUNDED"), false);
+  const ticket = list.items.find(item => item.reference === "RDM-2610-3QK7");
+  const route = `/rewards/my-vouchers/${ticket.id}`;
+  assert.equal((await call("POST", `${route}/use`, { csrf: false })).status, 403);
+  const used = parsed(rewards.voucherTicketResponseSchema, await call("POST", `${route}/use`)).ticket;
+  assert.equal(used.status, "USED");
+  assert.ok(used.undoUntil);
+  const again = parsed(rewards.voucherTicketResponseSchema, await call("POST", `${route}/use`)).ticket;
+  assert.equal(again.usedAt, used.usedAt);
+  const undone = parsed(rewards.voucherTicketResponseSchema, await call("POST", `${route}/undo-use`)).ticket;
+  assert.ok(["UNUSED", "EXPIRING"].includes(undone.status));
+  assert.equal(undone.usedAt, null);
+  assert.equal((await call("GET", `/rewards/my-vouchers/${randomUUID()}`)).body.error.code, "TICKET_NOT_FOUND");
+
+  const issued = list.items.find(item => item.reference === "RDM-2610-1MZ4");
+  const issueRoute = `/rewards/my-vouchers/${issued.id}/issues`;
+  assert.equal((await call("POST", issueRoute, { body: { reason: "BAD" } })).status, 400);
+  const report = parsed(rewards.codeIssueReportSchema, await call("POST", issueRoute, { body: { reason: "CODE_INVALID" } }), 201);
+  assert.equal(report.status, "OPEN");
+  const second = await call("POST", issueRoute, { body: { reason: "CODE_INVALID" } });
+  assert.equal(second.status, 409);
+  assert.equal(second.body.error.code, "CODE_ISSUE_ALREADY_OPEN");
+
+  const history = parsed(rewards.redemptionHistoryListSchema, await call("GET", "/rewards/redemptions?limit=2"));
+  assert.equal(history.items.length, 2);
+  assert.equal(history.hasMore, true);
 });

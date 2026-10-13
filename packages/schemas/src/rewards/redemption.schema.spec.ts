@@ -1,9 +1,9 @@
-import { REDEMPTION_ERROR_CODES, redemptionErrorCodeSchema, redemptionErrorSchema, redemptionQuoteSchema, redeemVoucherSchema, createRedemptionQuoteSchema, voucherTicketSchema, redemptionResultSchema, redemptionHistoryEntrySchema, codeIssueReportSchema, createCodeIssueReportSchema, voucherTicketListSchema, redemptionHistoryListSchema, REDEMPTION_ERROR_HTTP_STATUS } from "./redemption.schema";
+import { REDEMPTION_ERROR_CODES, redemptionErrorCodeSchema, redemptionErrorSchema, redemptionQuoteSchema, redeemVoucherSchema, createRedemptionQuoteSchema, voucherTicketSchema, redemptionResultSchema, redemptionHistoryEntrySchema, codeIssueReportSchema, createCodeIssueReportSchema, voucherTicketListSchema, voucherTicketResponseSchema, redemptionHistoryListSchema, redemptionHistoryQuerySchema, REDEMPTION_ERROR_HTTP_STATUS } from "./redemption.schema";
 const id = "11111111-1111-4111-8111-111111111111";
 const now = "2026-10-01T00:00:00.000Z";
 const brand = { id: "highlands", name: "Highlands" };
 const price = { points: 150, basePoints: 250, source: "FLASH", discountPercent: 40, priceVersion: 1 };
-const ticket = { id, redemptionId: id, reference: "RDM-2610-8F2K", voucherId: id, title: "Coffee", brand, valueVnd: 50000, code: "HLRC-1234", isSharedCode: false, status: "UNUSED", redeemedAt: now, expiresAt: now, usedAt: null, undoUntil: null, pointsSpent: 150, priceSource: "FLASH", howToUse: [], openIssue: null };
+const ticket = { id, redemptionId: id, reference: "RDM-2610-8F2K", voucherId: id, title: "Coffee", brand, category: "COFFEE", valueVnd: 50000, code: "HLRC-1234", isSharedCode: false, status: "UNUSED", redeemedAt: now, expiresAt: now, usedAt: null, undoUntil: null, pointsSpent: 150, priceSource: "FLASH", howToUse: [], openIssue: null };
 const errors = [
   { code: "SOLD_OUT", details: { voucherId: id, regularStockRemaining: 0 } },
   { code: "PRICE_CHANGED", details: { voucherId: id, price } },
@@ -39,7 +39,14 @@ describe("redemption contracts (Story 12.1, FR-69)", () => {
     expect(redemptionHistoryEntrySchema.safeParse({ ...row, reference: "RDM-BAD" }).success).toBe(false);
     expect(redemptionHistoryEntrySchema.safeParse({ ...row, kind: "FAILED", points: -150 }).success).toBe(false);
     expect(redemptionHistoryEntrySchema.safeParse({ ...row, kind: "REFUNDED", reference: "RFD-2610-7HC2", points: 150 }).success).toBe(true);
-    expect(redemptionHistoryListSchema.safeParse({ items: [row], total: 1, limit: 20, offset: 0, hasMore: false }).success).toBe(true);
+    const monthSummary = { month: "2026-10", pointsSpent: 150, voucherCount: 1 };
+    const list = { items: [row], total: 1, limit: 20, offset: 0, hasMore: false, monthSummary };
+    expect(redemptionHistoryListSchema.safeParse(list).success).toBe(true);
+    expect(redemptionHistoryListSchema.safeParse({ ...list, monthSummary: { ...monthSummary, month: "2026-13" } }).success).toBe(false);
+    expect(redemptionHistoryListSchema.safeParse({ ...list, monthSummary: { ...monthSummary, pointsSpent: -50, voucherCount: -1 } }).success).toBe(true);
+    expect(voucherTicketResponseSchema.safeParse({ ticket, serverTime: now }).success).toBe(true);
+    expect(redemptionHistoryQuerySchema.parse({})).toEqual({ limit: 20, offset: 0 });
+    expect(redemptionHistoryQuerySchema.safeParse({ limit: "51" }).success).toBe(false);
   });
   it("enforces exclusive code-issue outcomes and refund references", () => {
     const report = { id, redemptionId: id, ticketId: id, reason: "CODE_INVALID", note: null, status: "OPEN", createdAt: now, resolvedAt: null, replacementCode: null, refundReference: null };
