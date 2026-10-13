@@ -9,11 +9,16 @@ const positive = z.number().int().positive();
 const ratio = z.number().min(0).max(1);
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v);
 export const REWARDS_CODE_EXPIRY_MIN_DAYS = 7;
+export const REWARDS_ADMIN_ERROR_CODES = [
+  "VALIDATION_ERROR", "REWARDS_ADMIN_CAPABILITY_REQUIRED", "VOUCHER_NOT_FOUND", "BRAND_NOT_FOUND",
+  "REDEMPTION_WINDOW_ENDED", "VOUCHER_ARCHIVED", "SHARED_FLAG_LOCKED", "SHARED_CODE_VOUCHER",
+  "STOCK_BELOW_COMMITTED", "STOCK_INCREASE_NEEDS_CODES", "STOCK_EXCEEDS_CODES",
+] as const;
 export const adminVoucherStateSchema = z.enum(["ACTIVE", "PAUSED", "ARCHIVED"]);
 export const adminVoucherStatusSchema = z.enum(["ACTIVE", "PAUSED", "SOLD_OUT", "EXPIRED", "HIDDEN", "ARCHIVED"]);
 export const adminVoucherStockSchema = z.object({ total: count, issued: count, flashReserved: count, remaining: count, codesAvailable: count }).refine(v => v.remaining === v.total - v.issued - v.flashReserved, { path: ["remaining"] });
 const pointsInput = z.object({ basePoints: positive, promoPoints: positive.nullable() }).refine(v => v.promoPoints === null || v.promoPoints < v.basePoints, { path: ["promoPoints"] });
-export const adminVoucherInputSchema = z.object({ title: z.string().min(1).max(80), brandId: voucherBrandSchema.shape.id, category: voucherCategorySchema, valueVnd: positive, basePoints: positive, promoPoints: positive.nullable(), isSharedCode: z.boolean(), redeemStartsAt: instant, redeemEndsAt: instant, codeExpiresAt: instant, terms: z.array(z.string()).max(10), howToUse: z.array(z.string()).max(10), imageUrl: z.string().url().nullable() }).superRefine((v, ctx) => {
+export const adminVoucherInputSchema = z.object({ title: z.string().min(1).max(80), brandId: voucherBrandSchema.shape.id, category: voucherCategorySchema, valueVnd: positive, basePoints: positive, promoPoints: positive.nullable(), isSharedCode: z.boolean(), sharedCode: z.string().regex(/^[A-Za-z0-9-]{4,64}$/).optional(), redeemStartsAt: instant, redeemEndsAt: instant, codeExpiresAt: instant, terms: z.array(z.string()).max(10), howToUse: z.array(z.string()).max(10), imageUrl: z.string().url().nullable() }).superRefine((v, ctx) => {
   if (v.promoPoints !== null && v.promoPoints >= v.basePoints) ctx.addIssue({ code: "custom", path: ["promoPoints"], message: "Promo must be below base" });
   if (v.redeemEndsAt <= v.redeemStartsAt) ctx.addIssue({ code: "custom", path: ["redeemEndsAt"], message: "End must follow start" });
   if (Date.parse(v.codeExpiresAt) < Date.parse(v.redeemEndsAt) + REWARDS_CODE_EXPIRY_MIN_DAYS * 86400000) ctx.addIssue({ code: "custom", path: ["codeExpiresAt"], message: "Codes must remain valid for seven days" });

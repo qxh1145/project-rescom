@@ -1,4 +1,6 @@
 import { Global, Logger, Module } from '@nestjs/common';
+import { WALLET_BALANCE_PORT } from '../rewards/application/ports/wallet-balance.port';
+import { PrismaWalletBalanceReader } from './infrastructure/prisma-wallet-balance.reader';
 import { PrismaModule } from '../../common/database/prisma.module';
 import { CLOCK, Clock } from '../../common/time/clock';
 import { EconomySchedulerRegistrar } from './infrastructure/economy-scheduler.registrar';
@@ -61,6 +63,7 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     AdminTopUpController,
   ],
   providers: [
+    { provide: WALLET_BALANCE_PORT, useClass: PrismaWalletBalanceReader },
     // Admin read views (IR.4b part C, mock-off plan 4.1 and 4.3).
     {
       provide: ADMIN_ECONOMY_STATS_PORT,
@@ -177,6 +180,7 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     },
   ],
   exports: [
+    WALLET_BALANCE_PORT,
     ADMIN_ECONOMY_STATS_PORT,
     LedgerService,
     TopUpService,

@@ -88,8 +88,34 @@ describe('Prisma migration chain', () => {
     }
   });
 
-  it('keeps the invariants section identical to post-push-invariants.sql', () => {
-    expect(invariantsSection()).toBe(invariantsSql);
+  it('keeps historical reconciliation unchanged and adds Rewards invariants after it', () => {
+    expect(invariantsSql.startsWith(invariantsSection())).toBe(true);
+    const rewards = readMigration('20261013120000_rewards_catalog_schema');
+    for (const name of [
+      'vouchers_values_check',
+      'voucher_codes_unissued_idx',
+      'redemptions_voucher_id_created_at_idx',
+      'INSERT INTO "voucher_brands"',
+      'code_issue_reports_open_redemption_key',
+      'voucher_price_versions_append_only',
+      'redemptions_append_only',
+    ]) {
+      expect(rewards).toContain(name);
+      expect(invariantsSql).toContain(name);
+    }
+    expect(rewards).not.toMatch(/to_regclass/i);
+    expect(rewards.match(/CREATE TABLE /g) ?? []).toHaveLength(9);
+    const prismaCategories = fs
+      .readFileSync(path.join(prismaDir, 'schema.prisma'), 'utf8')
+      .match(/enum VoucherCategory \{([^}]+)\}/)?.[1]
+      .trim()
+      .split(/\s+/);
+    expect(prismaCategories).toEqual([
+      'COFFEE',
+      'TEA',
+      'CHICKEN_BURGER',
+      'BAKERY_DESSERT',
+    ]);
   });
 
   it('has no to_regclass guard in the invariants or the reconciliation', () => {
@@ -201,7 +227,11 @@ describe('Prisma migration chain', () => {
 
     it('exist, in order, after the last Phase-1 migration', () => {
       expect(
-        migrationNames.filter((name) => name > '20261001110000_user_profiles'),
+        migrationNames.filter(
+          (name) =>
+            name > '20261001110000_user_profiles' &&
+            name <= '20261002090100_backfill_abandoned_responses',
+        ),
       ).toEqual(phaseMigrations);
     });
 

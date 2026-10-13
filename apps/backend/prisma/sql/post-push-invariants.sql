@@ -216,3 +216,78 @@ BEGIN
     RAISE WARNING 'ledger_accounts_user_id_account_class_currency_key not rebuilt with NULLS NOT DISTINCT: % (user_id, account_class, currency) groups have more than one ledger_accounts row (system accounts with user_id NULL). List them with SELECT account_class, currency, array_agg(id ORDER BY created_at) FROM ledger_accounts GROUP BY user_id, account_class, currency HAVING COUNT(*) > 1; merge each group into its oldest account, then re-run prisma/sql/post-push-invariants.sql. The existing index is kept.', duplicate_ledger_accounts;
   END IF;
 END $$;
+
+-- Rewards 12.7: same checks, partial indexes, and immutability triggers as migration.
+INSERT INTO "voucher_brands" ("id", "name") VALUES
+  ('highlands', 'Highlands Coffee'), ('lotteria', 'Lotteria'),
+  ('phuc-long', 'Phúc Long'), ('kfc', 'KFC'),
+  ('gong-cha', 'Gong Cha'), ('the-coffee-house', 'The Coffee House')
+ON CONFLICT DO NOTHING;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'voucher_brands_slug_check' AND conrelid = '"voucher_brands"'::regclass) THEN
+    ALTER TABLE "voucher_brands" ADD CONSTRAINT "voucher_brands_slug_check" CHECK ("id" ~ '^[a-z0-9-]{2,40}$');
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'vouchers_values_check' AND conrelid = '"vouchers"'::regclass) THEN
+    ALTER TABLE "vouchers" ADD CONSTRAINT "vouchers_values_check" CHECK (
+  "value_vnd" > 0 AND "base_points" > 0 AND
+  ("promo_points" IS NULL OR ("promo_points" > 0 AND "promo_points" < "base_points")) AND
+  "price_version" >= 1 AND "stock_total" >= 0 AND
+  "stock_remaining" BETWEEN 0 AND "stock_total" AND
+  "redeem_ends_at" > "redeem_starts_at" AND
+  "code_expires_at" >= "redeem_ends_at" + INTERVAL '7 days'
+);
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'voucher_price_versions_values_check' AND conrelid = '"voucher_price_versions"'::regclass) THEN
+    ALTER TABLE "voucher_price_versions" ADD CONSTRAINT "voucher_price_versions_values_check" CHECK (
+  "version" >= 1 AND "base_points" > 0 AND
+  ("promo_points" IS NULL OR ("promo_points" > 0 AND "promo_points" < "base_points"))
+);
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'flash_sales_window_check' AND conrelid = '"flash_sales"'::regclass) THEN
+    ALTER TABLE "flash_sales" ADD CONSTRAINT "flash_sales_window_check" CHECK ("ends_at" > "starts_at");
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'flash_sale_items_values_check' AND conrelid = '"flash_sale_items"'::regclass) THEN
+    ALTER TABLE "flash_sale_items" ADD CONSTRAINT "flash_sale_items_values_check" CHECK (
+  "flash_points" > 0 AND "quota" > 0 AND "sold" BETWEEN 0 AND "quota" AND "per_user_cap" >= 1
+);
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'redemption_quotes_price_check' AND conrelid = '"redemption_quotes"'::regclass) THEN
+    ALTER TABLE "redemption_quotes" ADD CONSTRAINT "redemption_quotes_price_check" CHECK ("price_version" >= 1 AND "price_points" > 0);
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'redemptions_price_check' AND conrelid = '"redemptions"'::regclass) THEN
+    ALTER TABLE "redemptions" ADD CONSTRAINT "redemptions_price_check" CHECK ("price_version" >= 1 AND "price_points" > 0);
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS "voucher_codes_unissued_idx" ON "voucher_codes"("voucher_id") WHERE "redemption_id" IS NULL;
+CREATE INDEX IF NOT EXISTS "redemptions_voucher_id_created_at_idx" ON "redemptions"("voucher_id", "created_at" DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS "code_issue_reports_open_redemption_key" ON "code_issue_reports"("redemption_id") WHERE "status" = 'OPEN';
+
+CREATE OR REPLACE FUNCTION "prevent_rewards_history_mutation"() RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'rewards history is append-only' USING ERRCODE = '55000';
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS "voucher_price_versions_append_only" ON "voucher_price_versions";
+CREATE TRIGGER "voucher_price_versions_append_only" BEFORE UPDATE OR DELETE ON "voucher_price_versions"
+  FOR EACH ROW EXECUTE FUNCTION "prevent_rewards_history_mutation"();
+DROP TRIGGER IF EXISTS "voucher_price_versions_no_truncate" ON "voucher_price_versions";
+CREATE TRIGGER "voucher_price_versions_no_truncate" BEFORE TRUNCATE ON "voucher_price_versions"
+  FOR EACH STATEMENT EXECUTE FUNCTION "prevent_rewards_history_mutation"();
+DROP TRIGGER IF EXISTS "redemptions_append_only" ON "redemptions";
+CREATE TRIGGER "redemptions_append_only" BEFORE UPDATE OR DELETE ON "redemptions"
+  FOR EACH ROW EXECUTE FUNCTION "prevent_rewards_history_mutation"();
+DROP TRIGGER IF EXISTS "redemptions_no_truncate" ON "redemptions";
+CREATE TRIGGER "redemptions_no_truncate" BEFORE TRUNCATE ON "redemptions"
+  FOR EACH STATEMENT EXECUTE FUNCTION "prevent_rewards_history_mutation"();
