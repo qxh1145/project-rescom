@@ -39,5 +39,7 @@ export const config = {
     "/forms/new/builder/ai",
     "/forms/:id/builder/ai",
     "/f/:id",
+    "/rewards",
+    "/rewards/:id",
   ],
 };

@@ -26,6 +26,28 @@ function seed() {
   const now = Date.now();
   const vouchers: VoucherInventory[] = specs.map(([brand, title, category, valueVnd, basePoints, promoPoints, stockTotal, stockRemaining, ends], index) => {
     const codes = index === 5 ? [] : makeCodes(slugs[brand], 15);
+    const standardTerms = [
+      "Áp dụng cho hoá đơn từ 60.000đ.",
+      "Mỗi hoá đơn dùng 1 voucher; không cộng dồn khuyến mãi khác.",
+      "Không đổi thành tiền mặt, không trả lại phần dư.",
+      "Đưa mã hoặc QR cho thu ngân trước khi thanh toán.",
+    ];
+    let description = `Voucher ${valueVnd.toLocaleString("vi-VN")}đ dùng tại ${brands[brand]}.`;
+    let whereToUse = `Mọi cửa hàng ${brands[brand]} trên toàn quốc.`;
+    let terms = standardTerms;
+
+    if (index === 0) {
+      description = "Voucher 50.000đ dùng cho mọi đồ uống và bánh tại Highlands Coffee. Phù hợp cho buổi học nhóm hay cà phê sáng trước giờ thi.";
+      whereToUse = "Mọi cửa hàng Highlands Coffee trên toàn quốc, trừ quầy ở sân bay.";
+      terms = standardTerms;
+    } else if (index === 3) {
+      description = "Voucher 40.000đ cho combo gà rán tại KFC.";
+      whereToUse = "Các cửa hàng KFC tại Đà Nẵng.";
+      terms = standardTerms.slice(1);
+    } else {
+      terms = standardTerms.slice(1);
+    }
+
     return {
       id: id(index + 1), title, brand: { id: slugs[brand], name: brands[brand] }, category, valueVnd, basePoints, promoPoints,
       priceVersion: 1, stockTotal, stockRemaining,
@@ -33,7 +55,7 @@ function seed() {
       redeemEndsAt: iso(now + ends * day),
       codeExpiresAt: iso(now + (index === 6 ? -26 : index === 4 ? 12 : index === 2 ? 48 : index === 3 ? 63 : 79) * day),
       codesAvailable: codes.length, state: "ACTIVE", isVisible: true, imageUrl: null,
-      terms: ["Áp dụng tại cửa hàng tham gia"], howToUse: ["Xuất trình mã tại quầy"], isSharedCode: false,
+      description, whereToUse, terms, howToUse: ["Xuất trình mã tại quầy"], isSharedCode: false,
     };
   });
   // ponytail: codes stored separately from inventory; codesAvailable is the count for pure rules
@@ -123,7 +145,7 @@ function listed(v: VoucherInventory, catalog: CatalogState, available: number, n
 export function voucherOf(voucherId: string, viewer: { available: number; pending?: number }, now = Date.now()) {
   const catalog = rewardsCatalog.get();
   const v = catalog.vouchers.find((v) => v.id === voucherId && v.isVisible && v.state !== "ARCHIVED");
-  return v ? { voucher: { ...listed(v, catalog, viewer.available, now), terms: v.terms, howToUse: v.howToUse, isSharedCode: v.isSharedCode }, serverTime: iso(now), viewer: viewerOf(viewer) } : null;
+  return v ? { voucher: { ...listed(v, catalog, viewer.available, now), description: v.description, whereToUse: v.whereToUse, terms: v.terms, howToUse: v.howToUse, isSharedCode: v.isSharedCode }, serverTime: iso(now), viewer: viewerOf(viewer) } : null;
 }
 
 export function catalogOf(_userId: string, viewer: { available: number; pending?: number }, query: { q?: string; category?: string[] | string; brand?: string[] | string; minPoints?: number; maxPoints?: number; onSale?: boolean; affordable?: boolean; sort?: string; limit?: number; offset?: number } = {}, now = Date.now()) {
@@ -145,7 +167,7 @@ export function flashSalesAt(now = Date.now()) {
   const catalog = rewardsCatalog.get();
   return { serverTime: iso(now), items: catalog.flashes.filter((f) => Date.parse(f.endsAt) > now - day).map((f) => ({ id: f.id, code: f.code, startsAt: f.startsAt, endsAt: f.endsAt,
     items: f.items.map((item) => { const v = catalog.vouchers.find((v) => v.id === item.voucherId)!;
-      return { id: item.id, voucherId: item.voucherId, voucherTitle: v.title, brand: v.brand, valueVnd: v.valueVnd,
+      return { id: item.id, voucherId: item.voucherId, voucherTitle: v.title, brand: v.brand, category: v.category, valueVnd: v.valueVnd,
         flashPoints: item.flashPoints, basePoints: v.basePoints, discountPercent: Math.round((1 - item.flashPoints / v.basePoints) * 100), quota: item.quota, sold: item.sold, perUserCap: item.perUserCap,
         state: now < Date.parse(f.startsAt) ? "UPCOMING" : now >= Date.parse(f.endsAt) || f.endedEarlyAt && now >= Date.parse(f.endedEarlyAt) ? "ENDED" : item.sold >= item.quota ? "SOLD_OUT" : "ACTIVE" }; }) })) };
 }

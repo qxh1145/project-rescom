@@ -19,8 +19,9 @@ const PREFIX = "rescom:mockdb:";
  * 3: survey response analytics seed (321-response and empty publisher surveys).
  * 4: the empty analytics survey is also a respondent survey (surveys + survey-content).
  * 5: Rewards mock domain (Story 12.1); demo wallet 186 available.
+ * 6: Voucher detail copy + Flash item category (Story 12.2).
  */
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 interface Persisted<T> {
   version: number;

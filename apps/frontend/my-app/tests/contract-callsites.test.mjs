@@ -48,10 +48,13 @@ test("deferred-hidden callsites match deferred mock routes; uncalled rewards rou
     const [method, path] = endpoint.split(" ");
     return routeKey(method, path);
   });
-  const mockOnlyRewards = deferred.filter((route) => route.startsWith("GET /rewards/") || route.startsWith("POST /rewards/"));
-  assert.equal(mockOnlyRewards.length, 6, "Rewards Story 12.1 exposes exactly six deferred mock routes");
-  assert.deepEqual([...hidden].sort(), deferred.filter((route) => !mockOnlyRewards.includes(route)).sort());
-  assert.deepEqual(calls.map(key).filter((route) => mockOnlyRewards.includes(route)), [], "Rewards API clients belong to Story 12.2; no pilot caller yet");
+  const uncalledRewards = [
+    "POST /rewards/quotes",
+    "POST /rewards/redemptions",
+    "GET /rewards/redemptions/by-key/:param",
+  ];
+  assert.deepEqual([...hidden].sort(), deferred.filter((route) => !uncalledRewards.includes(route)).sort());
+  assert.deepEqual(calls.map(key).filter((route) => uncalledRewards.includes(route)), [], "Rewards redemption client belongs to Story 12.3; no caller yet");
 });
 
 test("the matrix has one row per distinct call and no unmatched row", () => {

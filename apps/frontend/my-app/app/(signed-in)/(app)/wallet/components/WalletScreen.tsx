@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { MobileTitleBar } from "@/components/layout/app/MobileTopBar";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
+import { Icon } from "@/components/ui/Icon";
+import { PILOT_BUILD } from "@/lib/pilot-scope";
 import { walletLoadErrorMessage } from "@/lib/wallet/wallet-messages";
 import { useWallet } from "../hooks/use-wallet";
 import { BalanceCard } from "./BalanceCard";
@@ -55,6 +58,23 @@ export function WalletScreen() {
           <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[440px_minmax(0,1fr)] lg:items-start lg:gap-7">
             <div className="flex flex-col gap-4">
               <BalanceCard available={wallet.balance.available} />
+              {!PILOT_BUILD && (
+                <Link
+                  href="/rewards"
+                  className="flex items-center justify-between rounded-[20px] border border-line bg-surface p-4 shadow-xs hover:border-primary/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-tone-amber-bg text-tone-amber-accent">
+                      <Icon name="gift" size={20} />
+                    </span>
+                    <div className="flex flex-col">
+                      <span className="text-body font-bold text-ink">Đổi quà</span>
+                      <span className="text-caption text-ink-muted">Dùng điểm đổi voucher F&B</span>
+                    </div>
+                  </div>
+                  <Icon name="chevron-right" size={18} className="text-ink-muted" />
+                </Link>
+              )}
               <BucketCards balance={wallet.balance} pendingHoursLeft={pendingHoursLeft} pendingDue={pendingDue} />
               <TopUpCard />
             </div>

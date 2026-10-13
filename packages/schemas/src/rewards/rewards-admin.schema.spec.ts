@@ -7,7 +7,7 @@ const brand = { id: "highlands", name: "Highlands" };
 const input = { title: "Coffee", brandId: "highlands", category: "COFFEE", valueVnd: 50000, basePoints: 250, promoPoints: null, isSharedCode: false, redeemStartsAt: start, redeemEndsAt: end, codeExpiresAt: expires, terms: [], howToUse: [], imageUrl: null };
 const stock = { total: 10, issued: 1, flashReserved: 2, remaining: 7, codesAvailable: 7 };
 const voucher = { ...input, id, brand, price: { points: 250, basePoints: 250, source: "BASE", discountPercent: 0, priceVersion: 1 }, state: "ACTIVE", isVisible: true, stock, priceDeviationPercent: 0, createdAt: start, updatedAt: start };
-const flashItem = { id, voucherId: id, voucherTitle: "Coffee", brand, valueVnd: 50000, flashPoints: 150, basePoints: 250, discountPercent: 40, quota: 2, sold: 0, perUserCap: 1, state: "ACTIVE" };
+const flashItem = { id, voucherId: id, voucherTitle: "Coffee", brand, category: "COFFEE", valueVnd: 50000, flashPoints: 150, basePoints: 250, discountPercent: 40, quota: 2, sold: 0, perUserCap: 1, state: "ACTIVE" };
 describe("admin rewards contracts (Story 12.1, FR-73)", () => {
   it("validates voucher input and field-level date, price, and stock issues", () => {
     expect(adminVoucherStateSchema.safeParse("PAUSED").success).toBe(true);
