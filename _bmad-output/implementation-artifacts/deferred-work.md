@@ -414,3 +414,9 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 
 - Edit form sends empty `terms/howToUse/imageUrl` via PUT because the detail API omits them; mock masks it with fallbacks. Backend 12.7 must either return these fields in detail or accept PATCH-like semantics, otherwise saving wipes data.
 - Admin voucher search is not debounced and the cache key uses untrimmed `q` [use-admin-vouchers.ts].
+
+## Deferred from: code review of 12-7-rewards-schema-catalog-code-inventory-api (2026-10-13)
+
+- User catalog list/flash-sales load all rows then filter/sort/paginate in memory; add DB-side filtering when volume grows.
+- Price history `changedBy.name` hardcoded 'Admin'; resolve real admin name at 12.11 integration.
+- Flash price may exceed promo / `flashPoints >= basePoints` mismatch between catalog and flash list; `issued` negative if flashReserved > issued; `createMany` parameter limit on huge imports. Revisit in 12.9 (flash writes).

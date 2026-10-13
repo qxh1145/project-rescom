@@ -118,6 +118,24 @@ describe('Prisma migration chain on PostgreSQL', () => {
     ).resolves.toMatch(/UNIQUE INDEX .* WHERE .*'COMPLETED'/);
   });
 
+  it('creates the Rewards catalog schema, indexes and append-only triggers (12.7)', async () => {
+    if (!dbAvailable) return;
+    await expect(indexDef('voucher_codes_unissued_idx')).resolves.toMatch(
+      /WHERE .*redemption_id IS NULL/,
+    );
+    await expect(
+      indexDef('redemptions_voucher_id_created_at_idx'),
+    ).resolves.toMatch(/voucher_id, created_at DESC/);
+    const triggers = await prisma.$queryRaw<{ tgname: string }[]>`
+      SELECT tgname FROM pg_trigger WHERE NOT tgisinternal AND tgname IN (
+        'voucher_price_versions_append_only', 'voucher_price_versions_no_truncate',
+        'redemptions_append_only', 'redemptions_no_truncate')`;
+    expect(triggers).toHaveLength(4);
+    const brands = await prisma.$queryRaw<{ n: bigint }[]>`
+      SELECT COUNT(*) AS n FROM voucher_brands`;
+    expect(Number(brands[0].n)).toBeGreaterThanOrEqual(6);
+  });
+
   it('creates the ledger account index with NULLS NOT DISTINCT', async () => {
     if (!dbAvailable) return;
     await expect(

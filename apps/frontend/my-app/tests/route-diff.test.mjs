@@ -85,9 +85,18 @@ test("every MSW-only endpoint is in a category of mocks/route-allowlist.ts", () 
   );
 });
 
-test("no allowlist entry is served by the backend", () => {
+test("no allowlist entry is served by the backend, except deferred Rewards routes until 12.11", () => {
+  // Story 12.7 ships these APIs before 12.11 switches frontend Rewards off MSW.
+  const deferredRewards = new Set([
+    "GET /admin/rewards/vouchers", "POST /admin/rewards/vouchers",
+    "GET /admin/rewards/vouchers/:param", "PUT /admin/rewards/vouchers/:param",
+    "PATCH /admin/rewards/vouchers/:param", "POST /admin/rewards/vouchers/:param/price",
+    "POST /admin/rewards/vouchers/:param/stock", "POST /admin/rewards/vouchers/:param/codes",
+    "GET /admin/rewards/brands", "GET /rewards/vouchers",
+    "GET /rewards/vouchers/:param", "GET /rewards/flash-sales",
+  ]);
   const served = [...allowlist]
-    .filter(([key]) => backend.has(key))
+    .filter(([key, entry]) => backend.has(key) && !(entry.category === "DEFERRED_KEEP_MOCK" && deferredRewards.has(key)))
     .map(([key, entry]) => `${entry.endpoint} (${entry.category}; backend ${backend.get(key)})`);
   assert.deepEqual(served, [], `The backend now serves these allowlisted endpoints, delete them:\n  ${served.join("\n  ")}`);
 });

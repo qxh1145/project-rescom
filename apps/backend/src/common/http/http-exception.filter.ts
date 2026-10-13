@@ -143,6 +143,7 @@ import {
   ModerationSelfReviewForbiddenException,
   ModerationVersionMismatchException,
 } from '../../modules/moderation/application/exceptions/moderation.exceptions';
+import { RewardsException } from '../../modules/rewards/application/exceptions/rewards.exceptions';
 import { ThrottlerException } from '@nestjs/throttler';
 
 @Catch()
@@ -601,6 +602,31 @@ export class HttpExceptionFilter implements ExceptionFilter {
       status = HttpStatus.CONFLICT;
       code = exception.code;
       message = exception.message;
+    } else if (
+      exception instanceof RewardsException &&
+      (exception.code === 'BRAND_NOT_FOUND' ||
+        exception.code === 'REDEMPTION_WINDOW_ENDED' ||
+        exception.code === 'SHARED_CODE_REQUIRED')
+    ) {
+      status = HttpStatus.BAD_REQUEST;
+      code = 'VALIDATION_ERROR';
+      message = 'Validation failed';
+      details = [
+        {
+          path: (exception.details as { path?: string } | undefined)?.path,
+          code: exception.code,
+        },
+      ];
+    } else if (exception instanceof RewardsException) {
+      status =
+        exception.code === 'REWARDS_ADMIN_CAPABILITY_REQUIRED'
+          ? HttpStatus.FORBIDDEN
+          : exception.code === 'VOUCHER_NOT_FOUND'
+            ? HttpStatus.NOT_FOUND
+            : HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = exception.details;
     } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       const res = exception.getResponse();
