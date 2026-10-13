@@ -1,6 +1,11 @@
 // ASSUMED API CONTRACT: Story 12.1 mock routes; backend Stories 12.7-12.10.
 import {
   flashSaleListSchema,
+  redemptionQuoteSchema,
+  redemptionResultSchema,
+  IDEMPOTENCY_KEY_HEADER,
+  type RedemptionQuoteDto,
+  type RedemptionResultDto,
   voucherCatalogSchema,
   voucherDetailResponseSchema,
   type FlashSaleListDto,
@@ -35,4 +40,19 @@ export function getVoucher(id: string, signal?: AbortSignal): Promise<VoucherDet
 export function listFlashSales(signal?: AbortSignal): Promise<FlashSaleListDto> {
   if (PILOT_BUILD) rejectPilot();
   return apiRequest("/rewards/flash-sales", { schema: flashSaleListSchema, signal });
+}
+
+export function createRedemptionQuote(voucherId: string, signal?: AbortSignal): Promise<RedemptionQuoteDto> {
+  if (PILOT_BUILD) rejectPilot();
+  return apiRequest("/rewards/quotes", { method: "POST", body: { voucherId }, schema: redemptionQuoteSchema, signal });
+}
+
+export function redeemVoucher(quoteId: string, idempotencyKey: string, signal?: AbortSignal): Promise<RedemptionResultDto> {
+  if (PILOT_BUILD) rejectPilot();
+  return apiRequest("/rewards/redemptions", { method: "POST", body: { quoteId }, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey }, schema: redemptionResultSchema, signal });
+}
+
+export function getRedemptionByKey(idempotencyKey: string, signal?: AbortSignal): Promise<RedemptionResultDto> {
+  if (PILOT_BUILD) rejectPilot();
+  return apiRequest(`/rewards/redemptions/by-key/${encodeURIComponent(idempotencyKey)}`, { schema: redemptionResultSchema, signal });
 }

@@ -411,3 +411,14 @@ html.reorder-dragging * {
     display: none;
   }
 }
+
+@keyframes redeem-confetti {
+  to { transform: translateY(48px) rotate(70deg); opacity: 0; }
+}
+.redeem-confetti { animation: redeem-confetti 600ms ease-out forwards; }
+@keyframes redeem-pop { from { transform: scale(.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.redeem-pop { animation: redeem-pop 600ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .redeem-confetti { display: none; }
+  .redeem-pop { animation: none; }
+}

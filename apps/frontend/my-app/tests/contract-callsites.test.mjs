@@ -42,19 +42,13 @@ test("allowlist entries carry a reason and are neither stale nor served by the b
   }
 });
 
-test("deferred-hidden callsites match deferred mock routes; uncalled rewards routes stay mock-only", () => {
+test("deferred-hidden callsites match deferred mock routes", () => {
   const hidden = [...allowlist].filter(([, entry]) => entry.reason === "deferred-hidden").map(([route]) => route);
   const deferred = Object.keys(ROUTE_ALLOWLIST.DEFERRED_KEEP_MOCK).map((endpoint) => {
     const [method, path] = endpoint.split(" ");
     return routeKey(method, path);
   });
-  const uncalledRewards = [
-    "POST /rewards/quotes",
-    "POST /rewards/redemptions",
-    "GET /rewards/redemptions/by-key/:param",
-  ];
-  assert.deepEqual([...hidden].sort(), deferred.filter((route) => !uncalledRewards.includes(route)).sort());
-  assert.deepEqual(calls.map(key).filter((route) => uncalledRewards.includes(route)), [], "Rewards redemption client belongs to Story 12.3; no caller yet");
+  assert.deepEqual([...hidden].sort(), deferred.sort());
 });
 
 test("the matrix has one row per distinct call and no unmatched row", () => {

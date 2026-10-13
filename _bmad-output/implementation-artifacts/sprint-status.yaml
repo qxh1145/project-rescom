@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: "2026-08-16 17:09:30"
-last_updated: "2026-10-13 20:30:00"
+last_updated: "2026-10-13 23:30:00"
 project: "project-rescom"
 project_key: "NOKEY"
 tracking_system: "file-system"
@@ -134,7 +134,7 @@ development_status:
   epic-12: in-progress
   12-1-rewards-contracts-msw-mock-domain: review
   12-2-voucher-marketplace-filters-detail: done
-  12-3-confirm-redemption-result: backlog
+  12-3-confirm-redemption-result: done
   12-4-my-vouchers-code-qr-history: backlog
   12-5-admin-voucher-catalog-codes: backlog
   12-6-admin-flash-sale-rewards-stats: backlog

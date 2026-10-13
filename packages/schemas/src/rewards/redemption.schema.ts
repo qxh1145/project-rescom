@@ -32,3 +32,9 @@ export const createCodeIssueReportSchema = z.object({ reason: codeIssueReasonSch
 export const codeIssueReportSchema = z.object({ id, redemptionId: id, ticketId: id, reason: codeIssueReasonSchema, note: z.string().nullable(), status: codeIssueStatusSchema, createdAt: instant, resolvedAt: instant.nullable(), replacementCode: z.string().nullable(), refundReference: z.string().nullable() }).refine(v => v.status === "REPLACED" ? !!v.replacementCode && v.refundReference === null && v.resolvedAt !== null : v.status === "REFUNDED" ? v.replacementCode === null && v.refundReference !== null && REFUND_REFERENCE_PATTERN.test(v.refundReference) && v.resolvedAt !== null : v.status === "OPEN" ? v.replacementCode === null && v.refundReference === null && v.resolvedAt === null : v.replacementCode === null && v.refundReference === null && v.resolvedAt !== null);
 export const voucherTicketListSchema = z.object({ items: z.array(voucherTicketSchema), total: count, serverTime: instant });
 export const redemptionHistoryListSchema = z.object({ items: z.array(redemptionHistoryEntrySchema), total: count, limit: z.number().int().positive(), offset: count, hasMore: z.boolean() });
+export type RedemptionQuoteDto = z.infer<typeof redemptionQuoteSchema>;
+export type RedemptionResultDto = z.infer<typeof redemptionResultSchema>;
+export type RedemptionErrorDto = z.infer<typeof redemptionErrorSchema>;
+export type RedemptionErrorCode = z.infer<typeof redemptionErrorCodeSchema>;
+export type AccountNotEligibleReason = z.infer<typeof accountNotEligibleReasonSchema>;
+export type VoucherTicketDto = z.infer<typeof voucherTicketSchema>;
