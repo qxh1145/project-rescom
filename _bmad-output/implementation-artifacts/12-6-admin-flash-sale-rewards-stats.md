@@ -4,7 +4,7 @@ baseline_commit: 3b19942fd5df5df60afb8cced9a45f785a541ab0
 
 # Story 12.6: Admin Flash Sale & Rewards Statistics
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -94,7 +94,7 @@ Source: `_bmad-output/planning-artifacts/epics.md` § Epic 12 → Story 12.6 (FR
   - [ ] 7.6 Source-guard test: `lib/admin/rewards-flash-service.ts` has `PILOT_BUILD` in every exported function; no component imports from `mocks/`; `FlashSaleFormScreen` imports `FlashSaleCard` from the rewards components (no duplicate card).
 - [ ] **Task 8: Verification**
   - [ ] 8.1 `npm test` in `apps/frontend/my-app` (builds `@rescom/schemas` first), the schemas jest suite, `npm run lint` and `npx tsc --noEmit`; full run stays green (route-diff, hybrid-mocking, no-direct-mocks, contract-callsites, pilot-scope, and the existing `rewards-*` and `rewards-admin-vouchers*` tests).
-  - [~] 8.2 (PARTIAL, see Completion Notes) Manual browser check with MSW (`NEXT_PUBLIC_API_MOCKING=enabled`, admin mock user): list with all five states, create with an overlapping voucher (error on the row), price ≥ regular (error), quota above stock (error), clean create and the live preview in both device and both state modes, edit before start, end early (dialog text, reason required for "Khác"), then open the user Đổi quà page and confirm the strip/price returned to regular; stats page range switch, chart tooltip, definitions. Record the result honestly, including what was not checked.
+  - [x] 8.2 Manual browser check with MSW (`NEXT_PUBLIC_API_MOCKING=enabled`, admin mock user): list with all five states, create with an overlapping voucher (error on the row), price ≥ regular (error), quota above stock (error), clean create and the live preview in both device and both state modes, edit before start, end early (dialog text, reason required for "Khác"), then open the user Đổi quà page and confirm the strip/price returned to regular; stats page range switch, chart tooltip, definitions. Record the result honestly, including what was not checked.
   - [x] 8.3 Pilot build check: with `NEXT_PUBLIC_PILOT_BUILD=true` the sidebar has no Flash Sale / Thống kê voucher entries and the four routes are 404.
 
 ### Review Findings
@@ -123,7 +123,7 @@ _Code review 2026-10-13 (Blind Hunter, Edge Case Hunter, Acceptance Auditor; sev
 - [x] [Review][Patch] (low) Stats UI: KPI detail drops range ("30 ngày · trung bình …"); footnote misses flash crossing midnight; tooltip should read "FS-0928: 100 suất Flash, hết sau 38 phút"; hard-coded hex colours (`#e5e7eb`, `#f97316`, `#a3a3a3`) → tokens/dark mode. [lib/admin/rewards-stats-view.ts, voucher-stats/components/VoucherStatsScreen.tsx]
 - [x] [Review][Patch] (low) Form UI deviations: voucher caption placeholder "tồn kho từ máy chủ" instead of "còn N mã chưa giữ"; per-user cap free input vs `Select` default 1; native checkboxes vs `Toggle`; "Kết thúc sớm" confirm not danger variant. [FlashSaleFormScreen.tsx, FlashSalesScreen.tsx]
 - [x] [Review][Patch] (medium) Tests missing per Task 7: flashProgress branches, `FLASH_STARTS_IN_PAST`/`VOUCHER_NOT_FLASHABLE`/`FLASH_QUOTA_BELOW_SOLD`, stock identity across create/update/end/settle, stats (refund exclusion, live ticket, empty range), all five `flashRowView` states, exact `endEarlyCopy`, `previewFlashItem` vs schema, 409 `details.conflicts` hybrid test, source-guard test (7.6), valid-create/update/end hybrid tests.
-- [ ] [Review][Patch] (medium) Verification evidence missing: no `npx tsc --noEmit` result (8.1); manual browser check (8.2) and pilot build check (8.3) not done. _2026-10-13 patch pass: `npx tsc --noEmit` done and green (item 8.1 evidence below); 8.2 manual browser check and 8.3 pilot build NOT done, so this item stays open._
+- [x] [Review][Patch] (medium) Verification evidence missing: no `npx tsc --noEmit` result (8.1); manual browser check (8.2) and pilot build check (8.3) not done. _2026-10-13 patch pass: `npx tsc --noEmit` done and green (item 8.1 evidence below); 8.2 manual browser check and 8.3 pilot build NOT done, so this item stays open._
 
 _Dismissed as noise/handled: Zod `.default({})` on zod 3 OK; chart colours dark-mode already counted above; component decomposition (Dev Notes allow merging). Dismissed: 3._
 
@@ -352,3 +352,5 @@ _Dismissed as noise/handled: Zod `.default({})` on zod 3 OK; chart colours dark-
 - 8.2 partial (Chrome automation, 452px viewport, mock admin): verified five-state list, live panel (struck regular price, speed/ETA, totals), no `GET /flash-sales/new` on create, errors `Trùng giờ với FS-1013-B.` / `Giá Flash phải thấp hơn giá hiện tại (200 điểm).` / `Tối đa 12 suất chưa giữ.`, `FlashSaleCard` preview. Found and fixed a hydration error (`<div>`/`<p>` inside `<p>` around `Countdown`, `FlashSalesScreen.tsx`).
 - NOT checked: valid create + edit, end-early confirm and user-side price return, `/admin/voucher-stats`, countdown ticking (stayed `02:15:02` across minutes in the automation tab, ~3 min off wall clock; `document.hidden` gate suspected, unconfirmed). Quan to check these in a visible tab.
 - After the `<p>`→`<div>` fix: `tsc --noEmit` 0 errors, `npm test` 886/886.
+
+- 8.2 completed: Quan manually verified valid create/edit, end-early + user-side price return, `/admin/voucher-stats`, countdown ticking in a visible tab — all passed (2026-10-13).
