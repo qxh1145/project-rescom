@@ -22,6 +22,8 @@ export const PILOT_HIDDEN_ROUTES: ReadonlyArray<{ route: string; guard: string }
   { route: "/forms/new/builder/ai", guard: "(signed-in)/(focus)/forms/new/builder/ai/page.tsx" },
   { route: "/forms/[id]/builder/ai", guard: "(signed-in)/(focus)/forms/[id]/builder/ai/page.tsx" },
   { route: "/f/[id]", guard: "f/[id]/layout.tsx" },
+  { route: "/rewards", guard: "(signed-in)/(app)/rewards/page.tsx" },
+  { route: "/rewards/[id]", guard: "(signed-in)/(app)/rewards/[id]/page.tsx" },
 ];
 
 /** A pilot build must never serve MSW demo data (`enabled`/`hybrid`); importing this from next.config.ts fails `next build`. */

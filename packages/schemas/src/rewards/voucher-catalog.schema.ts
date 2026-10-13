@@ -14,7 +14,14 @@ export const voucherPriceSchema = z.object({ points: z.number().int().positive()
 export const voucherStatusSchema = z.enum(["AVAILABLE", "SOLD_OUT", "EXPIRED", "PAUSED"]);
 export const voucherFlashSummarySchema = z.object({ flashSaleId: id, flashSaleItemId: id, quota: z.number().int().positive(), sold: count, endsAt: instant }).refine(v => v.sold <= v.quota);
 export const voucherListItemSchema = z.object({ id, title: z.string().min(1), brand: voucherBrandSchema, category: voucherCategorySchema, valueVnd: z.number().int().positive(), price: voucherPriceSchema, status: voucherStatusSchema, stockTotal: count, stockRemaining: count, redeemEndsAt: instant, codeExpiresAt: instant, flash: voucherFlashSummarySchema.nullable(), affordable: z.boolean(), imageUrl: z.string().url().nullable() });
-export const voucherDetailSchema = voucherListItemSchema.extend({ terms: z.array(z.string()), howToUse: z.array(z.string()), isSharedCode: z.boolean() });
+// ASSUMED API CONTRACT (Story 12.2, additive)
+export const voucherDetailSchema = voucherListItemSchema.extend({
+  description: z.string().min(1).max(1000),
+  whereToUse: z.string().min(1).max(300),
+  terms: z.array(z.string()),
+  howToUse: z.array(z.string()),
+  isSharedCode: z.boolean(),
+});
 export const VOUCHER_SORTS = ["BEST_DEAL", "POINTS_ASC", "POINTS_DESC", "NEWEST"] as const;
 export const voucherSortSchema = z.enum(VOUCHER_SORTS);
 const csv = z.string().transform(value => value.split(",").map(part => part.trim()));
@@ -24,6 +31,25 @@ export const rewardsViewerBalanceSchema = z.object({ available: count, pending: 
 export const voucherCatalogSchema = z.object({ items: z.array(voucherListItemSchema), total: count, limit: z.number().int().min(1).max(50), offset: count, hasMore: z.boolean(), serverTime: instant, viewer: rewardsViewerBalanceSchema });
 export const voucherDetailResponseSchema = z.object({ voucher: voucherDetailSchema, serverTime: instant, viewer: rewardsViewerBalanceSchema });
 export const flashSaleItemStateSchema = z.enum(["UPCOMING", "ACTIVE", "ENDED", "SOLD_OUT"]);
-export const flashSaleItemSchema = z.object({ id, voucherId: id, voucherTitle: z.string().min(1), brand: voucherBrandSchema, valueVnd: z.number().int().positive(), flashPoints: z.number().int().positive(), basePoints: z.number().int().positive(), discountPercent: z.number().int().min(0).max(99), quota: z.number().int().positive(), sold: count, perUserCap: z.number().int().min(1), state: flashSaleItemStateSchema }).refine(v => v.flashPoints < v.basePoints && v.sold <= v.quota && v.discountPercent === voucherDiscountPercent(v.flashPoints, v.basePoints));
+// ASSUMED API CONTRACT (Story 12.2, additive)
+export const flashSaleItemSchema = z.object({ id, voucherId: id, voucherTitle: z.string().min(1), brand: voucherBrandSchema, category: voucherCategorySchema, valueVnd: z.number().int().positive(), flashPoints: z.number().int().positive(), basePoints: z.number().int().positive(), discountPercent: z.number().int().min(0).max(99), quota: z.number().int().positive(), sold: count, perUserCap: z.number().int().min(1), state: flashSaleItemStateSchema }).refine(v => v.flashPoints < v.basePoints && v.sold <= v.quota && v.discountPercent === voucherDiscountPercent(v.flashPoints, v.basePoints));
 export const flashSaleSchema = z.object({ id, code: z.string().regex(/^FS-\d{4}-[A-Z]$/), startsAt: instant, endsAt: instant, items: z.array(flashSaleItemSchema).min(1) }).refine(v => v.endsAt > v.startsAt, { path: ["endsAt"] }).refine(v => new Set(v.items.map(i => i.voucherId)).size === v.items.length, { path: ["items"] });
 export const flashSaleListSchema = z.object({ items: z.array(flashSaleSchema), serverTime: instant });
+
+export type VoucherCategory = z.infer<typeof voucherCategorySchema>;
+export type VoucherBrandDto = z.infer<typeof voucherBrandSchema>;
+export type VoucherPriceSource = z.infer<typeof voucherPriceSourceSchema>;
+export type VoucherPriceDto = z.infer<typeof voucherPriceSchema>;
+export type VoucherStatus = z.infer<typeof voucherStatusSchema>;
+export type VoucherFlashSummaryDto = z.infer<typeof voucherFlashSummarySchema>;
+export type VoucherListItemDto = z.infer<typeof voucherListItemSchema>;
+export type VoucherDetailDto = z.infer<typeof voucherDetailSchema>;
+export type VoucherSort = z.infer<typeof voucherSortSchema>;
+export type VoucherCatalogQuery = z.infer<typeof voucherCatalogQuerySchema>;
+export type RewardsViewerBalanceDto = z.infer<typeof rewardsViewerBalanceSchema>;
+export type VoucherCatalogDto = z.infer<typeof voucherCatalogSchema>;
+export type VoucherDetailResponseDto = z.infer<typeof voucherDetailResponseSchema>;
+export type FlashSaleItemState = z.infer<typeof flashSaleItemStateSchema>;
+export type FlashSaleItemDto = z.infer<typeof flashSaleItemSchema>;
+export type FlashSaleDto = z.infer<typeof flashSaleSchema>;
+export type FlashSaleListDto = z.infer<typeof flashSaleListSchema>;

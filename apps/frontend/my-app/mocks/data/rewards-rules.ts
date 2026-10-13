@@ -4,7 +4,7 @@ export interface VoucherInventory {
   valueVnd: number; basePoints: number; promoPoints: number | null; priceVersion: number;
   stockTotal: number; stockRemaining: number; redeemStartsAt: string; redeemEndsAt: string;
   codeExpiresAt: string; codesAvailable: number; state: "ACTIVE" | "PAUSED" | "ARCHIVED";
-  isVisible: boolean; imageUrl: string | null; terms: string[]; howToUse: string[]; isSharedCode: boolean;
+  isVisible: boolean; imageUrl: string | null; description: string; whereToUse: string; terms: string[]; howToUse: string[]; isSharedCode: boolean;
 }
 export interface FlashInventory {
   id: string; code: string; startsAt: string; endsAt: string; endedEarlyAt: string | null;
