@@ -1,6 +1,6 @@
-import { ConflictException } from '@nestjs/common';
 import { AdminPublishedSurveysService } from './admin-published-surveys.service';
 import { FormNotFoundException } from '../../forms/application/exceptions/form.exceptions';
+import { SurveyNotPublishedException } from './exceptions/audit-log.exceptions';
 
 const FORM_ID = '11111111-1111-4111-8111-111111111111';
 const ADMIN_ID = '22222222-2222-4222-8222-222222222222';
@@ -37,7 +37,7 @@ describe('AdminPublishedSurveysService', () => {
   it('refuses to pin a survey that is not PUBLISHED', async () => {
     const { service, forms } = setup('CLOSED');
     await expect(service.setPinned(ADMIN_ID, FORM_ID, true)).rejects.toThrow(
-      ConflictException,
+      SurveyNotPublishedException,
     );
     expect(forms.setPinned).not.toHaveBeenCalled();
   });

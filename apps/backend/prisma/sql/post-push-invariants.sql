@@ -291,3 +291,54 @@ CREATE TRIGGER "redemptions_append_only" BEFORE UPDATE OR DELETE ON "redemptions
 DROP TRIGGER IF EXISTS "redemptions_no_truncate" ON "redemptions";
 CREATE TRIGGER "redemptions_no_truncate" BEFORE TRUNCATE ON "redemptions"
   FOR EACH STATEMENT EXECUTE FUNCTION "prevent_rewards_history_mutation"();
+
+-- Rewards 12.8: rewards_settings, redemption status invariants, partial quote index
+INSERT INTO "rewards_settings" ("id", "daily_points_limit", "updated_at")
+VALUES (1, 500, CURRENT_TIMESTAMP)
+ON CONFLICT ("id") DO NOTHING;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'rewards_settings_id_check' AND conrelid = '"rewards_settings"'::regclass) THEN
+    ALTER TABLE "rewards_settings" ADD CONSTRAINT "rewards_settings_id_check" CHECK ("id" = 1);
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'rewards_settings_daily_limit_check' AND conrelid = '"rewards_settings"'::regclass) THEN
+    ALTER TABLE "rewards_settings" ADD CONSTRAINT "rewards_settings_daily_limit_check" CHECK ("daily_points_limit" > 0);
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'redemptions_status_succeeded_check' AND conrelid = '"redemptions"'::regclass) THEN
+    ALTER TABLE "redemptions" ADD CONSTRAINT "redemptions_status_succeeded_check" CHECK (
+      "status" != 'SUCCEEDED' OR (
+        "journal_id" IS NOT NULL AND
+        "balance_after" IS NOT NULL
+      )
+    ) NOT VALID;
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'redemptions_status_failed_check' AND conrelid = '"redemptions"'::regclass) THEN
+    ALTER TABLE "redemptions" ADD CONSTRAINT "redemptions_status_failed_check" CHECK (
+      "status" != 'FAILED' OR (
+        "journal_id" IS NULL AND
+        "failure_code" IS NOT NULL
+      )
+    ) NOT VALID;
+  END IF;
+END $$;
+CREATE OR REPLACE FUNCTION "redemptions_succeeded_code_check"() RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW."status" = 'SUCCEEDED' AND NEW."voucher_code_id" IS NULL AND NOT EXISTS (
+    SELECT 1 FROM "vouchers" WHERE "id" = NEW."voucher_id" AND "is_shared_code"
+  ) THEN
+    RAISE EXCEPTION 'SUCCEEDED redemption needs a voucher code or a shared-code voucher' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS "redemptions_succeeded_code_check" ON "redemptions";
+CREATE TRIGGER "redemptions_succeeded_code_check" BEFORE INSERT ON "redemptions"
+  FOR EACH ROW EXECUTE FUNCTION "redemptions_succeeded_code_check"();
+CREATE UNIQUE INDEX IF NOT EXISTS "redemptions_quote_id_succeeded_key" ON "redemptions"("quote_id") WHERE "status" = 'SUCCEEDED';
+CREATE INDEX IF NOT EXISTS "redemptions_user_id_created_at_idx" ON "redemptions"("user_id", "created_at" DESC);

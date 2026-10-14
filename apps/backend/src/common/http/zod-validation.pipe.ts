@@ -11,7 +11,7 @@ export class ZodValidationPipe implements PipeTransform {
   constructor(
     private readonly schema: ZodSchema,
     private readonly errorCode: string = 'VALIDATION_ERROR',
-    private readonly targetType: 'body' | 'query' | 'param' = 'body',
+    private readonly targetType: 'body' | 'query' | 'param' | 'header' = 'body',
   ) {}
 
   transform(value: unknown, metadata: ArgumentMetadata) {

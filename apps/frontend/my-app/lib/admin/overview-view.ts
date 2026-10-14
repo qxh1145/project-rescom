@@ -187,6 +187,7 @@ const FRAUD_TYPE_LABELS: Record<string, string> = {
   DEMO_MISMATCH: "hồ sơ không khớp",
   RECAPTCHA_FAIL: "không qua kiểm tra chống bot",
   SECURITY_VIOLATION: "vi phạm bảo mật",
+  FLASH_AFTER_TOPUP: "đổi Flash ngay sau khi nạp điểm",
 };
 
 export function fraudTypeLabel(type: string): string {

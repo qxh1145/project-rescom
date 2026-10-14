@@ -136,6 +136,30 @@ describe('Prisma migration chain on PostgreSQL', () => {
     expect(Number(brands[0].n)).toBeGreaterThanOrEqual(6);
   });
 
+  it('creates the Rewards redemption transaction schema and settings (12.8)', async () => {
+    if (!dbAvailable) return;
+    const fraudLogTypes = await enumValues('FraudLogType');
+    expect(fraudLogTypes).toContain('FLASH_AFTER_TOPUP');
+
+    const redemptionsCols = await columnsOf('redemptions');
+    expect(redemptionsCols.get('balance_after')).toBe('YES');
+    expect(redemptionsCols.get('failure_details')).toBe('YES');
+
+    const settingsRows = await prisma.$queryRaw<
+      { id: number; daily_points_limit: number }[]
+    >`
+      SELECT id, daily_points_limit FROM rewards_settings WHERE id = 1`;
+    expect(settingsRows).toHaveLength(1);
+    expect(settingsRows[0].daily_points_limit).toBe(500);
+
+    await expect(
+      indexDef('redemptions_quote_id_succeeded_key'),
+    ).resolves.toMatch(/UNIQUE INDEX .* WHERE .*status = 'SUCCEEDED'/);
+    await expect(
+      indexDef('redemptions_user_id_created_at_idx'),
+    ).resolves.toMatch(/user_id, created_at DESC/);
+  });
+
   it('creates the ledger account index with NULLS NOT DISTINCT', async () => {
     if (!dbAvailable) return;
     await expect(

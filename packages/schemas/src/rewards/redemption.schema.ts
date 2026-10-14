@@ -38,6 +38,8 @@ export const redemptionHistoryQuerySchema = z.object({ limit: z.coerce.number().
 export const redemptionHistoryListSchema = z.object({ items: z.array(redemptionHistoryEntrySchema), total: count, limit: z.number().int().positive(), offset: count, hasMore: z.boolean(), monthSummary: z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/), pointsSpent: z.number().int(), voucherCount: z.number().int() }) });
 // ASSUMED API CONTRACT: HTTP 404 for TICKET_NOT_FOUND, 409 for the others (TICKET_REFUNDED: the ticket's code issue was refunded); no details payload.
 export const VOUCHER_TICKET_ERROR_CODES = ["TICKET_NOT_FOUND", "TICKET_EXPIRED", "UNDO_WINDOW_CLOSED", "CODE_ISSUE_ALREADY_OPEN", "TICKET_REFUNDED"] as const;
+export type CreateRedemptionQuoteDto = z.infer<typeof createRedemptionQuoteSchema>;
+export type RedeemVoucherDto = z.infer<typeof redeemVoucherSchema>;
 export type RedemptionQuoteDto = z.infer<typeof redemptionQuoteSchema>;
 export type RedemptionResultDto = z.infer<typeof redemptionResultSchema>;
 export type RedemptionErrorDto = z.infer<typeof redemptionErrorSchema>;

@@ -24,6 +24,7 @@ export const FRAUD_TYPE_LABELS: Record<string, string> = {
   DEMO_MISMATCH: "Hồ sơ không khớp",
   RECAPTCHA_FAIL: "Không qua reCAPTCHA",
   SECURITY_VIOLATION: "Vi phạm bảo mật",
+  FLASH_AFTER_TOPUP: "Đổi Flash sau khi nạp điểm",
 };
 
 export function fraudTypeLabel(type: string): string {

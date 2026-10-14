@@ -82,5 +82,7 @@ export interface VoucherRepositoryPort {
     voucherId: string,
     limit: number,
   ): Promise<VoucherRedemptionRecord[]>;
+  /** Conditional decrement: decrements stockRemaining iff stockRemaining > 0. Returns true if updated. */
+  decrementRegularStock(id: string, updatedAt: string): Promise<boolean>;
   appendAudit(event: RewardsAuditEvent): Promise<void>;
 }

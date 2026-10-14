@@ -20,6 +20,8 @@ import {
   adminVoucherPriceChangeSchema,
   adminStockAdjustmentSchema,
   adminCodeImportRequestSchema,
+  updateRewardsSettingsSchema,
+  UpdateRewardsSettingsDto,
 } from '@rescom/schemas';
 import { SessionAuthGuard } from '../../auth/presentation/guards/session-auth.guard';
 import { RolesGuard } from '../../auth/presentation/guards/roles.guard';
@@ -175,6 +177,27 @@ export class AdminRewardsVouchersController {
         body as Parameters<RewardsAdminCatalogService['importCodes']>[2],
         correlationId,
       ),
+    );
+  }
+
+  @Get('settings')
+  @Header('Cache-Control', 'no-store')
+  async getSettings(@CurrentUser() admin: AuthenticatedUser) {
+    return createSuccessEnvelope(await this.catalog.getSettings(admin.id));
+  }
+
+  @Put('settings')
+  @HttpCode(HttpStatus.OK)
+  @Header('Cache-Control', 'no-store')
+  @UseGuards(CsrfGuard, JsonOnlyGuard)
+  async updateSettings(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Body(new ZodValidationPipe(updateRewardsSettingsSchema))
+    body: UpdateRewardsSettingsDto,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    return createSuccessEnvelope(
+      await this.catalog.updateSettings(admin.id, body, correlationId),
     );
   }
 }

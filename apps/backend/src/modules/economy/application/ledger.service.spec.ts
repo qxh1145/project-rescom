@@ -2983,4 +2983,111 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
       ).rejects.toBeInstanceOf(InvalidLedgerOperationException);
     });
   });
+
+  describe('spendPoints (Story 12.8, AD-24)', () => {
+    const redeemUserId = '99999999-9999-4999-8999-999999999999';
+    const key = 'redemption:test-idem-key-1';
+
+    beforeEach(async () => {
+      // credit some points first
+      const available = await service.getOrCreateAccount(
+        redeemUserId,
+        'USER_AVAILABLE',
+      );
+      const issuance = await service.getOrCreateAccount(
+        null,
+        'SYSTEM_ISSUANCE',
+      );
+      await service.postJournal({
+        idempotencyKey: 'seed:points:spend',
+        entries: [
+          { accountId: issuance.id, amount: -200 },
+          { accountId: available.id, amount: 200 },
+        ],
+      });
+    });
+
+    it('posts a balanced journal from USER_AVAILABLE to SYSTEM_SINK', async () => {
+      const journal = await service.spendPoints({
+        userId: redeemUserId,
+        amount: 50,
+        idempotencyKey: key,
+      });
+
+      expect(journal).toBeDefined();
+      expect(journal.idempotencyKey).toBe(key);
+      const wallet = await service.getWallet(redeemUserId);
+      expect(wallet.balance.available).toBe(150);
+
+      const sink = await service.getOrCreateAccount(null, 'SYSTEM_SINK');
+      expect(sink.balance).toBe(50);
+    });
+
+    it('replay returns the same journal', async () => {
+      const first = await service.spendPoints({
+        userId: redeemUserId,
+        amount: 50,
+        idempotencyKey: key,
+      });
+      const second = await service.spendPoints({
+        userId: redeemUserId,
+        amount: 50,
+        idempotencyKey: key,
+      });
+
+      expect(second.id).toBe(first.id);
+      const wallet = await service.getWallet(redeemUserId);
+      expect(wallet.balance.available).toBe(150);
+    });
+
+    it('same key with different amount throws IdempotencyConflictException', async () => {
+      await service.spendPoints({
+        userId: redeemUserId,
+        amount: 50,
+        idempotencyKey: key,
+      });
+
+      await expect(
+        service.spendPoints({
+          userId: redeemUserId,
+          amount: 100,
+          idempotencyKey: key,
+        }),
+      ).rejects.toBeInstanceOf(IdempotencyConflictException);
+    });
+
+    it('rejects overdraft when available balance is insufficient', async () => {
+      await expect(
+        service.spendPoints({
+          userId: redeemUserId,
+          amount: 500,
+          idempotencyKey: 'redemption:overdraft',
+        }),
+      ).rejects.toThrow(InsufficientBalanceException);
+    });
+
+    it('assertBeforeInsert exception aborts without creating journal', async () => {
+      const abortKey = 'redemption:aborted';
+      await expect(
+        service.spendPoints(
+          {
+            userId: redeemUserId,
+            amount: 50,
+            idempotencyKey: abortKey,
+          },
+          {
+            assertBeforeInsert: async () => {
+              throw new Error('Limit exceeded in callback');
+            },
+          },
+        ),
+      ).rejects.toThrow('Limit exceeded in callback');
+
+      const existing =
+        await service['ledgerRepo'].findJournalByIdempotencyKey(abortKey);
+      expect(existing).toBeNull();
+      const wallet = await service.getWallet(redeemUserId);
+      expect(wallet.balance.available).toBe(200);
+    });
+  });
 });
