@@ -23,6 +23,17 @@ describe('Rewards errors', () => {
     ['REDEMPTION_NOT_FOUND', HttpStatus.NOT_FOUND],
     ['QUOTE_ALREADY_REDEEMED', HttpStatus.CONFLICT],
     ['IDEMPOTENCY_KEY_CONFLICT', HttpStatus.CONFLICT],
+    // Story 12.9: Flash sale lifecycle errors
+    ['FLASH_SALE_NOT_FOUND', HttpStatus.NOT_FOUND],
+    ['FLASH_STARTS_IN_PAST', HttpStatus.CONFLICT],
+    ['VOUCHER_NOT_FLASHABLE', HttpStatus.CONFLICT],
+    ['FLASH_PRICE_NOT_BELOW_REGULAR', HttpStatus.CONFLICT],
+    ['FLASH_QUOTA_EXCEEDS_STOCK', HttpStatus.CONFLICT],
+    ['FLASH_OVERLAP', HttpStatus.CONFLICT],
+    ['FLASH_ALREADY_STARTED', HttpStatus.CONFLICT],
+    ['FLASH_NOT_ACTIVE', HttpStatus.CONFLICT],
+    ['FLASH_ALREADY_ENDED', HttpStatus.CONFLICT],
+    ['FLASH_CODE_EXHAUSTED', HttpStatus.CONFLICT],
   ];
   it.each(cases)(
     '%s maps to %s and preserves details',

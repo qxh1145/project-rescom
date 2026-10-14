@@ -140,7 +140,7 @@ development_status:
   12-6-admin-flash-sale-rewards-stats: in-progress
   12-7-rewards-schema-catalog-code-inventory-api: done
   12-8-quote-redemption-transaction: done
-  12-9-flash-sale-lifecycle: backlog
+  12-9-flash-sale-lifecycle: done
   12-10-my-vouchers-reminders-faulty-code-resolution: backlog
   12-11-rewards-integration-without-mocks-enable-gate: backlog
   epic-12-retrospective: optional

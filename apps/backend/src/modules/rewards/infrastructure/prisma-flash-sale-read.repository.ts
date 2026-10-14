@@ -13,9 +13,14 @@ function toSaleRecord(
   return {
     id: row.id,
     code: row.code,
+    title: row.title,
+    createdById: row.createdById,
     startsAt: row.startsAt.toISOString(),
     endsAt: row.endsAt.toISOString(),
+    reservedAt: row.reservedAt?.toISOString() ?? null,
+    settledAt: row.settledAt?.toISOString() ?? null,
     endedEarlyAt: row.endedEarlyAt?.toISOString() ?? null,
+    endReason: row.endReason,
     rules: row.rules as FlashSaleRecord['rules'],
     items: row.items.map((item) => ({
       id: item.id,
@@ -32,7 +37,7 @@ function toSaleRecord(
 
 @Injectable()
 export class PrismaFlashSaleReadRepository implements FlashSaleReadPort {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(protected readonly prisma: PrismaService) {}
   async list(): Promise<FlashSaleRecord[]> {
     const rows = await currentClient(this.prisma).flashSale.findMany({
       include: { items: true },
@@ -75,6 +80,8 @@ export class PrismaFlashSaleReadRepository implements FlashSaleReadPort {
         flashSale: {
           startsAt: { lte: now },
           endsAt: { gt: now },
+          reservedAt: { not: null },
+          settledAt: null,
           OR: [{ endedEarlyAt: null }, { endedEarlyAt: { gt: now } }],
         },
       },

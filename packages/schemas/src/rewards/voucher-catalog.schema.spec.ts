@@ -14,7 +14,7 @@ describe("voucher catalog contracts (Story 12.1, FR-68)", () => {
     expect(voucherDetailSchema.safeParse(detailItem).success).toBe(true);
     expect(voucherFlashSummarySchema.safeParse({ flashSaleId: id, flashSaleItemId: id, quota: 2, sold: 1, endsAt: later }).success).toBe(true);
     expect(flashSaleItemSchema.safeParse(flashItem).success).toBe(true);
-    const flash = { id, code: "FS-1013-A", startsAt: "2026-10-01T00:00:00.000Z", endsAt: later, items: [flashItem] };
+    const flash = { id, code: "FS-261013-A", startsAt: "2026-10-01T00:00:00.000Z", endsAt: later, items: [flashItem] };
     expect(flashSaleSchema.safeParse(flash).success).toBe(true);
     expect(flashSaleListSchema.safeParse({ items: [flash], serverTime: later }).success).toBe(true);
     expect(voucherCatalogSchema.safeParse({ items: [item], total: 1, limit: 20, offset: 0, hasMore: false, serverTime: later, viewer: { available: 186, pending: 18 } }).success).toBe(true);

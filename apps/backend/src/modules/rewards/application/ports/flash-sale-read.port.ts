@@ -13,9 +13,14 @@ export interface FlashSaleItemRecord {
 export interface FlashSaleRecord {
   id: string;
   code: string;
+  title: string;
+  createdById: string;
   startsAt: string;
   endsAt: string;
+  reservedAt: string | null;
+  settledAt: string | null;
   endedEarlyAt: string | null;
+  endReason: string | null;
   rules?: {
     requireRecentSurvey: boolean;
     blockFlagged: boolean;

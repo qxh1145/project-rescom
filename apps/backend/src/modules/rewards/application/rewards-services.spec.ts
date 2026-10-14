@@ -14,8 +14,14 @@ import { AdminCapabilityPort } from '../../economy/application/ports/admin-capab
 import { RewardsException } from './exceptions/rewards.exceptions';
 import { RewardsQuoteService } from './rewards-quote.service';
 import { RewardsRedemptionService } from './rewards-redemption.service';
+import { FlashSaleLifecycleService } from './flash-sale-lifecycle.service';
+import { RewardsAdminFlashService } from './rewards-admin-flash.service';
+import { FlashSaleLifecycleJob } from '../infrastructure/flash-sale-lifecycle.job';
 import { InMemoryRedemptionRepository } from '../infrastructure/in-memory-redemption.repository';
 import { InMemoryFlashSaleReadRepository } from '../infrastructure/in-memory-flash-sale-read.repository';
+import { InMemoryFlashSaleRepository } from '../infrastructure/in-memory-flash-sale.repository';
+import { InMemoryVoucherRepository } from '../infrastructure/in-memory-voucher.repository';
+import { AdminUserDirectoryPort } from '../../users/application/ports/admin-user-directory.port';
 
 const adminId = '10000000-0000-4000-8000-000000000001';
 const voucherId = '20000000-0000-4000-8000-000000000002';
@@ -290,9 +296,14 @@ describe('Rewards application services', () => {
     const flashSale = (over: Record<string, unknown> = {}) => ({
       id: 'fs1',
       code: 'FLASH1',
+      title: 'Flash Sale 1',
+      createdById: adminId,
       startsAt: '2026-10-10T00:00:00.000Z',
       endsAt: '2026-10-20T00:00:00.000Z',
+      reservedAt: '2026-10-10T00:00:00.000Z',
+      settledAt: null,
       endedEarlyAt: null,
+      endReason: null,
       rules: { requireRecentSurvey: false, blockFlagged: false },
       items: [
         {
@@ -611,7 +622,7 @@ describe('Rewards application services', () => {
     });
 
     describe('Flash purchases', () => {
-      it('decrements both Flash sold and voucher stock, and enforces the Flash end', async () => {
+      it('increments Flash sold leaving voucher stock intact, creates claim for cap=1, and enforces Flash end', async () => {
         const f = redemptionFixture();
         f.flashSales.sales.push(flashSale() as any);
         const quote = await f.quoteService.createQuote(adminId, { voucherId });
@@ -627,10 +638,11 @@ describe('Rewards application services', () => {
           'idem-key-1',
         );
         expect(f.flashSales.sales[0].items[0].sold).toBe(1);
-        expect(f.vRow.stockRemaining).toBe(1);
+        expect(f.vRow.stockRemaining).toBe(2);
         expect([...f.redemptions.redemptions.values()][0].flashSaleItemId).toBe(
           'fsi-1',
         );
+        expect(f.redemptions.flashItemClaims.size).toBe(1);
       });
 
       it('returns PRICE_CHANGED when the Flash ended between quote and confirm', async () => {
@@ -935,6 +947,543 @@ describe('Rewards application services', () => {
         await expect(
           f.redemptionService.findByKey(adminId, 'refund-key-1'),
         ).rejects.toMatchObject({ code: 'IDEMPOTENCY_KEY_CONFLICT' });
+      });
+    });
+  });
+
+  describe('FlashSaleLifecycleService', () => {
+    it('settles ended sales first and returns unsold quota, then reserves starting sales', async () => {
+      const flashRepo = new InMemoryFlashSaleRepository();
+      const uow = new PassThroughUnitOfWork();
+      const now = new Date('2026-10-14T12:00:00.000Z');
+      const voucherRepo = new InMemoryVoucherRepository();
+      voucherRepo.vouchers.set('v1', {
+        ...voucher,
+        id: 'v1',
+        stockRemaining: 10,
+        codesAvailable: 10,
+      });
+      voucherRepo.vouchers.set('v2', {
+        ...voucher,
+        id: 'v2',
+        stockRemaining: 20,
+        codesAvailable: 20,
+      });
+      const lifecycle = new FlashSaleLifecycleService({
+        flashSales: flashRepo,
+        vouchers: voucherRepo,
+        unitOfWork: uow,
+      });
+
+      flashRepo.voucherStocks.set('v1', 10);
+      flashRepo.voucherStocks.set('v2', 20);
+
+      // Sale 1: ended (needs settle)
+      await flashRepo.insertSale({
+        id: 'sale-1',
+        code: 'FS-261014-A',
+        title: 'Old Sale',
+        createdById: adminId,
+        startsAt: '2026-10-14T08:00:00.000Z',
+        endsAt: '2026-10-14T11:00:00.000Z',
+        rules: { requireRecentSurvey: true, blockFlagged: true },
+        items: [
+          {
+            id: 'item-1',
+            voucherId: 'v1',
+            flashPoints: 30,
+            quota: 10,
+            perUserCap: 1,
+          },
+        ],
+      });
+      // It was reserved and 6 sold
+      const s1 = flashRepo.sales.find((s) => s.id === 'sale-1')!;
+      s1.reservedAt = '2026-10-14T08:00:00.000Z';
+      s1.items[0].sold = 6;
+
+      // Sale 2: starting now (needs reserve)
+      await flashRepo.insertSale({
+        id: 'sale-2',
+        code: 'FS-261014-B',
+        title: 'New Sale',
+        createdById: adminId,
+        startsAt: '2026-10-14T12:00:00.000Z',
+        endsAt: '2026-10-14T14:00:00.000Z',
+        rules: { requireRecentSurvey: true, blockFlagged: true },
+        items: [
+          {
+            id: 'item-2',
+            voucherId: 'v2',
+            flashPoints: 40,
+            quota: 5,
+            perUserCap: 1,
+          },
+        ],
+      });
+
+      const summary = await lifecycle.runDue(now, 10);
+      expect(summary.settled).toBe(1);
+      expect(summary.reserved).toBe(1);
+      expect(summary.reservationFailed).toBe(0);
+
+      // Stock checks:
+      // v1 was 10, return unsold = 10 - 6 = 4 -> 14
+      expect(flashRepo.voucherStocks.get('v1')).toBe(14);
+      // v2 was 20, reserve quota 5 -> 15
+      expect(flashRepo.voucherStocks.get('v2')).toBe(15);
+
+      // Audit events emitted
+      expect(
+        flashRepo.auditEvents.some(
+          (e) => e.eventType === 'REWARDS_FLASH_SALE_SETTLED',
+        ),
+      ).toBe(true);
+      expect(
+        flashRepo.auditEvents.some(
+          (e) => e.eventType === 'REWARDS_FLASH_SALE_STARTED',
+        ),
+      ).toBe(true);
+    });
+
+    it('skips reservation when voucher stock is insufficient', async () => {
+      const flashRepo = new InMemoryFlashSaleRepository();
+      const uow = new PassThroughUnitOfWork();
+      const now = new Date('2026-10-14T12:00:00.000Z');
+      const voucherRepo = new InMemoryVoucherRepository();
+      voucherRepo.vouchers.set('v1', {
+        ...voucher,
+        id: 'v1',
+        stockRemaining: 2,
+      });
+      const lifecycle = new FlashSaleLifecycleService({
+        flashSales: flashRepo,
+        vouchers: voucherRepo,
+        unitOfWork: uow,
+      });
+
+      flashRepo.voucherStocks.set('v1', 2); // only 2 left
+
+      await flashRepo.insertSale({
+        id: 'sale-insufficient',
+        code: 'FS-261014-C',
+        title: 'Quota Exceeds Stock',
+        createdById: adminId,
+        startsAt: '2026-10-14T12:00:00.000Z',
+        endsAt: '2026-10-14T14:00:00.000Z',
+        rules: { requireRecentSurvey: true, blockFlagged: true },
+        items: [
+          {
+            id: 'item-3',
+            voucherId: 'v1',
+            flashPoints: 30,
+            quota: 10,
+            perUserCap: 1,
+          },
+        ],
+      });
+
+      const summary = await lifecycle.runDue(now, 10);
+      expect(summary.reserved).toBe(0);
+      expect(summary.reservationFailed).toBe(1);
+      expect(flashRepo.voucherStocks.get('v1')).toBe(2);
+    });
+
+    function lifecycleFixture(stock = 20, codes = 20) {
+      const flashRepo = new InMemoryFlashSaleRepository();
+      const voucherRepo = new InMemoryVoucherRepository();
+      voucherRepo.vouchers.set('v1', {
+        ...voucher,
+        id: 'v1',
+        stockRemaining: stock,
+        codesAvailable: codes,
+      });
+      flashRepo.voucherStocks.set('v1', stock);
+      const lifecycle = new FlashSaleLifecycleService({
+        flashSales: flashRepo,
+        vouchers: voucherRepo,
+        unitOfWork: new PassThroughUnitOfWork(),
+      });
+      const insert = (
+        id: string,
+        startsAt: string,
+        endsAt: string,
+        quota = 5,
+      ) =>
+        flashRepo.insertSale({
+          id,
+          code: `FS-261014-${id.slice(-1).toUpperCase()}`,
+          title: id,
+          createdById: adminId,
+          startsAt,
+          endsAt,
+          rules: { requireRecentSurvey: false, blockFlagged: false },
+          items: [
+            {
+              id: `${id}-item`,
+              voucherId: 'v1',
+              flashPoints: 30,
+              quota,
+              perUserCap: 1,
+            },
+          ],
+        });
+      return { flashRepo, lifecycle, insert };
+    }
+
+    it('RESERVATION_FAILED sets ended_early_at + settled, and the sale is never picked again', async () => {
+      const { flashRepo, lifecycle, insert } = lifecycleFixture(2, 2);
+      const now = new Date('2026-10-14T12:00:00.000Z');
+      await insert(
+        'sale-a',
+        '2026-10-14T12:00:00.000Z',
+        '2026-10-14T14:00:00.000Z',
+        10,
+      );
+
+      const first = await lifecycle.runDue(now, 10);
+      expect(first).toMatchObject({ reservationFailed: 1, errored: 0 });
+      const sale = flashRepo.sales[0];
+      expect(sale.endedEarlyAt).toBe(now.toISOString());
+      expect(sale.settledAt).toBe(now.toISOString());
+      expect(sale.endReason).toBe('RESERVATION_FAILED');
+      expect(await flashRepo.findDueForReserve(now, 10)).toHaveLength(0);
+
+      const second = await lifecycle.runDue(now, 10);
+      expect(second).toMatchObject({
+        reservationFailed: 0,
+        reserved: 0,
+        settled: 0,
+      });
+    });
+
+    it('does not reserve when unique codes are fewer than quota', async () => {
+      const { flashRepo, lifecycle, insert } = lifecycleFixture(20, 3);
+      await insert(
+        'sale-a',
+        '2026-10-14T12:00:00.000Z',
+        '2026-10-14T14:00:00.000Z',
+        5,
+      );
+      const summary = await lifecycle.runDue(
+        new Date('2026-10-14T12:00:00.000Z'),
+        10,
+      );
+      expect(summary.reservationFailed).toBe(1);
+      expect(flashRepo.voucherStocks.get('v1')).toBe(20);
+    });
+
+    it('findDueForReserve skips settled and already-ended sales', async () => {
+      const { flashRepo, insert } = lifecycleFixture();
+      const now = new Date('2026-10-14T15:00:00.000Z');
+      await insert(
+        'sale-a',
+        '2026-10-14T12:00:00.000Z',
+        '2026-10-14T14:00:00.000Z',
+      );
+      await insert(
+        'sale-b',
+        '2026-10-14T12:00:00.000Z',
+        '2026-10-14T18:00:00.000Z',
+      );
+      flashRepo.sales[1].settledAt = '2026-10-14T13:00:00.000Z';
+      expect(await flashRepo.findDueForReserve(now, 10)).toHaveLength(0);
+    });
+
+    it('settles a fully sold-out sale before endsAt', async () => {
+      const { flashRepo, lifecycle, insert } = lifecycleFixture(15, 15);
+      await insert(
+        'sale-a',
+        '2026-10-14T12:00:00.000Z',
+        '2026-10-14T18:00:00.000Z',
+        5,
+      );
+      await lifecycle.runDue(new Date('2026-10-14T12:00:00.000Z'), 10);
+      expect(flashRepo.voucherStocks.get('v1')).toBe(10);
+      flashRepo.sales[0].items[0].sold = 5;
+
+      const summary = await lifecycle.runDue(
+        new Date('2026-10-14T13:00:00.000Z'),
+        10,
+      );
+      expect(summary.settled).toBe(1);
+      expect(flashRepo.sales[0].settledAt).not.toBeNull();
+      expect(flashRepo.sales[0].endReason).toBe('SOLD_OUT');
+      expect(flashRepo.voucherStocks.get('v1')).toBe(10);
+    });
+
+    it('counts and logs a per-sale error instead of swallowing it', async () => {
+      const { flashRepo, lifecycle, insert } = lifecycleFixture();
+      await insert(
+        'sale-a',
+        '2026-10-14T12:00:00.000Z',
+        '2026-10-14T14:00:00.000Z',
+      );
+      jest.spyOn(flashRepo, 'adjustVoucherStock').mockResolvedValue(false);
+      const logger = {
+        log: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+        debug: jest.fn(),
+      };
+      const summary = await lifecycle.runDue(
+        new Date('2026-10-14T12:00:00.000Z'),
+        10,
+        logger,
+      );
+      expect(summary.errored).toBe(1);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('sale-a'),
+      );
+    });
+
+    it('FlashSaleLifecycleJob: reservationFailed is skipped, errored is failed', async () => {
+      const run = (result: Record<string, number>) =>
+        new FlashSaleLifecycleJob({
+          runDue: async () => ({
+            reserved: 0,
+            settled: 0,
+            reservationFailed: 0,
+            errored: 0,
+            ...result,
+          }),
+        } as any).run({
+          now: new Date(),
+          shouldContinue: async () => true,
+          logger: { log() {}, warn() {}, error() {}, debug() {} },
+        } as any);
+      const cancelled = await run({ reservationFailed: 1 });
+      expect(cancelled.status).toBe('SUCCEEDED');
+      expect(cancelled.counts).toMatchObject({
+        failedCount: 0,
+        skippedCount: 1,
+      });
+      const mixed = await run({ reserved: 1, errored: 1 });
+      expect(mixed.status).toBe('PARTIAL');
+      await expect(run({ errored: 1 })).rejects.toThrow();
+    });
+  });
+
+  describe('RewardsAdminFlashService', () => {
+    it('creates, lists, details, updates draft, and ends active flash sale', async () => {
+      const flashRepo = new InMemoryFlashSaleRepository();
+      const voucherRepo = new InMemoryVoucherRepository();
+      voucherRepo.vouchers.set(voucher.id, { ...voucher, stockRemaining: 10 });
+      const userDirectory: AdminUserDirectoryPort = {
+        findStatuses: async () => new Map(),
+        findLabels: async () =>
+          new Map([
+            [adminId, { displayName: 'Admin Hùng', email: 'admin@fpt.edu.vn' }],
+          ]),
+        filterMatching: async () => [],
+      };
+      const adminCap: AdminCapabilityPort = {
+        findCurrentCapability: async (userId) => ({
+          userId,
+          role: 'ADMIN',
+          status: 'ACTIVE',
+        }),
+      };
+      const uow = new PassThroughUnitOfWork();
+      const now = new Date('2026-10-14T12:00:00.000Z');
+
+      const service = new RewardsAdminFlashService({
+        flashRepo,
+        voucherRepo,
+        userDirectory,
+        adminCapability: adminCap,
+        unitOfWork: uow,
+        now: () => now,
+      });
+
+      // 1. Create
+      const created = await service.create(adminId, {
+        title: 'Flash Test 1',
+        startsAt: '2026-10-14T14:00:00.000Z',
+        endsAt: '2026-10-14T16:00:00.000Z',
+        rules: {
+          requireRecentSurvey: true,
+          blockFlagged: true,
+          remindBefore10m: true,
+        },
+        items: [{ voucherId, flashPoints: 30, quota: 2, perUserCap: 1 }],
+      });
+      expect(created.flashSale.title).toBe('Flash Test 1');
+      expect(created.flashSale.code).toMatch(/^FS-261014-[A-Z]$/);
+      expect(created.flashSale.createdBy.name).toBe('Admin Hùng');
+
+      // 2. List
+      const list = await service.list(adminId);
+      expect(list.items).toHaveLength(1);
+      expect(list.summary.upcoming).toBe(1);
+
+      // 3. Detail
+      const detail = await service.get(adminId, created.flashSale.id);
+      expect(detail.flashSale.id).toBe(created.flashSale.id);
+
+      // 4. Update
+      const updated = await service.update(created.flashSale.id, adminId, {
+        title: 'Flash Test 1 Updated',
+        startsAt: '2026-10-14T14:30:00.000Z',
+        endsAt: '2026-10-14T16:30:00.000Z',
+        rules: {
+          requireRecentSurvey: true,
+          blockFlagged: true,
+          remindBefore10m: true,
+        },
+        items: [{ voucherId, flashPoints: 35, quota: 2, perUserCap: 1 }],
+      });
+      expect(updated.flashSale.title).toBe('Flash Test 1 Updated');
+
+      // 5. End early while not active fails
+      await expect(
+        service.endEarly(created.flashSale.id, adminId, {
+          reason: 'WRONG_PRICE',
+        }),
+      ).rejects.toMatchObject({ code: 'FLASH_NOT_ACTIVE' });
+
+      // Mark it active
+      const sale = flashRepo.sales.find((s) => s.id === created.flashSale.id)!;
+      sale.startsAt = '2026-10-14T10:00:00.000Z';
+      sale.reservedAt = '2026-10-14T10:00:00.000Z';
+
+      // Now end early succeeds
+      const ended = await service.endEarly(created.flashSale.id, adminId, {
+        reason: 'WRONG_PRICE',
+        note: 'Wrong discount applied',
+      });
+      expect(ended.flashSale.endedEarlyAt).not.toBeNull();
+      expect(ended.flashSale.endReason).toBe('WRONG_PRICE');
+
+      // Ending again fails with FLASH_ALREADY_ENDED
+      await expect(
+        service.endEarly(created.flashSale.id, adminId, {
+          reason: 'WRONG_PRICE',
+        }),
+      ).rejects.toMatchObject({ code: 'FLASH_ALREADY_ENDED' });
+    });
+
+    function adminFlashFixture(cap: 'ACTIVE' | 'NONE' = 'ACTIVE') {
+      const flashRepo = new InMemoryFlashSaleRepository();
+      const voucherRepo = new InMemoryVoucherRepository();
+      voucherRepo.vouchers.set(voucher.id, {
+        ...voucher,
+        stockRemaining: 10,
+        codesAvailable: 10,
+      });
+      const service = new RewardsAdminFlashService({
+        flashRepo,
+        voucherRepo,
+        adminCapability: {
+          findCurrentCapability: async (userId) =>
+            cap === 'ACTIVE'
+              ? { userId, role: 'ADMIN', status: 'ACTIVE' }
+              : null,
+        } as AdminCapabilityPort,
+        unitOfWork: new PassThroughUnitOfWork(),
+        now: () => new Date('2026-10-14T12:00:00.000Z'),
+      });
+      const input = {
+        title: 'Flash',
+        startsAt: '2026-10-14T14:00:00.000Z',
+        endsAt: '2026-10-14T16:00:00.000Z',
+        rules: {
+          requireRecentSurvey: false,
+          blockFlagged: false,
+          remindBefore10m: false,
+        },
+        items: [{ voucherId, flashPoints: 30, quota: 2, perUserCap: 1 }],
+      };
+      return { flashRepo, service, input };
+    }
+
+    it('list and get re-check live admin capability', async () => {
+      const { service } = adminFlashFixture('NONE');
+      await expect(service.list(adminId)).rejects.toMatchObject({
+        code: 'REWARDS_ADMIN_CAPABILITY_REQUIRED',
+      });
+      await expect(service.get(adminId, adminId)).rejects.toMatchObject({
+        code: 'REWARDS_ADMIN_CAPABILITY_REQUIRED',
+      });
+    });
+
+    it('update writes a unique audit key per mutation and rejects a reserved sale', async () => {
+      const { flashRepo, service, input } = adminFlashFixture();
+      const { flashSale } = await service.create(adminId, input);
+      await service.update(flashSale.id, adminId, input);
+      await service.update(flashSale.id, adminId, input);
+      const keys = flashRepo.auditEvents
+        .filter((e) => e.eventType === 'REWARDS_FLASH_SALE_UPDATED')
+        .map((e) => e.idempotencyKey);
+      expect(keys).toHaveLength(2);
+      expect(new Set(keys).size).toBe(2);
+
+      flashRepo.sales[0].reservedAt = '2026-10-14T12:00:00.000Z';
+      await expect(
+        service.update(flashSale.id, adminId, input),
+      ).rejects.toMatchObject({ code: 'FLASH_ALREADY_STARTED' });
+    });
+
+    it('maps lifecycle end reasons outside the admin enum to null', async () => {
+      const { flashRepo, service, input } = adminFlashFixture();
+      const { flashSale } = await service.create(adminId, input);
+      flashRepo.sales[0].endReason = 'SOLD_OUT';
+      const list = await service.list(adminId);
+      expect(list.items[0].endReason).toBeNull();
+      flashRepo.sales[0].endReason = 'WRONG_PRICE';
+      expect(
+        (await service.get(adminId, flashSale.id)).flashSale.endReason,
+      ).toBe('WRONG_PRICE');
+    });
+
+    it('create ends with FLASH_CODE_EXHAUSTED after 3 code collisions, and does not retry other unique violations', async () => {
+      const { flashRepo, service, input } = adminFlashFixture();
+      const insert = jest.spyOn(flashRepo, 'insertSale');
+      insert.mockRejectedValue(
+        Object.assign(new Error('Unique constraint failed'), {
+          code: 'P2002',
+          meta: { target: ['code'] },
+        }),
+      );
+      await expect(service.create(adminId, input)).rejects.toMatchObject({
+        code: 'FLASH_CODE_EXHAUSTED',
+      });
+      expect(insert).toHaveBeenCalledTimes(3);
+
+      insert.mockReset();
+      insert.mockRejectedValue(
+        Object.assign(new Error('Unique constraint failed'), {
+          code: 'P2002',
+          meta: { target: ['idempotency_key'] },
+        }),
+      );
+      await expect(service.create(adminId, input)).rejects.toMatchObject({
+        code: 'P2002',
+      });
+      expect(insert).toHaveBeenCalledTimes(1);
+    });
+
+    it('endEarly fails loudly when the conditional updates affect no row', async () => {
+      const { flashRepo, service, input } = adminFlashFixture();
+      const { flashSale } = await service.create(adminId, input);
+      flashRepo.sales[0].startsAt = '2026-10-14T10:00:00.000Z';
+      flashRepo.sales[0].reservedAt = '2026-10-14T10:00:00.000Z';
+      jest.spyOn(flashRepo, 'markSettled').mockResolvedValue(false);
+      await expect(
+        service.endEarly(flashSale.id, adminId, { reason: 'WRONG_PRICE' }),
+      ).rejects.toThrow('Failed to end flash sale');
+      expect(
+        flashRepo.auditEvents.some(
+          (e) => e.eventType === 'REWARDS_FLASH_SALE_ENDED_EARLY',
+        ),
+      ).toBe(false);
+    });
+
+    it('create rejects a non-shared voucher whose unique codes are fewer than quota', async () => {
+      const { service, input } = adminFlashFixture();
+      const tooMany = { ...input, items: [{ ...input.items[0], quota: 11 }] };
+      await expect(service.create(adminId, tooMany)).rejects.toMatchObject({
+        code: 'FLASH_QUOTA_EXCEEDS_STOCK',
       });
     });
   });

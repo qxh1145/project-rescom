@@ -634,7 +634,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
           ? HttpStatus.FORBIDDEN
           : exception.code === 'VOUCHER_NOT_FOUND' ||
               exception.code === 'QUOTE_NOT_FOUND' ||
-              exception.code === 'REDEMPTION_NOT_FOUND'
+              exception.code === 'REDEMPTION_NOT_FOUND' ||
+              exception.code === 'FLASH_SALE_NOT_FOUND'
             ? HttpStatus.NOT_FOUND
             : HttpStatus.CONFLICT;
       code = exception.code;

@@ -424,3 +424,11 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 ## Deferred from: code review of 12-8-quote-redemption-transaction (2026-10-14)
 
 - `redemption_quotes` grows unbounded (no TTL purge / cleanup job); add purge of expired quotes alongside quote rate limit.
+
+## Deferred from: code review of 12-9-flash-sale-lifecycle (2026-10-14)
+
+- `flash_item_claims` thiếu FK `user_id` / composite FK `redemptions(id,user_id,flash_sale_item_id)`; cap chưa nhả khi refund (12.10).
+- Admin flash `list()` N+1 không phân trang.
+- `adjustVoucherStock` nhánh dương chưa chặn vượt `stock_total`; kiểm CHECK trong schema.
+- Chữ ký polymorphic + `(deps as any)` trong `rewards-admin-flash.service.ts`.
+- Overlap candidates gồm sale chưa reserve đã qua end khi job lag.

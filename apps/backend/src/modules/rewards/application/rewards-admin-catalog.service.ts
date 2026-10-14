@@ -105,6 +105,8 @@ export class RewardsAdminCatalogService {
     return flashes
       .filter(
         (f) =>
+          f.reservedAt !== null &&
+          f.settledAt === null &&
           now < Date.parse(f.endsAt) &&
           (!f.endedEarlyAt || now < Date.parse(f.endedEarlyAt)),
       )
@@ -118,6 +120,8 @@ export class RewardsAdminCatalogService {
       .find(
         ({ f, item }) =>
           item.voucherId === v.id &&
+          f.reservedAt !== null &&
+          f.settledAt === null &&
           Date.parse(f.startsAt) <= now &&
           now < Date.parse(f.endsAt) &&
           (!f.endedEarlyAt || now < Date.parse(f.endedEarlyAt)) &&
@@ -246,6 +250,8 @@ export class RewardsAdminCatalogService {
         flashReserved: all.reduce((n, v) => n + v.stock.flashReserved, 0),
         activeFlashSales: flashes.filter(
           (f) =>
+            f.reservedAt !== null &&
+            f.settledAt === null &&
             Date.parse(f.startsAt) <= now.getTime() &&
             now.getTime() < Date.parse(f.endsAt) &&
             (!f.endedEarlyAt || now.getTime() < Date.parse(f.endedEarlyAt)),

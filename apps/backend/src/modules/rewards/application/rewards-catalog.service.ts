@@ -40,6 +40,8 @@ export class RewardsCatalogService {
       .find(
         ({ flash, item }) =>
           item.voucherId === v.id &&
+          flash.reservedAt !== null &&
+          flash.settledAt === null &&
           Date.parse(flash.startsAt) <= now &&
           now < Date.parse(flash.endsAt) &&
           (!flash.endedEarlyAt || now < Date.parse(flash.endedEarlyAt)) &&
@@ -180,14 +182,19 @@ export class RewardsCatalogService {
             .flatMap((item) => {
               const v = byId.get(item.voucherId);
               if (!v) return [];
+              const isSettled = f.settledAt !== null;
+              const isEnded =
+                isSettled ||
+                (f.endedEarlyAt &&
+                  Date.parse(f.endedEarlyAt) <= now.getTime()) ||
+                now.getTime() >= Date.parse(f.endsAt);
               const state =
                 item.sold >= item.quota
                   ? 'SOLD_OUT'
-                  : (f.endedEarlyAt &&
-                        Date.parse(f.endedEarlyAt) <= now.getTime()) ||
-                      now.getTime() >= Date.parse(f.endsAt)
+                  : isEnded
                     ? 'ENDED'
-                    : now.getTime() < Date.parse(f.startsAt)
+                    : f.reservedAt === null ||
+                        now.getTime() < Date.parse(f.startsAt)
                       ? 'UPCOMING'
                       : 'ACTIVE';
               return [

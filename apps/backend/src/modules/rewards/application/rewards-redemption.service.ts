@@ -309,8 +309,9 @@ export class RewardsRedemptionService {
           );
         }
 
-        // 2.g: Conditional stock decrement. Flash quota is carved out of
-        // voucher stock (D2), so a Flash purchase decrements both counters.
+        // 2.g: Conditional stock decrement. A FLASH purchase only increments
+        // flash_sale_items.sold (quota left stock_remaining at reservation).
+        // A BASE/PROMO purchase decrements stock_remaining.
         const soldOut = (reason: string, remaining: number) =>
           new RedemptionRejectionException('SOLD_OUT', reason, {
             voucherId: voucher.id,
@@ -324,13 +325,14 @@ export class RewardsRedemptionService {
           if (!incremented) {
             throw soldOut('Flash quota exhausted', voucher.stockRemaining);
           }
-        }
-        const decremented = await this.deps.vouchers.decrementRegularStock(
-          voucher.id,
-          voucher.updatedAt,
-        );
-        if (!decremented) {
-          throw soldOut('Voucher stock exhausted', 0);
+        } else {
+          const decremented = await this.deps.vouchers.decrementRegularStock(
+            voucher.id,
+            voucher.updatedAt,
+          );
+          if (!decremented) {
+            throw soldOut('Voucher stock exhausted', 0);
+          }
         }
 
         // 2.h: Claim code
@@ -438,6 +440,15 @@ export class RewardsRedemptionService {
           reference,
           createdAt: currentTime.toISOString(),
         });
+
+        // 2.j-claim: DB backstop for BR-19 when perUserCap = 1
+        if (flash && flash.perUserCap === 1) {
+          await this.deps.redemptions.claimFlashItem(
+            flash.id,
+            userId,
+            redemptionId,
+          );
+        }
 
         // Link code to redemption after redemption record is inserted
         if (voucherCodeId) {

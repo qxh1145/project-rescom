@@ -75,3 +75,10 @@ export const STORAGE_CLEANUP_JOB = {
   intervalMs: 60 * MINUTE_MS,
   leaseTtlMs: 15 * MINUTE_MS,
 } as const;
+
+export const FLASH_SALE_LIFECYCLE_JOB = {
+  name: 'flash-sale-lifecycle',
+  intervalMs: 15_000,
+  leaseTtlMs: 2 * MINUTE_MS,
+  batchSize: 20,
+} as const;

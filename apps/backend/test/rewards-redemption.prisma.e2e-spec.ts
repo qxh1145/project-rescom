@@ -481,6 +481,7 @@ describeSuite(
           title: 'Flash',
           startsAt: new Date(now - 3600_000),
           endsAt: new Date(now + 3600_000),
+          reservedAt: new Date(now - 3600_000),
           rules: {
             requireRecentSurvey: false,
             blockFlagged: false,
@@ -679,7 +680,12 @@ describeSuite(
       expect(
         (await harness.prisma.voucher.findUnique({ where: { id: voucher.id } }))
           ?.stockRemaining,
-      ).toBe(4);
+      ).toBe(5);
+      expect(
+        await harness.prisma.flashItemClaim.count({
+          where: { flashSaleItemId: item.id },
+        }),
+      ).toBe(1);
       expect(
         await harness.prisma.redemption.count({
           where: { voucherId: voucher.id, status: 'SUCCEEDED' },

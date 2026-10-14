@@ -68,6 +68,11 @@ export interface RedemptionRepositoryPort {
     userId: string,
     flashSaleItemId: string,
   ): Promise<number>;
+  claimFlashItem(
+    itemId: string,
+    userId: string,
+    redemptionId: string,
+  ): Promise<void>;
   getDailyPointsLimit(): Promise<number>;
   setDailyPointsLimit(limit: number, updatedById?: string): Promise<void>;
   findCodeById(id: string): Promise<ClaimedVoucherCode | null>;

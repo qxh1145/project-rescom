@@ -123,6 +123,18 @@ describe('Prisma migration chain', () => {
     expect(stripComments(reconcileSql)).not.toMatch(/to_regclass/i);
   });
 
+  it('keeps 12.9 flash sale lifecycle migration unconditional and mirrors check in invariants', () => {
+    const flashLifecycle = readMigration(
+      '20261015100000_rewards_flash_sale_lifecycle',
+    );
+    expect(flashLifecycle).not.toMatch(/to_regclass/i);
+    expect(flashLifecycle).toContain('flash_sales_reserved_at_check');
+    expect(invariantsSql).toContain('flash_sales_reserved_at_check');
+    expect(flashLifecycle).toContain('flash_item_claims');
+    expect(flashLifecycle).toContain('flash_sales_starts_at_due_idx');
+    expect(flashLifecycle).toContain('flash_sales_ends_at_due_idx');
+  });
+
   it('re-asserts every object created inside an earlier guarded block', () => {
     const invariants = withoutGuardedBlocks(invariantsSql);
     const patterns = [

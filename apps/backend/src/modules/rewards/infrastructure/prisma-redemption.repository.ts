@@ -257,6 +257,20 @@ export class PrismaRedemptionRepository implements RedemptionRepositoryPort {
     });
   }
 
+  async claimFlashItem(
+    itemId: string,
+    userId: string,
+    redemptionId: string,
+  ): Promise<void> {
+    await currentClient(this.prisma).flashItemClaim.create({
+      data: {
+        flashSaleItemId: itemId,
+        userId,
+        redemptionId,
+      },
+    });
+  }
+
   async getDailyPointsLimit(): Promise<number> {
     const row = await currentClient(this.prisma).rewardsSettings.findUnique({
       where: { id: 1 },
