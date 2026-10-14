@@ -352,3 +352,84 @@ END $$;
 CREATE INDEX IF NOT EXISTS "flash_sales_starts_at_due_idx" ON "flash_sales"("starts_at") WHERE "reserved_at" IS NULL AND "settled_at" IS NULL;
 CREATE INDEX IF NOT EXISTS "flash_sales_ends_at_due_idx" ON "flash_sales"("ends_at") WHERE "reserved_at" IS NOT NULL AND "settled_at" IS NULL;
 
+-- Rewards 12.10: my vouchers, reminders & faulty-code resolution
+DROP INDEX IF EXISTS "voucher_codes_unissued_idx";
+CREATE INDEX IF NOT EXISTS "voucher_codes_unissued_idx" ON "voucher_codes"("voucher_id") WHERE "redemption_id" IS NULL AND "issue_report_id" IS NULL;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'voucher_codes_assignment_mutual_exclusion' AND conrelid = '"voucher_codes"'::regclass) THEN
+    ALTER TABLE "voucher_codes" ADD CONSTRAINT "voucher_codes_assignment_mutual_exclusion" CHECK (
+      NOT ("redemption_id" IS NOT NULL AND "issue_report_id" IS NOT NULL)
+    );
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'code_issue_reports_resolution_note_length_check' AND conrelid = '"code_issue_reports"'::regclass) THEN
+    ALTER TABLE "code_issue_reports" ADD CONSTRAINT "code_issue_reports_resolution_note_length_check" CHECK (
+      "resolution_note" IS NULL OR char_length("resolution_note") <= 500
+    );
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'code_issue_reports_outcome_shape_check' AND conrelid = '"code_issue_reports"'::regclass) THEN
+    ALTER TABLE "code_issue_reports" ADD CONSTRAINT "code_issue_reports_outcome_shape_check" CHECK (
+      (
+        "status" = 'OPEN' AND
+        "replacement_code_id" IS NULL AND
+        "refund_journal_id" IS NULL AND
+        "resolved_by_id" IS NULL AND
+        "resolved_at" IS NULL
+      ) OR (
+        "status" = 'REPLACED' AND
+        "replacement_code_id" IS NOT NULL AND
+        "refund_journal_id" IS NULL AND
+        "resolved_by_id" IS NOT NULL AND
+        "resolved_at" IS NOT NULL
+      ) OR (
+        "status" = 'REFUNDED' AND
+        "replacement_code_id" IS NULL AND
+        "refund_journal_id" IS NOT NULL AND
+        "resolved_by_id" IS NOT NULL AND
+        "resolved_at" IS NOT NULL
+      ) OR (
+        "status" = 'REJECTED' AND
+        "replacement_code_id" IS NULL AND
+        "refund_journal_id" IS NULL AND
+        "resolved_at" IS NOT NULL
+      )
+    );
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'redemption_usages_undo_until_check' AND conrelid = '"redemption_usages"'::regclass) THEN
+    ALTER TABLE "redemption_usages" ADD CONSTRAINT "redemption_usages_undo_until_check" CHECK (
+      "undo_until" = "used_at" + INTERVAL '24 hours'
+    );
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'redemption_refunds_points_positive_check' AND conrelid = '"redemption_refunds"'::regclass) THEN
+    ALTER TABLE "redemption_refunds" ADD CONSTRAINT "redemption_refunds_points_positive_check" CHECK ("points" > 0);
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'redemption_reminders_window_check' AND conrelid = '"redemption_reminders"'::regclass) THEN
+    ALTER TABLE "redemption_reminders" ADD CONSTRAINT "redemption_reminders_window_check" CHECK (
+      "window" IN ('7D', '1D')
+    );
+  END IF;
+END $$;
+
+DROP TRIGGER IF EXISTS "redemption_refunds_append_only" ON "redemption_refunds";
+CREATE TRIGGER "redemption_refunds_append_only" BEFORE UPDATE OR DELETE ON "redemption_refunds"
+  FOR EACH ROW EXECUTE FUNCTION "prevent_rewards_history_mutation"();
+
+DROP TRIGGER IF EXISTS "redemption_refunds_no_truncate" ON "redemption_refunds";
+CREATE TRIGGER "redemption_refunds_no_truncate" BEFORE TRUNCATE ON "redemption_refunds"
+  FOR EACH STATEMENT EXECUTE FUNCTION "prevent_rewards_history_mutation"();
+

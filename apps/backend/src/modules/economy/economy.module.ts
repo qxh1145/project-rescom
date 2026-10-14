@@ -4,6 +4,10 @@ import {
   SPEND_POINTS_PORT,
   SpendPointsPort,
 } from '../rewards/application/ports/spend-points.port';
+import {
+  REVERSE_SPEND_PORT,
+  ReverseSpendPort,
+} from '../rewards/application/ports/reverse-spend.port';
 import { ACCOUNT_FUNDING_PORT } from '../rewards/application/ports/account-standing.port';
 import { PrismaAccountFundingReader } from './infrastructure/prisma-account-funding.reader';
 import { PrismaWalletBalanceReader } from './infrastructure/prisma-wallet-balance.reader';
@@ -80,6 +84,20 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
             journalId: journal.id,
             idempotencyKey: journal.idempotencyKey,
           };
+        },
+      }),
+      inject: [LedgerService],
+    },
+    {
+      provide: REVERSE_SPEND_PORT,
+      useFactory: (ledger: LedgerService): ReverseSpendPort => ({
+        reverseSpend: async (params) => {
+          const journal = await ledger.reverseJournal({
+            targetJournalId: params.journalId,
+            idempotencyKey: params.idempotencyKey,
+            reason: params.reason,
+          });
+          return { journalId: journal.id };
         },
       }),
       inject: [LedgerService],
@@ -203,6 +221,7 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     WALLET_BALANCE_PORT,
     ACCOUNT_FUNDING_PORT,
     SPEND_POINTS_PORT,
+    REVERSE_SPEND_PORT,
     ADMIN_ECONOMY_STATS_PORT,
     LedgerService,
     TopUpService,

@@ -181,6 +181,7 @@ export class PrismaRedemptionRepository implements RedemptionRepositoryPort {
       FROM "voucher_codes"
       WHERE "voucher_id" = ${voucherId}::uuid
         AND "redemption_id" IS NULL
+        AND "issue_report_id" IS NULL
       ORDER BY "created_at" ASC, "id" ASC
       LIMIT 1
       FOR UPDATE SKIP LOCKED
@@ -219,6 +220,7 @@ export class PrismaRedemptionRepository implements RedemptionRepositoryPort {
         voucherId,
         status: 'SUCCEEDED',
         createdAt: { gte: since },
+        refund: null,
       },
     });
   }
@@ -236,6 +238,7 @@ export class PrismaRedemptionRepository implements RedemptionRepositoryPort {
           gte: startOfDay,
           lt: endOfDay,
         },
+        refund: null,
       },
       _sum: {
         pricePoints: true,
@@ -253,6 +256,7 @@ export class PrismaRedemptionRepository implements RedemptionRepositoryPort {
         userId,
         flashSaleItemId,
         status: 'SUCCEEDED',
+        refund: null,
       },
     });
   }

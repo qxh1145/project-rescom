@@ -297,10 +297,12 @@ describe('Prisma migration chain on PostgreSQL', () => {
   it('creates the IR.4b email delivery schema and notification types', async () => {
     if (!dbAvailable) return;
     const values = await enumValues('NotificationType');
-    expect(values.slice(-3)).toEqual([
+    expect(values.slice(-5)).toEqual([
       'TOPUP_REJECTED',
       'ACCOUNT_LOCKED',
       'ACCOUNT_UNLOCKED',
+      'VOUCHER_EXPIRING',
+      'CODE_ISSUE_RESOLVED',
     ]);
     const deliveries = await columnsOf('email_deliveries');
     expect(deliveries.has('idempotency_key')).toBe(true);
@@ -539,5 +541,122 @@ describe('Prisma migration 20261015100000_rewards_flash_sale_lifecycle on existi
       SELECT indexname FROM pg_indexes WHERE indexname IN
         ('flash_sales_starts_at_due_idx', 'flash_sales_ends_at_due_idx')`;
     expect(indexes).toHaveLength(2);
+  }, 240_000);
+
+  it('applies 20261016100000_rewards_my_vouchers_code_issues cleanly from a 20261015100000 database', async () => {
+    if (!dbAvailable) return;
+
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'rescom-12-10-migration-'),
+    );
+    const tmpPrisma = path.join(tmpDir, 'prisma');
+    fs.mkdirSync(tmpPrisma, { recursive: true });
+
+    const targetMigration = '20261016100000_rewards_my_vouchers_code_issues';
+    const testDbName = 'rescom_migration_12_10_upgrade_test';
+    const upgradeUrl = new URL(baseUrl.toString());
+    upgradeUrl.pathname = `/${testDbName}`;
+    const upgradeDbUrl = upgradeUrl.toString();
+
+    function deploy(schemaPath: string): void {
+      execFileSync(
+        process.execPath,
+        [prismaCli, 'migrate', 'deploy', '--schema', schemaPath],
+        {
+          cwd: backendDir,
+          env: { ...process.env, DATABASE_URL: upgradeDbUrl },
+          stdio: 'pipe',
+        },
+      );
+    }
+
+    try {
+      await admin.$executeRawUnsafe(
+        `DROP DATABASE IF EXISTS ${testDbName} WITH (FORCE)`,
+      );
+    } catch {
+      await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS ${testDbName}`);
+    }
+    await admin.$executeRawUnsafe(`CREATE DATABASE ${testDbName}`);
+
+    const db = new PrismaClient({ datasources: { db: { url: upgradeDbUrl } } });
+    await db.$connect();
+
+    try {
+      // 1. Deploy all migrations up to 20261015100000 (excluding targetMigration)
+      fs.cpSync(
+        path.join(backendDir, 'prisma', 'migrations'),
+        path.join(tmpPrisma, 'migrations'),
+        {
+          recursive: true,
+          filter: (src) => !src.includes(targetMigration),
+        },
+      );
+      fs.copyFileSync(
+        path.join(backendDir, 'prisma', 'schema.prisma'),
+        path.join(tmpPrisma, 'schema.prisma'),
+      );
+      deploy(path.join(tmpPrisma, 'schema.prisma'));
+
+      await expect(
+        db.$queryRaw`SELECT 1 FROM information_schema.tables WHERE table_name = 'redemption_usages'`,
+      ).resolves.toHaveLength(0);
+
+      // 2. Insert pre-existing user, voucher, and redemption
+      const ids = {
+        user: '00000000-0000-4000-8000-000000000011',
+        voucher: '00000000-0000-4000-8000-000000000012',
+        code: '00000000-0000-4000-8000-000000000013',
+        redemption: '00000000-0000-4000-8000-000000000014',
+      };
+      await db.$executeRaw`INSERT INTO users (id, email, updated_at) VALUES (${ids.user}::uuid, 'prior10@example.test', now())`;
+      await db.$executeRaw`INSERT INTO vouchers (id, title, brand_id, category, value_vnd, base_points, redeem_starts_at, redeem_ends_at, code_expires_at, created_by_id, is_shared_code, updated_at)
+        VALUES (${ids.voucher}::uuid, 'Prior voucher 10', 'highlands', 'COFFEE', 50000, 100, now(), now() + interval '1 day', now() + interval '10 days', ${ids.user}::uuid, false, now())`;
+      await db.$executeRaw`INSERT INTO voucher_codes (id, voucher_id, code) VALUES (${ids.code}::uuid, ${ids.voucher}::uuid, 'CODE1234')`;
+      await db.$executeRaw`INSERT INTO redemptions (id, user_id, voucher_id, voucher_code_id, idempotency_key, status, price_points, price_source, price_version, journal_id, balance_after, reference)
+        VALUES (${ids.redemption}::uuid, ${ids.user}::uuid, ${ids.voucher}::uuid, ${ids.code}::uuid, 'prior10-key', 'SUCCEEDED', 100, 'BASE', 1, '00000000-0000-4000-8000-000000000015'::uuid, 200, 'RDM-PRIOR010')`;
+
+      // 3. Deploy target migration
+      expect(() =>
+        deploy(path.join(backendDir, 'prisma', 'schema.prisma')),
+      ).not.toThrow();
+
+      // 4. Verify new tables and constraints exist and work
+      const tables = await db.$queryRaw<{ table_name: string }[]>`
+        SELECT table_name FROM information_schema.tables WHERE table_name IN ('redemption_usages', 'redemption_refunds', 'redemption_reminders')`;
+      expect(tables).toHaveLength(3);
+
+      // Verify undo_until check
+      await expect(
+        db.$executeRaw`INSERT INTO redemption_usages (redemption_id, used_at, undo_until)
+          VALUES (${ids.redemption}::uuid, now(), now() + interval '1 hour')`,
+      ).rejects.toThrow(/redemption_usages_undo_until_check/);
+
+      // Verify append-only trigger on redemption_refunds
+      const reportId = '00000000-0000-4000-8000-000000000016';
+      await db.$executeRaw`INSERT INTO code_issue_reports (id, redemption_id, reason, status)
+        VALUES (${reportId}::uuid, ${ids.redemption}::uuid, 'CODE_INVALID', 'OPEN')`;
+      const refundId = '00000000-0000-4000-8000-000000000017';
+      await db.$executeRaw`INSERT INTO redemption_refunds (id, redemption_id, report_id, journal_id, reference, points)
+        VALUES (${refundId}::uuid, ${ids.redemption}::uuid, ${reportId}::uuid, '00000000-0000-4000-8000-000000000018'::uuid, 'RFD-2026-AAAA', 100)`;
+
+      await expect(
+        db.$executeRaw`UPDATE redemption_refunds SET points = 200 WHERE id = ${refundId}::uuid`,
+      ).rejects.toThrow(/rewards history is append-only/);
+
+      await expect(
+        db.$executeRaw`DELETE FROM redemption_refunds WHERE id = ${refundId}::uuid`,
+      ).rejects.toThrow(/rewards history is append-only/);
+    } finally {
+      await db.$disconnect();
+      try {
+        await admin.$executeRawUnsafe(
+          `DROP DATABASE IF EXISTS ${testDbName} WITH (FORCE)`,
+        );
+      } catch {
+        await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS ${testDbName}`);
+      }
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   }, 240_000);
 });

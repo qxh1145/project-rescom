@@ -12,7 +12,11 @@ import {
 
 const relations = {
   brand: true,
-  _count: { select: { codes: { where: { redemptionId: null } } } },
+  _count: {
+    select: {
+      codes: { where: { redemptionId: null, issueReportId: null } },
+    },
+  },
 } as const;
 type VoucherRow = Voucher & {
   brand: { id: string; name: string };

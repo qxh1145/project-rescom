@@ -71,4 +71,15 @@ describe("admin rewards contracts (Story 12.1, FR-73)", () => {
     expect(rewardsStatsSchema.safeParse(stats).success).toBe(true);
     expect(rewardsStatsSchema.safeParse({ ...stats, kpis: { ...stats.kpis, selfReportedUsageRate: 1.1 } }).success).toBe(false);
   });
+
+  describe("admin code issue queue contracts (Story 12.10, FR-75)", () => {
+    it("validates resolve input discriminated union and note requirement for REJECT", () => {
+      const { adminResolveCodeIssueSchema } = require("./rewards-admin.schema");
+      expect(adminResolveCodeIssueSchema.safeParse({ outcome: "REPLACE" }).success).toBe(true);
+      expect(adminResolveCodeIssueSchema.safeParse({ outcome: "REFUND", note: "Customer service refund" }).success).toBe(true);
+      expect(adminResolveCodeIssueSchema.safeParse({ outcome: "REJECT" }).success).toBe(false);
+      expect(adminResolveCodeIssueSchema.safeParse({ outcome: "REJECT", note: "   " }).success).toBe(false);
+      expect(adminResolveCodeIssueSchema.safeParse({ outcome: "REJECT", note: "Valid reason for rejection" }).success).toBe(true);
+    });
+  });
 });

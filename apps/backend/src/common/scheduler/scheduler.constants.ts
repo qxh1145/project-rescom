@@ -82,3 +82,10 @@ export const FLASH_SALE_LIFECYCLE_JOB = {
   leaseTtlMs: 2 * MINUTE_MS,
   batchSize: 20,
 } as const;
+
+export const VOUCHER_REMINDER_JOB = {
+  name: 'voucher-expiry-reminder',
+  intervalMs: 15 * MINUTE_MS,
+  leaseTtlMs: 5 * MINUTE_MS,
+  batchSize: 200,
+} as const;

@@ -78,6 +78,32 @@ import { RewardsQuoteService } from './application/rewards-quote.service';
 import { RewardsRedemptionService } from './application/rewards-redemption.service';
 import { RewardsRedemptionController } from './presentation/rewards-redemption.controller';
 
+import {
+  MY_VOUCHERS_READ_PORT,
+  MyVouchersReadPort,
+} from './application/ports/my-vouchers-read.port';
+import {
+  TICKET_WRITE_PORT,
+  TicketWritePort,
+} from './application/ports/ticket-write.port';
+import {
+  REVERSE_SPEND_PORT,
+  ReverseSpendPort,
+} from './application/ports/reverse-spend.port';
+import {
+  NOTIFICATION_PUBLISHER_PORT,
+  NotificationPublisherPort,
+} from '../notifications/application/ports/notification-publisher.port';
+import { PrismaMyVouchersRepository } from './infrastructure/prisma-my-vouchers.repository';
+import { RewardsMyVouchersService } from './application/rewards-my-vouchers.service';
+import { RewardsAdminCodeIssuesService } from './application/rewards-admin-code-issues.service';
+import { VoucherReminderService } from './application/voucher-reminder.service';
+import { VoucherExpiryNotificationHandler } from './application/voucher-expiry-notification.handler';
+import { CodeIssueNotificationHandler } from './application/code-issue-notification.handler';
+import { RewardsOutboxRegistrar } from './infrastructure/rewards-outbox.registrar';
+import { RewardsMyVouchersController } from './presentation/rewards-my-vouchers.controller';
+import { AdminRewardsCodeIssuesController } from './presentation/admin-rewards-code-issues.controller';
+
 @Module({
   imports: [
     PrismaModule,
@@ -91,6 +117,8 @@ import { RewardsRedemptionController } from './presentation/rewards-redemption.c
     AdminRewardsFlashSalesController,
     RewardsCatalogController,
     RewardsRedemptionController,
+    RewardsMyVouchersController,
+    AdminRewardsCodeIssuesController,
   ],
   providers: [
     { provide: VOUCHER_REPOSITORY_PORT, useClass: PrismaVoucherRepository },
@@ -295,6 +323,103 @@ import { RewardsRedemptionController } from './presentation/rewards-redemption.c
         CLOCK,
       ],
     },
+    PrismaMyVouchersRepository,
+    {
+      provide: MY_VOUCHERS_READ_PORT,
+      useExisting: PrismaMyVouchersRepository,
+    },
+    {
+      provide: TICKET_WRITE_PORT,
+      useExisting: PrismaMyVouchersRepository,
+    },
+    {
+      provide: RewardsMyVouchersService,
+      useFactory: (
+        readRepo: MyVouchersReadPort,
+        ticketWrite: TicketWritePort,
+        vouchers: VoucherRepositoryPort,
+        unitOfWork: UnitOfWorkPort,
+        clock: Clock,
+      ) =>
+        new RewardsMyVouchersService({
+          readRepo,
+          ticketWrite,
+          vouchers,
+          unitOfWork,
+          now: () => clock.now(),
+        }),
+      inject: [
+        MY_VOUCHERS_READ_PORT,
+        TICKET_WRITE_PORT,
+        VOUCHER_REPOSITORY_PORT,
+        UNIT_OF_WORK_PORT,
+        CLOCK,
+      ],
+    },
+    {
+      provide: RewardsAdminCodeIssuesService,
+      useFactory: (
+        ticketWrite: TicketWritePort,
+        vouchers: VoucherRepositoryPort,
+        unitOfWork: UnitOfWorkPort,
+        adminCapability: AdminCapabilityPort,
+        reverseSpend: ReverseSpendPort,
+        clock: Clock,
+      ) =>
+        new RewardsAdminCodeIssuesService({
+          ticketWrite,
+          vouchers,
+          unitOfWork,
+          adminCapability,
+          reverseSpend,
+          now: () => clock.now(),
+        }),
+      inject: [
+        TICKET_WRITE_PORT,
+        VOUCHER_REPOSITORY_PORT,
+        UNIT_OF_WORK_PORT,
+        ADMIN_CAPABILITY_PORT,
+        REVERSE_SPEND_PORT,
+        CLOCK,
+      ],
+    },
+    {
+      provide: VoucherReminderService,
+      useFactory: (
+        ticketWrite: TicketWritePort,
+        vouchers: VoucherRepositoryPort,
+        unitOfWork: UnitOfWorkPort,
+      ) =>
+        new VoucherReminderService({
+          ticketWrite,
+          vouchers,
+          unitOfWork,
+        }),
+      inject: [TICKET_WRITE_PORT, VOUCHER_REPOSITORY_PORT, UNIT_OF_WORK_PORT],
+    },
+    {
+      provide: VoucherExpiryNotificationHandler,
+      useFactory: (
+        notifications: NotificationPublisherPort,
+        vouchers: VoucherRepositoryPort,
+      ) => new VoucherExpiryNotificationHandler(notifications, vouchers),
+      inject: [NOTIFICATION_PUBLISHER_PORT, VOUCHER_REPOSITORY_PORT],
+    },
+    {
+      provide: CodeIssueNotificationHandler,
+      useFactory: (
+        notifications: NotificationPublisherPort,
+        vouchers: VoucherRepositoryPort,
+        ticketWrite: TicketWritePort,
+      ) =>
+        new CodeIssueNotificationHandler(notifications, vouchers, ticketWrite),
+      inject: [
+        NOTIFICATION_PUBLISHER_PORT,
+        VOUCHER_REPOSITORY_PORT,
+        TICKET_WRITE_PORT,
+      ],
+    },
+    RewardsOutboxRegistrar,
     RewardsSchedulerRegistrar,
   ],
 })

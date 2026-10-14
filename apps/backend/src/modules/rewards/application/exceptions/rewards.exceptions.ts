@@ -28,7 +28,16 @@ export type RewardsErrorCode =
   | 'FLASH_ALREADY_STARTED'
   | 'FLASH_NOT_ACTIVE'
   | 'FLASH_ALREADY_ENDED'
-  | 'FLASH_CODE_EXHAUSTED';
+  | 'FLASH_CODE_EXHAUSTED'
+  | 'TICKET_NOT_FOUND'
+  | 'TICKET_EXPIRED'
+  | 'UNDO_WINDOW_CLOSED'
+  | 'CODE_ISSUE_ALREADY_OPEN'
+  | 'TICKET_REFUNDED'
+  | 'CODE_ISSUE_NOT_FOUND'
+  | 'CODE_ISSUE_ALREADY_RESOLVED'
+  | 'NO_REPLACEMENT_AVAILABLE'
+  | 'REPLACEMENT_NOT_SUPPORTED';
 
 export class RewardsException extends Error {
   constructor(
@@ -99,5 +108,68 @@ export class RedemptionNotFoundException extends RewardsException {
   constructor(key: string) {
     super('REDEMPTION_NOT_FOUND', `Redemption with key ${key} not found`);
     this.name = 'RedemptionNotFoundException';
+  }
+}
+
+export class TicketNotFoundException extends RewardsException {
+  constructor(id: string) {
+    super('TICKET_NOT_FOUND', `Ticket ${id} not found`);
+    this.name = 'TicketNotFoundException';
+  }
+}
+
+export class TicketExpiredException extends RewardsException {
+  constructor(message = 'Voucher đã hết hạn') {
+    super('TICKET_EXPIRED', message);
+    this.name = 'TicketExpiredException';
+  }
+}
+
+export class UndoWindowClosedException extends RewardsException {
+  constructor(message = 'Đã quá thời hạn 24 giờ để hoàn tác') {
+    super('UNDO_WINDOW_CLOSED', message);
+    this.name = 'UndoWindowClosedException';
+  }
+}
+
+export class CodeIssueAlreadyOpenException extends RewardsException {
+  constructor(message = 'Vé đã có một khiếu nại đang được xử lý') {
+    super('CODE_ISSUE_ALREADY_OPEN', message);
+    this.name = 'CodeIssueAlreadyOpenException';
+  }
+}
+
+export class TicketRefundedException extends RewardsException {
+  constructor(message = 'Vé đã được hoàn tiền') {
+    super('TICKET_REFUNDED', message);
+    this.name = 'TicketRefundedException';
+  }
+}
+
+export class CodeIssueNotFoundException extends RewardsException {
+  constructor(id: string) {
+    super('CODE_ISSUE_NOT_FOUND', `Code issue ${id} not found`);
+    this.name = 'CodeIssueNotFoundException';
+  }
+}
+
+export class CodeIssueAlreadyResolvedException extends RewardsException {
+  constructor(message = 'Khiếu nại đã được giải quyết') {
+    super('CODE_ISSUE_ALREADY_RESOLVED', message);
+    this.name = 'CodeIssueAlreadyResolvedException';
+  }
+}
+
+export class NoReplacementAvailableException extends RewardsException {
+  constructor(message = 'Không còn mã thay thế khả dụng') {
+    super('NO_REPLACEMENT_AVAILABLE', message);
+    this.name = 'NoReplacementAvailableException';
+  }
+}
+
+export class ReplacementNotSupportedException extends RewardsException {
+  constructor(message = 'Voucher dùng mã chung không hỗ trợ đổi mã') {
+    super('REPLACEMENT_NOT_SUPPORTED', message);
+    this.name = 'ReplacementNotSupportedException';
   }
 }

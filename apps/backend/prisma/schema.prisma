@@ -184,6 +184,8 @@ enum NotificationType {
   TOPUP_REJECTED
   ACCOUNT_LOCKED
   ACCOUNT_UNLOCKED
+  VOUCHER_EXPIRING
+  CODE_ISSUE_RESOLVED
 }
 
 /// Story IR.4b B5: one email delivery attempt per notification. Mirrors
@@ -1300,12 +1302,14 @@ model VoucherCode {
   id           String            @id @default(uuid()) @db.Uuid
   voucherId    String            @map("voucher_id") @db.Uuid
   code         String
-  redemptionId String?           @unique @map("redemption_id") @db.Uuid
-  createdAt    DateTime          @default(now()) @map("created_at")
-  voucher      Voucher           @relation(fields: [voucherId], references: [id], onDelete: Restrict)
-  redemption   Redemption?       @relation("IssuedCode", fields: [redemptionId], references: [id], onDelete: Restrict)
-  redemptions  Redemption[]      @relation("RedeemedCode")
-  replacements CodeIssueReport[]
+  redemptionId  String?            @unique @map("redemption_id") @db.Uuid
+  issueReportId String?            @unique @map("issue_report_id") @db.Uuid
+  createdAt     DateTime           @default(now()) @map("created_at")
+  voucher       Voucher            @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+  redemption    Redemption?        @relation("IssuedCode", fields: [redemptionId], references: [id], onDelete: Restrict)
+  issueReport   CodeIssueReport?   @relation("ReplacedCode", fields: [issueReportId], references: [id], onDelete: Restrict)
+  redemptions   Redemption[]       @relation("RedeemedCode")
+  replacements  CodeIssueReport[]  @relation("ReplacementTargetCode")
 
   @@unique([voucherId, code])
   @@map("voucher_codes")
@@ -1394,13 +1398,49 @@ model Redemption {
   issuedCode      VoucherCode?       @relation("IssuedCode")
   flashSaleItem   FlashSaleItem?     @relation(fields: [flashSaleItemId], references: [id], onDelete: Restrict)
   quote           RedemptionQuote?   @relation(fields: [quoteId], references: [id], onDelete: Restrict)
-  flashItemClaim  FlashItemClaim?
-  reports         CodeIssueReport[]
+  flashItemClaim     FlashItemClaim?
+  usage              RedemptionUsage?
+  refund             RedemptionRefund?
+  reminders          RedemptionReminder[]
+  reports            CodeIssueReport[]
 
   @@unique([userId, idempotencyKey])
   @@index([voucherId, createdAt(sort: Desc)])
   @@index([userId, createdAt(sort: Desc)])
   @@map("redemptions")
+}
+
+model RedemptionUsage {
+  redemptionId String     @id @map("redemption_id") @db.Uuid
+  usedAt       DateTime   @map("used_at")
+  undoUntil    DateTime   @map("undo_until")
+  redemption   Redemption @relation(fields: [redemptionId], references: [id], onDelete: Restrict)
+
+  @@map("redemption_usages")
+}
+
+model RedemptionRefund {
+  id           String          @id @default(uuid()) @db.Uuid
+  redemptionId String          @unique @map("redemption_id") @db.Uuid
+  reportId     String          @unique @map("report_id") @db.Uuid
+  journalId    String          @unique @map("journal_id") @db.Uuid
+  reference    String          @unique
+  points       Int
+  createdAt    DateTime        @default(now()) @map("created_at")
+  redemption   Redemption      @relation(fields: [redemptionId], references: [id], onDelete: Restrict)
+  report       CodeIssueReport @relation(fields: [reportId], references: [id], onDelete: Restrict)
+
+  @@map("redemption_refunds")
+}
+
+model RedemptionReminder {
+  redemptionId String     @map("redemption_id") @db.Uuid
+  window       String     @db.VarChar(10)
+  emittedAt    DateTime   @default(now()) @map("emitted_at")
+  redemption   Redemption @relation(fields: [redemptionId], references: [id], onDelete: Restrict)
+
+  @@id([redemptionId, window])
+  @@map("redemption_reminders")
 }
 
 model FlashItemClaim {
@@ -1416,19 +1456,24 @@ model FlashItemClaim {
 }
 
 model CodeIssueReport {
-  id                String          @id @default(uuid()) @db.Uuid
-  redemptionId      String          @map("redemption_id") @db.Uuid
+  id                String            @id @default(uuid()) @db.Uuid
+  redemptionId      String            @map("redemption_id") @db.Uuid
   reason            CodeIssueReason
-  note              String?         @db.Text
-  status            CodeIssueStatus @default(OPEN)
-  replacementCodeId String?         @map("replacement_code_id") @db.Uuid
-  refundJournalId   String?         @map("refund_journal_id") @db.Uuid
-  resolvedById      String?         @map("resolved_by_id") @db.Uuid
-  createdAt         DateTime        @default(now()) @map("created_at")
-  resolvedAt        DateTime?       @map("resolved_at")
-  redemption        Redemption      @relation(fields: [redemptionId], references: [id], onDelete: Restrict)
-  replacementCode   VoucherCode?    @relation(fields: [replacementCodeId], references: [id], onDelete: Restrict)
+  note              String?           @db.Text
+  status            CodeIssueStatus   @default(OPEN)
+  replacementCodeId String?           @unique @map("replacement_code_id") @db.Uuid
+  refundJournalId   String?           @unique @map("refund_journal_id") @db.Uuid
+  resolvedById      String?           @map("resolved_by_id") @db.Uuid
+  resolutionNote    String?           @map("resolution_note") @db.Text
+  createdAt         DateTime          @default(now()) @map("created_at")
+  resolvedAt        DateTime?         @map("resolved_at")
+  redemption        Redemption        @relation(fields: [redemptionId], references: [id], onDelete: Restrict)
+  replacementCode   VoucherCode?      @relation("ReplacementTargetCode", fields: [replacementCodeId], references: [id], onDelete: Restrict)
+  assignedCode      VoucherCode?      @relation("ReplacedCode")
+  refund            RedemptionRefund?
 
+  @@index([status, createdAt])
+  @@index([redemptionId, createdAt(sort: Desc)])
   @@map("code_issue_reports")
 }
 
