@@ -5,6 +5,7 @@ import { PrismaService } from '../src/common/database/prisma.service';
 import { PrismaUnitOfWork } from '../src/common/database/prisma-unit-of-work';
 import { PrismaVoucherRepository } from '../src/modules/rewards/infrastructure/prisma-voucher.repository';
 import { PrismaVoucherCodeRepository } from '../src/modules/rewards/infrastructure/prisma-voucher-code.repository';
+import { PrismaRedemptionRepository } from '../src/modules/rewards/infrastructure/prisma-redemption.repository';
 import { PrismaFlashSaleReadRepository } from '../src/modules/rewards/infrastructure/prisma-flash-sale-read.repository';
 import { RewardsAdminCatalogService } from '../src/modules/rewards/application/rewards-admin-catalog.service';
 import {
@@ -74,7 +75,10 @@ describe('Rewards catalog on PostgreSQL', () => {
         userId: user,
         voucherId,
         idempotencyKey: randomUUID(),
-        status: 'SUCCEEDED',
+        // FAILED: any row proves the FK / append-only rules, and a SUCCEEDED row
+        // now needs a journal, a balance snapshot and a code (12.8 invariants).
+        status: 'FAILED',
+        failureCode: 'SOLD_OUT',
         pricePoints: 100,
         priceVersion: 1,
         priceSource: 'BASE',
@@ -210,6 +214,7 @@ describe('Rewards catalog on PostgreSQL', () => {
           vouchers: new PrismaVoucherRepository(prisma),
           codes: new PrismaVoucherCodeRepository(prisma),
           flashSales: new PrismaFlashSaleReadRepository(prisma),
+          redemptions: new PrismaRedemptionRepository(prisma),
           adminCapability: {
             findCurrentCapability: async (id: string) => ({
               userId: id,

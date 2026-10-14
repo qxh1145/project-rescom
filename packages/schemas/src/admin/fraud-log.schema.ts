@@ -17,6 +17,7 @@ export const fraudLogTypeSchema = z.enum([
   "DEMO_MISMATCH",
   "RECAPTCHA_FAIL",
   "SECURITY_VIOLATION",
+  "FLASH_AFTER_TOPUP",
 ]);
 export type FraudLogType = z.infer<typeof fraudLogTypeSchema>;
 

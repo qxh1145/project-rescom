@@ -80,6 +80,13 @@ export class InMemoryVoucherRepository implements VoucherRepositoryPort {
   ): Promise<VoucherRedemptionRecord[]> {
     return [];
   }
+  async decrementRegularStock(id: string, updatedAt: string): Promise<boolean> {
+    const v = this.vouchers.get(id);
+    if (!v || v.stockRemaining <= 0) return false;
+    v.stockRemaining -= 1;
+    v.updatedAt = updatedAt;
+    return true;
+  }
   async appendAudit(event: RewardsAuditEvent): Promise<void> {
     this.audits.push(structuredClone(event));
   }

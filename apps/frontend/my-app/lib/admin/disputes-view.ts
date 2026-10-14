@@ -225,6 +225,7 @@ export const FRAUD_LOG_LABELS: Record<FraudLogType, string> = {
   SECURITY_VIOLATION: "Sai mã hoàn thành",
   DEMO_MISMATCH: "Lệch thông tin nhân khẩu",
   RECAPTCHA_FAIL: "Không qua kiểm tra chống bot",
+  FLASH_AFTER_TOPUP: "Đổi Flash sau khi nạp điểm",
 };
 
 /** "Tham gia 20/09 · 14 lượt làm · 5 mục FraudLog trong 14 ngày" */

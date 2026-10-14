@@ -1,6 +1,7 @@
 import { InMemoryVoucherRepository } from './in-memory-voucher.repository';
 import { InMemoryVoucherCodeRepository } from './in-memory-voucher-code.repository';
 import { InMemoryFlashSaleReadRepository } from './in-memory-flash-sale-read.repository';
+import { InMemoryRedemptionRepository } from './in-memory-redemption.repository';
 import { PrismaVoucherRepository } from './prisma-voucher.repository';
 import { PrismaVoucherCodeRepository } from './prisma-voucher-code.repository';
 import { PrismaFlashSaleReadRepository } from './prisma-flash-sale-read.repository';
@@ -100,12 +101,84 @@ describe('Rewards repository contracts', () => {
     });
     (await reader.list())[0].items.push({
       id,
+      flashSaleId: id,
       voucherId: id,
       flashPoints: 5,
       quota: 2,
       sold: 0,
       perUserCap: 1,
+      soldOutAt: null,
     });
     expect((await reader.list())[0].items).toEqual([]);
+  });
+
+  it('RedemptionRepository claimCode, quotes and redemptions operations', async () => {
+    const repo = new InMemoryRedemptionRepository();
+
+    repo.codes.set('c1', {
+      id: 'c1',
+      voucherId: id,
+      code: 'CODE-SECRET-1',
+      redemptionId: null,
+    });
+
+    const claimed = await repo.claimCode(id);
+    expect(claimed).toEqual({ id: 'c1', code: 'CODE-SECRET-1' });
+    await repo.linkCodeToRedemption(claimed!.id, 'redemption-1');
+
+    // Second claim finds none
+    const claimedAgain = await repo.claimCode(id);
+    expect(claimedAgain).toBeNull();
+
+    // Quotes and redemptions
+    await repo.insertQuote({
+      id: 'q1',
+      userId: id,
+      voucherId: id,
+      flashSaleItemId: null,
+      priceVersion: 1,
+      pricePoints: 50,
+      priceSource: 'BASE',
+      expiresAt: '2026-10-15T00:00:00.000Z',
+      createdAt: '2026-10-14T00:00:00.000Z',
+    });
+    expect((await repo.findQuoteById('q1'))?.pricePoints).toBe(50);
+
+    await repo.insertRedemption({
+      id: 'r1',
+      userId: id,
+      voucherId: id,
+      voucherCodeId: 'c1',
+      flashSaleItemId: null,
+      quoteId: 'q1',
+      idempotencyKey: 'k1',
+      status: 'SUCCEEDED',
+      pricePoints: 50,
+      priceSource: 'BASE',
+      priceVersion: 1,
+      journalId: 'j1',
+      balanceAfter: 100,
+      failureCode: null,
+      failureDetails: null,
+      reference: 'RDM-2026-ABCD',
+      createdAt: '2026-10-14T01:00:00.000Z',
+    });
+    expect((await repo.findRedemptionByUserAndKey(id, 'k1'))?.status).toBe(
+      'SUCCEEDED',
+    );
+    expect(
+      await repo.countVoucherRedemptionsInWindow(
+        id,
+        id,
+        new Date('2026-10-01'),
+      ),
+    ).toBe(1);
+    expect(
+      await repo.countTodayRedeemedPoints(
+        id,
+        new Date('2026-10-14T00:00:00.000Z'),
+        new Date('2026-10-15T00:00:00.000Z'),
+      ),
+    ).toBe(50);
   });
 });

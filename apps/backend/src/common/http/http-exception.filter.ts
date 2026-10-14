@@ -43,6 +43,7 @@ import { UserProfileValidationException } from '../../modules/users/application/
 import {
   AuditLogNotFoundException,
   ImmutableAuditLogException,
+  SurveyNotPublishedException,
 } from '../../modules/admin/application/exceptions/audit-log.exceptions';
 import {
   FormNotFoundException,
@@ -143,7 +144,11 @@ import {
   ModerationSelfReviewForbiddenException,
   ModerationVersionMismatchException,
 } from '../../modules/moderation/application/exceptions/moderation.exceptions';
-import { RewardsException } from '../../modules/rewards/application/exceptions/rewards.exceptions';
+import {
+  RewardsException,
+  RedemptionRejectionException,
+} from '../../modules/rewards/application/exceptions/rewards.exceptions';
+import { REDEMPTION_ERROR_HTTP_STATUS } from '@rescom/schemas';
 import { ThrottlerException } from '@nestjs/throttler';
 
 @Catch()
@@ -232,7 +237,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       exception instanceof FormNotPublishedException ||
       exception instanceof FormHasPublishedVersionsException ||
       exception instanceof FormModerationRequiredException ||
-      exception instanceof FormInModerationException
+      exception instanceof FormInModerationException ||
+      exception instanceof SurveyNotPublishedException
     ) {
       status = HttpStatus.CONFLICT;
       code = exception.code;
@@ -602,6 +608,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
       status = HttpStatus.CONFLICT;
       code = exception.code;
       message = exception.message;
+    } else if (exception instanceof RedemptionRejectionException) {
+      status = REDEMPTION_ERROR_HTTP_STATUS[exception.code];
+      code = exception.code;
+      message = exception.message;
+      details = exception.details;
     } else if (
       exception instanceof RewardsException &&
       (exception.code === 'BRAND_NOT_FOUND' ||
@@ -621,7 +632,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
       status =
         exception.code === 'REWARDS_ADMIN_CAPABILITY_REQUIRED'
           ? HttpStatus.FORBIDDEN
-          : exception.code === 'VOUCHER_NOT_FOUND'
+          : exception.code === 'VOUCHER_NOT_FOUND' ||
+              exception.code === 'QUOTE_NOT_FOUND' ||
+              exception.code === 'REDEMPTION_NOT_FOUND'
             ? HttpStatus.NOT_FOUND
             : HttpStatus.CONFLICT;
       code = exception.code;

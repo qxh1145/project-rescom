@@ -27,6 +27,7 @@ import {
   FlashSaleReadPort,
   FlashSaleRecord,
 } from './ports/flash-sale-read.port';
+import { RedemptionRepositoryPort } from './ports/redemption-repository.port';
 import { VoucherCodeRepositoryPort } from './ports/voucher-code-repository.port';
 import {
   VoucherRecord,
@@ -55,6 +56,7 @@ export interface RewardsAdminCatalogDependencies {
   codes: VoucherCodeRepositoryPort;
   flashSales: FlashSaleReadPort;
   adminCapability: AdminCapabilityPort;
+  redemptions: RedemptionRepositoryPort;
   unitOfWork?: UnitOfWorkPort;
   now: () => Date;
   generateId?: () => string;
@@ -558,5 +560,46 @@ export class RewardsAdminCatalogService {
       if (!decision.alreadyStored.length) throw error;
       return decision;
     }
+  }
+
+  async getSettings(adminId: string) {
+    await this.authorize(adminId);
+    return {
+      dailyPointsLimit: await this.deps.redemptions.getDailyPointsLimit(),
+    };
+  }
+
+  async updateSettings(
+    adminId: string,
+    input: { dailyPointsLimit: number },
+    correlationId?: string,
+  ) {
+    await this.authorize(adminId);
+    return this.unitOfWork.run(
+      `rewards:settings:update:${this.generateId()}`,
+      async () => {
+        await this.deps.redemptions.setDailyPointsLimit(
+          input.dailyPointsLimit,
+          adminId,
+        );
+        await this.deps.vouchers.appendAudit({
+          id: this.generateId(),
+          idempotencyKey: `rewards:settings:audit:${this.generateId()}`,
+          eventType: 'REWARDS_SETTINGS_UPDATED',
+          producer: REWARDS_ADMIN_AUDIT_PRODUCER,
+          aggregateType: 'RewardsSettings',
+          aggregateId: '1',
+          aggregateVersion: 1,
+          correlationId: z.string().uuid().safeParse(correlationId).success
+            ? (correlationId as string)
+            : this.generateId(),
+          payload: {
+            dailyPointsLimit: input.dailyPointsLimit,
+            updatedById: adminId,
+          },
+        });
+        return { dailyPointsLimit: input.dailyPointsLimit };
+      },
+    );
   }
 }

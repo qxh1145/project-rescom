@@ -86,7 +86,7 @@ test("every MSW-only endpoint is in a category of mocks/route-allowlist.ts", () 
 });
 
 test("no allowlist entry is served by the backend, except deferred Rewards routes until 12.11", () => {
-  // Story 12.7 ships these APIs before 12.11 switches frontend Rewards off MSW.
+  // Story 12.7 & 12.8 ship these APIs before 12.11 switches frontend Rewards off MSW.
   const deferredRewards = new Set([
     "GET /admin/rewards/vouchers", "POST /admin/rewards/vouchers",
     "GET /admin/rewards/vouchers/:param", "PUT /admin/rewards/vouchers/:param",
@@ -94,6 +94,8 @@ test("no allowlist entry is served by the backend, except deferred Rewards route
     "POST /admin/rewards/vouchers/:param/stock", "POST /admin/rewards/vouchers/:param/codes",
     "GET /admin/rewards/brands", "GET /rewards/vouchers",
     "GET /rewards/vouchers/:param", "GET /rewards/flash-sales",
+    "POST /rewards/quotes", "POST /rewards/redemptions", "GET /rewards/redemptions/by-key/:param",
+    "GET /admin/rewards/settings", "PUT /admin/rewards/settings",
   ]);
   const served = [...allowlist]
     .filter(([key, entry]) => backend.has(key) && !(entry.category === "DEFERRED_KEEP_MOCK" && deferredRewards.has(key)))

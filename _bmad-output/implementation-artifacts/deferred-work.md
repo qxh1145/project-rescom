@@ -420,3 +420,7 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 - User catalog list/flash-sales load all rows then filter/sort/paginate in memory; add DB-side filtering when volume grows.
 - Price history `changedBy.name` hardcoded 'Admin'; resolve real admin name at 12.11 integration.
 - Flash price may exceed promo / `flashPoints >= basePoints` mismatch between catalog and flash list; `issued` negative if flashReserved > issued; `createMany` parameter limit on huge imports. Revisit in 12.9 (flash writes).
+
+## Deferred from: code review of 12-8-quote-redemption-transaction (2026-10-14)
+
+- `redemption_quotes` grows unbounded (no TTL purge / cleanup job); add purge of expired quotes alongside quote rate limit.

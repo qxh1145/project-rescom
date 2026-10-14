@@ -175,7 +175,9 @@ describe('Form Preview Parser & Validator', () => {
       };
       expect(validateBlockAnswer(patternBlock, 'Abc').isValid).toBe(true);
       const started = Date.now();
-      expect(validateBlockAnswer(patternBlock, `${'a'.repeat(40)}1`).isValid).toBe(true);
+      expect(
+        validateBlockAnswer(patternBlock, `${'a'.repeat(40)}1`).isValid,
+      ).toBe(true);
       expect(Date.now() - started).toBeLessThan(100);
     });
 

@@ -186,7 +186,25 @@ export class PrismaVoucherRepository implements VoucherRepositoryPort {
       createdAt: row.createdAt.toISOString(),
     }));
   }
+  async decrementRegularStock(
+    id: string,
+    _updatedAt?: string,
+  ): Promise<boolean> {
+    const count = await currentClient(this.prisma).$executeRaw`
+      UPDATE "vouchers"
+      SET "stock_remaining" = "stock_remaining" - 1,
+          "updated_at" = CURRENT_TIMESTAMP
+      WHERE "id" = ${id}::uuid
+        AND "stock_remaining" > 0
+    `;
+    return count > 0;
+  }
   async appendAudit(event: RewardsAuditEvent): Promise<void> {
+    const isUuid =
+      event.correlationId &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        event.correlationId,
+      );
     await currentClient(this.prisma).outboxEvent.create({
       data: {
         id: event.id,
@@ -197,7 +215,7 @@ export class PrismaVoucherRepository implements VoucherRepositoryPort {
         aggregateType: event.aggregateType,
         aggregateId: event.aggregateId,
         aggregateVersion: event.aggregateVersion,
-        correlationId: event.correlationId,
+        correlationId: isUuid ? event.correlationId : null,
         status: 'PENDING',
         payload: event.payload as Prisma.InputJsonValue,
       },
