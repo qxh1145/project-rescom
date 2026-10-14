@@ -29,12 +29,24 @@ import {
   FLASH_SALE_READ_PORT,
   FlashSaleReadPort,
 } from './application/ports/flash-sale-read.port';
+import {
+  FLASH_SALE_REPOSITORY_PORT,
+  FlashSaleRepositoryPort,
+} from './application/ports/flash-sale-repository.port';
+import {
+  ADMIN_USER_DIRECTORY_PORT,
+  AdminUserDirectoryPort,
+} from '../users/application/ports/admin-user-directory.port';
 import { PrismaVoucherRepository } from './infrastructure/prisma-voucher.repository';
 import { PrismaVoucherCodeRepository } from './infrastructure/prisma-voucher-code.repository';
-import { PrismaFlashSaleReadRepository } from './infrastructure/prisma-flash-sale-read.repository';
+import { PrismaFlashSaleRepository } from './infrastructure/prisma-flash-sale.repository';
+import { RewardsSchedulerRegistrar } from './infrastructure/rewards-scheduler.registrar';
+import { FlashSaleLifecycleService } from './application/flash-sale-lifecycle.service';
+import { RewardsAdminFlashService } from './application/rewards-admin-flash.service';
 import { RewardsAdminCatalogService } from './application/rewards-admin-catalog.service';
 import { RewardsCatalogService } from './application/rewards-catalog.service';
 import { AdminRewardsVouchersController } from './presentation/admin-rewards-vouchers.controller';
+import { AdminRewardsFlashSalesController } from './presentation/admin-rewards-flash-sales.controller';
 import { RewardsCatalogController } from './presentation/rewards-catalog.controller';
 
 import {
@@ -76,6 +88,7 @@ import { RewardsRedemptionController } from './presentation/rewards-redemption.c
   ],
   controllers: [
     AdminRewardsVouchersController,
+    AdminRewardsFlashSalesController,
     RewardsCatalogController,
     RewardsRedemptionController,
   ],
@@ -85,7 +98,14 @@ import { RewardsRedemptionController } from './presentation/rewards-redemption.c
       provide: VOUCHER_CODE_REPOSITORY_PORT,
       useClass: PrismaVoucherCodeRepository,
     },
-    { provide: FLASH_SALE_READ_PORT, useClass: PrismaFlashSaleReadRepository },
+    {
+      provide: FLASH_SALE_REPOSITORY_PORT,
+      useClass: PrismaFlashSaleRepository,
+    },
+    {
+      provide: FLASH_SALE_READ_PORT,
+      useExisting: FLASH_SALE_REPOSITORY_PORT,
+    },
     {
       provide: REDEMPTION_REPOSITORY_PORT,
       useClass: PrismaRedemptionRepository,
@@ -230,6 +250,52 @@ import { RewardsRedemptionController } from './presentation/rewards-redemption.c
         CLOCK,
       ],
     },
+    {
+      provide: FlashSaleLifecycleService,
+      useFactory: (
+        flashSales: FlashSaleRepositoryPort,
+        vouchers: VoucherRepositoryPort,
+        unitOfWork: UnitOfWorkPort,
+      ) =>
+        new FlashSaleLifecycleService({
+          flashSales,
+          vouchers,
+          unitOfWork,
+        }),
+      inject: [
+        FLASH_SALE_REPOSITORY_PORT,
+        VOUCHER_REPOSITORY_PORT,
+        UNIT_OF_WORK_PORT,
+      ],
+    },
+    {
+      provide: RewardsAdminFlashService,
+      useFactory: (
+        flashRepo: FlashSaleRepositoryPort,
+        voucherRepo: VoucherRepositoryPort,
+        userDirectory: AdminUserDirectoryPort,
+        adminCapability: AdminCapabilityPort,
+        unitOfWork: UnitOfWorkPort,
+        clock: Clock,
+      ) =>
+        new RewardsAdminFlashService({
+          flashRepo,
+          voucherRepo,
+          userDirectory,
+          adminCapability,
+          unitOfWork,
+          now: () => clock.now(),
+        }),
+      inject: [
+        FLASH_SALE_REPOSITORY_PORT,
+        VOUCHER_REPOSITORY_PORT,
+        ADMIN_USER_DIRECTORY_PORT,
+        ADMIN_CAPABILITY_PORT,
+        UNIT_OF_WORK_PORT,
+        CLOCK,
+      ],
+    },
+    RewardsSchedulerRegistrar,
   ],
 })
 export class RewardsModule {}

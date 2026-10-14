@@ -342,3 +342,13 @@ CREATE TRIGGER "redemptions_succeeded_code_check" BEFORE INSERT ON "redemptions"
   FOR EACH ROW EXECUTE FUNCTION "redemptions_succeeded_code_check"();
 CREATE UNIQUE INDEX IF NOT EXISTS "redemptions_quote_id_succeeded_key" ON "redemptions"("quote_id") WHERE "status" = 'SUCCEEDED';
 CREATE INDEX IF NOT EXISTS "redemptions_user_id_created_at_idx" ON "redemptions"("user_id", "created_at" DESC);
+
+-- Rewards 12.9: flash_sales reserved_at check, partial indexes
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'flash_sales_reserved_at_check' AND conrelid = '"flash_sales"'::regclass) THEN
+    ALTER TABLE "flash_sales" ADD CONSTRAINT "flash_sales_reserved_at_check" CHECK ("reserved_at" IS NULL OR "reserved_at" >= "starts_at");
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS "flash_sales_starts_at_due_idx" ON "flash_sales"("starts_at") WHERE "reserved_at" IS NULL AND "settled_at" IS NULL;
+CREATE INDEX IF NOT EXISTS "flash_sales_ends_at_due_idx" ON "flash_sales"("ends_at") WHERE "reserved_at" IS NOT NULL AND "settled_at" IS NULL;
+

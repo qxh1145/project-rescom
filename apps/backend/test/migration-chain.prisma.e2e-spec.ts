@@ -1,4 +1,6 @@
 import { execFileSync } from 'child_process';
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { PrismaClient } from '@prisma/client';
 
@@ -158,6 +160,32 @@ describe('Prisma migration chain on PostgreSQL', () => {
     await expect(
       indexDef('redemptions_user_id_created_at_idx'),
     ).resolves.toMatch(/user_id, created_at DESC/);
+  });
+
+  it('creates the Rewards flash sale lifecycle schema and claims (12.9)', async () => {
+    if (!dbAvailable) return;
+    const flashSalesCols = await columnsOf('flash_sales');
+    expect(flashSalesCols.get('reserved_at')).toBe('YES');
+
+    await expect(
+      constraintDef('flash_sales_reserved_at_check'),
+    ).resolves.toMatch(/CHECK/);
+
+    await expect(indexDef('flash_sales_starts_at_due_idx')).resolves.toMatch(
+      /WHERE .*reserved_at IS NULL\)? AND \(?settled_at IS NULL/,
+    );
+    await expect(indexDef('flash_sales_ends_at_due_idx')).resolves.toMatch(
+      /WHERE .*reserved_at IS NOT NULL\)? AND \(?settled_at IS NULL/,
+    );
+
+    const rows = await prisma.$queryRaw<Array<{ table_name: string }>>`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = current_schema() AND table_name = 'flash_item_claims'`;
+    expect(rows).toHaveLength(1);
+
+    await expect(constraintDef('flash_item_claims_pkey')).resolves.toMatch(
+      /PRIMARY KEY \(flash_sale_item_id, user_id\)/,
+    );
   });
 
   it('creates the ledger account index with NULLS NOT DISTINCT', async () => {
@@ -369,4 +397,147 @@ describe('Prisma migration chain on PostgreSQL', () => {
       ).not.toThrow();
     }
   }, 60_000);
+});
+
+/**
+ * Upgrade path for the 12.9 flash sale lifecycle migration: apply every
+ * migration before it on a scratch database holding Rewards data, then apply
+ * it and check the data and the new invariants. Uses its own database
+ * (`*_prior_test`), never the one the suite above resets.
+ */
+describe('Prisma migration 20261015100000_rewards_flash_sale_lifecycle on existing data', () => {
+  const targetMigration = '20261015100000_rewards_flash_sale_lifecycle';
+  const baseUrl = new URL(
+    process.env.MIGRATION_TEST_DATABASE_URL ??
+      'postgresql://rescom_admin:rescom_password@localhost:5433/rescom_migration_test?schema=public',
+  );
+  const scratchDb = 'rescom_migration_prior_test';
+  const adminUrl = new URL(baseUrl.toString());
+  adminUrl.pathname = '/postgres';
+  const scratchUrl = new URL(baseUrl.toString());
+  scratchUrl.pathname = `/${scratchDb}`;
+  const backendDir = path.resolve(__dirname, '..');
+  const prismaCli = require.resolve('prisma/build/index.js', {
+    paths: [backendDir],
+  });
+  let admin: PrismaClient;
+  let scratch: PrismaClient | undefined;
+  let tmpDir: string | undefined;
+  let dbAvailable = false;
+
+  function deploy(schemaFile: string): void {
+    execFileSync(
+      process.execPath,
+      [prismaCli, 'migrate', 'deploy', '--schema', schemaFile],
+      {
+        cwd: backendDir,
+        env: { ...process.env, DATABASE_URL: scratchUrl.toString() },
+        stdio: 'pipe',
+      },
+    );
+  }
+
+  beforeAll(async () => {
+    admin = new PrismaClient({
+      datasources: { db: { url: adminUrl.toString() } },
+    });
+    try {
+      await admin.$connect();
+      dbAvailable = true;
+    } catch {
+      console.warn(
+        `Postgres at ${adminUrl.host} is unreachable. Skipping flash sale upgrade migration test.`,
+      );
+      return;
+    }
+    await admin.$executeRawUnsafe(
+      `DROP DATABASE IF EXISTS ${scratchDb} WITH (FORCE)`,
+    );
+    await admin.$executeRawUnsafe(`CREATE DATABASE ${scratchDb}`);
+    scratch = new PrismaClient({
+      datasources: { db: { url: scratchUrl.toString() } },
+    });
+  }, 60_000);
+
+  afterAll(async () => {
+    await scratch?.$disconnect();
+    if (dbAvailable) {
+      await admin.$executeRawUnsafe(
+        `DROP DATABASE IF EXISTS ${scratchDb} WITH (FORCE)`,
+      );
+    }
+    await admin?.$disconnect();
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('applies on top of populated Rewards tables and keeps data and invariants', async () => {
+    if (!dbAvailable || !scratch) return;
+    const db = scratch;
+
+    // 1. Everything except the target migration, from a temp copy of prisma/.
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rescom-migrations-'));
+    const tmpPrisma = path.join(tmpDir, 'prisma');
+    fs.cpSync(
+      path.join(backendDir, 'prisma', 'migrations'),
+      path.join(tmpPrisma, 'migrations'),
+      {
+        recursive: true,
+        filter: (src) => !src.includes(targetMigration),
+      },
+    );
+    fs.copyFileSync(
+      path.join(backendDir, 'prisma', 'schema.prisma'),
+      path.join(tmpPrisma, 'schema.prisma'),
+    );
+    deploy(path.join(tmpPrisma, 'schema.prisma'));
+    await expect(
+      db.$queryRaw`SELECT 1 FROM information_schema.columns WHERE table_name = 'flash_sales' AND column_name = 'reserved_at'`,
+    ).resolves.toHaveLength(0);
+
+    // 2. Pre-existing Rewards data (voucher, flash sale + item, redemption).
+    const ids = {
+      user: '00000000-0000-4000-8000-000000000001',
+      voucher: '00000000-0000-4000-8000-000000000002',
+      sale: '00000000-0000-4000-8000-000000000003',
+      item: '00000000-0000-4000-8000-000000000004',
+      redemption: '00000000-0000-4000-8000-000000000005',
+    };
+    await db.$executeRaw`INSERT INTO users (id, email, updated_at) VALUES (${ids.user}::uuid, 'prior@example.test', now())`;
+    await db.$executeRaw`INSERT INTO vouchers (id, title, brand_id, category, value_vnd, base_points, redeem_starts_at, redeem_ends_at, code_expires_at, created_by_id, is_shared_code, shared_code, updated_at)
+      VALUES (${ids.voucher}::uuid, 'Prior voucher', 'highlands', 'COFFEE', 50000, 100, now(), now() + interval '1 day', now() + interval '10 days', ${ids.user}::uuid, true, 'SHARED123', now())`;
+    await db.$executeRaw`INSERT INTO flash_sales (id, code, title, starts_at, ends_at, rules, created_by_id, updated_at)
+      VALUES (${ids.sale}::uuid, 'FS-PRIOR0001', 'Prior sale', now(), now() + interval '1 hour', '{}'::jsonb, ${ids.user}::uuid, now())`;
+    await db.$executeRaw`INSERT INTO flash_sale_items (id, flash_sale_id, voucher_id, flash_points, quota, per_user_cap, updated_at)
+      VALUES (${ids.item}::uuid, ${ids.sale}::uuid, ${ids.voucher}::uuid, 40, 5, 1, now())`;
+    await db.$executeRaw`INSERT INTO redemptions (id, user_id, voucher_id, flash_sale_item_id, idempotency_key, status, price_points, price_source, price_version, journal_id, balance_after, reference)
+      VALUES (${ids.redemption}::uuid, ${ids.user}::uuid, ${ids.voucher}::uuid, ${ids.item}::uuid, 'prior-key', 'SUCCEEDED', 40, 'FLASH', 1, '00000000-0000-4000-8000-000000000006'::uuid, 100, 'RDM-PRIOR001')`;
+
+    // 3. Apply the target migration from the real migrations directory.
+    expect(() =>
+      deploy(path.join(backendDir, 'prisma', 'schema.prisma')),
+    ).not.toThrow();
+
+    // 4. Data survives; new column is NULL on old sales; new objects exist.
+    const sale = await db.$queryRaw<
+      { reserved_at: Date | null; title: string }[]
+    >`
+      SELECT reserved_at, title FROM flash_sales WHERE id = ${ids.sale}::uuid`;
+    expect(sale).toEqual([{ reserved_at: null, title: 'Prior sale' }]);
+    const redemption = await db.$queryRaw<{ reference: string }[]>`
+      SELECT reference FROM redemptions WHERE id = ${ids.redemption}::uuid`;
+    expect(redemption).toEqual([{ reference: 'RDM-PRIOR001' }]);
+    const voucher = await db.$queryRaw<{ n: bigint }[]>`
+      SELECT COUNT(*) AS n FROM vouchers WHERE id = ${ids.voucher}::uuid`;
+    expect(Number(voucher[0].n)).toBe(1);
+
+    await db.$executeRaw`INSERT INTO flash_item_claims (flash_sale_item_id, user_id, redemption_id)
+      VALUES (${ids.item}::uuid, ${ids.user}::uuid, ${ids.redemption}::uuid)`;
+    await expect(
+      db.$executeRaw`UPDATE flash_sales SET reserved_at = starts_at - interval '1 minute' WHERE id = ${ids.sale}::uuid`,
+    ).rejects.toThrow(/flash_sales_reserved_at_check/);
+    const indexes = await db.$queryRaw<{ indexname: string }[]>`
+      SELECT indexname FROM pg_indexes WHERE indexname IN
+        ('flash_sales_starts_at_due_idx', 'flash_sales_ends_at_due_idx')`;
+    expect(indexes).toHaveLength(2);
+  }, 240_000);
 });

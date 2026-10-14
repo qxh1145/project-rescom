@@ -96,6 +96,9 @@ test("no allowlist entry is served by the backend, except deferred Rewards route
     "GET /rewards/vouchers/:param", "GET /rewards/flash-sales",
     "POST /rewards/quotes", "POST /rewards/redemptions", "GET /rewards/redemptions/by-key/:param",
     "GET /admin/rewards/settings", "PUT /admin/rewards/settings",
+    "GET /admin/rewards/flash-sales", "POST /admin/rewards/flash-sales",
+    "GET /admin/rewards/flash-sales/:param", "PUT /admin/rewards/flash-sales/:param",
+    "POST /admin/rewards/flash-sales/:param/end",
   ]);
   const served = [...allowlist]
     .filter(([key, entry]) => backend.has(key) && !(entry.category === "DEFERRED_KEEP_MOCK" && deferredRewards.has(key)))

@@ -7,7 +7,7 @@ import { dailyChartSummary, dailyChartData, dailyChartFootnote, flashPerformance
 const now = "2026-10-13T06:00:00Z";
 const voucher = { id: "00000000-0000-4000-8000-000000000001", title: "Highlands 50k", brand: { id: "highlands", name: "Highlands" }, category: "COFFEE", valueVnd: 50000, basePoints: 250, promoPoints: null };
 const item = (patch = {}) => ({ id: "i1", voucherId: voucher.id, voucherTitle: voucher.title, brand: voucher.brand, valueVnd: 50000, flashPoints: 150, regularPoints: 250, perUserCap: 1, sold: 75, quota: 100, unsold: 25, perMinute: 1.9, etaAt: null, soldOutAt: null, state: "ACTIVE", ...patch });
-const flash = (patch = {}) => ({ code: "FS-1013-A", title: "Flash trưa", createdBy: { name: "Admin Hùng" }, status: "ACTIVE", startsAt: "2026-10-13T05:00:00Z", endsAt: "2026-10-13T08:00:00Z", endedEarlyAt: null, endReason: null, remindCount: 312, succeededCount: 75, pointsSpent: 1200, participants: 30, failures: { SOLD_OUT: 14, INSUFFICIENT_POINTS: 7, OTHER: 0 }, afterTopUp: { count: 9, rate: 0.05, flagged: 1 }, items: [item()], ...patch });
+const flash = (patch = {}) => ({ code: "FS-261013-A", title: "Flash trưa", createdBy: { name: "Admin Hùng" }, status: "ACTIVE", startsAt: "2026-10-13T05:00:00Z", endsAt: "2026-10-13T08:00:00Z", endedEarlyAt: null, endReason: null, remindCount: 312, succeededCount: 75, pointsSpent: 1200, participants: 30, failures: { SOLD_OUT: 14, INSUFFICIENT_POINTS: 7, OTHER: 0 }, afterTopUp: { count: 9, rate: 0.05, flagged: 1 }, items: [item()], ...patch });
 
 test("status labels", () => {
   assert.deepEqual(["SCHEDULED", "UPCOMING", "ACTIVE", "SOLD_OUT", "ENDED"].map(s => flashStatusView(s).label), ["Hẹn lịch", "Sắp diễn ra", "Đang diễn ra", "Hết suất", "Đã kết thúc"]);
@@ -65,14 +65,14 @@ test("field issues and server conflicts map to Vietnamese row messages", () => {
   assert.equal(errors["items.0.quota"], "Tối đa 14 suất chưa giữ.");
   const rows = flashFormErrors([], [
     { path: "items.0.flashPoints", code: "FLASH_PRICE_NOT_BELOW_REGULAR", details: { regular: 250 } },
-    { path: "items.0.voucherId", code: "FLASH_OVERLAP", details: { code: "FS-1013-A" } },
+    { path: "items.0.voucherId", code: "FLASH_OVERLAP", details: { code: "FS-261013-A" } },
     { path: "items.0.voucherId", code: "VOUCHER_NOT_FLASHABLE" },
     { path: "items.1.quota", code: "FLASH_QUOTA_BELOW_SOLD", details: { sold: 40 } },
     { path: "startsAt", code: "FLASH_STARTS_IN_PAST" },
   ]);
   assert.equal(rows["items.0.flashPoints"], "Giá Flash phải thấp hơn giá hiện tại (250 điểm).");
   // Two conflicts on the same field keep both messages.
-  assert.equal(rows["items.0.voucherId"], "Trùng giờ với FS-1013-A. Voucher này không thể đưa vào Flash Sale.");
+  assert.equal(rows["items.0.voucherId"], "Trùng giờ với FS-261013-A. Voucher này không thể đưa vào Flash Sale.");
   assert.equal(rows["items.1.quota"], "Không thể thấp hơn 40 suất đã đổi.");
   assert.equal(rows.startsAt, "Giờ bắt đầu phải ở tương lai.");
 });
@@ -110,11 +110,11 @@ test("preview rejects invalid rows and returns an item the user card schema acce
 const stats = (patch = {}) => ({
   range: { from: "2026-09-14", to: "2026-10-13" }, updatedAt: now,
   kpis: { activeVouchers: { active: 5, total: 7, soldOut: 1, expired: 1 }, redemptions: { count: 1397, avgPerRegularDay: 36 }, pointsSpent: { points: 233170, vndEquivalent: 46634000 }, redemptionRate: { redeemed: 1397, offered: 1870, rate: 0.747 }, topVoucher: { voucherId: voucher.id, label: "Highlands 50k", count: 412, share: 0.295 }, selfReportedUsageRate: 0.42 },
-  daily: [{ date: "2026-09-27", count: 20, flashSaleCodes: [] }, { date: "2026-09-28", count: 128, flashSaleCodes: ["FS-0928-A"] }, { date: "2026-10-13", count: 90, flashSaleCodes: ["FS-1013-A"] }],
+  daily: [{ date: "2026-09-27", count: 20, flashSaleCodes: [] }, { date: "2026-09-28", count: 128, flashSaleCodes: ["FS-260928-A"] }, { date: "2026-10-13", count: 90, flashSaleCodes: ["FS-261013-A"] }],
   byBrand: [], flashSales: [
-    { flashSaleId: "a", code: "FS-0928-A", startsAt: "2026-09-28T05:00:00Z", itemsLabel: "Highlands 50k", sold: 100, quota: 100, status: "ENDED", pointsSpent: 15000, soldOutAfterMinutes: 38 },
-    { flashSaleId: "b", code: "FS-1013-A", startsAt: "2026-10-13T05:00:00Z", itemsLabel: "HL", sold: 173, quota: 230, status: "ACTIVE", pointsSpent: 19070, soldOutAfterMinutes: null },
-    { flashSaleId: "c", code: "FS-1013-B", startsAt: "2026-10-13T12:00:00Z", itemsLabel: "HL", sold: 0, quota: 50, status: "UPCOMING", pointsSpent: 0, soldOutAfterMinutes: null }],
+    { flashSaleId: "a", code: "FS-260928-A", startsAt: "2026-09-28T05:00:00Z", itemsLabel: "Highlands 50k", sold: 100, quota: 100, status: "ENDED", pointsSpent: 15000, soldOutAfterMinutes: 38 },
+    { flashSaleId: "b", code: "FS-261013-A", startsAt: "2026-10-13T05:00:00Z", itemsLabel: "HL", sold: 173, quota: 230, status: "ACTIVE", pointsSpent: 19070, soldOutAfterMinutes: null },
+    { flashSaleId: "c", code: "FS-261013-B", startsAt: "2026-10-13T12:00:00Z", itemsLabel: "HL", sold: 0, quota: 50, status: "UPCOMING", pointsSpent: 0, soldOutAfterMinutes: null }],
   ...patch });
 
 test("stats KPIs keep the range and the self-reported label", () => {
@@ -128,8 +128,8 @@ test("chart: summary from data, fallback, tooltip notes and footnote when a prog
   assert.equal(dailyChartSummary(stats({ daily: [], flashSales: [] })), "Chưa có ngày Flash Sale trong kỳ");
   assert.match(dailyChartSummary(stats()), /^Ngày có Flash Sale có lượt đổi gấp 2,5–3,6 lần ngày thường$/);
   const data = dailyChartData(stats());
-  assert.deepEqual(data[1].flashNotes, ["FS-0928-A: 100 suất Flash, hết sau 38 phút"]);
-  assert.deepEqual(data[2].flashNotes, ["FS-1013-A: 173 suất Flash"]);
+  assert.deepEqual(data[1].flashNotes, ["FS-260928-A: 100 suất Flash, hết sau 38 phút"]);
+  assert.deepEqual(data[2].flashNotes, ["FS-261013-A: 173 suất Flash"]);
   assert.equal(data[1].label, "28/09");
   assert.match(dailyChartFootnote(stats()), /Flash Sale vẫn đang chạy/);
   // A program that started yesterday and runs past midnight still counts as running.

@@ -1321,6 +1321,7 @@ model FlashSale {
   endReason    String?         @map("end_reason")
   rules        Json            @db.JsonB
   createdById  String          @map("created_by_id") @db.Uuid
+  reservedAt   DateTime?       @map("reserved_at")
   settledAt    DateTime?       @map("settled_at")
   createdAt    DateTime        @default(now()) @map("created_at")
   updatedAt    DateTime        @updatedAt @map("updated_at")
@@ -1344,6 +1345,7 @@ model FlashSaleItem {
   voucher     Voucher           @relation(fields: [voucherId], references: [id], onDelete: Restrict)
   quotes      RedemptionQuote[]
   redemptions Redemption[]
+  claims      FlashItemClaim[]
 
   @@unique([flashSaleId, voucherId])
   @@index([voucherId])
@@ -1392,12 +1394,25 @@ model Redemption {
   issuedCode      VoucherCode?       @relation("IssuedCode")
   flashSaleItem   FlashSaleItem?     @relation(fields: [flashSaleItemId], references: [id], onDelete: Restrict)
   quote           RedemptionQuote?   @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+  flashItemClaim  FlashItemClaim?
   reports         CodeIssueReport[]
 
   @@unique([userId, idempotencyKey])
   @@index([voucherId, createdAt(sort: Desc)])
   @@index([userId, createdAt(sort: Desc)])
   @@map("redemptions")
+}
+
+model FlashItemClaim {
+  flashSaleItemId String        @map("flash_sale_item_id") @db.Uuid
+  userId          String        @map("user_id") @db.Uuid
+  redemptionId    String        @unique @map("redemption_id") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at")
+  flashSaleItem   FlashSaleItem @relation(fields: [flashSaleItemId], references: [id], onDelete: Restrict)
+  redemption      Redemption    @relation(fields: [redemptionId], references: [id], onDelete: Restrict)
+
+  @@id([flashSaleItemId, userId])
+  @@map("flash_item_claims")
 }
 
 model CodeIssueReport {

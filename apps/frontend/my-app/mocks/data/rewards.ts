@@ -68,14 +68,14 @@ function seed() {
   vouchers.forEach((v, index) => { codePools[v.id] = index === 5 ? [] : makeCodes(slugs[specs[index][0]], 15); });
 
   const flashes: FlashInventory[] = [
-    { ...flashDefaults("Flash trưa 13/10", { remindCount: 312, participants: 148, failures: { SOLD_OUT: 14, INSUFFICIENT_POINTS: 7, OTHER: 0 }, afterTopUp: { count: 9, rate: 0.05, flagged: 1 } }), id: id(101), code: "FS-1013-A", startsAt: iso(now - 3 * 3600000), endsAt: iso(now + 135 * 60000), endedEarlyAt: null,
+    { ...flashDefaults("Flash trưa 13/10", { remindCount: 312, participants: 148, failures: { SOLD_OUT: 14, INSUFFICIENT_POINTS: 7, OTHER: 0 }, afterTopUp: { count: 9, rate: 0.05, flagged: 1 } }), id: id(101), code: "FS-261013-A", startsAt: iso(now - 3 * 3600000), endsAt: iso(now + 135 * 60000), endedEarlyAt: null,
       items: ([[1, 150, 100, 75], [2, 90, 80, 48], [5, 70, 50, 50]] as const).map(([n, flashPoints, quota, sold]) =>
         ({ id: id(110 + n), voucherId: id(n), flashPoints, quota, sold, perUserCap: 1, soldOutAt: sold >= quota ? iso(now - 3 * 3600000 + 38 * 60000) : null })) },
-    { ...flashDefaults("Flash tối 13/10", { remindCount: 184 }), id: id(102), code: "FS-1013-B", startsAt: iso(now + 7 * 3600000), endsAt: iso(now + 10 * 3600000), endedEarlyAt: null,
+    { ...flashDefaults("Flash tối 13/10", { remindCount: 184 }), id: id(102), code: "FS-261013-B", startsAt: iso(now + 7 * 3600000), endsAt: iso(now + 10 * 3600000), endedEarlyAt: null,
       items: [{ id: id(114), voucherId: id(4), flashPoints: 140, quota: 50, sold: 0, perUserCap: 1 }] },
-    { ...flashDefaults("Flash tuần sau", { remindCount: 37 }), id: id(103), code: "FS-1020-A", startsAt: iso(now + 7 * day), endsAt: iso(now + 7 * day + 3 * 3600000), endedEarlyAt: null, items: [{ id: id(115), voucherId: id(3), flashPoints: 90, quota: 20, sold: 0, perUserCap: 1 }] },
-    { ...flashDefaults("Flash tuần trước", { remindCount: 220, participants: 61, failures: { SOLD_OUT: 3, INSUFFICIENT_POINTS: 5, OTHER: 0 }, afterTopUp: { count: 4, rate: 0.27, flagged: 0 } }), id: id(104), code: "FS-1006-A", startsAt: iso(now - 7 * day), endsAt: iso(now - 7 * day + 3 * 3600000), endedEarlyAt: null, settledAt: iso(now - 7 * day + 3 * 3600000), items: [{ id: id(116), voucherId: id(3), flashPoints: 90, quota: 20, sold: 15, perUserCap: 1 }] },
-    { ...flashDefaults("Flash tháng trước", { remindCount: 540, participants: 74, failures: { SOLD_OUT: 22, INSUFFICIENT_POINTS: 9, OTHER: 1 }, afterTopUp: { count: 6, rate: 0.3, flagged: 2 } }), id: id(105), code: "FS-0928-A", startsAt: iso(now - 15 * day), endsAt: iso(now - 15 * day + 3 * 3600000), endedEarlyAt: null, settledAt: iso(now - 15 * day + 3 * 3600000), items: [{ id: id(117), voucherId: id(4), flashPoints: 120, quota: 20, sold: 20, perUserCap: 1, soldOutAt: iso(now - 15 * day + 38 * 60000) }] },
+    { ...flashDefaults("Flash tuần sau", { remindCount: 37 }), id: id(103), code: "FS-261020-A", startsAt: iso(now + 7 * day), endsAt: iso(now + 7 * day + 3 * 3600000), endedEarlyAt: null, items: [{ id: id(115), voucherId: id(3), flashPoints: 90, quota: 20, sold: 0, perUserCap: 1 }] },
+    { ...flashDefaults("Flash tuần trước", { remindCount: 220, participants: 61, failures: { SOLD_OUT: 3, INSUFFICIENT_POINTS: 5, OTHER: 0 }, afterTopUp: { count: 4, rate: 0.27, flagged: 0 } }), id: id(104), code: "FS-261006-A", startsAt: iso(now - 7 * day), endsAt: iso(now - 7 * day + 3 * 3600000), endedEarlyAt: null, settledAt: iso(now - 7 * day + 3 * 3600000), items: [{ id: id(116), voucherId: id(3), flashPoints: 90, quota: 20, sold: 15, perUserCap: 1 }] },
+    { ...flashDefaults("Flash tháng trước", { remindCount: 540, participants: 74, failures: { SOLD_OUT: 22, INSUFFICIENT_POINTS: 9, OTHER: 1 }, afterTopUp: { count: 6, rate: 0.3, flagged: 2 } }), id: id(105), code: "FS-260928-A", startsAt: iso(now - 15 * day), endsAt: iso(now - 15 * day + 3 * 3600000), endedEarlyAt: null, settledAt: iso(now - 15 * day + 3 * 3600000), items: [{ id: id(117), voucherId: id(4), flashPoints: 120, quota: 20, sold: 20, perUserCap: 1, soldOutAt: iso(now - 15 * day + 38 * 60000) }] },
   ];
   // Mock reserves quota at create, so every unsettled seed program must already be carved out of regular stock.
   for (const flash of flashes.filter(f => !f.settledAt)) for (const item of flash.items) {
@@ -501,7 +501,7 @@ export function adminFlashSaleDetailOf(id: string, now = Date.now()) {
 export function createAdminFlashSale(input: AdminFlashInput, admin: { id: string; name: string }, now = Date.now()) {
   const catalog = settledCatalog(now), conflicts = flashConflicts(input, catalog.vouchers, catalog.flashes, now);
   if (conflicts.length) return { ok: false as const, status: 409, code: conflicts[0].code, details: { conflicts } };
-  const prefix = `FS-${vietnamDayOf(input.startsAt).slice(5).replace("-", "")}-`;
+  const prefix = `FS-${vietnamDayOf(input.startsAt).slice(2).replace(/-/g, "")}-`;
   const letter = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"].find(l => !catalog.flashes.some(f => f.code === prefix + l)) ?? "Z"; // ponytail: 26 programs per start day
   const flash: FlashInventory = { ...flashDefaults(input.title), title: input.title, rules: input.rules, createdBy: admin, id: mockId(),
     code: prefix + letter, startsAt: input.startsAt, endsAt: input.endsAt, endedEarlyAt: null, items: input.items.map(item => ({ ...item, id: mockId(), sold: 0 })) };

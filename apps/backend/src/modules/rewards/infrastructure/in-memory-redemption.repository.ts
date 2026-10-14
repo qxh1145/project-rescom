@@ -171,4 +171,36 @@ export class InMemoryRedemptionRepository implements RedemptionRepositoryPort {
   async setDailyPointsLimit(limit: number): Promise<void> {
     this.dailyPointsLimit = limit;
   }
+
+  readonly flashItemClaims = new Map<
+    string,
+    { flashSaleItemId: string; userId: string; redemptionId: string }
+  >();
+
+  async claimFlashItem(
+    itemId: string,
+    userId: string,
+    redemptionId: string,
+  ): Promise<void> {
+    const pk = `${itemId}:${userId}`;
+    if (this.flashItemClaims.has(pk)) {
+      throw Object.assign(new Error('Unique constraint failed'), {
+        code: 'P2002',
+        meta: { target: ['flash_sale_item_id', 'user_id'] },
+      });
+    }
+    for (const claim of this.flashItemClaims.values()) {
+      if (claim.redemptionId === redemptionId) {
+        throw Object.assign(new Error('Unique constraint failed'), {
+          code: 'P2002',
+          meta: { target: ['redemption_id'] },
+        });
+      }
+    }
+    this.flashItemClaims.set(pk, {
+      flashSaleItemId: itemId,
+      userId,
+      redemptionId,
+    });
+  }
 }

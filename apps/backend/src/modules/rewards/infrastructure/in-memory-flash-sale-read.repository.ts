@@ -25,6 +25,9 @@ export class InMemoryFlashSaleReadRepository implements FlashSaleReadPort {
   async findActiveItemForVoucher(voucherId: string, now: Date) {
     const nowMs = now.getTime();
     for (const sale of this.sales) {
+      if (!sale.reservedAt || sale.settledAt !== null) {
+        continue;
+      }
       const startsAtMs = Date.parse(sale.startsAt);
       const endsAtMs = Date.parse(sale.endsAt);
       const endedEarlyMs = sale.endedEarlyAt

@@ -50,7 +50,7 @@ test('conflicts reject price, stock, overlap; touching windows allowed', () => {
   assert.equal(rules.flashConflicts(input, [v], [{ ...f, endedEarlyAt: input.startsAt }], now).some(c => c.code === 'FLASH_OVERLAP'), false);
 });
 test('end early returns unsold once; existing quote price change does not charge', () => {
-  const state = data.rewardsCatalog.get(), active = state.flashes.find(f => f.code === 'FS-1013-A'), item = active.items[0];
+  const state = data.rewardsCatalog.get(), active = state.flashes.find(f => f.code === 'FS-261013-A'), item = active.items[0];
   const user = '00000000-0000-4000-8000-000000008888';
   const quote = data.createVoucherQuote(user, item.voucherId, { available: 1000 }, now);
   assert.equal(quote.ok, true);
@@ -69,7 +69,7 @@ test('end early returns unsold once; existing quote price change does not charge
 const initialCatalog = structuredClone(data.rewardsCatalog.get()), initialUsers = structuredClone(data.rewardsState.get());
 const reset = () => { data.rewardsCatalog.set(structuredClone(initialCatalog)); data.rewardsState.set(structuredClone(initialUsers)); };
 const issuedMap = at => { const c = data.rewardsCatalog.get(); return Object.fromEntries(c.vouchers.map(v => [v.id, rules.adminStockOf(v, c.flashes, at).issued])); };
-const base = () => data.rewardsCatalog.get().flashes.find(f => f.code === 'FS-1013-A');
+const base = () => data.rewardsCatalog.get().flashes.find(f => f.code === 'FS-261013-A');
 
 test('seed reserves flash quota out of regular stock: issued is never negative', () => {
   reset();
@@ -106,7 +106,7 @@ test('create, update, end and settle keep issued unchanged for every voucher', (
 test('create settles ended programs first: no false FLASH_QUOTA_EXCEEDS_STOCK', () => {
   reset();
   const v = data.rewardsCatalog.get().vouchers.find(x => x.id === base().items[0].voucherId);
-  const later = now + 4 * 3600000; // FS-1013-A (quota 100 on this voucher) ended by then and is not settled yet
+  const later = now + 4 * 3600000; // FS-261013-A (quota 100 on this voucher) ended by then and is not settled yet
   const wanted = v.stockRemaining + 25; // exactly the unsold part of the ended program (100 - 75)
   const result = data.createAdminFlashSale({ ...input, startsAt: iso(5 * 3600000 + 86400000), endsAt: iso(6 * 3600000 + 86400000), items: [{ voucherId: v.id, flashPoints: 80, quota: wanted, perUserCap: 1 }] }, admin, later);
   assert.equal(result.ok, true, JSON.stringify(result.details));
@@ -116,7 +116,7 @@ test('flash codes stay unique within a start day', () => {
   reset();
   const codes = [1, 2, 3].map(n => data.createAdminFlashSale({ ...input, items: [{ ...input.items[0], quota: 1 }], startsAt: iso(2 * 86400000 + n * 7200000), endsAt: iso(2 * 86400000 + n * 7200000 + 3600000) }, admin, now).result.flashSale.code);
   assert.equal(new Set(codes).size, 3);
-  assert.ok(codes.every(code => /^FS-\d{4}-[A-Z]$/.test(code)));
+  assert.ok(codes.every(code => /^FS-\d{6}-[A-Z]$/.test(code)));
 });
 
 test('conflict codes: starts in past, not flashable, quota below sold', () => {
@@ -155,9 +155,9 @@ test('seed carries realistic flash metadata and real sell-out times', () => {
   const upcoming = rows.find(f => f.status === 'UPCOMING'), ended = rows.filter(f => f.status === 'ENDED');
   assert.ok(upcoming.remindCount > 0);
   assert.ok(ended.length >= 2 && ended.every(f => f.participants > 0));
-  const soldOutItem = rows.find(f => f.code === 'FS-1013-A').items.find(i => i.sold >= i.quota);
+  const soldOutItem = rows.find(f => f.code === 'FS-261013-A').items.find(i => i.sold >= i.quota);
   assert.ok(soldOutItem.soldOutAt);
-  assert.ok(rows.find(f => f.code === 'FS-1013-A').items.filter(i => i.sold < i.quota).every(i => i.soldOutAt === null));
+  assert.ok(rows.find(f => f.code === 'FS-261013-A').items.filter(i => i.sold < i.quota).every(i => i.soldOutAt === null));
 });
 
 test('stats: daily fills every day, flash days only for started programs', () => {
@@ -165,7 +165,7 @@ test('stats: daily fills every day, flash days only for started programs', () =>
   const range = { from: rules.vietnamDayOf(now - 29 * 86400000), to: rules.vietnamDayOf(now) };
   const stats = data.rewardsStatsOf(range, now).result;
   assert.equal(stats.daily.length, 30);
-  const upcomingCode = 'FS-1013-B';
+  const upcomingCode = 'FS-261013-B';
   assert.ok(!stats.flashSales.some(f => f.code === upcomingCode));
   assert.ok(!stats.daily.some(d => d.flashSaleCodes.includes(upcomingCode)));
   const flashDays = stats.daily.filter(d => d.flashSaleCodes.length);
@@ -173,7 +173,7 @@ test('stats: daily fills every day, flash days only for started programs', () =>
   assert.ok(stats.kpis.redemptions.avgPerRegularDay > 0 && stats.kpis.redemptions.avgPerRegularDay < flashDays[0].count);
   assert.equal(stats.kpis.pointsSpent.vndEquivalent, stats.kpis.pointsSpent.points * 200);
   assert.ok(stats.kpis.redemptionRate.rate <= 1 && stats.kpis.redemptionRate.offered >= stats.kpis.redemptionRate.redeemed);
-  const sold = stats.flashSales.find(f => f.code === 'FS-0928-A');
+  const sold = stats.flashSales.find(f => f.code === 'FS-260928-A');
   assert.equal(sold.soldOutAfterMinutes, 38);
 });
 

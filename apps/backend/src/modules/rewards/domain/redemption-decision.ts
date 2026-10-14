@@ -83,9 +83,13 @@ export function decideRedemption(
     };
   }
 
-  // Flash quota is carved out of voucher stock (D2), so a Flash purchase also
-  // needs regular stock; a Flash price implies sold < quota (see effectivePrice).
-  if (voucher.stockRemaining <= 0 || voucher.codesAvailable <= 0) {
+  // The stockRemaining <= 0 check applies to non-FLASH price sources only;
+  // Flash is guarded by sold < quota (guaranteed by price.source === 'FLASH').
+  // codesAvailable <= 0 applies to both.
+  if (
+    (price.source !== 'FLASH' && voucher.stockRemaining <= 0) ||
+    voucher.codesAvailable <= 0
+  ) {
     return {
       code: 'SOLD_OUT',
       details: {
