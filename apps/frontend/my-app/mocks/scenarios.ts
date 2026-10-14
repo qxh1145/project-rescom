@@ -45,6 +45,14 @@ export const MOCK_SCENARIOS = [
   "rewards-account-not-eligible",
   // Rewards: commit redeem then simulate lost response for polling.
   "rewards-redeem-lost",
+  // Rewards admin: force already-resolved conflict without changing state.
+  "rewards-resolve-already-resolved",
+  // Rewards admin: force no-replacement conflict without changing state.
+  "rewards-resolve-no-replacement",
+  // Rewards admin: force unsupported-replacement conflict without changing state.
+  "rewards-resolve-not-supported",
+  // Rewards admin: force expired-ticket conflict without changing state.
+  "rewards-resolve-ticket-expired",
   // Plan 5.6: another device signed in, so every session request answers 401 AUTH_SESSION_REPLACED (15e).
   "session-replaced",
 ] as const;

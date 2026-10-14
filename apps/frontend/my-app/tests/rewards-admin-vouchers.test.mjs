@@ -135,7 +135,9 @@ test('edit preserves unavailable metadata when detail contract omits it', () => 
 
 test('detail joins redemptions by ticket only: seed history without a ticket never leaks onto same-name vouchers', () => {
   const coffee = rewardsCatalog.get().vouchers.find(v => v.brand.id === 'the-coffee-house');
-  assert.deepEqual(adminVoucherDetailOf(coffee.id, now).result.redemptions, []);
+  const rows = adminVoucherDetailOf(coffee.id, now).result.redemptions;
+  assert.ok(rows.some(row => row.reference === 'RDM-2610-5TC1')); // Story 12.12 links existing refund to its missing ticket.
+  assert.ok(rows.every(row => Object.values(rewardsState.get().users).some(user => user.tickets.some(ticket => ticket.reference === row.reference && ticket.voucherId === coffee.id))));
 });
 
 test('voucher handlers enforce session, admin role, CSRF and body schema', async () => {

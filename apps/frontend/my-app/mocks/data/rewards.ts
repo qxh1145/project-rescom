@@ -1,8 +1,9 @@
 import { adminFlashStatus, endEarlyDecision, flashConflicts, flashItemState, flashProgress, statsRange, vietnamDayOf, adminStockOf, adminVoucherStatus, importCodesDecision, priceDeviationPercent, stockAdjustmentDecision, validateVoucherInput } from "./rewards-rules";
+import { wallets, updateWallet, recordTransaction } from "./economy";
 import { POINT_VND_RATE } from "@rescom/schemas";
 import { createCollection, mockId } from "../db/store";
 import { idempotencyRecordKey, decideIdempotentRequest, type IdempotencyRecord } from "./idempotency";
-import { codeIssueDecision, decideRedemption, effectiveStatus, effectiveVoucherPrice, forcedError, historyMonthSummary, markUsedDecision, ticketStatus, undoUseDecision, type FlashInventory, type RedemptionQuote, type VoucherInventory } from "./rewards-rules";
+import { codeIssueDecision, replaceBlockedReason, resolveCodeIssueDecision, decideRedemption, effectiveStatus, effectiveVoucherPrice, forcedError, historyMonthSummary, markUsedDecision, ticketStatus, undoUseDecision, type FlashInventory, type RedemptionQuote, type VoucherInventory } from "./rewards-rules";
 
 const day = 86_400_000;
 const iso = (time: number) => new Date(time).toISOString();
@@ -25,6 +26,48 @@ function makeCodes(slug: string, count: number): string[] {
 }
 
 const flashDefaults = (title: string, extra: Partial<Pick<FlashInventory, "remindCount" | "participants" | "failures" | "afterTopUp">> = {}) => ({ title, createdBy: { id: id(999), name: "Admin Hùng" }, rules: { requireRecentSurvey: true, remindBefore10m: true, blockFlagged: true }, remindCount: 0, endReason: null, settledAt: null, failures: { SOLD_OUT: 0, INSUFFICIENT_POINTS: 0, OTHER: 0 }, afterTopUp: { count: 0, rate: 0, flagged: 0 }, participants: 0, ...extra });
+function seedIssueUsers(demo: UserState, vouchers: VoucherInventory[], now: number): Record<string, UserState> {
+  const users: Record<string, UserState> = { "user-active-002": demo, "00000000-0000-4000-8000-00000000d001": structuredClone(demo) };
+  const open = [
+    ["2e77", 3, "CODE_INVALID", "Nhân viên nhập mã báo không tồn tại, mình đã thử ở 2 cửa hàng khác nhau", 120, "PROMO", 39, -1],
+    ["e41b", 1, "CODE_INVALID", "Thu ngân báo mã không tồn tại trên máy POS, nhập tay cũng lỗi. Mình dùng ở chi nhánh Nguyễn Huệ sáng 13/10.", 150, "FLASH", 27, 60],
+    ["7c20", 2, "STORE_REFUSED", "Cửa hàng Lê Duẩn nói chưa nhận voucher Rescom", 125, "BASE", 26, 60],
+    ["b91e", 4, "CODE_ALREADY_USED", "Quét QR báo đã dùng lúc 11:02 ngày 13/10 nhưng mình chưa dùng lần nào", 200, "BASE", 21, 60],
+    ["5d02", 6, "CODE_INVALID", "Mã sai định dạng, nhân viên nhập không được. Mã có 9 ký tự nhưng máy POS yêu cầu 10.", 200, "BASE", 19, 60],
+    ["a3f1", 5, "OTHER", "Ứng dụng không hiện QR, chỉ có mã chữ nên quầy không quét được", 100, "BASE", 4, 60],
+  ] as const;
+  const add = (label: string, n: number, voucherNumber: number, reason: string, note: string | null, points: number, priceSource: string, ageHours: number, expiryDays: number, status: string) => {
+    const userId = `${label}0000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+    const v = vouchers[voucherNumber - 1], reportId = id(500 + n), redemptionId = id(600 + n), ticketId = id(700 + n);
+    const createdAt = iso(now - ageHours * 3600000), redeemedAt = iso(now - (ageHours + 2) * 3600000);
+    const reference = `RDM-2610-${String(n).padStart(4, "0")}`;
+    const refundReference = status === "REFUNDED" ? `RFD-2610-${String(n).padStart(4, "0")}` : null;
+    const replacementCode = status === "REPLACED" ? `NEW-${String(n).padStart(6, "0")}` : null;
+    const ticket: TicketRow = { id: ticketId, redemptionId, reference, voucherId: v.id, title: v.title, brand: v.brand, category: v.category, valueVnd: v.valueVnd,
+      code: replacementCode ?? `OLD-${String(n).padStart(6, "0")}`, isSharedCode: label === "a3f1", status: "UNUSED", redeemedAt,
+      expiresAt: iso(now + expiryDays * day), usedAt: null, undoUntil: null, pointsSpent: points, priceSource, howToUse: v.howToUse,
+      openIssue: { id: reportId, status } };
+    const resolvedAt = status === "OPEN" ? null : iso(now - Math.max(0, ageHours - 3) * 3600000);
+    const issue: IssueRow = { id: reportId, redemptionId, ticketId, reason, note, status, createdAt, resolvedAt, replacementCode, refundReference,
+      resolvedBy: status === "OPEN" ? null : { id: id(999), name: "Admin Hùng" }, resolutionNote: status === "REJECTED" ? "Không đủ bằng chứng mã lỗi" : null };
+    const history: HistoryRow[] = [{ id: redemptionId, reference, kind: "SUCCEEDED", voucherTitle: v.title, brand: v.brand, valueVnd: v.valueVnd,
+      isFlash: priceSource === "FLASH", points: -points, failureCode: null, journalId: redemptionId, note: null, createdAt: redeemedAt }];
+    if (refundReference) history.unshift({ ...history[0], id: id(800 + n), reference: refundReference, kind: "REFUNDED", points, journalId: id(800 + n), createdAt: resolvedAt! });
+    users[userId] = { tickets: [ticket], history, issues: [issue] };
+  };
+  open.forEach(([label, voucher, reason, note, points, source, age, expiry], index) => add(label, index + 1, voucher, reason, note, points, source, age, expiry, "OPEN"));
+  // 14 replaced, 10 refunded plus demo refund, 7 rejected = 32 resolved.
+  const resolved = [["REPLACED", 14], ["REFUNDED", 10], ["REJECTED", 7]] as const;
+  let n = 6;
+  for (const [status, count] of resolved) for (let index = 0; index < count; index++) {
+    n++;
+    const voucher = index % 5 + 1, v = vouchers[voucher - 1];
+    add((0xc000 + n).toString(16), n, voucher, "CODE_INVALID", "Đã liên hệ cửa hàng", v.promoPoints ?? v.basePoints,
+      v.promoPoints ? "PROMO" : "BASE", 48 + n, 60, status);
+  }
+  return users;
+}
+
 function seed() {
   const now = Date.now();
   const vouchers: VoucherInventory[] = specs.map(([brand, title, category, valueVnd, basePoints, promoPoints, stockTotal, stockRemaining, ends], index) => {
@@ -63,6 +106,8 @@ function seed() {
         "Trước khi thanh toán, đưa QR hoặc đọc mã cho thu ngân.", `Thu ngân quét mã, trừ ${valueVnd.toLocaleString("vi-VN")}đ vào hoá đơn.`],
     };
   });
+  // Coffee House has stock but no issuable codes: Admin issue queue reports NO_CODE.
+  vouchers[5].stockRemaining = 1;
   // ponytail: codes stored separately from inventory; codesAvailable is the count for pure rules
   const codePools: Record<string, string[]> = {};
   vouchers.forEach((v, index) => { codePools[v.id] = index === 5 ? [] : makeCodes(slugs[specs[index][0]], 15); });
@@ -83,7 +128,7 @@ function seed() {
     if (v.stockRemaining >= item.quota) v.stockRemaining -= item.quota; else v.stockTotal += item.quota; // low-stock voucher: grow the pool, keep its visible remaining
   }
 
-  const tickets = ([
+  const tickets: TicketRow[] = ([
     [5, 100, 5, "RDM-2610-1MZ4", "GCHA-4T8P-2LQW", now + 7 * day - 3600000, null] as const,
     [1 / 24, 150, 1, "RDM-2610-8F2K", "HLRC-7K2M-9QXA", now + 79 * day, null] as const,
     [1, 125, 2, "RDM-2610-3QK7", "LTRA-9D3F-6VNM", now + 79 * day, null] as const,
@@ -100,7 +145,9 @@ function seed() {
       howToUse: v.howToUse, openIssue: null };
   });
 
-  const history: HistoryRow[] = tickets.map((ticket) => ({ id: ticket.redemptionId, reference: ticket.reference, kind: "SUCCEEDED" as const,
+  tickets.push({ ...tickets[0], id: id(494), redemptionId: id(490), reference: "RDM-2610-5TC1", voucherId: id(6), title: vouchers[5].title, brand: vouchers[5].brand, category: vouchers[5].category, valueVnd: vouchers[5].valueVnd,
+    code: "COFF-7HC2-5TC1", redeemedAt: iso(now - 8 * day), expiresAt: iso(now + 30 * day), pointsSpent: 200, priceSource: "BASE", howToUse: vouchers[5].howToUse, openIssue: { id: id(493), status: "REFUNDED" } });
+  const history: HistoryRow[] = tickets.filter(ticket => ticket.id !== id(494)).map((ticket) => ({ id: ticket.redemptionId, reference: ticket.reference, kind: "SUCCEEDED" as const,
     voucherTitle: ticket.title, brand: ticket.brand, valueVnd: ticket.valueVnd, isFlash: ticket.priceSource === "FLASH",
     points: -ticket.pointsSpent, failureCode: null, journalId: ticket.redemptionId, note: null, createdAt: ticket.redeemedAt }));
   const coffee = vouchers[5];
@@ -113,18 +160,18 @@ function seed() {
   history.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 
   const demo: UserState = { tickets, history, issues: [{ id: id(493), redemptionId: id(490), ticketId: id(494), reason: "CODE_INVALID", note: "Mã lỗi",
-    status: "REFUNDED", createdAt: iso(now - 7 * day), resolvedAt: iso(now - 6 * day), replacementCode: null, refundReference: "RFD-2610-7HC2" }] };
+    status: "REFUNDED", createdAt: iso(now - 7 * day), resolvedAt: iso(now - 6 * day), replacementCode: null, refundReference: "RFD-2610-7HC2", resolvedBy: { id: id(999), name: "Admin Hùng" }, resolutionNote: "mã lỗi, Admin duyệt" }] };
   return {
     vouchers, flashes, codePools, statsSeededAt: now, priceHistory: Object.fromEntries(vouchers.map(v => [v.id, [{ version: 1, basePoints: v.basePoints, promoPoints: v.promoPoints, effectiveFrom: v.redeemStartsAt, changedBy: { id: id(999), name: "Admin Hùng" } }]])),
     quotes: {} as Record<string, RedemptionQuote>,
-    users: { "user-active-002": demo, "00000000-0000-4000-8000-00000000d001": structuredClone(demo) } as Record<string, UserState>,
+    users: seedIssueUsers(demo, vouchers, now),
     idempotency: {} as Record<string, IdempotencyRecord<StoredResponse>>,
   };
 }
 
 interface HistoryRow { id: string; reference: string; kind: string; voucherTitle: string; brand: { id: string; name: string }; valueVnd: number; isFlash: boolean; points: number; failureCode: string | null; journalId: string | null; note: string | null; createdAt: string }
 interface TicketRow { id: string; redemptionId: string; reference: string; voucherId: string; title: string; brand: { id: string; name: string }; category: string; valueVnd: number; code: string; isSharedCode: boolean; status: string; redeemedAt: string; expiresAt: string; usedAt: string | null; undoUntil: string | null; pointsSpent: number; priceSource: string; howToUse: string[]; openIssue: { id: string; status: string } | null }
-interface IssueRow { id: string; redemptionId: string; ticketId: string; reason: string; note: string | null; status: string; createdAt: string; resolvedAt: string | null; replacementCode: string | null; refundReference: string | null }
+interface IssueRow { resolvedBy: { id: string; name: string } | null; resolutionNote: string | null; id: string; redemptionId: string; ticketId: string; reason: string; note: string | null; status: string; createdAt: string; resolvedAt: string | null; replacementCode: string | null; refundReference: string | null }
 interface UserState { tickets: TicketRow[]; history: HistoryRow[]; issues: IssueRow[] }
 interface StoredResponse { status: number; body: Record<string, unknown> }
 type CatalogState = Pick<ReturnType<typeof seed>, "vouchers" | "flashes" | "codePools" | "priceHistory" | "statsSeededAt">;
@@ -280,10 +327,10 @@ export function redeemVoucherQuote(userId: string, quoteId: string, viewer: { av
   return result;
 }
 
-function generateReference(history: HistoryRow[], now: number): string {
+function generateReference(history: HistoryRow[], now: number, prefix = "RDM"): string {
   const usedReferences = new Set(history.map(row => row.reference));
   let reference: string;
-  do { reference = `RDM-${iso(now).slice(2, 4)}${iso(now).slice(5, 7)}-${mockId().replaceAll("-", "").slice(-4).toUpperCase()}`; }
+  do { reference = `${prefix}-${iso(now).slice(2, 4)}${iso(now).slice(5, 7)}-${mockId().replaceAll("-", "").slice(-4).toUpperCase()}`; }
   while (usedReferences.has(reference));
   return reference;
 }
@@ -324,13 +371,14 @@ export function reportCodeIssue(userId: string, ticketId: string, input: { reaso
   const decision = codeIssueDecision(ticket, now);
   if (!decision.ok) return decision;
   const report = { id: mockId(), redemptionId: ticket.redemptionId, ticketId, reason: input.reason, note: input.note?.trim() || null,
-    status: "OPEN", createdAt: iso(now), resolvedAt: null, replacementCode: null, refundReference: null };
+    status: "OPEN", createdAt: iso(now), resolvedAt: null, replacementCode: null, refundReference: null, resolvedBy: null, resolutionNote: null };
   rewardsState.update((draft) => {
     const rows = draft.users[userId];
     rows.issues.push(report);
     rows.tickets.find((t) => t.id === ticketId)!.openIssue = { id: report.id, status: "OPEN" };
   });
-  return { ok: true as const, result: report };
+  const { id, redemptionId, reason, note, status, createdAt, resolvedAt, replacementCode, refundReference } = report;
+  return { ok: true as const, result: { id, redemptionId, ticketId, reason, note, status, createdAt, resolvedAt, replacementCode, refundReference } };
 }
 
 export function historyOf(userId: string, query: { limit: number; offset: number }, now = Date.now()) {
@@ -588,4 +636,80 @@ export function rewardsStatsOf(query: { from: string; to: string }, now = Date.n
     selfReportedUsageRate: count ? Math.min(1, (Math.round(baselineCount * SEEDED_USAGE_RATE) + live.filter(ticket => ticket.usedAt).length) / count) : 0 },
     daily, byBrand: [...brands.values()].map(row => ({ brand: row.voucher.brand, redemptions: row.redemptions, pointsSpent: row.pointsSpent,
       soldRatio: row.offered ? row.redemptions / row.offered : 0 })), flashSales } };
+}
+
+// Admin code-issue queue (Story 12.12). Projection excludes code values.
+function adminCodeIssueRow(userId: string, issue: IssueRow, now: number) {
+  const ticket = rewardsState.get().users[userId].tickets.find(t => t.id === issue.ticketId)!;
+  const voucher = rewardsCatalog.get().vouchers.find(v => v.id === ticket.voucherId)!;
+  // ponytail: seeded Gong Cha ticket carries shared flag; real redemptions copy voucher flag.
+  const blocked = replaceBlockedReason({ status: issue.status, isSharedCode: ticket.isSharedCode || voucher.isSharedCode,
+    expiresAt: ticket.expiresAt, stockRemaining: voucher.stockRemaining, codesAvailable: voucher.codesAvailable }, now);
+  return { id: issue.id, redemptionId: ticket.redemptionId, reference: ticket.reference, userLabel: `#${userId.slice(0, 4).toUpperCase()}`,
+    voucher: { id: voucher.id, title: voucher.title, brand: voucher.brand }, pricePoints: ticket.pointsSpent, priceSource: ticket.priceSource,
+    reason: issue.reason, note: issue.note, status: issue.status, createdAt: issue.createdAt, resolvedAt: issue.resolvedAt,
+    resolvedBy: issue.resolvedBy, ticketStatus: ticketStatus(ticket, now), canReplace: issue.status === "OPEN" && blocked === null,
+    replaceBlockedReason: blocked, resolution: issue.status === "OPEN" ? null : { outcome: issue.status,
+      ...(issue.status === "REFUNDED" ? { refundReference: issue.refundReference } : {}) }, resolutionNote: issue.resolutionNote };
+}
+function issueCopies(issueId: string) {
+  return Object.entries(rewardsState.get().users).flatMap(([userId, user]) => user.issues.filter(issue => issue.id === issueId).map(issue => ({ userId, user, issue })));
+}
+export function adminCodeIssuesOf(query: { status?: "OPEN" | "RESOLVED" | "ALL"; limit?: number; offset?: number } = {}, now = Date.now()) {
+  const seen = new Set<string>();
+  const all = Object.entries(rewardsState.get().users).flatMap(([userId, user]) => user.issues.map(issue => ({ userId, issue })))
+    .filter(({ issue }) => !seen.has(issue.id) && !!seen.add(issue.id))
+    .sort((a, b) => a.issue.createdAt.localeCompare(b.issue.createdAt) || a.issue.id.localeCompare(b.issue.id));
+  const open = all.filter(row => row.issue.status === "OPEN");
+  const filtered = all.filter(row => query.status === "OPEN" ? row.issue.status === "OPEN" : query.status === "RESOLVED" ? row.issue.status !== "OPEN" : true);
+  const limit = query.limit ?? 20, offset = query.offset ?? 0;
+  return { items: filtered.slice(offset, offset + limit).map(({ userId, issue }) => adminCodeIssueRow(userId, issue, now)),
+    total: filtered.length, limit, offset, hasMore: offset + limit < filtered.length,
+    summary: { open: open.length, oldestOpenAt: open[0]?.issue.createdAt ?? null } };
+}
+export function adminCodeIssueOf(issueId: string, now = Date.now()) {
+  const copy = issueCopies(issueId)[0];
+  return copy ? { ok: true as const, result: adminCodeIssueRow(copy.userId, copy.issue, now) }
+    : { ok: false as const, status: 404, code: "CODE_ISSUE_NOT_FOUND" };
+}
+export function resolveAdminCodeIssue(issueId: string, input: { outcome: "REPLACE" | "REFUND" | "REJECT"; note?: string }, admin: { id: string; email: string }, now = Date.now()) {
+  const copies = issueCopies(issueId), first = copies[0];
+  if (!first) return { ok: false as const, status: 404, code: "CODE_ISSUE_NOT_FOUND" };
+  const ticket = first.user.tickets.find(t => t.id === first.issue.ticketId)!;
+  const voucher = rewardsCatalog.get().vouchers.find(v => v.id === ticket.voucherId)!;
+  const decision = resolveCodeIssueDecision(first.issue, { expiresAt: ticket.expiresAt, refunded: ticket.openIssue?.status === "REFUNDED" },
+    { isSharedCode: voucher.isSharedCode || ticket.isSharedCode, stockRemaining: voucher.stockRemaining, codesAvailable: voucher.codesAvailable }, input.outcome, now);
+  if (!decision.ok) return decision;
+  if (decision.replay) return adminCodeIssueOf(issueId, now);
+  let code: string | null = null;
+  if (input.outcome === "REPLACE") {
+    rewardsCatalog.update(draft => { const v = draft.vouchers.find(v => v.id === voucher.id)!;
+      v.stockRemaining--; code = draft.codePools[v.id].shift()!; v.codesAvailable = draft.codePools[v.id].length; });
+  }
+  const refundReference = input.outcome === "REFUND" ? generateReference(first.user.history, now, "RFD") : null;
+  const refundRowId = mockId(), refundJournalId = mockId(); // shared so every copy stays equal
+  const nextStatus = { REPLACE: "REPLACED", REFUND: "REFUNDED", REJECT: "REJECTED" }[input.outcome];
+  rewardsState.update(draft => { for (const { userId } of copies) {
+    const user = draft.users[userId], report = user.issues.find(i => i.id === issueId)!;
+    const t = user.tickets.find(t => t.id === report.ticketId)!;
+    report.status = nextStatus; report.resolvedAt = iso(now); report.resolvedBy = { id: admin.id, name: admin.email };
+    report.resolutionNote = input.note?.trim() || null;
+    t.openIssue = { id: issueId, status: nextStatus };
+    if (input.outcome === "REPLACE") { report.replacementCode = code; t.code = code!; t.usedAt = null; t.undoUntil = null; }
+    if (input.outcome === "REFUND") {
+      report.refundReference = refundReference;
+      user.history.unshift({ id: refundRowId, reference: refundReference!, kind: "REFUNDED", voucherTitle: t.title, brand: t.brand,
+        valueVnd: t.valueVnd, isFlash: t.priceSource === "FLASH", points: t.pointsSpent, failureCode: null,
+        journalId: refundJournalId, note: null, createdAt: iso(now) });
+    }
+  } });
+  if (input.outcome === "REFUND") for (const { userId } of copies) {
+    // ponytail: template and uninitialized clones have no wallet; credit only materialized wallets.
+    if (!wallets.get()[userId]) continue;
+    const mockUser = { id: userId } as Parameters<typeof updateWallet>[0];
+    updateWallet(mockUser, wallet => { wallet.available += ticket.pointsSpent; });
+    recordTransaction(mockUser, { kind: "VOUCHER_REFUND", amount: ticket.pointsSpent, status: "AVAILABLE", note: ticket.title,
+      surveyId: null, attemptId: null, releasesAt: null, rewardRowId: ticket.redemptionId, codeIssueReportId: issueId });
+  }
+  return adminCodeIssueOf(issueId, now);
 }
