@@ -13,11 +13,13 @@ describe('NotificationType parity (Story 9.6 AC1.1)', () => {
     );
   });
 
-  it('appends the IR.4b email types at the end (B3)', () => {
-    expect(NOTIFICATION_TYPES.slice(-3)).toEqual([
+  it('appends the IR.4b email types and 12.10 rewards types at the end', () => {
+    expect(NOTIFICATION_TYPES.slice(-5)).toEqual([
       'TOPUP_REJECTED',
       'ACCOUNT_LOCKED',
       'ACCOUNT_UNLOCKED',
+      'VOUCHER_EXPIRING',
+      'CODE_ISSUE_RESOLVED',
     ]);
   });
 });

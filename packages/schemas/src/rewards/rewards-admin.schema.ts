@@ -1,5 +1,6 @@
 // ASSUMED API CONTRACT: backend Stories 12.7–12.10 must match or update these schemas.
 import { z } from "zod";
+import { MAX_PAGINATION_OFFSET } from "../common/pagination.schema";
 import { voucherBrandSchema, voucherCategorySchema, voucherPriceSchema, flashSaleItemSchema } from "./voucher-catalog.schema";
 import { redemptionHistoryKindSchema } from "./redemption.schema";
 const id = z.string().uuid();
@@ -66,3 +67,76 @@ export const rewardsStatsSchema = z.object({ range: z.object({ from: date, to: d
 
 export type RewardsStatsDto = z.infer<typeof rewardsStatsSchema>;
 export type RewardsStatsQueryDto = z.infer<typeof rewardsStatsQuerySchema>;
+
+// Story 12.10: Rewards Admin Code Issues Queue contracts
+export const adminCodeIssueStatusFilterSchema = z.enum(["OPEN", "RESOLVED", "ALL"]);
+export const adminCodeIssueListQuerySchema = z.object({
+  status: adminCodeIssueStatusFilterSchema.default("OPEN"),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  offset: z.coerce.number().int().min(0).max(MAX_PAGINATION_OFFSET).default(0),
+});
+
+export const adminCodeIssueReplaceBlockedReasonSchema = z.enum([
+  "SHARED_CODE", "NO_STOCK", "NO_CODE", "TICKET_EXPIRED",
+]);
+
+export const adminCodeIssueSchema = z.object({
+  id,
+  redemptionId: id,
+  reference: z.string().regex(/^RDM-\d{4}-[0-9A-Z]{4}$/),
+  userLabel: z.string(),
+  voucher: z.object({
+    id,
+    title: z.string().min(1),
+    brand: voucherBrandSchema,
+  }),
+  reason: z.enum(["CODE_INVALID", "CODE_ALREADY_USED", "STORE_REFUSED", "OTHER"]),
+  note: z.string().nullable(),
+  status: z.enum(["OPEN", "REPLACED", "REFUNDED", "REJECTED"]),
+  createdAt: instant,
+  resolvedAt: instant.nullable(),
+  resolvedBy: z.object({ id, name: z.string().min(1) }).nullable(),
+  pricePoints: positive,
+  priceSource: z.enum(["BASE", "PROMO", "FLASH"]),
+  ticketStatus: z.enum(["UNUSED", "EXPIRING", "USED", "EXPIRED"]),
+  canReplace: z.boolean(),
+  replaceBlockedReason: adminCodeIssueReplaceBlockedReasonSchema.nullable(),
+  resolution: z.object({
+    outcome: z.enum(["REPLACED", "REFUNDED", "REJECTED"]),
+    refundReference: z.string().regex(/^RFD-\d{4}-[0-9A-Z]{4}$/).optional(),
+  }).nullable(),
+  resolutionNote: z.string().nullable(),
+});
+
+export const adminCodeIssueListSchema = z.object({
+  items: z.array(adminCodeIssueSchema),
+  total: count,
+  limit: positive,
+  offset: count,
+  hasMore: z.boolean(),
+  summary: z.object({
+    open: count,
+    oldestOpenAt: instant.nullable(),
+  }),
+});
+
+export const adminResolveCodeIssueSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("REPLACE"),
+    note: z.string().trim().max(500).optional(),
+  }),
+  z.object({
+    outcome: z.literal("REFUND"),
+    note: z.string().trim().max(500).optional(),
+  }),
+  z.object({
+    outcome: z.literal("REJECT"),
+    note: z.string().trim().min(1, "Note is required for rejection").max(500),
+  }),
+]);
+
+export type AdminCodeIssueStatusFilter = z.infer<typeof adminCodeIssueStatusFilterSchema>;
+export type AdminCodeIssueListQuery = z.infer<typeof adminCodeIssueListQuerySchema>;
+export type AdminCodeIssueDto = z.infer<typeof adminCodeIssueSchema>;
+export type AdminCodeIssueListDto = z.infer<typeof adminCodeIssueListSchema>;
+export type AdminResolveCodeIssueDto = z.infer<typeof adminResolveCodeIssueSchema>;

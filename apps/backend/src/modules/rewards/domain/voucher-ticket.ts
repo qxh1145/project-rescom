@@ -1,9 +1,12 @@
 import {
   VoucherTicketDto,
-  VoucherTicketStatus,
   VoucherPriceSource,
+  CodeIssueStatus,
 } from '@rescom/schemas';
 import { VoucherRecord } from '../application/ports/voucher-repository.port';
+import { calculateTicketStatus } from './ticket-rules';
+
+export { calculateTicketStatus };
 
 export interface RedemptionRecordForTicket {
   id: string;
@@ -13,38 +16,39 @@ export interface RedemptionRecordForTicket {
   createdAt: string | Date;
 }
 
-/**
- * Ticket status computation matching mock:
- * - EXPIRED: remaining <= 0
- * - EXPIRING: remaining <= 7 days
- * - UNUSED: otherwise
- */
-export function calculateTicketStatus(
-  expiresAt: string | Date,
-  usedAt: string | Date | null,
-  now: number,
-): VoucherTicketStatus {
-  if (usedAt) return 'USED';
-  const remaining = +new Date(expiresAt) - now;
-  if (remaining <= 0) return 'EXPIRED';
-  if (remaining <= 7 * 86_400_000) return 'EXPIRING';
-  return 'UNUSED';
+export interface TicketOptionalFacts {
+  usage?: { usedAt: string | Date; undoUntil: string | Date } | null;
+  latestIssue?: { id: string; status: CodeIssueStatus } | null;
+  replacementCode?: string | null;
 }
 
 /**
- * Pure function to construct VoucherTicketDto (Task 3.4).
+ * Pure function to construct VoucherTicketDto (Tasks 2.2, 3.4).
  * Ticket ID is the redemption ID (1:1 mapping).
+ * When optional facts are provided:
+ * - code resolves to replacementCode if present, else original code
+ * - usedAt, undoUntil come from usage
+ * - status reflects usage and expiry
+ * - openIssue reflects latest issue
  */
 export function toVoucherTicket(
   redemption: RedemptionRecordForTicket,
   voucher: VoucherRecord,
   code: string,
   now: number,
+  facts?: TicketOptionalFacts,
 ): VoucherTicketDto {
   const expiresAt = voucher.codeExpiresAt;
-  const status = calculateTicketStatus(expiresAt, null, now);
+  const usedAt = facts?.usage?.usedAt
+    ? new Date(facts.usage.usedAt).toISOString()
+    : null;
+  const undoUntil = facts?.usage?.undoUntil
+    ? new Date(facts.usage.undoUntil).toISOString()
+    : null;
+  const status = calculateTicketStatus(expiresAt, usedAt, now);
   const redeemedAt = new Date(redemption.createdAt).toISOString();
   const expiresAtIso = new Date(expiresAt).toISOString();
+  const effectiveCode = facts?.replacementCode ?? code;
 
   return {
     id: redemption.id,
@@ -55,16 +59,18 @@ export function toVoucherTicket(
     brand: voucher.brand,
     category: voucher.category,
     valueVnd: voucher.valueVnd,
-    code,
+    code: effectiveCode,
     isSharedCode: voucher.isSharedCode,
     status,
     redeemedAt,
     expiresAt: expiresAtIso,
-    usedAt: null,
-    undoUntil: null,
+    usedAt,
+    undoUntil,
     pointsSpent: redemption.pricePoints,
     priceSource: redemption.priceSource,
     howToUse: voucher.howToUse,
-    openIssue: null,
+    openIssue: facts?.latestIssue
+      ? { id: facts.latestIssue.id, status: facts.latestIssue.status }
+      : null,
   };
 }

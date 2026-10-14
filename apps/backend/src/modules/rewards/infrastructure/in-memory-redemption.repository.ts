@@ -79,7 +79,11 @@ export class InMemoryRedemptionRepository implements RedemptionRepositoryPort {
 
   async claimCode(voucherId: string): Promise<ClaimedVoucherCode | null> {
     for (const code of this.codes.values()) {
-      if (code.voucherId === voucherId && code.redemptionId === null) {
+      if (
+        code.voucherId === voucherId &&
+        code.redemptionId === null &&
+        (!('issueReportId' in code) || (code as any).issueReportId === null)
+      ) {
         return {
           id: code.id,
           code: code.code,
@@ -105,6 +109,8 @@ export class InMemoryRedemptionRepository implements RedemptionRepositoryPort {
     return { id: code.id, code: code.code };
   }
 
+  readonly refundedRedemptions = new Set<string>();
+
   async countVoucherRedemptionsInWindow(
     userId: string,
     voucherId: string,
@@ -117,6 +123,7 @@ export class InMemoryRedemptionRepository implements RedemptionRepositoryPort {
         r.userId === userId &&
         r.voucherId === voucherId &&
         r.status === 'SUCCEEDED' &&
+        !this.refundedRedemptions.has(r.id) &&
         new Date(r.createdAt).getTime() >= sinceMs
       ) {
         count++;
@@ -138,6 +145,7 @@ export class InMemoryRedemptionRepository implements RedemptionRepositoryPort {
       if (
         r.userId === userId &&
         r.status === 'SUCCEEDED' &&
+        !this.refundedRedemptions.has(r.id) &&
         createdMs >= startMs &&
         createdMs < endMs
       ) {
@@ -156,7 +164,8 @@ export class InMemoryRedemptionRepository implements RedemptionRepositoryPort {
       if (
         r.userId === userId &&
         r.flashSaleItemId === flashSaleItemId &&
-        r.status === 'SUCCEEDED'
+        r.status === 'SUCCEEDED' &&
+        !this.refundedRedemptions.has(r.id)
       ) {
         count++;
       }

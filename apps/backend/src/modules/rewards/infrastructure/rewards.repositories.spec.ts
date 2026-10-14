@@ -1,4 +1,5 @@
 import { InMemoryVoucherRepository } from './in-memory-voucher.repository';
+import { InMemoryMyVouchersRepository } from './in-memory-my-vouchers.repository';
 import { InMemoryVoucherCodeRepository } from './in-memory-voucher-code.repository';
 import { InMemoryFlashSaleReadRepository } from './in-memory-flash-sale-read.repository';
 import { InMemoryFlashSaleRepository } from './in-memory-flash-sale.repository';
@@ -371,5 +372,167 @@ describe('Rewards repository contracts', () => {
     expect(await repo.adjustVoucherStock(id, -5)).toBe(true);
     expect(await repo.adjustVoucherStock(id, 5)).toBe(true);
     expect(await repo.adjustVoucherStock(id, 0)).toBe(true);
+  });
+
+  describe('Story 12.10 My Vouchers & Ticket repositories', () => {
+    it('in-memory repository handles ticket listing, detail, mark-used, undo, report, and admin queue', async () => {
+      const repo = new InMemoryMyVouchersRepository();
+
+      const userId = '00000000-0000-4000-8000-000000000010';
+      const voucherId = '00000000-0000-4000-8000-000000000020';
+      const redemptionId = '00000000-0000-4000-8000-000000000030';
+      const codeId = '00000000-0000-4000-8000-000000000040';
+      const reportId = '00000000-0000-4000-8000-000000000050';
+
+      repo.vouchers.set(voucherId, {
+        id: voucherId,
+        title: 'Highlands Coffee 50k',
+        brand: { id: 'highlands', name: 'Highlands Coffee' },
+        category: 'COFFEE',
+        valueVnd: 50000,
+        basePoints: 100,
+        promoPoints: null,
+        priceVersion: 1,
+        stockTotal: 10,
+        stockRemaining: 5,
+        codesAvailable: 5,
+        state: 'ACTIVE',
+        isVisible: true,
+        isSharedCode: false,
+        sharedCode: null,
+        redeemStartsAt: '2026-10-01T00:00:00.000Z',
+        redeemEndsAt: '2026-11-01T00:00:00.000Z',
+        codeExpiresAt: '2026-11-10T00:00:00.000Z',
+        description: null,
+        whereToUse: null,
+        terms: [],
+        howToUse: [],
+        imageUrl: null,
+        createdAt: '2026-10-01T00:00:00.000Z',
+        updatedAt: '2026-10-01T00:00:00.000Z',
+        createdById: userId,
+      });
+
+      repo.voucherCodes.set(codeId, {
+        id: codeId,
+        voucherId,
+        code: 'CODE1234',
+        redemptionId,
+        issueReportId: null,
+        createdAt: '2026-10-01T00:00:00.000Z',
+      });
+
+      repo.redemptions.set(redemptionId, {
+        id: redemptionId,
+        userId,
+        voucherId,
+        voucherCodeId: codeId,
+        flashSaleItemId: null,
+        quoteId: null,
+        status: 'SUCCEEDED',
+        pricePoints: 100,
+        priceSource: 'BASE',
+        journalId: '00000000-0000-4000-8000-000000000060',
+        reference: 'RDM-2026-ABCD',
+        createdAt: '2026-10-01T00:00:00.000Z',
+      });
+
+      // 1. List tickets
+      const list = await repo.listTickets(userId, Date.now());
+      expect(list.total).toBe(1);
+      expect(list.items[0].code).toBe('CODE1234');
+      expect(list.items[0].status).toBe('UNUSED');
+
+      // 2. Foreign user returns null on findTicket (404, never 403)
+      expect(
+        await repo.findTicket('other-user', redemptionId, Date.now()),
+      ).toBeNull();
+
+      // 3. Mark used
+      const usedAt = new Date('2026-10-14T10:00:00.000Z');
+      const undoUntil = new Date('2026-10-15T10:00:00.000Z');
+      await repo.insertUsage({ redemptionId, usedAt, undoUntil });
+      const marked = await repo.findTicket(userId, redemptionId, Date.now());
+      expect(marked?.ticket.status).toBe('USED');
+      expect(marked?.ticket.usedAt).toBe(usedAt.toISOString());
+
+      // 4. Undo use
+      expect(await repo.deleteUsage(redemptionId)).toBe(true);
+      const undone = await repo.findTicket(userId, redemptionId, Date.now());
+      expect(undone?.ticket.status).toBe('UNUSED');
+      expect(undone?.ticket.usedAt).toBeNull();
+
+      // 5. Report issue
+      await repo.insertReport({
+        id: reportId,
+        redemptionId,
+        reason: 'CODE_INVALID',
+        note: 'Store said invalid',
+        createdAt: new Date(),
+      });
+      const lockedReport = await repo.lockReport(reportId);
+      expect(lockedReport?.status).toBe('OPEN');
+
+      // 6. Admin queue
+      const adminQueue = await repo.listReportsForAdmin(
+        { limit: 10, offset: 0, status: 'OPEN' },
+        Date.now(),
+      );
+      expect(adminQueue.total).toBe(1);
+      expect(adminQueue.items[0].id).toBe(reportId);
+
+      // 7. Replacement code claim (predicate test: redemption_id is null AND issue_report_id is null)
+      const replCodeId = '00000000-0000-4000-8000-000000000070';
+      repo.voucherCodes.set(replCodeId, {
+        id: replCodeId,
+        voucherId,
+        code: 'NEWCODE5678',
+        redemptionId: null,
+        issueReportId: null,
+        createdAt: '2026-10-01T00:00:00.000Z',
+      });
+
+      const claimed = await repo.claimReplacementCode(voucherId, reportId);
+      expect(claimed?.code).toBe('NEWCODE5678');
+      // Second claim should return null
+      expect(await repo.claimReplacementCode(voucherId, reportId)).toBeNull();
+
+      // 8. Mark report REPLACED
+      expect(
+        await repo.markReportReplaced(
+          reportId,
+          replCodeId,
+          'admin-1',
+          new Date(),
+        ),
+      ).toBe(true);
+      const afterReplace = await repo.findTicket(
+        userId,
+        redemptionId,
+        Date.now(),
+      );
+      expect(afterReplace?.ticket.code).toBe('NEWCODE5678');
+      expect(afterReplace?.ticket.openIssue?.status).toBe('REPLACED');
+
+      repo.seedRedemption({
+        id: '00000000-0000-4000-8000-000000000080',
+        userId,
+        voucherId,
+        voucherCodeId: null,
+        flashSaleItemId: null,
+        quoteId: null,
+        status: 'FAILED',
+        pricePoints: 0,
+        priceSource: 'BASE',
+        journalId: null,
+        reference: 'RDM-2026-FAIL',
+        createdAt: new Date('2026-10-14T00:00:00.000Z'),
+        failureCode: 'UNKNOWN_CODE',
+      });
+      const history = await repo.listHistory(userId, 10, 0);
+      expect(history.items.find((i) => i.kind === 'FAILED')?.failureCode).toBe(
+        'VOUCHER_UNAVAILABLE',
+      );
+    });
   });
 });

@@ -1649,7 +1649,40 @@ So that I do not lose what I redeemed.
 **And** mark-used is allowed with undo within 24 hours.
 **And** reminders 7 days and 1 day before expiry are emitted through the Outbox to the existing notification system (AD-10).
 **And** a code-issue report enters a Rewards-owned Admin queue; Admin resolves it with either a replacement code or a refund keyed `redemption-refund:{caseId}` through an Economy reversal journal, at most one outcome per report, and the user is notified (FR-75, BR-22).
+**And** Admin may instead reject a report with a mandatory note; a rejection moves no stock, code or Points, counts as the report's one outcome, and the user is notified (decision 2026-10-14).
 **And** expired, unused vouchers are not refunded (BR-23).
+
+### Story 12.12: Admin Code-Issue Queue — Contract & MSW Mock
+
+As a Developer,
+I want the Admin code-issue queue contracts and a mock domain,
+So that the queue screen can be built and reviewed against the exact backend contract of Story 12.10.
+
+**Acceptance Criteria:**
+
+**Given** the Admin schemas defined by Story 12.10 in `packages/schemas`
+**When** the frontend adopts them
+**Then** MSW handlers exist for `GET /admin/rewards/code-issues`, `GET /admin/rewards/code-issues/:id`, and `POST /admin/rewards/code-issues/:id/resolve`, parse every payload with the shared Zod schemas, and are listed in `DEFERRED_KEEP_MOCK` until Story 12.11.
+**And** the mock state and rules mirror the backend: one OPEN report per redemption, at most one outcome (REPLACE, REFUND, or REJECT with a mandatory note), `canReplace` and `replaceBlockedReason` (shared code, no stock, no code, expired ticket), repeat of the same outcome is a no-op, a different outcome returns `CODE_ISSUE_ALREADY_RESOLVED`.
+**And** resolving in the mock updates the user's ticket and history (replacement code, REFUNDED entry with an `RFD-` reference and points back, or unchanged for REJECT) so both portals stay consistent.
+**And** no Admin payload contains an original or replacement code value.
+**And** mock-only unit tests cover the rules and every error code; the route-diff and allowlist tests stay green.
+
+### Story 12.13: Admin Code-Issue Queue Screen
+
+As an Admin,
+I want a queue of faulty-code reports with clear resolve actions,
+So that users get a replacement, a refund, or an explanation within the target of one business day.
+
+**Acceptance Criteria:**
+
+**Given** an Admin in the Admin console
+**When** they open Báo cáo mã lỗi (new AdminSidebar entry next to Voucher, Flash Sale, and Thống kê voucher)
+**Then** the list shows open reports oldest first with voucher, brand, reason, note, points, age, and ticket status, filters Open, Resolved, and All, and paginates (FR-75).
+**And** the detail shows the redemption reference and the resolution history, and offers Thay mã, Hoàn điểm, and Từ chối; Thay mã is disabled with the reason when `canReplace` is false.
+**And** each action asks for confirmation that explains its effect (replacement uses one stock unit and one code; refund returns the Points and cannot be undone; rejection requires a note that the user will see).
+**And** loading, empty, error, and already-resolved states are handled, and success and failure toasts use the backend error codes.
+**And** the screen works against the Story 12.12 mock; the design source is a new Figma page for the queue that must exist before this story starts (Open Question: design owner Quan).
 
 ### Story 12.11: Rewards Integration Without Mocks & Enable Gate
 
@@ -1659,9 +1692,9 @@ So that the pilot economy is not put at risk.
 
 **Acceptance Criteria:**
 
-**Given** Stories 12.1–12.10 are done
+**Given** Stories 12.1–12.10, 12.12, and 12.13 are done
 **When** Rewards journeys run with mocks disabled
-**Then** browse, redeem (success and every failure code), my vouchers, faulty-code resolution, Admin catalog, Flash Sale, and statistics pass against the real backend.
+**Then** browse, redeem (success and every failure code), my vouchers, faulty-code resolution (user report and Admin queue), Admin catalog, Flash Sale, and statistics pass against the real backend.
 **And** the statistics API backs the Admin dashboard.
 **And** a load test of concurrent redemptions on one Flash voucher at start time records p95 latency and confirms no oversell and no double charge on the pilot VPS profile.
 **And** Rewards sits behind a feature flag that is off by default; production enable requires the PRD Open Question 24 decision (accounting and tax) to be recorded, and the Ví điểm copy says that Points are never withdrawn as cash.

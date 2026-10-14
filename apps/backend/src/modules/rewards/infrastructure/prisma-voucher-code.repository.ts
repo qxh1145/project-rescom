@@ -15,7 +15,7 @@ export class PrismaVoucherCodeRepository implements VoucherCodeRepositoryPort {
   }
   async countAvailable(voucherId: string): Promise<number> {
     return currentClient(this.prisma).voucherCode.count({
-      where: { voucherId, redemptionId: null },
+      where: { voucherId, redemptionId: null, issueReportId: null },
     });
   }
   async importCodes(voucherId: string, codes: string[]): Promise<void> {
@@ -29,7 +29,7 @@ export class PrismaVoucherCodeRepository implements VoucherCodeRepositoryPort {
     if (count <= 0) return 0;
     return currentClient(this.prisma).$executeRaw`
       DELETE FROM voucher_codes WHERE id IN (
-        SELECT id FROM voucher_codes WHERE voucher_id = ${voucherId}::uuid AND redemption_id IS NULL
+        SELECT id FROM voucher_codes WHERE voucher_id = ${voucherId}::uuid AND redemption_id IS NULL AND issue_report_id IS NULL
         ORDER BY created_at, id LIMIT ${count}
       )`;
   }

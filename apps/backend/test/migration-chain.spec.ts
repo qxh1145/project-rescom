@@ -135,6 +135,29 @@ describe('Prisma migration chain', () => {
     expect(flashLifecycle).toContain('flash_sales_ends_at_due_idx');
   });
 
+  it('keeps 12.10 my vouchers & code issues migration unconditional and mirrors checks in invariants', () => {
+    const myVouchers = readMigration(
+      '20261016100000_rewards_my_vouchers_code_issues',
+    );
+    expect(myVouchers).not.toMatch(/to_regclass/i);
+    for (const name of [
+      'redemption_usages',
+      'redemption_refunds',
+      'redemption_reminders',
+      'voucher_codes_assignment_mutual_exclusion',
+      'code_issue_reports_outcome_shape_check',
+      'code_issue_reports_resolution_note_length_check',
+      'redemption_usages_undo_until_check',
+      'redemption_refunds_points_positive_check',
+      'redemption_reminders_window_check',
+      'redemption_refunds_append_only',
+      'redemption_refunds_no_truncate',
+    ]) {
+      expect(myVouchers).toContain(name);
+      expect(invariantsSql).toContain(name);
+    }
+  });
+
   it('re-asserts every object created inside an earlier guarded block', () => {
     const invariants = withoutGuardedBlocks(invariantsSql);
     const patterns = [

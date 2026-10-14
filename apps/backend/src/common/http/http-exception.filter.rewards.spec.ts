@@ -34,6 +34,16 @@ describe('Rewards errors', () => {
     ['FLASH_NOT_ACTIVE', HttpStatus.CONFLICT],
     ['FLASH_ALREADY_ENDED', HttpStatus.CONFLICT],
     ['FLASH_CODE_EXHAUSTED', HttpStatus.CONFLICT],
+    // Story 12.10: My vouchers, reminders & faulty-code resolution
+    ['TICKET_NOT_FOUND', HttpStatus.NOT_FOUND],
+    ['TICKET_EXPIRED', HttpStatus.CONFLICT],
+    ['UNDO_WINDOW_CLOSED', HttpStatus.CONFLICT],
+    ['CODE_ISSUE_ALREADY_OPEN', HttpStatus.CONFLICT],
+    ['TICKET_REFUNDED', HttpStatus.CONFLICT],
+    ['CODE_ISSUE_NOT_FOUND', HttpStatus.NOT_FOUND],
+    ['CODE_ISSUE_ALREADY_RESOLVED', HttpStatus.CONFLICT],
+    ['NO_REPLACEMENT_AVAILABLE', HttpStatus.CONFLICT],
+    ['REPLACEMENT_NOT_SUPPORTED', HttpStatus.CONFLICT],
   ];
   it.each(cases)(
     '%s maps to %s and preserves details',
