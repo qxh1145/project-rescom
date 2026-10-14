@@ -1,10 +1,10 @@
 import { http, type RequestHandler } from "msw";
-import { adminCodeImportRequestSchema, adminFlashSaleInputSchema, adminFlashSaleListQuerySchema, adminFlashEndRequestSchema, rewardsStatsQuerySchema, adminStockAdjustmentSchema, adminVoucherInputSchema, adminVoucherListQuerySchema, adminVoucherPriceChangeSchema, adminVoucherStatePatchSchema } from "@rescom/schemas";
+import { adminCodeImportRequestSchema, adminCodeIssueListQuerySchema, adminResolveCodeIssueSchema, adminFlashSaleInputSchema, adminFlashSaleListQuerySchema, adminFlashEndRequestSchema, rewardsStatsQuerySchema, adminStockAdjustmentSchema, adminVoucherInputSchema, adminVoucherListQuerySchema, adminVoucherPriceChangeSchema, adminVoucherStatePatchSchema } from "@rescom/schemas";
 import { apiUrl, isHybridMocking } from "@/lib/api/config";
-import { adminBrands, adminFlashSalesOf, adminFlashSaleDetailOf, createAdminFlashSale, updateAdminFlashSale, endAdminFlashSale, rewardsStatsOf, adminVoucherDetailOf, adminVouchersOf, adjustAdminVoucherStock, changeAdminVoucherPrice, createAdminVoucher, importAdminVoucherCodes, patchAdminVoucherState, updateAdminVoucher } from "../data/rewards";
+import { adminCodeIssuesOf, adminCodeIssueOf, resolveAdminCodeIssue, adminBrands, adminFlashSalesOf, adminFlashSaleDetailOf, createAdminFlashSale, updateAdminFlashSale, endAdminFlashSale, rewardsStatsOf, adminVoucherDetailOf, adminVouchersOf, adjustAdminVoucherStock, changeAdminVoucherPrice, createAdminVoucher, importAdminVoucherCodes, patchAdminVoucherState, updateAdminVoucher } from "../data/rewards";
 import { fail, missingCsrf, ok } from "../envelope";
 import { HYBRID_ADMIN } from "../hybrid";
-import { applyScenario } from "../scenarios";
+import { applyScenario, getActiveScenario } from "../scenarios";
 import { requireMockAdmin } from "./admin";
 
 async function guard(request: Request, write = false) {
@@ -100,6 +100,35 @@ export const rewardsAdminHandlers: RequestHandler[] = [
     const checked = await guarded(request, true); if (checked.error) return checked.error;
     const parsed = await body(request, adminFlashEndRequestSchema); if (parsed.error) return parsed.error;
     return respond(endAdminFlashSale(String(params.id), parsed.value as Parameters<typeof endAdminFlashSale>[1]));
+  }),
+  // ASSUMED API CONTRACT: backend Story 12.10. 400 VALIDATION_ERROR; 401 AUTH_UNAUTHORIZED; 403 FORBIDDEN_RESOURCE.
+  http.get(apiUrl("/admin/rewards/code-issues"), async ({ request }) => {
+    const checked = await guarded(request); if (checked.error) return checked.error;
+    const query = adminCodeIssueListQuerySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+    return query.success ? ok(adminCodeIssuesOf(query.data)) : fail(400, "VALIDATION_ERROR", "Invalid query.", { details: query.error.format() });
+  }),
+  // ASSUMED API CONTRACT: backend Story 12.10. 400 VALIDATION_ERROR; 401/403 auth; 404 CODE_ISSUE_NOT_FOUND.
+  http.get(apiUrl("/admin/rewards/code-issues/:id"), async ({ request, params }) => {
+    const checked = await guarded(request); if (checked.error) return checked.error;
+    const id = String(params.id);
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+      ? respond(adminCodeIssueOf(id)) : fail(400, "VALIDATION_ERROR", "Invalid issue ID.");
+  }),
+  // ASSUMED API CONTRACT: backend Story 12.10. 400 VALIDATION_ERROR; 401/403 auth/CSRF; 404 CODE_ISSUE_NOT_FOUND; 409 CODE_ISSUE_ALREADY_RESOLVED, NO_REPLACEMENT_AVAILABLE, REPLACEMENT_NOT_SUPPORTED, TICKET_EXPIRED, TICKET_REFUNDED.
+  http.post(apiUrl("/admin/rewards/code-issues/:id/resolve"), async ({ request, params }) => {
+    const checked = await guarded(request, true); if (checked.error) return checked.error;
+    const id = String(params.id);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return fail(400, "VALIDATION_ERROR", "Invalid issue ID.");
+    const parsed = await body(request, adminResolveCodeIssueSchema); if (parsed.error) return parsed.error;
+    const forced: Record<string, string> = {
+      "rewards-resolve-already-resolved": "CODE_ISSUE_ALREADY_RESOLVED",
+      "rewards-resolve-no-replacement": "NO_REPLACEMENT_AVAILABLE",
+      "rewards-resolve-not-supported": "REPLACEMENT_NOT_SUPPORTED",
+      "rewards-resolve-ticket-expired": "TICKET_EXPIRED",
+    };
+    const code = forced[getActiveScenario()];
+    if (code) return fail(409, code, code);
+    return respond(resolveAdminCodeIssue(id, parsed.value as Parameters<typeof resolveAdminCodeIssue>[1], checked.admin!));
   }),
   // ASSUMED API CONTRACT: backend Story 12.7. 400 VALIDATION_ERROR.
   http.get(apiUrl("/admin/rewards/stats"), async ({ request }) => {

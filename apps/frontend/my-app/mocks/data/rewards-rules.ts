@@ -115,6 +115,26 @@ export function codeIssueDecision(ticket: TicketFacts, now: number): TicketDecis
   return { ok: true, changed: true };
 }
 
+export type CodeIssueOutcome = "REPLACE" | "REFUND" | "REJECT";
+export type ReplaceBlockedReason = "SHARED_CODE" | "TICKET_EXPIRED" | "NO_STOCK" | "NO_CODE" | null;
+export function replaceBlockedReason(facts: { status: string; isSharedCode: boolean; expiresAt: string | Date | number; stockRemaining: number; codesAvailable: number }, now: number): ReplaceBlockedReason {
+  if (facts.status !== "OPEN") return null;
+  if (facts.isSharedCode) return "SHARED_CODE";
+  if (now >= +new Date(facts.expiresAt)) return "TICKET_EXPIRED";
+  if (facts.stockRemaining <= 0) return "NO_STOCK";
+  if (facts.codesAvailable <= 0) return "NO_CODE";
+  return null;
+}
+export function resolveCodeIssueDecision(report: { status: string }, ticket: { expiresAt: string | Date | number; refunded: boolean }, voucher: { isSharedCode: boolean; stockRemaining: number; codesAvailable: number }, outcome: CodeIssueOutcome, now: number) {
+  if (report.status !== "OPEN") return outcome === ({ REPLACED: "REPLACE", REFUNDED: "REFUND", REJECTED: "REJECT" } as Record<string, string>)[report.status]
+    ? { ok: true as const, replay: true as const }
+    : { ok: false as const, status: 409 as const, code: "CODE_ISSUE_ALREADY_RESOLVED" };
+  if (outcome === "REJECT") return { ok: true as const, replay: false as const };
+  if (outcome === "REFUND") return ticket.refunded ? { ok: false as const, status: 409 as const, code: "TICKET_REFUNDED" } : { ok: true as const, replay: false as const };
+  const code = voucher.isSharedCode ? "REPLACEMENT_NOT_SUPPORTED" : now >= +new Date(ticket.expiresAt) ? "TICKET_EXPIRED" : voucher.stockRemaining <= 0 || voucher.codesAvailable <= 0 ? "NO_REPLACEMENT_AVAILABLE" : null;
+  return code ? { ok: false as const, status: 409 as const, code } : { ok: true as const, replay: false as const };
+}
+
 /** Current Asia/Ho_Chi_Minh month: pointsSpent = SUCCEEDED spend minus REFUNDED points; voucherCount = #SUCCEEDED - #REFUNDED. */
 export function historyMonthSummary(rows: { kind: string; points: number; createdAt: string }[], now: number) {
   const monthOf = (time: number) => new Date(time + VN_OFFSET).toISOString().slice(0, 7);

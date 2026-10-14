@@ -83,7 +83,7 @@ test('(Story 12.1, AC3) seed: 7 vouchers, 4 categories, 6 brands, 1 active Flash
   const flash = schemas.flashSaleListSchema.parse(mock.flashSalesAt());
   assert.equal(flash.items.filter(f => f.items.some(i => i.state === 'ACTIVE')).length, 1);
   const rows = mock.rewardsState.get().users['user-active-002'];
-  assert.equal(rows.tickets.filter(ticket => ['UNUSED', 'EXPIRING'].includes(ticket.status)).length, 3);
+  assert.equal(rows.tickets.filter(ticket => ticket.openIssue?.status !== 'REFUNDED' && ['UNUSED', 'EXPIRING'].includes(ticket.status)).length, 3);
   rows.tickets.forEach(ticket => schemas.voucherTicketSchema.parse(ticket));
   rows.history.forEach(entry => schemas.redemptionHistoryEntrySchema.parse(entry));
   rows.issues.forEach(issue => schemas.codeIssueReportSchema.parse(issue));

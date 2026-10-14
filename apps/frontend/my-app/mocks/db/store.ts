@@ -24,8 +24,9 @@ const PREFIX = "rescom:mockdb:";
  * 8: Admin voucher price history (Story 12.5).
  * 9: Admin Flash Sale lifecycle fields (Story 12.6).
  * 10: Flash sell-out time, persisted stats seed time, seed stock net of Flash quota (Story 12.6 review).
+ * 11: Admin code-issue queue and resolution fields (Story 12.12).
  */
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 
 interface Persisted<T> {
   version: number;

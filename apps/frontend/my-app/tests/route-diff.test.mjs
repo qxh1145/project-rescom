@@ -99,6 +99,8 @@ test("no allowlist entry is served by the backend, except deferred Rewards route
     "GET /admin/rewards/flash-sales", "POST /admin/rewards/flash-sales",
     "GET /admin/rewards/flash-sales/:param", "PUT /admin/rewards/flash-sales/:param",
     "POST /admin/rewards/flash-sales/:param/end",
+    "GET /admin/rewards/code-issues", "GET /admin/rewards/code-issues/:param",
+    "POST /admin/rewards/code-issues/:param/resolve",
     "GET /rewards/my-vouchers", "GET /rewards/my-vouchers/:param",
     "POST /rewards/my-vouchers/:param/use", "POST /rewards/my-vouchers/:param/undo-use",
     "POST /rewards/my-vouchers/:param/issues", "GET /rewards/redemptions",
@@ -117,10 +119,10 @@ test("every allowlist entry still has its MSW handler", () => {
   assert.deepEqual(orphaned, [], `These allowlisted endpoints have no MSW handler left, delete them:\n  ${orphaned.join("\n  ")}`);
 });
 
-test("gate G: only MOCK_ONLY (3) and DEFERRED_KEEP_MOCK (41) remain; every other MSW route is a backend route", () => {
+test("gate G: only MOCK_ONLY (3) and DEFERRED_KEEP_MOCK (44) remain; every other MSW route is a backend route", () => {
   assert.deepEqual(
     Object.fromEntries(Object.entries(ROUTE_ALLOWLIST).map(([category, endpoints]) => [category, Object.keys(endpoints).length])),
-    { MOCK_ONLY: 3, DEFERRED_KEEP_MOCK: 41, PLANNED: 0, REMOVE: 0 },
+    { MOCK_ONLY: 3, DEFERRED_KEEP_MOCK: 44, PLANNED: 0, REMOVE: 0 },
   );
   const outside = [...new Set(handlers.map((handler) => handler.key))]
     .filter((key) => !backend.has(key) && !["MOCK_ONLY", "DEFERRED_KEEP_MOCK"].includes(allowlist.get(key)?.category))

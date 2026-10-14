@@ -128,10 +128,10 @@ function parsed(schema, result, status = 200) {
 
 const routeKey = (route) => route.replace(/:[A-Za-z_]\w*/g, ":param");
 
-test("hybrid registers exactly the 41 DEFERRED_KEEP_MOCK handlers, once each", () => {
+test("hybrid registers exactly the 44 DEFERRED_KEEP_MOCK handlers, once each", () => {
   const registered = hybridHandlers.map((handler) => routeKey(`${handler.info.method} ${handler.info.path.replace(/^\/api/, "")}`));
   const deferred = Object.keys(ROUTE_ALLOWLIST.DEFERRED_KEEP_MOCK).map(routeKey);
-  assert.equal(deferred.length, 41);
+  assert.equal(deferred.length, 44);
   assert.deepEqual([...registered].sort(), [...deferred].sort());
   assert.ok(handlers.length > hybridHandlers.length, "full mocking (`enabled`) keeps every handler");
   // Nothing mock-only (demo accounts, mock Google, mock upload) runs next to the real backend.
