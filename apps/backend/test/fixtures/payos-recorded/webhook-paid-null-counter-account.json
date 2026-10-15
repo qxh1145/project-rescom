@@ -1,0 +1,23 @@
+{
+  "_source": "payOS API webhook documentation sample; normalized to @payos/node 2.0.5 WebhookData; test-only values",
+  "code": "00",
+  "desc": "success",
+  "success": true,
+  "data": {
+    "orderCode": 1234567890,
+    "amount": 20000,
+    "description": "RC4567890",
+    "accountNumber": "123456789",
+    "reference": "FT123",
+    "transactionDateTime": "2026-10-15 23:30:00",
+    "currency": "VND",
+    "paymentLinkId": "link-1234567890",
+    "code": "00",
+    "desc": "success",
+    "counterAccountBankId": null,
+    "counterAccountBankName": null,
+    "counterAccountName": null,
+    "counterAccountNumber": null
+  },
+  "signature": "831ca8860a97a380c5b4eae4198c4fdf83ad720e69b5c00eae43d554313e0910"
+}

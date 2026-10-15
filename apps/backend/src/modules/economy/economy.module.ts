@@ -38,6 +38,8 @@ import {
   UnitOfWorkPort,
 } from '../../common/database/unit-of-work.port';
 import { EnvService } from '../../common/config/env.service';
+import { PAYMENT_PROVIDER_PORT } from './application/ports/payment-provider.port';
+import { createPaymentProvider } from './infrastructure/payos-payment-provider.adapter';
 import {
   TOP_UP_REPOSITORY_PORT,
   TopUpRepositoryPort,
@@ -174,6 +176,11 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
         STARTER_POINTS_DATA_PROVIDER,
         { token: NOTIFICATION_PUBLISHER_PORT, optional: true },
       ],
+    },
+    {
+      provide: PAYMENT_PROVIDER_PORT,
+      useFactory: (env: EnvService) => createPaymentProvider(env),
+      inject: [EnvService],
     },
     {
       provide: TOP_UP_REPOSITORY_PORT,
