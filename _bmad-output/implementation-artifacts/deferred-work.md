@@ -454,3 +454,10 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 - Admin stats Flash table `sold` and `pointsSpent` use `flash_sale_items.sold`, which includes refunded flash redemptions; the KPIs exclude refunds. This matches the 12.6 mock definition. Revisit if Finance needs refund-net flash figures.
 - Production compose files do not pass `NEXT_PUBLIC_REWARDS_ENABLED` (or other `NEXT_PUBLIC_*`) as frontend build args. This only matters if the frontend is ever built through compose instead of Vercel.
 - At 390 px the Admin Rewards screens overflow horizontally. On `/admin/vouchers/new` and `/admin/vouchers/[id]/edit`, form inputs are clipped (441 px). On `/admin/flash-sales`, the "Kết thúc sớm" column overflows (418 px). On `/admin/voucher-stats`, the daily table is not in a scroll container (449 px). Found in the 12.11 Task 8.6 browser pass; the pages are fine at 1440 px. Fix when Admin mobile matters, using `min-w-0`/`w-full` on fields and `overflow-x-auto` wrappers.
+
+## Deferred from: code review of 13-2-payment-provider-port-payos-adapter.md (2026-10-15)
+
+- `paymentFacts` (payos-mapping.ts) takes the last `transactions[]` element as latest for `providerReference`/`paidAt`; verify payOS ordering against real captures in Story 13.6.
+- `createPaymentProvider` binds the live payOS client whenever credentials exist, regardless of `PAYOS_ENABLED`; Story 13.3 must gate checkout/usage on the flag.
+- `createPayment` timeout/connection errors are outcome-unknown (link may already exist) but surface as plain `PaymentProviderUnavailableError`; Story 13.3/13.5 must reconcile by orderCode instead of blind retry.
+- `mapPaymentLink` maps `CANCELLED`/`FAILED`/`EXPIRED` to `CANCELLED`/`EXPIRED` even when `amountPaid > 0` (kept per AD-25, decided by Quan 2026-10-15). Story 13.5 reconciliation must alert/route to refund mailbox when `facts.amountPaidVnd > 0` on these effects.

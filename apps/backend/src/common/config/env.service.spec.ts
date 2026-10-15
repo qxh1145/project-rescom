@@ -873,6 +873,40 @@ describe('EnvService', () => {
           .emailDeliveryMode,
       ).toBe('smtp');
     });
+    it('validates payOS credentials and exposes only a complete set', () => {
+      const blank = new EnvService(validBaseEnv);
+      expect(blank.payosEnabled).toBe(false);
+      expect(blank.payosCredentials).toBeNull();
+      expect(
+        () => new EnvService({ ...validBaseEnv, PAYOS_CLIENT_ID: 'client' }),
+      ).toThrow(/PAYOS_API_KEY.*PAYOS_CHECKSUM_KEY/);
+      expect(
+        () => new EnvService({ ...validBaseEnv, PAYOS_ENABLED: 'true' }),
+      ).toThrow(/PAYOS_CLIENT_ID.*PAYOS_API_KEY.*PAYOS_CHECKSUM_KEY/);
+      const keys = {
+        PAYOS_CLIENT_ID: 'client',
+        PAYOS_API_KEY: 'api-key',
+        PAYOS_CHECKSUM_KEY: 'checksum-key',
+      };
+      expect(
+        new EnvService({ ...validBaseEnv, ...keys, PAYOS_ENABLED: 'true' })
+          .payosCredentials,
+      ).toEqual({
+        clientId: 'client',
+        apiKey: 'api-key',
+        checksumKey: 'checksum-key',
+      });
+      expect(
+        () =>
+          new EnvService({
+            ...productionBase,
+            ...productionEmailEnv,
+            ...keys,
+            PAYOS_API_KEY: 'CHANGE_ME_key',
+          }),
+      ).toThrow(/PAYOS_API_KEY is a placeholder value/);
+    });
+
     it('handles Story 12.11 REWARDS_ENABLED and production OQ-24 gate', () => {
       const defaultService = new EnvService(validBaseEnv);
       expect(defaultService.rewardsEnabled).toBe(false);

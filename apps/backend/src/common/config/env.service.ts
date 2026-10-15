@@ -73,6 +73,25 @@ export class EnvService {
     return this.config.SCHEDULER_ENABLED;
   }
 
+  get payosEnabled(): boolean {
+    return this.config.PAYOS_ENABLED;
+  }
+
+  get payosCredentials(): {
+    clientId: string;
+    apiKey: string;
+    checksumKey: string;
+  } | null {
+    const {
+      PAYOS_CLIENT_ID: clientId,
+      PAYOS_API_KEY: apiKey,
+      PAYOS_CHECKSUM_KEY: checksumKey,
+    } = this.config;
+    return clientId && apiKey && checksumKey
+      ? { clientId, apiKey, checksumKey }
+      : null;
+  }
+
   get rewardsEnabled(): boolean {
     return this.config.REWARDS_ENABLED;
   }

@@ -152,7 +152,7 @@ development_status:
   # UI stories 13.7/13.8/13.9/13.11/13.12/13.13 wait for the Figma designer fix pass; prod enable (13.13) gated by OQ-27
   epic-13: in-progress
   13-1-top-up-schema-for-payos: done  # created 2026-10-15; schema only, refund entity stays in 13.10
-  13-2-payment-provider-port-payos-adapter: backlog
+  13-2-payment-provider-port-payos-adapter: done  # created 2026-10-15; port+adapter+fake+config only, no caller
   13-3-top-up-checkout-user-cancel-enable-guard: backlog
   13-4-payment-webhook-automatic-credit: backlog
   13-5-reconciliation-job-alerts-admin-recheck: backlog

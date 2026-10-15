@@ -8,6 +8,7 @@ describe('Clean Architecture Boundary Validation (AC8)', () => {
     /@nestjs\//,
     /from ['"]express['"]/,
     /@prisma\/client/,
+    /@payos\//,
     /from ['"]bcrypt['"]/,
     /from ['"]bcryptjs['"]/,
     /google-auth-library/,
@@ -49,6 +50,62 @@ describe('Clean Architecture Boundary Validation (AC8)', () => {
         forbidden: pattern.toString(),
       }));
   }
+
+  it('only the Economy payOS adapter imports @payos/node (Story 13.2 AC1)', () => {
+    const allowed = new Set([
+      'modules/economy/infrastructure/payos-payment-provider.adapter.ts',
+      'modules/economy/infrastructure/payos-payment-provider.contract.spec.ts',
+    ]);
+    const sourceFiles = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const file = path.join(dir, entry.name);
+        return entry.isDirectory()
+          ? sourceFiles(file)
+          : entry.isFile() && file.endsWith('.ts')
+            ? [file]
+            : [];
+      });
+    const importers = sourceFiles(srcDir)
+      .filter((file) =>
+        /['"]@payos\/node['"]/.test(fs.readFileSync(file, 'utf-8')),
+      )
+      .map((file) => path.relative(srcDir, file).split(path.sep).join('/'));
+    expect(importers.filter((file) => !allowed.has(file))).toEqual([]);
+
+    const repoRoot = path.resolve(__dirname, '../../..');
+    const manifests = (dir: string): string[] =>
+      fs
+        .readdirSync(dir, { withFileTypes: true })
+        .filter(
+          (entry) =>
+            !['node_modules', '.next', 'dist', '.git'].includes(entry.name),
+        )
+        .flatMap((entry) => {
+          const file = path.join(dir, entry.name);
+          return entry.isDirectory()
+            ? manifests(file)
+            : entry.name === 'package.json'
+              ? [file]
+              : [];
+        });
+    const packageFiles = [
+      path.join(repoRoot, 'package.json'),
+      ...['apps', 'packages'].flatMap((root) =>
+        fs.existsSync(path.join(repoRoot, root))
+          ? manifests(path.join(repoRoot, root))
+          : [],
+      ),
+    ];
+    const offenders = packageFiles.filter((file) => {
+      const pkg = JSON.parse(fs.readFileSync(file, 'utf-8'));
+      return (
+        path.relative(repoRoot, file) !== 'apps/backend/package.json' &&
+        (pkg.dependencies?.['@payos/node'] ||
+          pkg.devDependencies?.['@payos/node'])
+      );
+    });
+    expect(offenders).toEqual([]);
+  });
 
   it('domain and application layers must not import framework or infrastructure adapters', () => {
     const violations = getFiles(modulesDir).flatMap((filePath) =>
