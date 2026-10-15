@@ -17,8 +17,8 @@ import {
 export type { MockTransaction, MockTransactionKind, MockTransactionStatus } from "./economy-rules";
 
 /**
- * Wallet balances per user id. Figma (page 7 · Ví điểm) shows an activated
- * account with 112 available + 18 pending; a new account starts with the 100
+ * Wallet balances per user id. Figma pages 21–27 show an activated
+ * account with 186 available + 18 pending; a new account starts with the 100
  * starter points frozen (header "100 đóng băng").
  */
 export type MockWallet = Omit<WalletBalanceDto, "total">;
@@ -27,8 +27,9 @@ export const wallets = createCollection<Record<string, MockWallet>>("wallets", (
 
 function seedWallet(user: MockSessionUser): MockWallet {
   return user.profileComplete && user.email === "minh.le@fpt.edu.vn"
-    ? // Escrow 140 = the two running publisher surveys in Figma 10 (100 + 40); available is after those locks.
-      { available: 112, pending: 18, escrow: 140, frozen: 0, integrityHold: 0 }
+    ? // Figma pages 21–27 supersede page 7’s 112 available.
+      // Escrow 140 = the two running publisher surveys in Figma 10 (100 + 40); available is after those locks.
+      { available: 186, pending: 18, escrow: 140, frozen: 0, integrityHold: 0 }
     : { available: 0, pending: 0, escrow: 0, frozen: 100, integrityHold: 0 };
 }
 

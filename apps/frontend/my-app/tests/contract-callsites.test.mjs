@@ -38,17 +38,17 @@ test("allowlist entries carry a reason and are neither stale nor served by the b
     assert.ok(["deferred-hidden", "out-of-api"].includes(entry.reason), `${entry.endpoint}: reason "${entry.reason}"`);
     assert.ok(entry.note?.length > 10, `${entry.endpoint}: note`);
     assert.ok(called.has(route), `${entry.endpoint} is allowlisted but no call site uses it: delete the entry`);
-    assert.equal(backend.has(route), false, `${entry.endpoint} is served by ${backend.get(route)}: delete the entry`);
+    assert.ok(!backend.has(route), `${entry.endpoint} is served by ${backend.get(route)}: delete the entry`);
   }
 });
 
-test("deferred-hidden is exactly the DEFERRED_KEEP_MOCK set of mocks/route-allowlist.ts", () => {
+test("deferred-hidden callsites match deferred mock routes", () => {
   const hidden = [...allowlist].filter(([, entry]) => entry.reason === "deferred-hidden").map(([route]) => route);
   const deferred = Object.keys(ROUTE_ALLOWLIST.DEFERRED_KEEP_MOCK).map((endpoint) => {
     const [method, path] = endpoint.split(" ");
     return routeKey(method, path);
   });
-  assert.deepEqual([...hidden].sort(), [...deferred].sort());
+  assert.deepEqual([...hidden].sort(), deferred.sort());
 });
 
 test("the matrix has one row per distinct call and no unmatched row", () => {

@@ -38,6 +38,7 @@ COPY --from=build /app/apps/backend/node_modules/.prisma apps/backend/node_modul
 WORKDIR /app/apps/backend
 
 ENV NODE_ENV=production
+ENV PRISMA_QUERY_ENGINE_LIBRARY=/app/apps/backend/node_modules/@prisma/engines/libquery_engine-debian-openssl-3.0.x.so.node
 USER node
 EXPOSE 4000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \

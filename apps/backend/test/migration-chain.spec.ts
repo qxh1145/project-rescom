@@ -88,13 +88,74 @@ describe('Prisma migration chain', () => {
     }
   });
 
-  it('keeps the invariants section identical to post-push-invariants.sql', () => {
-    expect(invariantsSection()).toBe(invariantsSql);
+  it('keeps historical reconciliation unchanged and adds Rewards invariants after it', () => {
+    expect(invariantsSql.startsWith(invariantsSection())).toBe(true);
+    const rewards = readMigration('20261013120000_rewards_catalog_schema');
+    for (const name of [
+      'vouchers_values_check',
+      'voucher_codes_unissued_idx',
+      'redemptions_voucher_id_created_at_idx',
+      'INSERT INTO "voucher_brands"',
+      'code_issue_reports_open_redemption_key',
+      'voucher_price_versions_append_only',
+      'redemptions_append_only',
+    ]) {
+      expect(rewards).toContain(name);
+      expect(invariantsSql).toContain(name);
+    }
+    expect(rewards).not.toMatch(/to_regclass/i);
+    expect(rewards.match(/CREATE TABLE /g) ?? []).toHaveLength(9);
+    const prismaCategories = fs
+      .readFileSync(path.join(prismaDir, 'schema.prisma'), 'utf8')
+      .match(/enum VoucherCategory \{([^}]+)\}/)?.[1]
+      .trim()
+      .split(/\s+/);
+    expect(prismaCategories).toEqual([
+      'COFFEE',
+      'TEA',
+      'CHICKEN_BURGER',
+      'BAKERY_DESSERT',
+    ]);
   });
 
   it('has no to_regclass guard in the invariants or the reconciliation', () => {
     expect(stripComments(invariantsSql)).not.toMatch(/to_regclass/i);
     expect(stripComments(reconcileSql)).not.toMatch(/to_regclass/i);
+  });
+
+  it('keeps 12.9 flash sale lifecycle migration unconditional and mirrors check in invariants', () => {
+    const flashLifecycle = readMigration(
+      '20261015100000_rewards_flash_sale_lifecycle',
+    );
+    expect(flashLifecycle).not.toMatch(/to_regclass/i);
+    expect(flashLifecycle).toContain('flash_sales_reserved_at_check');
+    expect(invariantsSql).toContain('flash_sales_reserved_at_check');
+    expect(flashLifecycle).toContain('flash_item_claims');
+    expect(flashLifecycle).toContain('flash_sales_starts_at_due_idx');
+    expect(flashLifecycle).toContain('flash_sales_ends_at_due_idx');
+  });
+
+  it('keeps 12.10 my vouchers & code issues migration unconditional and mirrors checks in invariants', () => {
+    const myVouchers = readMigration(
+      '20261016100000_rewards_my_vouchers_code_issues',
+    );
+    expect(myVouchers).not.toMatch(/to_regclass/i);
+    for (const name of [
+      'redemption_usages',
+      'redemption_refunds',
+      'redemption_reminders',
+      'voucher_codes_assignment_mutual_exclusion',
+      'code_issue_reports_outcome_shape_check',
+      'code_issue_reports_resolution_note_length_check',
+      'redemption_usages_undo_until_check',
+      'redemption_refunds_points_positive_check',
+      'redemption_reminders_window_check',
+      'redemption_refunds_append_only',
+      'redemption_refunds_no_truncate',
+    ]) {
+      expect(myVouchers).toContain(name);
+      expect(invariantsSql).toContain(name);
+    }
   });
 
   it('re-asserts every object created inside an earlier guarded block', () => {
@@ -201,7 +262,11 @@ describe('Prisma migration chain', () => {
 
     it('exist, in order, after the last Phase-1 migration', () => {
       expect(
-        migrationNames.filter((name) => name > '20261001110000_user_profiles'),
+        migrationNames.filter(
+          (name) =>
+            name > '20261001110000_user_profiles' &&
+            name <= '20261002090100_backfill_abandoned_responses',
+        ),
       ).toEqual(phaseMigrations);
     });
 

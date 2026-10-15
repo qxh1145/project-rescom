@@ -401,3 +401,56 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 
 - Placeholder `EDGE_KEY=CHANGE_ME` (or a short key) is not rejected: compose `${EDGE_KEY:?}` only rejects empty, Caddy compares strings. Add a pre-flight in the Story 11.3 deploy workflow that refuses `CHANGE_ME*` and keys shorter than 32 chars in `deploy/.env.prod`.
 - GCS S3-interoperability round trip unverified (AC 7) [11-1-deployment-ready-backend-packaging.md:123-127] — deferred to Story 11.2 (needs GCP bucket + HMAC credentials in trial project).
+
+## Deferred from: code review of 12-3-confirm-redemption-result (2026-10-13)
+
+- Recheck re-POSTs the same key + quoteId; a non-domain 4xx on a key that already had an ambiguous attempt (e.g. 409 in-progress, QUOTE_NOT_FOUND) is classified `failed` and shows "Bạn chưa bị trừ điểm", then "Thử lại" mints a new key [lib/rewards/redeem-flow.ts:485, use-redeem-flow.ts:454]. The mock replays correctly; Story 12.8 backend must guarantee the same key always replays the stored outcome (never a non-domain 4xx), or the client must treat non-domain 4xx after an ambiguous attempt as `unknown`.
+- `apiRequest` has no timeout; a hung redeem POST leaves the non-dismissible sheet in `submitting` until reload [use-redeem-flow.ts:402, lib/api/client.ts]. App-wide client concern. Since the review, `checking` is also non-dismissible until polls finish, so a hung by-key GET traps the sheet too.
+- Shared `Dialog` only syncs native state when `open` changes; Chrome close-watcher closes a non-dismissible dialog on a repeated Esc, desyncing it from `open=true` (later error view invisible, CTA dead because phase ≠ closed) [components/ui/Dialog.tsx:34].
+- Unmount during `submitting`/`checking` aborts the client request and drops the outcome (no session refresh) [use-redeem-flow.ts:393]. Spec 4.8 mandates the abort; server idempotency prevents a double charge.
+- PRICE_CHANGED caused only by quote expiry (same points, mock `decideRedemption` TTL check) shows "Giá vừa thay đổi" with identical old → new values [lib/rewards/redeem-flow.ts:517]. Contract details carry no reason; revisit when 12.8 defines one.
+
+## Deferred from: code review of 12-5-admin-voucher-catalog-codes (2026-10-13)
+
+- Edit form sends empty `terms/howToUse/imageUrl` via PUT because the detail API omits them; mock masks it with fallbacks. Backend 12.7 must either return these fields in detail or accept PATCH-like semantics, otherwise saving wipes data.
+- Admin voucher search is not debounced and the cache key uses untrimmed `q` [use-admin-vouchers.ts].
+
+## Deferred from: code review of 12-7-rewards-schema-catalog-code-inventory-api (2026-10-13)
+
+- User catalog list/flash-sales load all rows then filter/sort/paginate in memory; add DB-side filtering when volume grows.
+- Price history `changedBy.name` hardcoded 'Admin'; resolve real admin name at 12.11 integration.
+- Flash price may exceed promo / `flashPoints >= basePoints` mismatch between catalog and flash list; `issued` negative if flashReserved > issued; `createMany` parameter limit on huge imports. Revisit in 12.9 (flash writes).
+
+## Deferred from: code review of 12-8-quote-redemption-transaction (2026-10-14)
+
+- `redemption_quotes` grows unbounded (no TTL purge / cleanup job); add purge of expired quotes alongside quote rate limit.
+
+## Deferred from: code review of 12-9-flash-sale-lifecycle (2026-10-14)
+
+- `flash_item_claims` thiếu FK `user_id` / composite FK `redemptions(id,user_id,flash_sale_item_id)`; cap chưa nhả khi refund (12.10).
+- Admin flash `list()` N+1 không phân trang.
+- `adjustVoucherStock` nhánh dương chưa chặn vượt `stock_total`; kiểm CHECK trong schema.
+- Chữ ký polymorphic + `(deps as any)` trong `rewards-admin-flash.service.ts`.
+- Overlap candidates gồm sale chưa reserve đã qua end khi job lag.
+
+## Deferred from: code review of 12-13-admin-code-issue-queue-screen (2026-10-15)
+
+- Admin code-issue pagination (`CodeIssuesScreen.tsx`) renders one button per page with no windowing; add first/last/current±2 windowing when the ALL/RESOLVED backlog exceeds ~10 pages.
+- `useApiQuery` drops data on key change, so tab/page switches on the code-issue queue blank the list, pagination and tab counts until the new page loads (pre-existing hook behaviour, shared by other admin screens).
+
+## Deferred from: code review of 12-1-rewards-contracts-msw-mock-domain (2026-10-15)
+
+- Rewards mock does not enforce `perUserCap`, daily/per-voucher limits or `NO_RECENT_SURVEY` (backend 12.8 does); only reachable via forced scenarios.
+- Ended Flash quota returns to stock only when an admin Flash endpoint settles; user catalog may show SOLD_OUT until then.
+- `discountPercent` can round to 100 for tiny flash prices, exceeding schema max 99; `flashConflicts` has no lower-bound guard.
+- Mock `RDM-yymm` reference month uses UTC instead of Vietnam time.
+- Rewards schemas lack cross-field invariants (FLASH source ↔ flash, stockRemaining <= stockTotal, result ↔ ticket, non-FLASH quote with flashSaleItemId, adminCodeIssueSchema status ↔ resolution).
+- Admin voucher mock (12.5): shared-code create drops `sharedCode`; price change unchecked vs Flash prices; code import ignores issued codes; update cannot clear terms/imageUrl; admin redemptions drop REFUNDED rows; admin-created voucher `description`/`whereToUse` "" fails voucherDetailSchema; adminVoucherStatus ACTIVE before redeemStartsAt; flash quota unchecked vs codesAvailable.
+- Code-issue refund mock (12.12) skips wallet credit when the wallet is missing but still marks REFUNDED.
+
+## Deferred from: code review of 12-11-rewards-integration-without-mocks-enable-gate (2026-10-15)
+
+- Turning `REWARDS_ENABLED` off while a Flash Sale is reserved or active skips `FlashSaleLifecycleJob` (Task 1.5 by design), so the sale is never settled and its reserve is never released. The rollback runbook must require no active or reserved sale, or settle the sale first.
+- Admin stats Flash table `sold` and `pointsSpent` use `flash_sale_items.sold`, which includes refunded flash redemptions; the KPIs exclude refunds. This matches the 12.6 mock definition. Revisit if Finance needs refund-net flash figures.
+- Production compose files do not pass `NEXT_PUBLIC_REWARDS_ENABLED` (or other `NEXT_PUBLIC_*`) as frontend build args. This only matters if the frontend is ever built through compose instead of Vercel.
+- At 390 px the Admin Rewards screens overflow horizontally. On `/admin/vouchers/new` and `/admin/vouchers/[id]/edit`, form inputs are clipped (441 px). On `/admin/flash-sales`, the "Kết thúc sớm" column overflows (418 px). On `/admin/voucher-stats`, the daily table is not in a scroll container (449 px). Found in the 12.11 Task 8.6 browser pass; the pages are fine at 1440 px. Fix when Admin mobile matters, using `min-w-0`/`w-full` on fields and `overflow-x-auto` wrappers.

@@ -72,6 +72,14 @@ import { PrismaMissingCodeReportStats } from './infrastructure/prisma-missing-co
 import { FormsService } from '../forms/application/forms.service';
 import { ParticipationSchedulerRegistrar } from './infrastructure/participation-scheduler.registrar';
 
+import {
+  FRAUD_FLAG_READ_PORT,
+  SURVEY_COMPLETION_PORT,
+} from '../rewards/application/ports/account-standing.port';
+import { FRAUD_FLAG_PORT } from '../rewards/application/ports/fraud-flag.port';
+import { ParticipationFraudFlagStore } from './infrastructure/participation-fraud-flag.store';
+import { PrismaSurveyCompletionReader } from './infrastructure/prisma-survey-completion.reader';
+
 @Module({
   imports: [
     PrismaModule,
@@ -95,6 +103,11 @@ import { ParticipationSchedulerRegistrar } from './infrastructure/participation-
     PublisherResultsController,
   ],
   providers: [
+    // Rewards eligibility/flagging: Participation owns survey_attempts and fraud_logs.
+    { provide: SURVEY_COMPLETION_PORT, useClass: PrismaSurveyCompletionReader },
+    ParticipationFraudFlagStore,
+    { provide: FRAUD_FLAG_READ_PORT, useExisting: ParticipationFraudFlagStore },
+    { provide: FRAUD_FLAG_PORT, useExisting: ParticipationFraudFlagStore },
     // Admin FraudLog view (mock-off plan 4.2): read side of `fraud_logs`.
     { provide: FRAUD_LOG_READ_PORT, useClass: PrismaFraudLogReader },
     // Admin overview (IR.4b part C): open missing-code reports.
@@ -257,6 +270,9 @@ import { ParticipationSchedulerRegistrar } from './infrastructure/participation-
     },
   ],
   exports: [
+    SURVEY_COMPLETION_PORT,
+    FRAUD_FLAG_READ_PORT,
+    FRAUD_FLAG_PORT,
     FRAUD_LOG_READ_PORT,
     MISSING_CODE_REPORT_STATS_PORT,
     ParticipationService,

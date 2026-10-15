@@ -873,5 +873,37 @@ describe('EnvService', () => {
           .emailDeliveryMode,
       ).toBe('smtp');
     });
+    it('handles Story 12.11 REWARDS_ENABLED and production OQ-24 gate', () => {
+      const defaultService = new EnvService(validBaseEnv);
+      expect(defaultService.rewardsEnabled).toBe(false);
+      expect(defaultService.rewardsAccountingDecisionRef).toBeUndefined();
+
+      const prodOff = new EnvService({
+        ...productionBase,
+        ...productionEmailEnv,
+        REWARDS_ENABLED: 'false',
+      });
+      expect(prodOff.rewardsEnabled).toBe(false);
+
+      expect(
+        () =>
+          new EnvService({
+            ...productionBase,
+            ...productionEmailEnv,
+            REWARDS_ENABLED: 'true',
+          }),
+      ).toThrow(
+        /REWARDS_ACCOUNTING_DECISION_REF is required to enable Rewards in production/,
+      );
+
+      const prodOn = new EnvService({
+        ...productionBase,
+        ...productionEmailEnv,
+        REWARDS_ENABLED: 'true',
+        REWARDS_ACCOUNTING_DECISION_REF: 'OQ-24 memo 2026-10-15',
+      });
+      expect(prodOn.rewardsEnabled).toBe(true);
+      expect(prodOn.rewardsAccountingDecisionRef).toBe('OQ-24 memo 2026-10-15');
+    });
   });
 });

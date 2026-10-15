@@ -18,8 +18,15 @@ const PREFIX = "rescom:mockdb:";
  * 2: attempts use the backend `AttemptStatus` values (Phase 3 review).
  * 3: survey response analytics seed (321-response and empty publisher surveys).
  * 4: the empty analytics survey is also a respondent survey (surveys + survey-content).
+ * 5: Rewards mock domain (Story 12.1); demo wallet 186 available.
+ * 6: Voucher detail copy + Flash item category (Story 12.2).
+ * 7: Voucher tickets carry `category`; Figma "how to use" steps (Story 12.4).
+ * 8: Admin voucher price history (Story 12.5).
+ * 9: Admin Flash Sale lifecycle fields (Story 12.6).
+ * 10: Flash sell-out time, persisted stats seed time, seed stock net of Flash quota (Story 12.6 review).
+ * 11: Admin code-issue queue and resolution fields (Story 12.12).
  */
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 11;
 
 interface Persisted<T> {
   version: number;

@@ -4,8 +4,9 @@
 >
 > - **Internal testing (tài liệu này):** `docker-compose.internal.yml`, `Caddyfile.internal`, `.env.internal`
 >   — mọi thứ (kể cả Postgres, MinIO, frontend) chạy trên một VPS.
-> - **Pilot AD-23 (Google Cloud, Story 11.1):** `docker-compose.prod.yml`, `Caddyfile`, `.env.prod.example`
->   — VM chỉ chạy `caddy`, `api`, `clamav`; DB là Cloud SQL, file ở Cloud Storage, frontend ở Vercel.
+> - **Pilot AD-23 (Hostinger VPS, Story 11.1/11.2):** `docker-compose.prod.yml`, `Caddyfile`, `.env.prod.example`
+>   — VPS chạy `caddy`, `api`, `clamav` và Postgres container (private); file ở Cloudflare R2, frontend ở Vercel.
+>   `docker-compose.hostinger.yml` là bản nháp, Story 11.2 task 2 sẽ hợp nhất vào stack này.
 >   Hạ tầng là Story 11.2, CI/CD là Story 11.3. Xem phần cuối tài liệu.
 >
 > VPS đã deploy trước khi đổi tên: chạy một lần `mv deploy/.env.prod deploy/.env.internal`,
@@ -27,7 +28,7 @@ Trình duyệt ──HTTPS──> Caddy ──> Next.js (frontend, /api/* rewrit
   thì phải build lại frontend (`up -d --build`).
 - Trình duyệt luôn gọi `/api` cùng origin (Next rewrite sang backend, AD-23); không có domain riêng cho API.
 
-Giá trị dùng trong tài liệu: domain app `app.rescom.com.vn`, domain file `s3.rescom.com.vn`,
+Giá trị dùng trong tài liệu: domain app `app.rescom.io.vn`, domain file `s3.rescom.io.vn`,
 thư mục trên VPS `/opt/rescom`. Thay `<user>` và `<IP-VPS>` bằng thông tin SSH của bạn.
 
 ---
@@ -39,7 +40,7 @@ thư mục trên VPS `/opt/rescom`. Thay `<user>` và `<IP-VPS>` bằng thông t
 | Cần có | Ghi chú |
 |---|---|
 | VPS Ubuntu, ≥ 4 GB RAM | ClamAV + build Next.js tốn RAM |
-| Domain trên Cloudflare | `rescom.com.vn` |
+| Domain trên Cloudflare | `rescom.io.vn` |
 | Tài khoản Brevo | Gửi email (SMTP). Domain phải ở trạng thái **Verified** |
 | OAuth client trên Google Auth Platform | Đăng nhập Google |
 
@@ -67,12 +68,12 @@ v=spf1 include:_spf.mx.cloudflare.net include:spf.brevo.com ~all
 
 Trong Google Cloud Console → **Google Auth Platform**:
 
-- **Branding**: Authorized domains thêm `rescom.com.vn`.
+- **Branding**: Authorized domains thêm `rescom.io.vn`.
 - **Audience**: External, trạng thái **Testing**, thêm Gmail của thành viên team vào **Test users**
   (chỉ những tài khoản này đăng nhập Google được).
 - **Clients** → Web application:
-  - Authorized JavaScript origins: `https://app.rescom.com.vn`
-  - Authorized redirect URIs: `https://app.rescom.com.vn/api/auth/google/callback`
+  - Authorized JavaScript origins: `https://app.rescom.io.vn`
+  - Authorized redirect URIs: `https://app.rescom.io.vn/api/auth/google/callback`
 
 ### 1.4. Chuẩn bị VPS
 
@@ -123,9 +124,9 @@ File này chứa toàn bộ secret, **bị gitignore** và không bao giờ đư
    |---|---|
    | `DATABASE_URL` | `postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@postgres:5432/<POSTGRES_DB>?schema=public&options=-c%20timezone%3DUTC` — host là `postgres`, cổng `5432`, user/mật khẩu **khớp** 2 dòng trên |
    | `POSTGRES_PASSWORD` | chỉ dùng hex (`openssl rand -hex`), vì nó nằm trong URL |
-   | `AUTH_FRONTEND_SUCCESS_URL` | `https://app.rescom.com.vn/auth/callback` (không có `/api`) |
-   | `AUTH_FRONTEND_ERROR_URL` | `https://app.rescom.com.vn/auth/error` |
-   | `GOOGLE_REDIRECT_URI` | `https://app.rescom.com.vn/api/auth/google/callback` (có `/api`) |
+   | `AUTH_FRONTEND_SUCCESS_URL` | `https://app.rescom.io.vn/auth/callback` (không có `/api`) |
+   | `AUTH_FRONTEND_ERROR_URL` | `https://app.rescom.io.vn/auth/error` |
+   | `GOOGLE_REDIRECT_URI` | `https://app.rescom.io.vn/api/auth/google/callback` (có `/api`) |
    | `TOPUP_BANK_BIN` | đúng mã BIN ngân hàng (MB Bank `970422`, Vietcombank `970436`) |
    | `SMTP_SECURE` / `SMTP_REQUIRE_TLS` | `false` / `true` (cổng 587 STARTTLS) |
    | Mọi giá trị | không có dấu cách thừa ở cuối dòng |
@@ -174,7 +175,7 @@ Backend chạy được khi log có dòng Nest khởi động xong và không c�
 **Không chạy seed** trên staging/production và không đặt `SEED_ALLOW_PRODUCTION` (seed tạo tài khoản demo
 với mật khẩu mặc định). Thay vào đó:
 
-1. Đăng ký **ít nhất hai** tài khoản thật qua `https://app.rescom.com.vn` (đăng ký bình thường, xác minh email).
+1. Đăng ký **ít nhất hai** tài khoản thật qua `https://app.rescom.io.vn` (đăng ký bình thường, xác minh email).
 2. Nâng cả hai lên `ADMIN` trực tiếp trong DB (thay email cho đúng):
 
 ```bash
@@ -185,11 +186,11 @@ Kết quả phải là `UPDATE 2`. Đăng xuất rồi đăng nhập lại để
 
 ### 1.9. Kiểm tra
 
-- [ ] `https://app.rescom.com.vn` mở được, có ổ khoá HTTPS
+- [ ] `https://app.rescom.io.vn` mở được, có ổ khoá HTTPS
 - [ ] Đăng ký tài khoản mới
 - [ ] "Quên mật khẩu" → nhận được email đặt lại mật khẩu (kiểm tra cả hộp thư Spam)
 - [ ] Đăng nhập bằng email/mật khẩu và bằng Google
-- [ ] Tạo khảo sát, upload file (kiểm tra cả `s3.rescom.com.vn`)
+- [ ] Tạo khảo sát, upload file (kiểm tra cả `s3.rescom.io.vn`)
 - [ ] Đăng nhập admin, duyệt khảo sát và top-up
 
 ---
@@ -299,23 +300,24 @@ Xong việc thì quay lại branch: `git checkout develop`.
 | Đăng nhập Google báo `redirect_uri_mismatch` | Redirect URI trên Google khác `GOOGLE_REDIRECT_URI` |
 | Đăng nhập Google báo `access_denied` | Gmail chưa nằm trong **Test users** |
 | Không nhận được email | Domain chưa Verified trên Brevo, SMTP key sai, hoặc thiếu SPF/DKIM; xem log backend |
-| Upload file lỗi CORS / 403 | `STORAGE_ENDPOINT` phải là `https://s3.rescom.com.vn`; DNS `s3` phải trỏ đúng VPS |
+| Upload file lỗi CORS / 403 | `STORAGE_ENDPOINT` phải là `https://s3.rescom.io.vn`; DNS `s3` phải trỏ đúng VPS |
 | Build bị kill / hết RAM | Kiểm tra swap: `free -h` |
 | Ổ đĩa đầy | `docker image prune -f` và `docker builder prune -f` |
 
 ---
 
-## Phần 3 — Pilot AD-23 (Google Cloud, Story 11.1)
+## Phần 3 — Pilot AD-23 (Hostinger VPS, Story 11.1/11.2)
 
-VM chỉ chạy 3 container: `caddy` (cổng 80/443), `api` (NestJS, cổng 4000 nội bộ), `clamav`.
-Postgres là Cloud SQL (IP private), file ở Cloud Storage (API S3 + HMAC key), frontend ở Vercel.
-Không có dữ liệu nghiệp vụ trên ổ VM: mất VM thì tạo VM mới và deploy lại image.
+VPS chạy `caddy` (cổng 80/443), `api` (NestJS, cổng 4000 nội bộ), `clamav` và Postgres 15 (container, không mở cổng).
+File ở Cloudflare R2 (API S3, token riêng cho từng bucket), frontend ở Vercel. Không dùng MinIO.
+DB nằm trên ổ VPS: WAL và base backup được đẩy liên tục lên một bucket R2 riêng (RPO 15 phút, RTO 4 giờ).
+Mất VPS thì dựng host mới, deploy lại image và restore DB từ R2.
 
 ```
-Trình duyệt ─> Vercel (app.rescom.com.vn, rewrite /api) ─> Cloudflare (api.rescom.com.vn) ─> Caddy ─> api:4000
+Trình duyệt ─> Vercel (app.rescom.io.vn, rewrite /api) ─> Cloudflare (api.rescom.io.vn) ─> Caddy ─> api:4000
 ```
 
-- Vercel đặt `RESCOM_API_URL=https://api.rescom.com.vn` và `RESCOM_EDGE_KEY` (server-only, **không** `NEXT_PUBLIC_`).
+- Vercel đặt `RESCOM_API_URL=https://api.rescom.io.vn` và `RESCOM_EDGE_KEY` (server-only, **không** `NEXT_PUBLIC_`).
   `proxy.ts` gửi key này cùng IP thật của người dùng; Caddy trả 403 cho mọi request không có key (trừ `/health/*`).
   `EDGE_KEY` trong `deploy/.env.prod` phải bằng `RESCOM_EDGE_KEY`; đổi thì đổi cả hai.
 - Chứng chỉ: Cloudflare Origin CA, đặt ở `deploy/certs/origin.pem` và `origin-key.pem` (gitignored), SSL mode Full (strict).
@@ -330,4 +332,4 @@ docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod up 
 ```
 
 - Kiểm tra: `GET /health/live` (process sống) và `GET /health/ready` (DB + ClamAV; trả 503 nếu một trong hai lỗi).
-- Tạo hạ tầng (Cloud SQL, bucket, firewall chỉ nhận Cloudflare, Vercel, OAuth): Story 11.2. CI/CD, rollback: Story 11.3.
+- Tạo hạ tầng (Hostinger VPS, Postgres container + backup WAL lên Cloudflare R2, bucket R2, firewall chỉ nhận Cloudflare, Vercel, OAuth): Story 11.2 (tham khảo `_bmad-output/implementation-artifacts/11-2-cloud-infrastructure-checklist.md`). Môi trường staging được đề xuất sử dụng domain `staging-api.rescom.io.vn` / `staging-app.rescom.io.vn` với file env riêng biệt (`deploy/.env.staging`) chờ owner xác nhận. CI/CD, rollback: Story 11.3.

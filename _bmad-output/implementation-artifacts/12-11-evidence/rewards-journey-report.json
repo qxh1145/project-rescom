@@ -1,0 +1,2925 @@
+{
+  "run": "rewards-journey-2026-10-15T05-15-55-340Z",
+  "base": "http://localhost:3000",
+  "database": "rescom_rewards_check",
+  "commit": "eedb620",
+  "node": "v22.18.0",
+  "startedAt": "2026-10-15T05:15:55.340Z",
+  "steps": [
+    {
+      "phase": "setup",
+      "actor": "admin",
+      "step": "register (email)",
+      "request": "POST /api/auth/register",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 421,
+      "requestId": "5564c665-8bf8-4ffe-94bd-f807030660ac",
+      "ids": {
+        "userId": "e8b9f928-9397-4ca1-9c3f-d1e2f3a4f4bf"
+      }
+    },
+    {
+      "phase": "setup",
+      "actor": "admin",
+      "step": "csrf token",
+      "request": "GET /api/auth/csrf",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 16,
+      "requestId": "2c98b951-4352-4dd1-b1a3-828e564b1b71"
+    },
+    {
+      "phase": "setup",
+      "actor": "userA",
+      "step": "register (email)",
+      "request": "POST /api/auth/register",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 295,
+      "requestId": "d615ee71-d057-4fb1-93b1-37fdc55bbe0f",
+      "ids": {
+        "userId": "15aac881-6a72-49d1-8366-6b6751368484"
+      }
+    },
+    {
+      "phase": "setup",
+      "actor": "userA",
+      "step": "csrf token",
+      "request": "GET /api/auth/csrf",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 7,
+      "requestId": "10052dca-1d36-4e1d-a4f8-2844169bec49"
+    },
+    {
+      "phase": "setup",
+      "actor": "userB",
+      "step": "register (email)",
+      "request": "POST /api/auth/register",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 289,
+      "requestId": "a2d49016-3492-47e6-b8b8-cc69f3fcd3f6",
+      "ids": {
+        "userId": "203cf357-e444-4218-bc45-b5bcc7e4bc0f"
+      }
+    },
+    {
+      "phase": "setup",
+      "actor": "userB",
+      "step": "csrf token",
+      "request": "GET /api/auth/csrf",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "6f500467-5e40-42e5-87f4-37ef558aacca"
+    },
+    {
+      "phase": "setup",
+      "actor": "userC",
+      "step": "register (email)",
+      "request": "POST /api/auth/register",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 286,
+      "requestId": "da167057-77a0-4d37-870b-4907a4b9f933",
+      "ids": {
+        "userId": "4348f401-904b-4b08-8ac2-bc344941d846"
+      }
+    },
+    {
+      "phase": "setup",
+      "actor": "userC",
+      "step": "csrf token",
+      "request": "GET /api/auth/csrf",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 7,
+      "requestId": "016b2597-fced-40ac-8a5f-d5298a3c757e"
+    },
+    {
+      "phase": "setup",
+      "actor": "userD",
+      "step": "register (email)",
+      "request": "POST /api/auth/register",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 288,
+      "requestId": "2b0e6b63-7047-4705-84da-8e08e52c8e11",
+      "ids": {
+        "userId": "48b70d4c-abae-44d2-885c-5c5628b14005"
+      }
+    },
+    {
+      "phase": "setup",
+      "actor": "userD",
+      "step": "csrf token",
+      "request": "GET /api/auth/csrf",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "4ac8ca8d-8625-41fa-aec2-511c119f1521"
+    },
+    {
+      "phase": "setup",
+      "actor": "userE",
+      "step": "register (email)",
+      "request": "POST /api/auth/register",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 416,
+      "requestId": "aef6546b-ae59-4e7c-b2d0-f42ca2487647",
+      "ids": {
+        "userId": "2a453532-d57c-4311-b2ec-1fa3318eee01"
+      }
+    },
+    {
+      "phase": "setup",
+      "actor": "userE",
+      "step": "csrf token",
+      "request": "GET /api/auth/csrf",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "7dc1f18a-4052-41f3-aa7b-e6f8bb2b0186"
+    },
+    {
+      "phase": "setup",
+      "actor": "admin",
+      "step": "scratch-DB role -> ADMIN",
+      "request": "SQL",
+      "status": 0,
+      "ok": true,
+      "ms": 0
+    },
+    {
+      "phase": "setup",
+      "actor": "admin",
+      "step": "login",
+      "request": "POST /api/auth/login",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 278,
+      "requestId": "7ff4a97c-1725-4dc2-a3e7-d70d6df7480d"
+    },
+    {
+      "phase": "setup",
+      "actor": "admin",
+      "step": "csrf token",
+      "request": "GET /api/auth/csrf",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 5,
+      "requestId": "5a1bf452-93d9-482a-9893-34c638ead96e"
+    },
+    {
+      "phase": "setup",
+      "actor": "userA",
+      "step": "scratch-DB activation + funding 30000 pts",
+      "request": "SQL",
+      "status": 0,
+      "ok": true,
+      "ms": 0
+    },
+    {
+      "phase": "setup",
+      "actor": "userB",
+      "step": "scratch-DB activation + funding 1000 pts",
+      "request": "SQL",
+      "status": 0,
+      "ok": true,
+      "ms": 0
+    },
+    {
+      "phase": "setup",
+      "actor": "userC",
+      "step": "scratch-DB activation + funding 30000 pts",
+      "request": "SQL",
+      "status": 0,
+      "ok": true,
+      "ms": 0
+    },
+    {
+      "phase": "setup",
+      "actor": "userD",
+      "step": "scratch-DB activation + funding 30000 pts",
+      "request": "SQL",
+      "status": 0,
+      "ok": true,
+      "ms": 0
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "settings read",
+      "request": "GET /api/admin/rewards/settings",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 10,
+      "requestId": "9d881767-986c-43cd-a1c0-58ced3c6bd72"
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "journey",
+      "step": "settings read",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 10,
+      "ids": {
+        "dailyPointsLimit": 500
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "settings update",
+      "request": "PUT /api/admin/rewards/settings",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 13,
+      "requestId": "98a767ef-d555-4115-832a-2900657d1306"
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "journey",
+      "step": "settings update (daily limit 100000 so price tests are not capped)",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 13
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "list brands",
+      "request": "GET /api/admin/rewards/brands",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 5,
+      "requestId": "cb878ae0-6a82-4dfe-908d-5c83bbff0d21"
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "journey",
+      "step": "brands list",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 6,
+      "ids": {
+        "brands": 6
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "create voucher V1",
+      "request": "POST /api/admin/rewards/vouchers",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 20,
+      "requestId": "48812b30-27b7-48a0-93a6-f0bc4229e54a",
+      "ids": {
+        "voucherId": "f07fe4ba-c5d5-4d10-99e4-21cdd3a21332"
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "import codes V1",
+      "request": "POST /api/admin/rewards/vouchers/:id/codes",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 14,
+      "requestId": "6b07ead9-343e-44f5-9adc-96f5f02a5cd5",
+      "ids": {
+        "accepted": 9,
+        "committed": true
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "voucher detail V1",
+      "request": "GET /api/admin/rewards/vouchers/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 10,
+      "requestId": "87f3682c-44d7-45f9-9935-dcb3a515299e"
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "journey",
+      "step": "create V1 (promo price, 9 codes) + CSV import",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 45,
+      "ids": {
+        "voucherId": "f07fe4ba-c5d5-4d10-99e4-21cdd3a21332"
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "create voucher invalid promo",
+      "request": "POST /api/admin/rewards/vouchers",
+      "status": 400,
+      "expected": 400,
+      "ok": true,
+      "ms": 8,
+      "requestId": "a174b4d8-91b8-4640-bf46-f0c35c502fc0",
+      "errorCode": "VALIDATION_ERROR"
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "journey",
+      "step": "create validation: promo >= base rejected",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 8
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "import duplicate (VALIDATE)",
+      "request": "POST /api/admin/rewards/vouchers/:id/codes",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 23,
+      "requestId": "a80b39c4-94fd-4cd4-922f-f0e6391ccbfe"
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "import duplicate (COMMIT)",
+      "request": "POST /api/admin/rewards/vouchers/:id/codes",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 7,
+      "requestId": "d905140f-895c-4988-9368-25e6befb8f0e"
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "voucher detail V1 after rejected import",
+      "request": "GET /api/admin/rewards/vouchers/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "95539d92-3088-476b-b1d6-821aae816c4d"
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "journey",
+      "step": "CSV import: in-file duplicate rejected, nothing committed",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 37
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "create voucher V2",
+      "request": "POST /api/admin/rewards/vouchers",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 9,
+      "requestId": "a1d3de43-c921-4b31-ae20-90c63e2bfe06",
+      "ids": {
+        "voucherId": "0708abd5-5e43-41ba-ad66-27c0c869a833"
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "import codes V2",
+      "request": "POST /api/admin/rewards/vouchers/:id/codes",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 11,
+      "requestId": "6c490507-865e-455d-b942-00de090be42e",
+      "ids": {
+        "accepted": 5,
+        "committed": true
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "create voucher V8",
+      "request": "POST /api/admin/rewards/vouchers",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 10,
+      "requestId": "689ddb74-4f39-4862-847f-c1593f27da12",
+      "ids": {
+        "voucherId": "789210cb-f140-48bc-9eca-118cba5f5f9c"
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "import codes V8",
+      "request": "POST /api/admin/rewards/vouchers/:id/codes",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 11,
+      "requestId": "9b978042-0bbe-4e6b-9966-c90fa252b18d",
+      "ids": {
+        "accepted": 2,
+        "committed": true
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "create voucher V3",
+      "request": "POST /api/admin/rewards/vouchers",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 11,
+      "requestId": "cbff5e85-23fd-417a-b31e-5efbcfae1952",
+      "ids": {
+        "voucherId": "73b0e4ba-3eef-4411-a90a-289183e6a3b8"
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "import codes V3",
+      "request": "POST /api/admin/rewards/vouchers/:id/codes",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 10,
+      "requestId": "aa98ca29-bf94-4843-a25f-8aff8c32ea5c",
+      "ids": {
+        "accepted": 1,
+        "committed": true
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "create voucher V4",
+      "request": "POST /api/admin/rewards/vouchers",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 8,
+      "requestId": "b50bc3f2-9e49-45ff-b41b-98623d11bba1",
+      "ids": {
+        "voucherId": "efb11523-aaac-428f-a160-9308b85014d1"
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "import codes V4",
+      "request": "POST /api/admin/rewards/vouchers/:id/codes",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 9,
+      "requestId": "0fe1a869-e35c-47c3-ab04-4a17dfcc3811",
+      "ids": {
+        "accepted": 3,
+        "committed": true
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "create voucher V5",
+      "request": "POST /api/admin/rewards/vouchers",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 8,
+      "requestId": "91590667-dcac-47eb-a2f7-f72ff4598af2",
+      "ids": {
+        "voucherId": "b07c1df2-a3ca-4998-8e38-932345209560"
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "import codes V5",
+      "request": "POST /api/admin/rewards/vouchers/:id/codes",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 10,
+      "requestId": "7abc17d0-4fd2-4ade-ad11-2709bcfb1b83",
+      "ids": {
+        "accepted": 4,
+        "committed": true
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "create voucher V6",
+      "request": "POST /api/admin/rewards/vouchers",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 8,
+      "requestId": "3a205f34-1b30-4b8d-92a3-ad6f4c6a8b92",
+      "ids": {
+        "voucherId": "62f0043d-8e6e-42f4-858d-c29c7d066443"
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "stock V6 shared (no codes needed)",
+      "request": "POST /api/admin/rewards/vouchers/:id/stock",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 9,
+      "requestId": "46b95b3d-2764-43bc-b098-5c64a38d4dc2"
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "create voucher V7",
+      "request": "POST /api/admin/rewards/vouchers",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 8,
+      "requestId": "a2f7925a-d3e6-4880-83df-3c84876340fa",
+      "ids": {
+        "voucherId": "19a99166-af94-441a-ba5b-73b11c795c42"
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "import codes V7",
+      "request": "POST /api/admin/rewards/vouchers/:id/codes",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 9,
+      "requestId": "538be890-5740-4e53-933f-e7f03c11ee4a",
+      "ids": {
+        "accepted": 3,
+        "committed": true
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "journey",
+      "step": "create V2..V8 (flash, last-unit, insufficient, cheap, shared, survey-rule, flash-whole-stock)",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 133,
+      "ids": {
+        "v2": "0708abd5-5e43-41ba-ad66-27c0c869a833",
+        "v3": "73b0e4ba-3eef-4411-a90a-289183e6a3b8",
+        "v4": "efb11523-aaac-428f-a160-9308b85014d1",
+        "v5": "b07c1df2-a3ca-4998-8e38-932345209560",
+        "v6": "62f0043d-8e6e-42f4-858d-c29c7d066443",
+        "v7": "19a99166-af94-441a-ba5b-73b11c795c42"
+      }
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "admin voucher list",
+      "request": "GET /api/admin/rewards/vouchers",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 11,
+      "requestId": "ecc455b2-a7a7-4651-94e2-7bd32d84a3fd"
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "admin",
+      "step": "admin voucher list ACTIVE + q",
+      "request": "GET /api/admin/rewards/vouchers?filter=ACTIVE&q=Journey%20V1%20726781",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "82e93ca3-fd9c-42b4-9e80-788cbc275d3c"
+    },
+    {
+      "phase": "Admin catalog",
+      "actor": "journey",
+      "step": "admin list + filter + search",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 17
+    },
+    {
+      "phase": "Admin Flash",
+      "actor": "admin",
+      "step": "flash price >= regular",
+      "request": "POST /api/admin/rewards/flash-sales",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 12,
+      "requestId": "111f4baa-53c8-49ff-ab42-50c99f4331c4",
+      "errorCode": "FLASH_PRICE_NOT_BELOW_REGULAR"
+    },
+    {
+      "phase": "Admin Flash",
+      "actor": "admin",
+      "step": "flash quota > unreserved stock",
+      "request": "POST /api/admin/rewards/flash-sales",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 8,
+      "requestId": "aa315698-9539-4cf9-8ea6-1e869a5869b2",
+      "errorCode": "FLASH_QUOTA_EXCEEDS_STOCK"
+    },
+    {
+      "phase": "Admin Flash",
+      "actor": "admin",
+      "step": "flash starts in past",
+      "request": "POST /api/admin/rewards/flash-sales",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 8,
+      "requestId": "d7b187b1-e328-4099-9673-286654235004",
+      "errorCode": "FLASH_STARTS_IN_PAST"
+    },
+    {
+      "phase": "Admin Flash",
+      "actor": "journey",
+      "step": "flash conflicts: price >= regular, quota > unreserved, start in past",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 28
+    },
+    {
+      "phase": "Admin Flash",
+      "actor": "admin",
+      "step": "create flash F1",
+      "request": "POST /api/admin/rewards/flash-sales",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 15,
+      "requestId": "f0e1fd77-dff4-46c6-a49e-aac2c841f145",
+      "ids": {
+        "flashSaleId": "be4557b3-5f43-4acb-a143-b5ab615541a5",
+        "code": "FS-261015-A"
+      }
+    },
+    {
+      "phase": "Admin Flash",
+      "actor": "admin",
+      "step": "create flash F2",
+      "request": "POST /api/admin/rewards/flash-sales",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 12,
+      "requestId": "bb367e66-bc35-48bf-8c86-6c637f655acd",
+      "ids": {
+        "flashSaleId": "c62aa426-779a-4b4c-8490-3a4e65df3d84",
+        "code": "FS-261015-B"
+      }
+    },
+    {
+      "phase": "Admin Flash",
+      "actor": "admin",
+      "step": "create flash F3",
+      "request": "POST /api/admin/rewards/flash-sales",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 12,
+      "requestId": "4ccbf3cc-7e44-4cfb-a2d9-3369b8f72ebb",
+      "ids": {
+        "flashSaleId": "7eaf3c5b-2b20-4215-888c-b4e8fdf223ce",
+        "code": "FS-261015-C"
+      }
+    },
+    {
+      "phase": "Admin Flash",
+      "actor": "journey",
+      "step": "create Flash F1 (V2: 5 in stock, quota 3), F2 (V7, survey rule), F3 (V8: quota = whole stock 2)",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 40
+    },
+    {
+      "phase": "Admin Flash",
+      "actor": "admin",
+      "step": "flash overlap",
+      "request": "POST /api/admin/rewards/flash-sales",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 8,
+      "requestId": "2f92aa28-50b2-496e-b941-a598429cf71a",
+      "errorCode": "FLASH_OVERLAP"
+    },
+    {
+      "phase": "Admin Flash",
+      "actor": "journey",
+      "step": "flash overlap on the same voucher rejected",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 8
+    },
+    {
+      "phase": "User browse",
+      "actor": "userA",
+      "step": "catalog list",
+      "request": "GET /api/rewards/vouchers?brand=gong-cha&category=COFFEE&sort=POINTS_ASC&limit=5",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 11,
+      "requestId": "b837fe4c-f0ba-4bea-b843-4a62262e4dc9"
+    },
+    {
+      "phase": "User browse",
+      "actor": "userA",
+      "step": "catalog search q",
+      "request": "GET /api/rewards/vouchers?q=Journey%20V3%20last%20unit%20726781",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 17,
+      "requestId": "4d027b58-f134-4561-b388-946f6df9e593"
+    },
+    {
+      "phase": "User browse",
+      "actor": "userB",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 25,
+      "requestId": "4bbf0513-0923-4bfc-8cf1-41a91ee690c2"
+    },
+    {
+      "phase": "User browse",
+      "actor": "userB",
+      "step": "catalog affordable=true",
+      "request": "GET /api/rewards/vouchers?affordable=true&limit=50",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 8,
+      "requestId": "7a5c1ce9-266e-4ade-a793-54523625bbaf"
+    },
+    {
+      "phase": "User browse",
+      "actor": "journey",
+      "step": "catalog list with filters",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 61,
+      "ids": {
+        "total": 4
+      }
+    },
+    {
+      "phase": "User browse",
+      "actor": "userA",
+      "step": "voucher detail",
+      "request": "GET /api/rewards/vouchers/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "78bd0588-0737-4fbe-b80c-30f1daddcdd8"
+    },
+    {
+      "phase": "User browse",
+      "actor": "userA",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 13,
+      "requestId": "5f2d954a-8fbe-473f-84d1-64deb3660909"
+    },
+    {
+      "phase": "User browse",
+      "actor": "journey",
+      "step": "voucher detail + balance from wallet",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 20
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "userA",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 7,
+      "requestId": "09dc2e1f-2be2-47fe-9a4c-9def30821885"
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "userA",
+      "step": "quote A V1",
+      "request": "POST /api/rewards/quotes",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 18,
+      "requestId": "cd446e75-bb57-4a00-8320-c949c53d8730",
+      "ids": {
+        "quoteId": "e2274f3f-aed3-407c-934a-998827096ca7",
+        "source": "PROMO",
+        "points": 800
+      }
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "userA",
+      "step": "redeem A V1",
+      "request": "POST /api/rewards/redemptions",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 30,
+      "requestId": "8d5ef032-3f34-48fc-89ff-568ee338d908",
+      "ids": {
+        "redemptionId": "6e860c12-6c5e-49c2-8dc1-b3bcf4fa5868",
+        "reference": "RDM-2026-9OAT",
+        "ticketId": "6e860c12-6c5e-49c2-8dc1-b3bcf4fa5868",
+        "pointsSpent": 800
+      }
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "userA",
+      "step": "replay redeem (same key)",
+      "request": "POST /api/rewards/redemptions",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 6,
+      "requestId": "d805ddeb-d79f-48af-85fe-3b2545e120e0"
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "userA",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "f9fcf005-3a24-4f37-9425-fbddeaf33f4e"
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "userA",
+      "step": "get redemption by key",
+      "request": "GET /api/rewards/redemptions/by-key/:id",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 6,
+      "requestId": "e0d4515f-c16f-4026-953b-63a8460f6de8"
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "journey",
+      "step": "A: quote -> redeem V1 -> replay same key -> by-key",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 74,
+      "ids": {
+        "ticketId": "6e860c12-6c5e-49c2-8dc1-b3bcf4fa5868"
+      }
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "userA",
+      "step": "quote V5 for conflict",
+      "request": "POST /api/rewards/quotes",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 11,
+      "requestId": "615cc4b9-354e-4b2a-8116-f471399dc766"
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "userA",
+      "step": "reuse key with another quote",
+      "request": "POST /api/rewards/redemptions",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 4,
+      "requestId": "2fe45503-685a-4f84-abd7-d7c913e3ec22",
+      "errorCode": "IDEMPOTENCY_KEY_CONFLICT"
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "userA",
+      "step": "redeem used quote with a new key",
+      "request": "POST /api/rewards/redemptions",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 7,
+      "requestId": "2394990a-0044-4f6a-bac5-29acddc443d4",
+      "errorCode": "QUOTE_ALREADY_REDEEMED"
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "journey",
+      "step": "same key + different quote -> IDEMPOTENCY_KEY_CONFLICT; same quote + new key -> QUOTE_ALREADY_REDEEMED",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 21
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "userC",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 11,
+      "requestId": "4c796f87-5ee7-429b-accf-6e6f1df01afe"
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "userC",
+      "step": "quote C V1",
+      "request": "POST /api/rewards/quotes",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 10,
+      "requestId": "1676bc6f-8f88-427f-8547-f21f24313972",
+      "ids": {
+        "quoteId": "e33656a8-b207-4e0b-8794-ca794d6037f7",
+        "source": "PROMO",
+        "points": 800
+      }
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "userC",
+      "step": "redeem C V1",
+      "request": "POST /api/rewards/redemptions",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 18,
+      "requestId": "94225015-a151-4ffe-9067-a5f20d9db04f",
+      "ids": {
+        "redemptionId": "11dd5a8d-6c45-4483-a3fd-9875f0d5966c",
+        "reference": "RDM-2026-K9PC",
+        "ticketId": "11dd5a8d-6c45-4483-a3fd-9875f0d5966c",
+        "pointsSpent": 800
+      }
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "userD",
+      "step": "quote D V6 shared",
+      "request": "POST /api/rewards/quotes",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 10,
+      "requestId": "10ed2889-cdca-46c0-b1a3-b8b011971ea2",
+      "ids": {
+        "quoteId": "e6e6e1c9-d2a6-4983-aaa7-7cdfe86cd19e",
+        "source": "BASE",
+        "points": 600
+      }
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "userD",
+      "step": "redeem D V6 shared",
+      "request": "POST /api/rewards/redemptions",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 17,
+      "requestId": "8aa06001-d308-4c5e-a0f1-7a4572ad5ba4",
+      "ids": {
+        "redemptionId": "6115d597-30cd-47ee-8ded-f892778be32e",
+        "reference": "RDM-2026-FXEK",
+        "ticketId": "6115d597-30cd-47ee-8ded-f892778be32e",
+        "pointsSpent": 600
+      }
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "userD",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 10,
+      "requestId": "368fc068-1882-496b-883d-d985ac0833f0"
+    },
+    {
+      "phase": "Redeem success",
+      "actor": "journey",
+      "step": "C redeems V1, D redeems shared V6 (tickets for the faulty-code flow)",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 76
+    },
+    {
+      "phase": "My vouchers",
+      "actor": "userA",
+      "step": "list my vouchers",
+      "request": "GET /api/rewards/my-vouchers",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "0427d5a6-494f-431b-b992-b7bffe4c7c37"
+    },
+    {
+      "phase": "My vouchers",
+      "actor": "userA",
+      "step": "ticket detail",
+      "request": "GET /api/rewards/my-vouchers/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "3f8c0ce6-5b18-4dc8-be65-cc951f25a7be"
+    },
+    {
+      "phase": "My vouchers",
+      "actor": "userA",
+      "step": "mark used",
+      "request": "POST /api/rewards/my-vouchers/:id/use",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 12,
+      "requestId": "30559ef6-fee5-44c5-ab39-fcb44a570411"
+    },
+    {
+      "phase": "My vouchers",
+      "actor": "userA",
+      "step": "list after use",
+      "request": "GET /api/rewards/my-vouchers",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 5,
+      "requestId": "b450c0a6-c8c5-4cf7-ae64-f235178a1f35"
+    },
+    {
+      "phase": "My vouchers",
+      "actor": "userA",
+      "step": "undo use",
+      "request": "POST /api/rewards/my-vouchers/:id/undo-use",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 10,
+      "requestId": "31632ede-1168-4e0d-9d2c-dc97ae4a3fb5"
+    },
+    {
+      "phase": "My vouchers",
+      "actor": "journey",
+      "step": "list by tab, detail with code, use, undo",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 40,
+      "ids": {
+        "unused": 1
+      }
+    },
+    {
+      "phase": "My vouchers",
+      "actor": "userB",
+      "step": "B opens A's ticket",
+      "request": "GET /api/rewards/my-vouchers/:id",
+      "status": 404,
+      "expected": 404,
+      "ok": true,
+      "ms": 4,
+      "requestId": "bb3255ce-f8e7-4515-8c52-b0c621483fe4",
+      "errorCode": "TICKET_NOT_FOUND"
+    },
+    {
+      "phase": "My vouchers",
+      "actor": "journey",
+      "step": "another user's ticket is not found",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 4
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userA",
+      "step": "A quote V3",
+      "request": "POST /api/rewards/quotes",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 10,
+      "requestId": "f98b7f9b-1c88-4d0e-8e48-8e4a733309ef"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userB",
+      "step": "B quote V3",
+      "request": "POST /api/rewards/quotes",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 10,
+      "requestId": "a744f66b-3299-4218-b9bf-c6d3543c5041"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userA",
+      "step": "A redeem V3 (last unit)",
+      "request": "POST /api/rewards/redemptions",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 18,
+      "requestId": "d61e7d6b-b8a5-4440-917a-9e42aa35393e"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userB",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "bff9ccd8-8111-4871-adb1-c9b8f365f03c"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userB",
+      "step": "B redeem V3 (sold out)",
+      "request": "POST /api/rewards/redemptions",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 11,
+      "requestId": "5de5acd5-bbd9-418a-93a3-e91e77a59290",
+      "errorCode": "SOLD_OUT"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userB",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 5,
+      "requestId": "f76d3808-4de4-4ff7-aaa9-193615962bfa"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "journey",
+      "step": "SOLD_OUT: last unit taken between quote and confirm (V3)",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 60
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userB",
+      "step": "B quote V1",
+      "request": "POST /api/rewards/quotes",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 9,
+      "requestId": "760c1e35-50f9-4d8e-a56b-8fe42a848c5f"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "admin",
+      "step": "admin price change V1",
+      "request": "POST /api/admin/rewards/vouchers/:id/price",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 9,
+      "requestId": "0ada2b21-0d37-4692-bf1a-d06825699cbf"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "admin",
+      "step": "voucher detail after price change",
+      "request": "GET /api/admin/rewards/vouchers/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "0bf5849c-b6c2-40d8-90a1-1361955d2c3a"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userB",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 5,
+      "requestId": "40d971c4-2594-4874-96ed-7a06cc76ca8f"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userB",
+      "step": "B redeem V1 at stale price",
+      "request": "POST /api/rewards/redemptions",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 20,
+      "requestId": "b3e01004-62fb-4f34-b7af-3f8b43164eb6",
+      "errorCode": "PRICE_CHANGED"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userB",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "fd8c657e-aa39-4cb9-8f38-380aee8de259"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "journey",
+      "step": "PRICE_CHANGED: Admin changes price between quote and confirm (V1)",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 55
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userB",
+      "step": "B quote V4 (800 of 1100)",
+      "request": "POST /api/rewards/quotes",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 15,
+      "requestId": "e50d5b5f-67b9-43fd-9d27-9b5b954a7eca"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userB",
+      "step": "quote B V5 (spends 500)",
+      "request": "POST /api/rewards/quotes",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 10,
+      "requestId": "639fa928-35c3-4591-ae13-f0212ab37315",
+      "ids": {
+        "quoteId": "023697eb-d1f9-46a2-b6f2-98ecbeb28d25",
+        "source": "BASE",
+        "points": 500
+      }
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userB",
+      "step": "redeem B V5 (spends 500)",
+      "request": "POST /api/rewards/redemptions",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 27,
+      "requestId": "3c2788f2-b821-44df-a39c-c2f330f238ea",
+      "ids": {
+        "redemptionId": "3ccbb8aa-1656-458e-824b-60498c0f39f4",
+        "reference": "RDM-2026-IFAC",
+        "ticketId": "3ccbb8aa-1656-458e-824b-60498c0f39f4",
+        "pointsSpent": 500
+      }
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userB",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "6b97a236-b3a9-4c58-af9e-12fa911fbb6c"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userB",
+      "step": "B redeem V4 (not enough left)",
+      "request": "POST /api/rewards/redemptions",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 17,
+      "requestId": "7d7021ea-305e-4512-ac74-eb78a63506d9",
+      "errorCode": "INSUFFICIENT_POINTS"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userB",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 7,
+      "requestId": "b6566ce1-7c0b-4e3a-9f47-1e76da87a411"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "journey",
+      "step": "INSUFFICIENT_POINTS: balance spent between quote and confirm (V4 then V5)",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 82
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userC",
+      "step": "C quote V4",
+      "request": "POST /api/rewards/quotes",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 10,
+      "requestId": "7467e86e-fd3b-4d0c-beb5-2ae6e3d64d59"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "admin",
+      "step": "admin pause V4",
+      "request": "PATCH /api/admin/rewards/vouchers/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 13,
+      "requestId": "f156d479-b0bf-4e4f-b140-da4e094579ca"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userC",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 5,
+      "requestId": "d481547d-b461-4698-a99c-50a38d783358"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userC",
+      "step": "C redeem paused V4",
+      "request": "POST /api/rewards/redemptions",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 10,
+      "requestId": "b59ad62b-e062-4d83-80f3-e26ea617e2ca",
+      "errorCode": "VOUCHER_UNAVAILABLE"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userC",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 5,
+      "requestId": "b2667bf7-da15-4f03-a6a8-465088336740"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "admin",
+      "step": "admin resume V4",
+      "request": "PATCH /api/admin/rewards/vouchers/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 9,
+      "requestId": "b23d517c-6b0f-4da5-acf8-9a435384b4e5"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "admin",
+      "step": "admin hide V4",
+      "request": "PATCH /api/admin/rewards/vouchers/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 9,
+      "requestId": "f043d2a3-ca0b-4ace-b14a-27802a54c3a2"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userC",
+      "step": "C quote hidden V4",
+      "request": "POST /api/rewards/quotes",
+      "status": 404,
+      "expected": 404,
+      "ok": true,
+      "ms": 4,
+      "requestId": "e83dec0d-4d8c-4c2b-a4c6-067f9351459c",
+      "errorCode": "VOUCHER_NOT_FOUND"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userC",
+      "step": "catalog without hidden V4",
+      "request": "GET /api/rewards/vouchers?q=Journey%20V4%20726781",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 5,
+      "requestId": "d835ef6e-3bc1-4b14-9e77-ff3fee18e5de"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "admin",
+      "step": "admin unhide V4",
+      "request": "PATCH /api/admin/rewards/vouchers/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 16,
+      "requestId": "fc8c8239-b384-413b-8a60-51a8ac9a1a80"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "journey",
+      "step": "VOUCHER_UNAVAILABLE: Admin pauses after quote (V4), then hide -> not found at quote",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 88
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userE",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 21,
+      "requestId": "aca13775-a37b-4b88-b058-7d75a153339e"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userE",
+      "step": "E quote V1 (not activated)",
+      "request": "POST /api/rewards/quotes",
+      "status": 403,
+      "expected": 403,
+      "ok": true,
+      "ms": 14,
+      "requestId": "41b16e08-3196-4686-b318-e0f52667f804",
+      "errorCode": "ACCOUNT_NOT_ELIGIBLE"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userE",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 7,
+      "requestId": "d781653d-6be8-4924-837b-49c6d58cd17c"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "journey",
+      "step": "ACCOUNT_NOT_ELIGIBLE: ACCOUNT_NOT_ACTIVATED (E)",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 42
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userA",
+      "step": "quote A V5 #1",
+      "request": "POST /api/rewards/quotes",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 16,
+      "requestId": "0a0e46e5-4d44-463d-ae9b-f0cb5f39433e",
+      "ids": {
+        "quoteId": "a23127c9-32cc-4c93-baac-df178b068a34",
+        "source": "BASE",
+        "points": 500
+      }
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userA",
+      "step": "redeem A V5 #1",
+      "request": "POST /api/rewards/redemptions",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 36,
+      "requestId": "c202c21b-8226-4461-b349-59bddc42d38a",
+      "ids": {
+        "redemptionId": "d00f9aa1-cdcd-4c34-9e9f-0a3873a4dfca",
+        "reference": "RDM-2026-VDLQ",
+        "ticketId": "d00f9aa1-cdcd-4c34-9e9f-0a3873a4dfca",
+        "pointsSpent": 500
+      }
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userA",
+      "step": "quote A V5 #2",
+      "request": "POST /api/rewards/quotes",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 15,
+      "requestId": "7da3b285-5f02-4032-8be3-ff652586f6af",
+      "ids": {
+        "quoteId": "b2ca9141-51b3-4472-a4ae-05bb198e316e",
+        "source": "BASE",
+        "points": 500
+      }
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userA",
+      "step": "redeem A V5 #2",
+      "request": "POST /api/rewards/redemptions",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 22,
+      "requestId": "c9a076b3-0ff6-473f-a4e3-e62df11caa5a",
+      "ids": {
+        "redemptionId": "9bbda9c0-8a1c-4294-bee5-862b27dc51e3",
+        "reference": "RDM-2026-B9P4",
+        "ticketId": "9bbda9c0-8a1c-4294-bee5-862b27dc51e3",
+        "pointsSpent": 500
+      }
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userA",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "8508f7b7-0c16-4568-8a6f-ed562b21b4f7"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userA",
+      "step": "A quote V5 3rd time",
+      "request": "POST /api/rewards/quotes",
+      "status": 403,
+      "expected": 403,
+      "ok": true,
+      "ms": 12,
+      "requestId": "8f233b18-494f-46d8-bb1b-4b1f75546937",
+      "errorCode": "ACCOUNT_NOT_ELIGIBLE"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "userA",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 9,
+      "requestId": "0f446e8b-27b7-478c-b9d8-0e4f28c5e26e"
+    },
+    {
+      "phase": "Failure codes",
+      "actor": "journey",
+      "step": "ACCOUNT_NOT_ELIGIBLE: VOUCHER_LIMIT_REACHED (A, 3rd V5 in 30 days)",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 116
+    },
+    {
+      "phase": "Admin stock",
+      "actor": "admin",
+      "step": "stock below issued",
+      "request": "POST /api/admin/rewards/vouchers/:id/stock",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 10,
+      "requestId": "88e70dd5-5421-4228-9b89-13c0f82099bd",
+      "errorCode": "STOCK_BELOW_COMMITTED"
+    },
+    {
+      "phase": "Admin stock",
+      "actor": "admin",
+      "step": "stock increase needs codes",
+      "request": "POST /api/admin/rewards/vouchers/:id/stock",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 9,
+      "requestId": "ac56ccb8-b13f-471f-a0de-8869c029fddf",
+      "errorCode": "STOCK_INCREASE_NEEDS_CODES"
+    },
+    {
+      "phase": "Admin stock",
+      "actor": "admin",
+      "step": "stock decrease 9 -> 8",
+      "request": "POST /api/admin/rewards/vouchers/:id/stock",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 17,
+      "requestId": "ad033afe-15e2-475a-940d-baf420337a01"
+    },
+    {
+      "phase": "Admin stock",
+      "actor": "journey",
+      "step": "stock adjust: below issued+reserved rejected; increase without codes rejected; decrease ok",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 36
+    },
+    {
+      "phase": "Flash",
+      "actor": "admin",
+      "step": "flash monitor F1 (active)",
+      "request": "GET /api/admin/rewards/flash-sales/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 36,
+      "requestId": "d3aabf20-02be-4889-b05e-4a91f80788fe"
+    },
+    {
+      "phase": "Flash",
+      "actor": "admin",
+      "step": "voucher detail V2 (reserved)",
+      "request": "GET /api/admin/rewards/vouchers/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 12,
+      "requestId": "347de4b4-fdee-4624-910c-5947f34d56fe"
+    },
+    {
+      "phase": "Flash",
+      "actor": "journey",
+      "step": "wait for F1, F2, F3 reserved_at (lifecycle job)",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 63340
+    },
+    {
+      "phase": "Flash",
+      "actor": "userA",
+      "step": "user flash list",
+      "request": "GET /api/rewards/flash-sales",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 9,
+      "requestId": "c5abef0b-629a-4d34-9251-2334e7ca2756"
+    },
+    {
+      "phase": "Flash",
+      "actor": "journey",
+      "step": "user flash list shows F1",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 9
+    },
+    {
+      "phase": "Flash",
+      "actor": "userA",
+      "step": "userA quote V2 (flash)",
+      "request": "POST /api/rewards/quotes",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 18,
+      "requestId": "bbed416f-5b81-46c2-8ee2-f925a80a91d5",
+      "ids": {
+        "source": "FLASH",
+        "points": 600
+      }
+    },
+    {
+      "phase": "Flash",
+      "actor": "userB",
+      "step": "userB quote V2 (flash)",
+      "request": "POST /api/rewards/quotes",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 10,
+      "requestId": "bb7727fc-910f-481c-8535-f9e3e2bee6d5",
+      "ids": {
+        "source": "FLASH",
+        "points": 600
+      }
+    },
+    {
+      "phase": "Flash",
+      "actor": "userC",
+      "step": "userC quote V2 (flash)",
+      "request": "POST /api/rewards/quotes",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 10,
+      "requestId": "1dd25ea1-bef0-4a4c-a1d1-2b2e4559f261",
+      "ids": {
+        "source": "FLASH",
+        "points": 600
+      }
+    },
+    {
+      "phase": "Flash",
+      "actor": "userD",
+      "step": "userD quote V2 (flash)",
+      "request": "POST /api/rewards/quotes",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 9,
+      "requestId": "7dbb856b-5f0a-4c8d-b8d9-a73db6a2201f",
+      "ids": {
+        "source": "FLASH",
+        "points": 600
+      }
+    },
+    {
+      "phase": "Flash",
+      "actor": "userA",
+      "step": "userA redeem flash",
+      "request": "POST /api/rewards/redemptions",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 36,
+      "requestId": "28a580a9-b90e-4605-8748-625c22d5813a"
+    },
+    {
+      "phase": "Flash",
+      "actor": "userA",
+      "step": "A second flash quote (cap 1)",
+      "request": "POST /api/rewards/quotes",
+      "status": 403,
+      "expected": 403,
+      "ok": true,
+      "ms": 11,
+      "requestId": "ddd6f596-ebcd-4164-8e94-f500774a10a4",
+      "errorCode": "ACCOUNT_NOT_ELIGIBLE"
+    },
+    {
+      "phase": "Flash",
+      "actor": "userB",
+      "step": "userB redeem flash",
+      "request": "POST /api/rewards/redemptions",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 21,
+      "requestId": "eb4dc347-83cb-4276-8dd4-86cd7fd84c8a"
+    },
+    {
+      "phase": "Flash",
+      "actor": "userC",
+      "step": "userC redeem flash",
+      "request": "POST /api/rewards/redemptions",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 21,
+      "requestId": "2fec9ce8-0f0c-4c32-bb3f-a12cf1521bdf"
+    },
+    {
+      "phase": "Flash",
+      "actor": "userD",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 7,
+      "requestId": "21c3244b-99a7-4ea5-8658-301e12fd1fca"
+    },
+    {
+      "phase": "Flash",
+      "actor": "userD",
+      "step": "D redeem flash quote after sell-out (regular stock left)",
+      "request": "POST /api/rewards/redemptions",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 12,
+      "requestId": "00b7d827-9e9c-4254-b52b-2360e761b122",
+      "errorCode": "PRICE_CHANGED"
+    },
+    {
+      "phase": "Flash",
+      "actor": "userD",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 4,
+      "requestId": "1e5cdb9b-6d87-45a8-9edc-77f551eed14b"
+    },
+    {
+      "phase": "Flash",
+      "actor": "admin",
+      "step": "flash monitor F1 (sold out)",
+      "request": "GET /api/admin/rewards/flash-sales/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 7,
+      "requestId": "f9b41e48-6ba3-4c25-b1dd-5837f8a7a06e"
+    },
+    {
+      "phase": "Flash",
+      "actor": "admin",
+      "step": "admin flash list",
+      "request": "GET /api/admin/rewards/flash-sales",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 10,
+      "requestId": "f0877cd8-69e5-4859-8cd4-0a12a36fc9f4"
+    },
+    {
+      "phase": "Flash",
+      "actor": "journey",
+      "step": "Flash: A,B,C,D quote FLASH; A,B,C redeem; per-user cap; D loses (PRICE_CHANGED to regular price); sale sold out",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 186
+    },
+    {
+      "phase": "Flash",
+      "actor": "userC",
+      "step": "quote C V8 (flash, quota == stock)",
+      "request": "POST /api/rewards/quotes",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 8,
+      "requestId": "dd1cea2f-65b9-4fb0-85f3-40169681498e",
+      "ids": {
+        "quoteId": "cade39ce-496c-4613-90e1-7bb5897c2057",
+        "source": "FLASH",
+        "points": 400
+      }
+    },
+    {
+      "phase": "Flash",
+      "actor": "userC",
+      "step": "redeem C V8 (flash, quota == stock)",
+      "request": "POST /api/rewards/redemptions",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 18,
+      "requestId": "352e764d-e921-46c7-bf2c-884f6f4000bd",
+      "ids": {
+        "redemptionId": "d741e26d-cb05-4c71-a471-a86b730923c6",
+        "reference": "RDM-2026-NQRA",
+        "ticketId": "d741e26d-cb05-4c71-a471-a86b730923c6",
+        "pointsSpent": 400
+      }
+    },
+    {
+      "phase": "Flash",
+      "actor": "journey",
+      "step": "Flash where quota = whole stock (stock_remaining 0 after reserve): first redeem succeeds",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 27
+    },
+    {
+      "phase": "Flash",
+      "actor": "userA",
+      "step": "A quote V7 (flash needs a recent survey)",
+      "request": "POST /api/rewards/quotes",
+      "status": 403,
+      "expected": 403,
+      "ok": true,
+      "ms": 7,
+      "requestId": "5dd41b3a-3b37-424c-90aa-767cde62c890",
+      "errorCode": "ACCOUNT_NOT_ELIGIBLE"
+    },
+    {
+      "phase": "Flash",
+      "actor": "admin",
+      "step": "end F2 reason OTHER without note",
+      "request": "POST /api/admin/rewards/flash-sales/:id/end",
+      "status": 400,
+      "expected": 400,
+      "ok": true,
+      "ms": 5,
+      "requestId": "d3839e6c-7384-4752-a18d-273963c750a7",
+      "errorCode": "VALIDATION_ERROR"
+    },
+    {
+      "phase": "Flash",
+      "actor": "admin",
+      "step": "end F2 early",
+      "request": "POST /api/admin/rewards/flash-sales/:id/end",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 13,
+      "requestId": "ca471620-48ef-4f86-b9ad-d8f68d2dadb4"
+    },
+    {
+      "phase": "Flash",
+      "actor": "admin",
+      "step": "end F2 again",
+      "request": "POST /api/admin/rewards/flash-sales/:id/end",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 6,
+      "requestId": "96e3ffaf-dc05-4e51-a311-855675542921",
+      "errorCode": "FLASH_ALREADY_ENDED"
+    },
+    {
+      "phase": "Flash",
+      "actor": "admin",
+      "step": "poll V7 stock",
+      "request": "GET /api/admin/rewards/vouchers/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 4,
+      "requestId": "3a431016-911a-4de2-8372-f54a8c56bfc0"
+    },
+    {
+      "phase": "Flash",
+      "actor": "journey",
+      "step": "Flash F2: ACCOUNT_NOT_ELIGIBLE NO_RECENT_SURVEY; Admin ends early; unsold quota returns",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 35
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "userA",
+      "step": "userA reports code issue",
+      "request": "POST /api/rewards/my-vouchers/:id/issues",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 7,
+      "requestId": "3ffd62a0-7825-4fe3-b0c8-a1438fc3f874",
+      "ids": {
+        "reportId": "448ca797-d57f-4d75-9207-f9fa9c259b34",
+        "status": "OPEN"
+      }
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "userC",
+      "step": "userC reports code issue",
+      "request": "POST /api/rewards/my-vouchers/:id/issues",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 7,
+      "requestId": "f7e6af09-6217-4107-ac6d-0c70769e5956",
+      "ids": {
+        "reportId": "096f7e7d-fba2-4535-b7c3-d034bfd0e24c",
+        "status": "OPEN"
+      }
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "userD",
+      "step": "userD reports code issue",
+      "request": "POST /api/rewards/my-vouchers/:id/issues",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 7,
+      "requestId": "05cd10cd-0373-4f63-85f9-c34a1858619d",
+      "ids": {
+        "reportId": "7ea1d6ae-8fed-4a95-9050-52e9d380fb99",
+        "status": "OPEN"
+      }
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "userA",
+      "step": "A reports again",
+      "request": "POST /api/rewards/my-vouchers/:id/issues",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 6,
+      "requestId": "0d6e703a-196b-4fa5-890f-faced15be732",
+      "errorCode": "CODE_ISSUE_ALREADY_OPEN"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "userA",
+      "step": "A ticket shows open issue",
+      "request": "GET /api/rewards/my-vouchers/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 7,
+      "requestId": "675237f5-f648-4fab-ab1f-0fa3932f60c1"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "journey",
+      "step": "users report: A (V1), C (V1), D (V6 shared); duplicate report refused",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 34
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "admin",
+      "step": "admin code-issue queue (OPEN)",
+      "request": "GET /api/admin/rewards/code-issues?status=OPEN&limit=50",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 13,
+      "requestId": "026ed9e3-15c8-4603-a819-8e6571178bcf"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "admin",
+      "step": "admin code-issue detail",
+      "request": "GET /api/admin/rewards/code-issues/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 9,
+      "requestId": "18e452a8-e79b-432a-b686-c3d4071f4153"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "journey",
+      "step": "Admin queue lists them; canReplace and reason; no code value in payloads",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 22,
+      "ids": {
+        "open": 3
+      }
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "userD",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 5,
+      "requestId": "0ee6ef59-d39a-49bb-8c3b-23cb70b83d46"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "admin",
+      "step": "reject without note",
+      "request": "POST /api/admin/rewards/code-issues/:id/resolve",
+      "status": 400,
+      "expected": 400,
+      "ok": true,
+      "ms": 4,
+      "requestId": "76b208a9-33fe-42a9-aa3f-9cff3a3c9459",
+      "errorCode": "VALIDATION_ERROR"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "admin",
+      "step": "replace a shared code",
+      "request": "POST /api/admin/rewards/code-issues/:id/resolve",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 10,
+      "requestId": "dd277a6a-3b7f-44a9-95ec-35842d563c57",
+      "errorCode": "REPLACEMENT_NOT_SUPPORTED"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "admin",
+      "step": "reject with note",
+      "request": "POST /api/admin/rewards/code-issues/:id/resolve",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 11,
+      "requestId": "b3bab2f7-9ea6-4d63-9725-49d5c19a1da5"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "admin",
+      "step": "refund after reject",
+      "request": "POST /api/admin/rewards/code-issues/:id/resolve",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 5,
+      "requestId": "17ea69ae-c56b-4090-a25a-5b2944361130",
+      "errorCode": "CODE_ISSUE_ALREADY_RESOLVED"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "userD",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 5,
+      "requestId": "eae3ee53-8803-4017-afac-954feffb50fd"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "journey",
+      "step": "REJECT: note required; REPLACE refused for shared code; REJECT with note; already resolved",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 42
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "admin",
+      "step": "replace code",
+      "request": "POST /api/admin/rewards/code-issues/:id/resolve",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 12,
+      "requestId": "44a60222-6a4c-482e-8069-fe3c644b3f9e"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "userA",
+      "step": "A ticket after replace",
+      "request": "GET /api/rewards/my-vouchers/:id",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "f21e2e4c-204c-4ac5-96ed-0d0b5a697c78"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "admin",
+      "step": "replace again (idempotent)",
+      "request": "POST /api/admin/rewards/code-issues/:id/resolve",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "76667223-81de-4933-badf-08c8b6a45554"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "admin",
+      "step": "refund after replace",
+      "request": "POST /api/admin/rewards/code-issues/:id/resolve",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 4,
+      "requestId": "0ee969f3-b008-4404-8257-f898a0a503fb",
+      "errorCode": "CODE_ISSUE_ALREADY_RESOLVED"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "journey",
+      "step": "REPLACE: user gets a different code; replay is idempotent; refund after replace refused",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 29
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "userC",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 5,
+      "requestId": "90645e64-fb98-4894-99a2-4e3d7b2ef69e"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "admin",
+      "step": "refund",
+      "request": "POST /api/admin/rewards/code-issues/:id/resolve",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 15,
+      "requestId": "f4dc6674-82c0-43ac-98bf-42f2ced6a78d"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "userC",
+      "step": "wallet balance",
+      "request": "GET /api/economy/wallet",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 5,
+      "requestId": "5012672f-9a84-47ea-a290-c8b113f11024"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "userC",
+      "step": "C history",
+      "request": "GET /api/rewards/redemptions?limit=50",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 17,
+      "requestId": "28e823d6-6df2-46d9-9109-36c424bb96ab"
+    },
+    {
+      "phase": "Faulty code",
+      "actor": "journey",
+      "step": "REFUND: RFD- reference, wallet restored, history REFUNDED",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 43
+    },
+    {
+      "phase": "History",
+      "actor": "userB",
+      "step": "B history",
+      "request": "GET /api/rewards/redemptions?limit=50",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 14,
+      "requestId": "1daad181-b30b-4f5f-93c4-b259dda698b9"
+    },
+    {
+      "phase": "History",
+      "actor": "userB",
+      "step": "B history page 1",
+      "request": "GET /api/rewards/redemptions?limit=1&offset=0",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "02c92df9-10e8-48bd-86d4-04dd8752470b"
+    },
+    {
+      "phase": "History",
+      "actor": "userA",
+      "step": "A history",
+      "request": "GET /api/rewards/redemptions?limit=50",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 6,
+      "requestId": "d417899b-0131-41a7-99e9-c6b9e1e65b28"
+    },
+    {
+      "phase": "History",
+      "actor": "journey",
+      "step": "history: Success / Failed / Refunded, pagination",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 28,
+      "ids": {
+        "failedCodes": [
+          "INSUFFICIENT_POINTS",
+          "PRICE_CHANGED",
+          "SOLD_OUT"
+        ]
+      }
+    },
+    {
+      "phase": "Notifications",
+      "actor": "userA",
+      "step": "userA notifications",
+      "request": "GET /api/notifications",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 5,
+      "requestId": "52fcb042-1f25-4f5a-be79-6146d7483146"
+    },
+    {
+      "phase": "Notifications",
+      "actor": "userA",
+      "step": "userA notifications",
+      "request": "GET /api/notifications",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 29,
+      "requestId": "3aacdb99-4751-43a8-821f-aaf653f86d06"
+    },
+    {
+      "phase": "Notifications",
+      "actor": "userC",
+      "step": "userC notifications",
+      "request": "GET /api/notifications",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 13,
+      "requestId": "5ac24e13-d1bd-476b-90c5-5a3fc36817e4"
+    },
+    {
+      "phase": "Notifications",
+      "actor": "userD",
+      "step": "userD notifications",
+      "request": "GET /api/notifications",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 8,
+      "requestId": "c476527c-db96-418f-8b27-37bd59410532"
+    },
+    {
+      "phase": "Notifications",
+      "actor": "journey",
+      "step": "faulty-code notifications reach A, C and D",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 1058
+    },
+    {
+      "phase": "Stats",
+      "actor": "admin",
+      "step": "admin stats (today)",
+      "request": "GET /api/admin/rewards/stats?from=2026-10-15&to=2026-10-15",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 20,
+      "requestId": "fd1fbc1e-7104-4cb4-b247-b5e17f7269c4"
+    },
+    {
+      "phase": "Stats",
+      "actor": "journey",
+      "step": "GET /admin/rewards/stats matches the run (refunded excluded)",
+      "request": "assert",
+      "status": 0,
+      "ok": true,
+      "ms": 43,
+      "ids": {
+        "statsCount": 10,
+        "runCounted": 10,
+        "pointsSpent": 5600
+      }
+    },
+    {
+      "phase": "SQL",
+      "actor": "sql",
+      "step": "every journal sums to zero",
+      "request": "SQL",
+      "status": 0,
+      "ok": true,
+      "ms": 0,
+      "ids": {
+        "unbalancedJournals": 0
+      }
+    },
+    {
+      "phase": "SQL",
+      "actor": "sql",
+      "step": "each SUCCEEDED redemption has exactly one journal keyed redemption:{userId}:{key}, linked via journal_id",
+      "request": "SQL",
+      "status": 0,
+      "ok": true,
+      "ms": 0,
+      "ids": {
+        "succeeded": 11,
+        "violations": 0
+      }
+    },
+    {
+      "phase": "SQL",
+      "actor": "sql",
+      "step": "each refund has exactly one journal keyed redemption-refund:{reportId}, linked via journal_id",
+      "request": "SQL",
+      "status": 0,
+      "ok": true,
+      "ms": 0,
+      "ids": {
+        "refunds": 1,
+        "violations": 0
+      }
+    },
+    {
+      "phase": "SQL",
+      "actor": "sql",
+      "step": "stock_total = stock_remaining + flash reserved + issued (per voucher)",
+      "request": "SQL",
+      "status": 0,
+      "ok": true,
+      "ms": 0,
+      "ids": {
+        "vouchers": 8,
+        "violations": 0,
+        "firstViolation": null
+      }
+    },
+    {
+      "phase": "SQL",
+      "actor": "sql",
+      "step": "each code assigned at most once",
+      "request": "SQL",
+      "status": 0,
+      "ok": true,
+      "ms": 0,
+      "ids": {
+        "codesIssuedTwice": 0,
+        "replacementAlsoIssued": 0
+      }
+    },
+    {
+      "phase": "SQL",
+      "actor": "sql",
+      "step": "ledger accounts: no balance drift, no negative user account",
+      "request": "SQL",
+      "status": 0,
+      "ok": true,
+      "ms": 0,
+      "ids": {
+        "driftedAccounts": 0,
+        "negativeUserAccounts": 0
+      }
+    }
+  ],
+  "routes": [
+    {
+      "actor": "admin",
+      "route": "/admin/vouchers",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "admin",
+      "route": "/admin/vouchers/new",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "admin",
+      "route": "/admin/vouchers/[id]",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "admin",
+      "route": "/admin/vouchers/[id]/edit",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "admin",
+      "route": "/admin/flash-sales",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "admin",
+      "route": "/admin/flash-sales/new",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "admin",
+      "route": "/admin/flash-sales/[id]/edit",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "admin",
+      "route": "/admin/code-issues",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "admin",
+      "route": "/admin/voucher-stats",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "userA",
+      "route": "/rewards",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "userA",
+      "route": "/rewards/[id]",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "userA",
+      "route": "/rewards/my-vouchers",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "userA",
+      "route": "/rewards/my-vouchers/[ticketId]",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    },
+    {
+      "actor": "userA",
+      "route": "/rewards/history",
+      "status": 200,
+      "expected": 200,
+      "ok": true
+    }
+  ],
+  "sql": [
+    {
+      "name": "every journal sums to zero",
+      "ok": true,
+      "counts": {
+        "unbalancedJournals": 0
+      }
+    },
+    {
+      "name": "each SUCCEEDED redemption has exactly one journal keyed redemption:{userId}:{key}, linked via journal_id",
+      "ok": true,
+      "counts": {
+        "succeeded": 11,
+        "violations": 0
+      }
+    },
+    {
+      "name": "each refund has exactly one journal keyed redemption-refund:{reportId}, linked via journal_id",
+      "ok": true,
+      "counts": {
+        "refunds": 1,
+        "violations": 0
+      }
+    },
+    {
+      "name": "stock_total = stock_remaining + flash reserved + issued (per voucher)",
+      "ok": true,
+      "counts": {
+        "vouchers": 8,
+        "violations": 0,
+        "firstViolation": null
+      }
+    },
+    {
+      "name": "each code assigned at most once",
+      "ok": true,
+      "counts": {
+        "codesIssuedTwice": 0,
+        "replacementAlsoIssued": 0
+      }
+    },
+    {
+      "name": "ledger accounts: no balance drift, no negative user account",
+      "ok": true,
+      "counts": {
+        "driftedAccounts": 0,
+        "negativeUserAccounts": 0
+      }
+    }
+  ],
+  "settings": {
+    "dailyPointsLimitBefore": 500,
+    "dailyPointsLimitDuringRun": 100000
+  },
+  "passed": true,
+  "finishedAt": "2026-10-15T05:17:24.132Z",
+  "flagOff": {
+    "checks": [
+      {
+        "name": "page /admin/vouchers (admin)",
+        "status": 404,
+        "expected": 404,
+        "ok": true
+      },
+      {
+        "name": "page /admin/vouchers/new (admin)",
+        "status": 404,
+        "expected": 404,
+        "ok": true
+      },
+      {
+        "name": "page /admin/vouchers/[id] (admin)",
+        "status": 404,
+        "expected": 404,
+        "ok": true
+      },
+      {
+        "name": "page /admin/vouchers/[id]/edit (admin)",
+        "status": 404,
+        "expected": 404,
+        "ok": true
+      },
+      {
+        "name": "page /admin/flash-sales (admin)",
+        "status": 404,
+        "expected": 404,
+        "ok": true
+      },
+      {
+        "name": "page /admin/flash-sales/new (admin)",
+        "status": 404,
+        "expected": 404,
+        "ok": true
+      },
+      {
+        "name": "page /admin/flash-sales/[id]/edit (admin)",
+        "status": 404,
+        "expected": 404,
+        "ok": true
+      },
+      {
+        "name": "page /admin/code-issues (admin)",
+        "status": 404,
+        "expected": 404,
+        "ok": true
+      },
+      {
+        "name": "page /admin/voucher-stats (admin)",
+        "status": 404,
+        "expected": 404,
+        "ok": true
+      },
+      {
+        "name": "page /rewards (user)",
+        "status": 404,
+        "expected": 404,
+        "ok": true
+      },
+      {
+        "name": "page /rewards/[id] (user)",
+        "status": 404,
+        "expected": 404,
+        "ok": true
+      },
+      {
+        "name": "page /rewards/my-vouchers (user)",
+        "status": 404,
+        "expected": 404,
+        "ok": true
+      },
+      {
+        "name": "page /rewards/my-vouchers/[ticketId] (user)",
+        "status": 404,
+        "expected": 404,
+        "ok": true
+      },
+      {
+        "name": "page /rewards/history (user)",
+        "status": 404,
+        "expected": 404,
+        "ok": true
+      },
+      {
+        "name": "API GET /rewards/vouchers (user, valid session)",
+        "status": 404,
+        "expected": 404,
+        "ok": true
+      },
+      {
+        "name": "API GET /admin/rewards/vouchers (admin, valid session)",
+        "status": 404,
+        "expected": 404,
+        "ok": true
+      },
+      {
+        "name": "API GET /admin/rewards/stats (admin, valid session)",
+        "status": 404,
+        "expected": 404,
+        "ok": true
+      },
+      {
+        "name": "wallet page (user) is served",
+        "status": 200,
+        "expected": 200,
+        "ok": true
+      },
+      {
+        "name": "wallet shows the cash copy (found in: JS chunk 19k9_l3al1bgu.js)",
+        "status": 200,
+        "expected": 200,
+        "ok": true
+      }
+    ],
+    "passed": true,
+    "steps": [
+      {
+        "phase": "Flag-off setup",
+        "actor": "admin",
+        "step": "register (email)",
+        "request": "POST /api/auth/register",
+        "status": 201,
+        "expected": 201,
+        "ok": true,
+        "ms": 426,
+        "requestId": "7d04aab1-3a15-4bc4-a38f-e7fa3f130d16",
+        "ids": {
+          "userId": "ac851f08-11d3-4dd4-8be0-3c41d3f45fb8"
+        }
+      },
+      {
+        "phase": "Flag-off setup",
+        "actor": "admin",
+        "step": "csrf token",
+        "request": "GET /api/auth/csrf",
+        "status": 200,
+        "expected": 200,
+        "ok": true,
+        "ms": 10,
+        "requestId": "81011ba7-091b-4309-a1df-627defb25ba7"
+      },
+      {
+        "phase": "Flag-off setup",
+        "actor": "admin",
+        "step": "scratch-DB role -> ADMIN",
+        "request": "SQL",
+        "status": 0,
+        "ok": true,
+        "ms": 0
+      },
+      {
+        "phase": "Flag-off setup",
+        "actor": "admin",
+        "step": "login",
+        "request": "POST /api/auth/login",
+        "status": 200,
+        "expected": 200,
+        "ok": true,
+        "ms": 266,
+        "requestId": "ade5e6d0-6719-46c1-8c65-6aa7a0fa6cd6"
+      },
+      {
+        "phase": "Flag-off setup",
+        "actor": "admin",
+        "step": "csrf token",
+        "request": "GET /api/auth/csrf",
+        "status": 200,
+        "expected": 200,
+        "ok": true,
+        "ms": 8,
+        "requestId": "28a8d67b-9c50-475d-a636-b9ce3b78c1f8"
+      },
+      {
+        "phase": "Flag-off setup",
+        "actor": "user",
+        "step": "register (email)",
+        "request": "POST /api/auth/register",
+        "status": 201,
+        "expected": 201,
+        "ok": true,
+        "ms": 266,
+        "requestId": "d2899918-4ddf-444d-9fce-d8872a12665d",
+        "ids": {
+          "userId": "5226da88-50b9-476c-82ac-41f2ad6fcaf4"
+        }
+      },
+      {
+        "phase": "Flag-off setup",
+        "actor": "user",
+        "step": "csrf token",
+        "request": "GET /api/auth/csrf",
+        "status": 200,
+        "expected": 200,
+        "ok": true,
+        "ms": 10,
+        "requestId": "36d82656-b8d7-4875-8005-abbd3aedcdd6"
+      }
+    ]
+  }
+}

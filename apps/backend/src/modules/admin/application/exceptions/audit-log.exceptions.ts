@@ -17,3 +17,12 @@ export class ImmutableAuditLogException extends Error {
     this.name = 'ImmutableAuditLogException';
   }
 }
+
+export class SurveyNotPublishedException extends Error {
+  readonly code = 'SURVEY_NOT_PUBLISHED';
+
+  constructor(status: string) {
+    super(`Only a PUBLISHED survey can be pinned (status ${status}).`);
+    this.name = 'SurveyNotPublishedException';
+  }
+}

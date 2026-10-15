@@ -168,13 +168,17 @@ describe('Form Preview Parser & Validator', () => {
       );
     });
 
-    it('should enforce text patterns', () => {
+    it('should never execute publisher-supplied text patterns (ReDoS)', () => {
       const patternBlock: TextBlock = {
         ...(sampleBlocks[0] as TextBlock),
-        pattern: '^[A-Z]+$',
+        pattern: '^([a-zA-Z]+\\s?)+$',
       };
-      expect(validateBlockAnswer(patternBlock, 'ABC').isValid).toBe(true);
-      expect(validateBlockAnswer(patternBlock, 'Abc').isValid).toBe(false);
+      expect(validateBlockAnswer(patternBlock, 'Abc').isValid).toBe(true);
+      const started = Date.now();
+      expect(
+        validateBlockAnswer(patternBlock, `${'a'.repeat(40)}1`).isValid,
+      ).toBe(true);
+      expect(Date.now() - started).toBeLessThan(100);
     });
 
     it('should validate number range constraints', () => {

@@ -8,9 +8,3 @@
 	reverse_proxy backend:4000
 }
 
-{$S3_DOMAIN} {
-	request_body {
-		max_size 60MB
-	}
-	reverse_proxy minio:9000
-}

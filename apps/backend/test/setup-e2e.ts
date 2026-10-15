@@ -1,3 +1,4 @@
+process.env.REWARDS_ENABLED ??= 'true';
 import { NestApplication } from '@nestjs/core';
 
 /**

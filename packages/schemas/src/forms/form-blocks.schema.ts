@@ -48,6 +48,10 @@ export const textBlockBaseSchema = baseBlockSchema
     placeholder: z.string().max(200).optional(),
     minLength: z.number().int().min(0).optional(),
     maxLength: z.number().int().min(1).max(MAX_ANSWER_STRING_LENGTH).optional(),
+    /**
+     * @deprecated Accepted so stored forms still parse under `.strict()`,
+     * but never executed against answers (ReDoS, CWE-1333).
+     */
     pattern: z.string().trim().max(500).optional(),
   })
   .strict();

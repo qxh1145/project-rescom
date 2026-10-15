@@ -24,6 +24,9 @@ export function BalanceCard({ available }: { available: number }) {
       <p className="relative mt-1 text-[44px] font-extrabold leading-[44px] tracking-[-0.9px] lg:mt-1.5 lg:text-[60px] lg:leading-[60px] lg:tracking-[-1.2px]">
         {formatPoints(available)}
       </p>
+      <p className="relative mt-1 text-body-sm text-primary-foreground/80">
+        Điểm chỉ dùng trong Rescom, không bao giờ rút ra thành tiền mặt.
+      </p>
 
       <div className="relative mt-4 grid grid-cols-2 gap-2.5 lg:hidden">
         <Link

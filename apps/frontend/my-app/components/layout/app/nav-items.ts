@@ -1,4 +1,4 @@
-import { PILOT_BUILD } from "../../../lib/pilot-scope.ts";
+import { PILOT_BUILD, REWARDS_ENABLED } from "../../../lib/pilot-scope.ts";
 import type { IconName } from "@/components/ui/Icon";
 
 export interface NavItem {
@@ -14,12 +14,13 @@ export const DESKTOP_NAV: readonly NavItem[] = [
   { href: "/marketplace", label: "Khám phá", icon: "compass", match: ["/surveys", "/attempts"] },
   { href: "/forms", label: "Khảo sát của tôi", icon: "file-text" },
   { href: "/wallet", label: "Ví điểm", icon: "wallet" },
+  ...(!REWARDS_ENABLED ? [] : [{ href: "/rewards", label: "Đổi quà", icon: "gift" as IconName }]),
 ];
 
 /** Mobile bottom nav (Figma "Nav" 62:1359): four tabs. */
 export const MOBILE_NAV: readonly NavItem[] = [
   { href: "/marketplace", label: "Khám phá", icon: "compass", match: ["/surveys", "/attempts"] },
-  { href: "/wallet", label: "Ví điểm", icon: "wallet" },
+  { href: "/wallet", label: "Ví điểm", icon: "wallet", match: !REWARDS_ENABLED ? undefined : ["/rewards"] },
   { href: "/forms", label: "Đăng khảo sát", icon: "file-text" },
   { href: "/account", label: "Tài khoản", icon: "user", match: PILOT_BUILD ? ["/notifications"] : ["/notifications", "/leaderboard"] },
 ];

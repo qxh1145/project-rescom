@@ -282,6 +282,7 @@ Do not introduce a graph database until measured PostgreSQL query patterns or sc
 | `notifications` | Notification intent, delivery attempts/status, read state | Source domain transactions |
 | `ai` adapter | Operational provider request metadata only | Accepted Form draft, assessment, or policy authority |
 | platform infrastructure | OutboxEvent lease/retry/dead-letter, ProcessedHandler deduplication, technical StoredObject metadata/state | Domain payload meaning, business side effects, or domain attachment relation |
+| `rewards` (Phase 2; Spine AD-24) | Voucher catalog, price versions, codes, Flash Sales, quotes, Redemptions, code-issue reports | Ledger rows (spends and refunds only through Economy commands) |
 
 Signals, scoring, Reliability, Quality, review, and optional trust projection are internal Integrity components initially. They are not top-level deployable services. Cross-context state changes use an owner-provided application port or versioned command/event. A context cannot import another context's Prisma repository or write its tables/migrations.
 
@@ -340,6 +341,7 @@ Private object storage is isolated per environment. Platform Infrastructure owns
 ## 16. Operations and Observability
 
 > **Amendment 2026-09-26 (sprint-change-proposal-2026-09-26) — pilot deployment profile.** The pilot follows Architecture Spine AD-23: one Compute Engine VM in Google Cloud `asia-southeast1` (Caddy, NestJS API with the co-located scheduler of the AD-5 amendment, ClamAV), Cloud SQL for PostgreSQL over private IP, a private Cloud Storage bucket through the S3 API, Vercel `sin1`, Cloudflare as the only ingress, Sentry plus an external uptime check, and GitHub Actions → GHCR deploys with image-tag rollback. The monitoring list below stays the target; for the pilot, Epic 11 delivers health/readiness, error tracking, uptime alerts, a restore drill and backup-failure alerts first. The Operations approvals in the last paragraph of this section are still required before launch.
+> **Amendment 2026-10-05:** Google Cloud is dropped. The pilot host is one Hostinger VPS (Caddy, API, ClamAV and a private PostgreSQL 15 container). WAL and base backups go to Cloudflare R2, file objects are stored in Cloudflare R2, and the canonical domain is `rescom.io.vn`. See the Spine AD-23 amendment 2026-10-05.
 
 Monitor:
 

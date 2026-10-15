@@ -2309,6 +2309,65 @@ export class LedgerService {
   }
 
   /**
+   * Spends Points from a user's AVAILABLE balance to SYSTEM_SINK for voucher redemption (Story 12.8, AD-24).
+   * Keyed by idempotencyKey: `redemption:${key}`.
+   */
+  async spendPoints(
+    params: {
+      userId: string;
+      amount: number;
+      idempotencyKey: string;
+      description?: string;
+    },
+    options?: PostJournalTransactionOptions,
+  ): Promise<LedgerJournalEntity> {
+    if (!Number.isInteger(params.amount) || params.amount <= 0) {
+      throw new InvalidLedgerOperationException(
+        'Spend amount must be a positive integer.',
+      );
+    }
+
+    const idempotencyKey = params.idempotencyKey;
+    const existing =
+      await this.ledgerRepo.findJournalByIdempotencyKey(idempotencyKey);
+    if (existing) {
+      await this.assertReplayCompatible(existing, [
+        {
+          userId: params.userId,
+          accountClass: 'USER_AVAILABLE',
+          amount: -params.amount,
+        },
+        {
+          userId: null,
+          accountClass: 'SYSTEM_SINK',
+          amount: params.amount,
+        },
+      ]);
+      return existing;
+    }
+
+    const availableAccount = await this.getOrCreateAccount(
+      params.userId,
+      'USER_AVAILABLE',
+    );
+    const sinkAccount = await this.getOrCreateAccount(null, 'SYSTEM_SINK');
+
+    return this.postJournal(
+      {
+        idempotencyKey,
+        description:
+          params.description ??
+          `Voucher redemption spend: ${params.amount} points`,
+        entries: [
+          { accountId: availableAccount.id, amount: -params.amount },
+          { accountId: sinkAccount.id, amount: params.amount },
+        ],
+      },
+      options,
+    );
+  }
+
+  /**
    * Epic 6 review P8: a fast-path replay returns the stored journal only when
    * it is the same command — the same accounts with the same amounts
    * (`exact`), or the same accounts on the same sides when the amount is

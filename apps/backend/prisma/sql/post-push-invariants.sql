@@ -216,3 +216,220 @@ BEGIN
     RAISE WARNING 'ledger_accounts_user_id_account_class_currency_key not rebuilt with NULLS NOT DISTINCT: % (user_id, account_class, currency) groups have more than one ledger_accounts row (system accounts with user_id NULL). List them with SELECT account_class, currency, array_agg(id ORDER BY created_at) FROM ledger_accounts GROUP BY user_id, account_class, currency HAVING COUNT(*) > 1; merge each group into its oldest account, then re-run prisma/sql/post-push-invariants.sql. The existing index is kept.', duplicate_ledger_accounts;
   END IF;
 END $$;
+
+-- Rewards 12.7: same checks, partial indexes, and immutability triggers as migration.
+INSERT INTO "voucher_brands" ("id", "name") VALUES
+  ('highlands', 'Highlands Coffee'), ('lotteria', 'Lotteria'),
+  ('phuc-long', 'Phúc Long'), ('kfc', 'KFC'),
+  ('gong-cha', 'Gong Cha'), ('the-coffee-house', 'The Coffee House')
+ON CONFLICT DO NOTHING;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'voucher_brands_slug_check' AND conrelid = '"voucher_brands"'::regclass) THEN
+    ALTER TABLE "voucher_brands" ADD CONSTRAINT "voucher_brands_slug_check" CHECK ("id" ~ '^[a-z0-9-]{2,40}$');
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'vouchers_values_check' AND conrelid = '"vouchers"'::regclass) THEN
+    ALTER TABLE "vouchers" ADD CONSTRAINT "vouchers_values_check" CHECK (
+  "value_vnd" > 0 AND "base_points" > 0 AND
+  ("promo_points" IS NULL OR ("promo_points" > 0 AND "promo_points" < "base_points")) AND
+  "price_version" >= 1 AND "stock_total" >= 0 AND
+  "stock_remaining" BETWEEN 0 AND "stock_total" AND
+  "redeem_ends_at" > "redeem_starts_at" AND
+  "code_expires_at" >= "redeem_ends_at" + INTERVAL '7 days'
+);
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'voucher_price_versions_values_check' AND conrelid = '"voucher_price_versions"'::regclass) THEN
+    ALTER TABLE "voucher_price_versions" ADD CONSTRAINT "voucher_price_versions_values_check" CHECK (
+  "version" >= 1 AND "base_points" > 0 AND
+  ("promo_points" IS NULL OR ("promo_points" > 0 AND "promo_points" < "base_points"))
+);
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'flash_sales_window_check' AND conrelid = '"flash_sales"'::regclass) THEN
+    ALTER TABLE "flash_sales" ADD CONSTRAINT "flash_sales_window_check" CHECK ("ends_at" > "starts_at");
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'flash_sale_items_values_check' AND conrelid = '"flash_sale_items"'::regclass) THEN
+    ALTER TABLE "flash_sale_items" ADD CONSTRAINT "flash_sale_items_values_check" CHECK (
+  "flash_points" > 0 AND "quota" > 0 AND "sold" BETWEEN 0 AND "quota" AND "per_user_cap" >= 1
+);
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'redemption_quotes_price_check' AND conrelid = '"redemption_quotes"'::regclass) THEN
+    ALTER TABLE "redemption_quotes" ADD CONSTRAINT "redemption_quotes_price_check" CHECK ("price_version" >= 1 AND "price_points" > 0);
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'redemptions_price_check' AND conrelid = '"redemptions"'::regclass) THEN
+    ALTER TABLE "redemptions" ADD CONSTRAINT "redemptions_price_check" CHECK ("price_version" >= 1 AND "price_points" > 0);
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS "voucher_codes_unissued_idx" ON "voucher_codes"("voucher_id") WHERE "redemption_id" IS NULL;
+CREATE INDEX IF NOT EXISTS "redemptions_voucher_id_created_at_idx" ON "redemptions"("voucher_id", "created_at" DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS "code_issue_reports_open_redemption_key" ON "code_issue_reports"("redemption_id") WHERE "status" = 'OPEN';
+
+CREATE OR REPLACE FUNCTION "prevent_rewards_history_mutation"() RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'rewards history is append-only' USING ERRCODE = '55000';
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS "voucher_price_versions_append_only" ON "voucher_price_versions";
+CREATE TRIGGER "voucher_price_versions_append_only" BEFORE UPDATE OR DELETE ON "voucher_price_versions"
+  FOR EACH ROW EXECUTE FUNCTION "prevent_rewards_history_mutation"();
+DROP TRIGGER IF EXISTS "voucher_price_versions_no_truncate" ON "voucher_price_versions";
+CREATE TRIGGER "voucher_price_versions_no_truncate" BEFORE TRUNCATE ON "voucher_price_versions"
+  FOR EACH STATEMENT EXECUTE FUNCTION "prevent_rewards_history_mutation"();
+DROP TRIGGER IF EXISTS "redemptions_append_only" ON "redemptions";
+CREATE TRIGGER "redemptions_append_only" BEFORE UPDATE OR DELETE ON "redemptions"
+  FOR EACH ROW EXECUTE FUNCTION "prevent_rewards_history_mutation"();
+DROP TRIGGER IF EXISTS "redemptions_no_truncate" ON "redemptions";
+CREATE TRIGGER "redemptions_no_truncate" BEFORE TRUNCATE ON "redemptions"
+  FOR EACH STATEMENT EXECUTE FUNCTION "prevent_rewards_history_mutation"();
+
+-- Rewards 12.8: rewards_settings, redemption status invariants, partial quote index
+INSERT INTO "rewards_settings" ("id", "daily_points_limit", "updated_at")
+VALUES (1, 500, CURRENT_TIMESTAMP)
+ON CONFLICT ("id") DO NOTHING;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'rewards_settings_id_check' AND conrelid = '"rewards_settings"'::regclass) THEN
+    ALTER TABLE "rewards_settings" ADD CONSTRAINT "rewards_settings_id_check" CHECK ("id" = 1);
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'rewards_settings_daily_limit_check' AND conrelid = '"rewards_settings"'::regclass) THEN
+    ALTER TABLE "rewards_settings" ADD CONSTRAINT "rewards_settings_daily_limit_check" CHECK ("daily_points_limit" > 0);
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'redemptions_status_succeeded_check' AND conrelid = '"redemptions"'::regclass) THEN
+    ALTER TABLE "redemptions" ADD CONSTRAINT "redemptions_status_succeeded_check" CHECK (
+      "status" != 'SUCCEEDED' OR (
+        "journal_id" IS NOT NULL AND
+        "balance_after" IS NOT NULL
+      )
+    ) NOT VALID;
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'redemptions_status_failed_check' AND conrelid = '"redemptions"'::regclass) THEN
+    ALTER TABLE "redemptions" ADD CONSTRAINT "redemptions_status_failed_check" CHECK (
+      "status" != 'FAILED' OR (
+        "journal_id" IS NULL AND
+        "failure_code" IS NOT NULL
+      )
+    ) NOT VALID;
+  END IF;
+END $$;
+CREATE OR REPLACE FUNCTION "redemptions_succeeded_code_check"() RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW."status" = 'SUCCEEDED' AND NEW."voucher_code_id" IS NULL AND NOT EXISTS (
+    SELECT 1 FROM "vouchers" WHERE "id" = NEW."voucher_id" AND "is_shared_code"
+  ) THEN
+    RAISE EXCEPTION 'SUCCEEDED redemption needs a voucher code or a shared-code voucher' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS "redemptions_succeeded_code_check" ON "redemptions";
+CREATE TRIGGER "redemptions_succeeded_code_check" BEFORE INSERT ON "redemptions"
+  FOR EACH ROW EXECUTE FUNCTION "redemptions_succeeded_code_check"();
+CREATE UNIQUE INDEX IF NOT EXISTS "redemptions_quote_id_succeeded_key" ON "redemptions"("quote_id") WHERE "status" = 'SUCCEEDED';
+CREATE INDEX IF NOT EXISTS "redemptions_user_id_created_at_idx" ON "redemptions"("user_id", "created_at" DESC);
+
+-- Rewards 12.9: flash_sales reserved_at check, partial indexes
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'flash_sales_reserved_at_check' AND conrelid = '"flash_sales"'::regclass) THEN
+    ALTER TABLE "flash_sales" ADD CONSTRAINT "flash_sales_reserved_at_check" CHECK ("reserved_at" IS NULL OR "reserved_at" >= "starts_at");
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS "flash_sales_starts_at_due_idx" ON "flash_sales"("starts_at") WHERE "reserved_at" IS NULL AND "settled_at" IS NULL;
+CREATE INDEX IF NOT EXISTS "flash_sales_ends_at_due_idx" ON "flash_sales"("ends_at") WHERE "reserved_at" IS NOT NULL AND "settled_at" IS NULL;
+
+-- Rewards 12.10: my vouchers, reminders & faulty-code resolution
+DROP INDEX IF EXISTS "voucher_codes_unissued_idx";
+CREATE INDEX IF NOT EXISTS "voucher_codes_unissued_idx" ON "voucher_codes"("voucher_id") WHERE "redemption_id" IS NULL AND "issue_report_id" IS NULL;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'voucher_codes_assignment_mutual_exclusion' AND conrelid = '"voucher_codes"'::regclass) THEN
+    ALTER TABLE "voucher_codes" ADD CONSTRAINT "voucher_codes_assignment_mutual_exclusion" CHECK (
+      NOT ("redemption_id" IS NOT NULL AND "issue_report_id" IS NOT NULL)
+    );
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'code_issue_reports_resolution_note_length_check' AND conrelid = '"code_issue_reports"'::regclass) THEN
+    ALTER TABLE "code_issue_reports" ADD CONSTRAINT "code_issue_reports_resolution_note_length_check" CHECK (
+      "resolution_note" IS NULL OR char_length("resolution_note") <= 500
+    );
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'code_issue_reports_outcome_shape_check' AND conrelid = '"code_issue_reports"'::regclass) THEN
+    ALTER TABLE "code_issue_reports" ADD CONSTRAINT "code_issue_reports_outcome_shape_check" CHECK (
+      (
+        "status" = 'OPEN' AND
+        "replacement_code_id" IS NULL AND
+        "refund_journal_id" IS NULL AND
+        "resolved_by_id" IS NULL AND
+        "resolved_at" IS NULL
+      ) OR (
+        "status" = 'REPLACED' AND
+        "replacement_code_id" IS NOT NULL AND
+        "refund_journal_id" IS NULL AND
+        "resolved_by_id" IS NOT NULL AND
+        "resolved_at" IS NOT NULL
+      ) OR (
+        "status" = 'REFUNDED' AND
+        "replacement_code_id" IS NULL AND
+        "refund_journal_id" IS NOT NULL AND
+        "resolved_by_id" IS NOT NULL AND
+        "resolved_at" IS NOT NULL
+      ) OR (
+        "status" = 'REJECTED' AND
+        "replacement_code_id" IS NULL AND
+        "refund_journal_id" IS NULL AND
+        "resolved_at" IS NOT NULL
+      )
+    );
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'redemption_usages_undo_until_check' AND conrelid = '"redemption_usages"'::regclass) THEN
+    ALTER TABLE "redemption_usages" ADD CONSTRAINT "redemption_usages_undo_until_check" CHECK (
+      "undo_until" = "used_at" + INTERVAL '24 hours'
+    );
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'redemption_refunds_points_positive_check' AND conrelid = '"redemption_refunds"'::regclass) THEN
+    ALTER TABLE "redemption_refunds" ADD CONSTRAINT "redemption_refunds_points_positive_check" CHECK ("points" > 0);
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'redemption_reminders_window_check' AND conrelid = '"redemption_reminders"'::regclass) THEN
+    ALTER TABLE "redemption_reminders" ADD CONSTRAINT "redemption_reminders_window_check" CHECK (
+      "window" IN ('7D', '1D')
+    );
+  END IF;
+END $$;
+
+DROP TRIGGER IF EXISTS "redemption_refunds_append_only" ON "redemption_refunds";
+CREATE TRIGGER "redemption_refunds_append_only" BEFORE UPDATE OR DELETE ON "redemption_refunds"
+  FOR EACH ROW EXECUTE FUNCTION "prevent_rewards_history_mutation"();
+
+DROP TRIGGER IF EXISTS "redemption_refunds_no_truncate" ON "redemption_refunds";
+CREATE TRIGGER "redemption_refunds_no_truncate" BEFORE TRUNCATE ON "redemption_refunds"
+  FOR EACH STATEMENT EXECUTE FUNCTION "prevent_rewards_history_mutation"();
+

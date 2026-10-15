@@ -1,4 +1,4 @@
-# AD-23 pilot API edge (Story 11.1). Chain: browser -> Vercel (app.rescom.com.vn, /api rewrite)
+# AD-23 pilot API edge (Story 11.1). Chain: browser -> Vercel (app.rescom.io.vn, /api rewrite)
 # -> Cloudflare (public API edge, SSL Full (strict)) -> this Caddy -> NestJS api:4000 (private).
 #
 # Client IP: Cloudflare only sees Vercel's egress address, so the frontend proxy (proxy.ts) sends
