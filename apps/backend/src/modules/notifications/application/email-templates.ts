@@ -93,7 +93,7 @@ export function renderNotificationEmail(
         subject: 'Rescom: Nạp điểm thành công',
         heading: 'Nạp điểm thành công',
         paragraphs: [
-          'Yêu cầu nạp điểm của bạn đã được duyệt và điểm đã được cộng vào số dư Khả dụng.',
+          'Giao dịch nạp điểm của bạn đã thành công và điểm đã được cộng vào số dư Khả dụng.',
           'Bạn có thể xem chi tiết giao dịch trong Ví Rescom.',
         ],
         link: { label: 'Mở Ví Rescom', url: walletUrl },

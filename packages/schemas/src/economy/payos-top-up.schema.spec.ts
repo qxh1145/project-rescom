@@ -2,6 +2,9 @@ import {
   listPayosTopUpsQuerySchema,
   payosCheckoutSchema,
   payosTopUpListSchema,
+  topUpCreditKey,
+  topUpMismatchNoticeKey,
+  topUpStatusChangedEventSchema,
 } from "./payos-top-up.schema";
 
 describe("payOS checkout amounts", () => {
@@ -53,5 +56,17 @@ describe("payOS top-up list schemas", () => {
     expect(payosTopUpListSchema.safeParse(page).success).toBe(true);
     expect(payosTopUpListSchema.safeParse({ ...page, items: [{ ...item, status: "MANUAL" }] }).success).toBe(false);
     expect(payosTopUpListSchema.safeParse({ ...page, total: -1 }).success).toBe(false);
+  });
+});
+
+
+describe("payOS status event", () => {
+  it("accepts credit and mismatch, preserving distinct idempotency keys", () => {
+    const id = "2fb40564-05e2-4496-a043-bb3036001ad1";
+    const payload = { schemaVersion: 1, topUpId: id, userId: id, orderCode: 1000000000, amountVnd: 10000, points: 50, occurredAt: "2026-10-15T00:00:00.000Z" };
+    expect(topUpStatusChangedEventSchema.safeParse({ ...payload, status: "SUCCESSFUL" }).success).toBe(true);
+    expect(topUpStatusChangedEventSchema.safeParse({ ...payload, status: "AMOUNT_MISMATCH", amountPaidVnd: 5000 }).success).toBe(true);
+    expect(topUpCreditKey(id)).toBe(`topup-credit:${id}`);
+    expect(topUpMismatchNoticeKey(id, 5000)).toBe(`topup-mismatch-notice:${id}:5000`);
   });
 });

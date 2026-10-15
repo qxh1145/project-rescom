@@ -84,7 +84,7 @@ test("Figma 14d: presentation per type", () => {
   // Figma icons and tones.
   assert.deepEqual(notificationPresentation("REWARD_PENDING"), { icon: "hourglass", tone: "amber", href: "/wallet" });
   assert.deepEqual(notificationPresentation("SURVEY_REJECTED"), { icon: "x-circle", tone: "danger", href: "/forms" });
-  // Top-up types (Story 13.7): tone, target and title. TOPUP_AMOUNT_MISMATCH / expired do not exist yet (13.5/13.8).
+  // Top-up types (Story 13.7): tone, target and title. Expired type does not exist yet (13.5).
   const { NOTIFICATION_TITLES } = presentation;
   assert.deepEqual(notificationPresentation("TOPUP_SUCCESS"), { icon: "bank", tone: "green", href: "/wallet" });
   assert.deepEqual(notificationPresentation("TOPUP_CANCELLED"), { icon: "bank", tone: "amber", href: "/wallet" });
