@@ -40,7 +40,7 @@ export function topUpRejectionKey(topUpId: string): string {
   return `topup-rejection:${topUpId}`;
 }
 
-/** Must stay identical to the Prisma `TopUpStatus` enum. `PENDING` is "Pending Payment". */
+/** Manual-channel statuses only; Prisma `TopUpStatus` also holds PayOS statuses (Story 13.1), exposed by the PayOS contract. */
 export const topUpStatusSchema = z.enum(["PENDING", "APPROVED", "REJECTED"]);
 export type TopUpStatus = z.infer<typeof topUpStatusSchema>;
 

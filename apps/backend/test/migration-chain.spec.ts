@@ -460,4 +460,49 @@ describe('Prisma migration chain', () => {
       expect(code).not.toMatch(/"token"\s/);
     });
   });
+  describe('Story 13.1 PayOS top-up schema', () => {
+    it('separates enum additions from constraints using PROCESSING', () => {
+      const enumName = '20261017100000_top_up_payos_status_values';
+      const channelName = '20261017110000_top_up_payos_channel';
+      const values = [
+        'PROCESSING',
+        'SUCCESSFUL',
+        'CANCELLED',
+        'EXPIRED',
+        'AMOUNT_MISMATCH',
+        'MANUAL_REFUNDED',
+      ];
+      const enumSql = readMigration(enumName);
+      expect(migrationNames.indexOf(enumName)).toBeLessThan(
+        migrationNames.indexOf(channelName),
+      );
+      expect(
+        migrationNames.indexOf(
+          '20261016100000_rewards_my_vouchers_code_issues',
+        ),
+      ).toBeLessThan(migrationNames.indexOf(channelName));
+      expect(enumSql.trim().split('\n')).toHaveLength(values.length);
+      for (const value of values) {
+        expect(enumSql.split(`'${value}'`)).toHaveLength(2);
+        expect(enumSql).toContain(
+          `ALTER TYPE "TopUpStatus" ADD VALUE IF NOT EXISTS '${value}';`,
+        );
+      }
+      const sql = readMigration(channelName);
+      expect(sql).not.toContain('to_regclass');
+      for (const name of [
+        'top_up_order_code_seq',
+        'top_up_requests_payos_amount_check',
+        'top_up_requests_channel_status_check',
+        'top_up_requests_channel_shape_check',
+        'top_up_requests_points_credited_check',
+        'top_up_requests_amount_paid_check',
+        'top_up_requests_one_processing_per_user',
+      ]) {
+        expect(sql).toContain(name);
+        expect(invariantsSql).toContain(name);
+      }
+      expect(sql).toMatch(/WHERE "status" = 'PROCESSING'/);
+    });
+  });
 });
