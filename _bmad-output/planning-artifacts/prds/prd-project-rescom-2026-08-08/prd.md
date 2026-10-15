@@ -1,7 +1,7 @@
 ---
 title: RESCOM — Academic Survey Exchange Platform
 created: 2026-08-08
-updated: 2026-09-26
+updated: 2026-10-15
 status: final
 ---
 
@@ -101,7 +101,7 @@ New respondents begin as `UNESTABLISHED`, not untrustworthy. Until sufficient el
 - **Persona + context:** Hùng is the RESCOM system administrator. He checks the admin dashboard daily.
 - **Entry state:** Authenticated as Admin.
 - **Path:**
-  1. Hùng logs into the Admin Dashboard. He sees: active user list, pending complaints, pending top-up transactions, transaction dashboard overview.
+  1. Hùng logs into the Admin Dashboard. He sees: active user list, pending complaints, open top-up refund requests, transaction dashboard overview.
   2. A new complaint appears: Publisher Linh reports that Respondent X submitted garbage data on her external Google Forms survey.
   3. Hùng opens the complaint — sees Linh's evidence (screenshots of the problematic response), the Respondent's completion timestamp, and FraudLog entries.
   4. Hùng decides the complaint is valid. He triggers a point reversal: Points are returned from Respondent X's Pending Balance to Linh's Escrow.
@@ -128,6 +128,34 @@ New respondents begin as `UNESTABLISHED`, not untrustworthy. Until sufficient el
 - **Climax:** An sees that her response was accepted and that her reliability is still being established rather than treated as suspicious.
 - **Resolution:** An continues using all existing RESCOM features while the platform gradually builds evidence-based reliability.
 - **Edge case:** If telemetry is incomplete, the response remains durable and the assessment reports lower evidence coverage or a recoverable pending state.
+
+**UJ-5. Linh tops up Points through PayOS.**
+
+- **Persona + context:** Linh is a third-year student who needs Points quickly to publish a survey.
+- **Entry state:** Authenticated, on `/wallet`.
+- **Path:**
+  1. Linh opens the **Top up Points** section on `/wallet`.
+  2. She enters a VNĐ amount (minimum 10,000 VNĐ, multiple of 200). RESCOM shows the Points she will receive at 1 Point = 200 VNĐ.
+  3. She confirms. RESCOM creates a PayOS payment for that exact amount and redirects her to the PayOS checkout page. The QR code is valid for 5 minutes.
+  4. Linh scans the QR and pays. PayOS confirms the payment to RESCOM, which credits her Available Balance, records the ledger entry, and notifies her in one atomic step.
+  5. PayOS returns her to `/wallet`, where she sees her new balance.
+- **Climax:** Points arrive without waiting for an Admin.
+- **Resolution:** Linh publishes her survey.
+- **Edge cases:** If Linh cancels on PayOS or the QR expires, she returns to `/wallet` with a cancelled/expired message and no Point change. If she returns before PayOS confirms, `/wallet` shows **Processing** and updates itself when the result arrives.
+
+**UJ-6. Linh requests a refund and Hùng resolves it.**
+
+- **Persona + context:** Linh topped up by mistake. Hùng is the Admin.
+- **Entry state:** Linh has a successful PayOS top-up less than 24 hours old.
+- **Path:**
+  1. On `/wallet`, Linh selects the top-up and chooses **Request refund**.
+  2. RESCOM opens the refund request page with a fixed template. Transaction code, amount, top-up time, account email, and the paying bank account (masked) are prefilled and read-only; the money can only go back to that account. Linh chooses a reason from a list and writes a mandatory note.
+  3. Linh submits. RESCOM records the submission time, places that top-up's Points on Refund Hold if the request is eligible, emails the request to the Admin refund mailbox, and notifies Linh.
+  4. Hùng opens top-up history in the Admin Panel. RESCOM shows whether the request is **Eligible** or **Not eligible** and why.
+  5. Hùng marks the request **Refunded** first, which locks it against withdrawal, then transfers the money back to the paying account. RESCOM removes the held Points through the ledger and notifies Linh. If he rejects instead, he gives a reason, the Refund Hold is released, and Linh is notified.
+- **Climax:** Linh gets her money back without disputing a charge.
+- **Resolution:** The ledger shows the top-up and its reversal as two linked entries.
+- **Edge case:** If Linh already spent Points after the top-up, the request is recorded as **Not eligible**, nothing is held, Hùng rejects it with that reason, and Linh is notified.
 
 ---
 
@@ -164,6 +192,7 @@ New respondents begin as `UNESTABLISHED`, not untrustworthy. Until sufficient el
 - **Time Barrier** — Anti-fraud mechanism that measures actual completion time server-side. Rejects submissions completed too fast (indicating the Respondent didn't actually complete the survey).
 - **Onboarding Survey** — A mandatory system survey collecting demographic and interest data from new users. Required before account activation.
 - **Frozen Points** — The 100 starter Points given at registration, locked until the user completes 2 onboarding surveys (demographic survey + 1 marketplace survey).
+- **Refund Hold** — Points from a top-up, locked while an eligible refund request awaits Admin resolution (FR-77). Non-spendable; distinct from Frozen Points.
 - **Point Escrow** — Points locked by the system when a Publisher publishes a survey, guaranteeing Respondents will be paid. Released per completion or refunded for unfilled slots.
 - **Pending Balance** — Points earned from External Form completions, held for 48 hours for Publisher review before becoming available. Internal Forms never use this state: they use immediate Available credit in `SHADOW`/`ADVISORY` or Integrity Hold in `ENFORCED`.
 - **Integrity Hold** — A non-spendable balance state used only for an authenticated Internal reward submitted under an approved `ENFORCED` policy. The hold exists before the Integrity Decision: `ACCEPT` releases it to Available, `REVIEW` retains it for human review, and terminal assessment failure or expiry of the approved decision deadline releases it under the fail-open rule.
@@ -504,12 +533,12 @@ Every Point movement is recorded as an append-only ledger entry with debit and c
 - ACID transactions with row-level locking prevent race conditions
 
 #### FR-31: Wallet Dashboard
-User wallet displays: Available Balance, Pending Balance, Frozen Balance, Integrity Hold, and full transaction history.
+User wallet displays: Available Balance, Pending Balance, Escrow, Frozen Balance, Integrity Hold, Refund Hold, and full transaction history.
 
 **Consequences (testable):**
 - All balance types are visible on one screen
 - Integrity Hold is clearly non-spendable and distinct from the External Form Pending Balance
-- Transaction history shows: timestamp, type (earned/spent/frozen/escrow/refund), amount, related survey
+- Transaction history shows: timestamp, type (earned/spent/frozen/escrow/refund/top-up/top-up reversal), amount, related survey or top-up
 - Integrity Hold history distinguishes hold posting, decision release, review retention, review reversal, and fail-open release and links each movement to the Response
 - History cannot be modified
 
@@ -531,27 +560,93 @@ Publisher can reopen a completed/closed survey by paying additional tokens for a
 
 ---
 
-### 4.10 Top-Up (Point Purchase)
+### 4.10 Top-Up (Point Purchase via PayOS)
 
-**Description:** Users can purchase Points with real money when they need Points urgently. Manual process via Admin in GO LIVE phase. Realizes UJ-3.
+**Description:** Users buy Points with real money through PayOS. Payment confirmation credits Points automatically; no Admin approval exists. Admins handle refunds manually and record the outcome in RESCOM. The manual bank-transfer flow is retired. PayOS is used only for Point top-ups. Realizes UJ-5 and UJ-6.
+
+> **Amendment 2026-10-15 (PayOS integration):** FR-34 and FR-35 replace the manual Top-Up Request and Admin Top-Up Approval requirements. The former "no refunds" rule is replaced by FR-77 and FR-78.
 
 **Functional Requirements:**
 
-#### FR-34: Manual Top-Up Request
-User selects amount (minimum 100 Points = 20,000 VNĐ), transfers money to the platform's bank account, and submits a top-up request.
+#### FR-34: Top-Up Checkout through PayOS
+User enters a VNĐ amount on `/wallet`; RESCOM creates a PayOS payment for that exact amount and redirects the user to PayOS checkout.
 
 **Consequences (testable):**
-- Minimum 100 Points enforced
-- Request is queued for Admin approval
-- Top-up is one-way: no refunds, no inter-account transfers
+- Amount is at least 10,000 VNĐ, at most 5,000,000 VNĐ, and a multiple of 200; other values are rejected before any PayOS call
+- Points = amount ÷ 200, computed server-side; the client cannot set the amount-to-Points mapping
+- Each top-up creates its own PayOS payment with a unique order code and the exact amount
+- A user can have at most one Processing top-up at a time
+- The PayOS payment expires 5 minutes after creation
+- The user can cancel their own Processing top-up; RESCOM cancels the PayOS payment and the top-up becomes Cancelled, so a new top-up can start at once
+- Successful payment returns the user to `/wallet`; cancellation also returns to `/wallet`
 
-#### FR-35: Admin Top-Up Approval
-Admin verifies the bank transfer and approves the top-up, crediting Points to the user's Available Balance.
+#### FR-35: Automatic Crediting on Payment Confirmation
+When PayOS confirms a payment, RESCOM credits the Points to the user's Available Balance without Admin action.
 
 **Consequences (testable):**
-- Admin sees pending top-up requests with user info and amount
-- Approval triggers ledger entry and user notification
-- Rejection notifies user with reason
+- Only a confirmation whose authenticity is verified, and whose order code and amount match the top-up, credits Points
+- Top-up status change, ledger credit, and user notification are all-or-nothing; any failure rolls all of them back
+- Repeated confirmations for the same top-up never credit Points more than once
+- If a payment is confirmed but crediting fails, RESCOM retries and reconciles against PayOS until the Points are credited, and alerts the Admin if the top-up is still uncredited 30 minutes after confirmation
+- A verified full-amount payment for a top-up already marked Cancelled or Expired still credits the Points, moves the top-up to Successful, and notifies the user
+- A payment whose amount differs from the top-up credits nothing automatically and is flagged; the Admin either credits Points for the amount actually received (amount ÷ 200, rounded down) or refunds it manually, and the user is notified of the outcome
+- When the Admin credits a mismatch, any remainder below 200 VNĐ is not converted and the user notification states it
+- The Admin can re-check any PayOS top-up against PayOS at any time; a verified payment found this way credits through the same idempotent path (covers payments arriving after the 24-hour reconciliation window)
+- The Admin resolves each flagged amount mismatch within 3 business days of the payment; an unresolved mismatch past that deadline raises an Admin alert
+
+#### FR-76: Top-Up Status on Wallet
+The Wallet shows every top-up with its current status and keeps the user informed of each change.
+
+**Consequences (testable):**
+- Statuses: Processing, Successful, Cancelled, Expired, Refund Requested, Refunded, Refund Rejected
+- A user returning before confirmation sees Processing, and the page updates itself when the result arrives
+- Cancelled and Expired top-ups change no balance
+- Every status change sends the user a notification
+
+#### FR-77: Refund Request
+User can request a refund of a Successful top-up through a templated in-app form.
+
+**Consequences (testable):**
+- The form is available only for the user's own Successful top-up and only within 24 hours of the payment time; the deadline is computed by the server (payment time + 24 hours, exclusive) and shown as is
+- A top-up credited by the Admin after an amount mismatch cannot be refunded in-app; the Admin decided between credit and refund at mismatch resolution
+- Banning a user does not release or remove a Refund Hold; the Admin can still resolve the request
+- One request per top-up; a rejected or withdrawn request cannot be resubmitted
+- The user can withdraw their own unresolved request; any Refund Hold returns to Available, the top-up shows Successful again, and the Admin is notified
+- Prefilled read-only fields: transaction code, amount, Points, top-up time, account email, and the refund destination
+- The refund destination is always the bank account that paid the top-up, as reported by PayOS (bank, account holder name, account number masked to the user); the user cannot enter or change it
+- If PayOS did not report the paying account, the user can still submit; the request is marked destination unverified and the Admin confirms the paying account with the user by the account email before transferring
+- User fields: reason (fixed list: wrong amount, wrong RESCOM account, no longer need Points, other) and note (mandatory for every reason, at most 300 characters)
+- Submission records the submission time, emails the request to the configured Admin refund mailbox, and notifies the user
+- If the request is eligible (FR-78), that top-up's Points move from Available to Refund Hold until the request is resolved; an ineligible request is recorded without a hold so the Admin can reject it
+- If Available Balance is below the top-up's Points at submission for any reason, the request is recorded Not eligible and nothing is held
+- The eligibility check and the Refund Hold are atomic with Point spending: a concurrent spend either completes first (request becomes Not eligible) or fails for insufficient Available Points
+
+#### FR-78: Refund Eligibility and Admin Resolution
+RESCOM evaluates refund eligibility; the Admin performs the bank refund outside RESCOM and records the outcome.
+
+**Consequences (testable):**
+- Eligible means: request submitted within 24 hours of the top-up, and the user made no Point-spending transaction (survey publishing, survey reopen, voucher redemption) between the top-up and the submission
+- Admin sees the verdict and the reason for any ineligibility
+- **Refunded** is allowed only for a request whose Points are on Refund Hold; it removes the held Points through a top-up reversal ledger entry against the platform top-up account, linked to the original top-up
+- Admin marks Refunded before transferring money, so a withdrawal can never follow a completed bank transfer; the bank transfer reference and time are optional and can be added after marking, and the user then sees them
+- A withdrawal and an Admin resolution of the same request cannot both succeed; the later one is refused with "request already resolved"
+- Admin can export PayOS top-ups and refunds for a date range as CSV for bank and tax reconciliation; the CSV contains no bank account numbers and every export is audit-logged
+- The refund-mailbox email masks the account number to its last 4 digits and links to the Admin Panel, which alone shows the full number
+- **Rejected** requires a reason and releases any Refund Hold to Available
+- No refund action can make any balance negative
+- Admin resolves each request within 3 business days of submission; an unresolved request past that deadline raises an Admin alert
+- A manual bank refund on a request without a hold is recorded as Rejected with a note stating the money was returned; it changes no balance
+- RESCOM never moves money; the bank refund is manual and goes only to the paying account (FR-77)
+- Every resolution notifies the user and is recorded in the Admin audit trail
+
+#### FR-79: Retirement of the Manual Top-Up Flow
+Enabling PayOS retires the manual bank-transfer top-up.
+
+**Consequences (testable):**
+- Before PayOS is enabled, the Admin resolves every pending manual top-up request: approve if the bank transfer was received, reject otherwise; each affected user is notified
+- PayOS cannot be enabled while any manual request is still pending
+- The manual request form and the Admin approval queue are no longer available
+- Historical manual top-ups remain visible in Wallet and Admin history
 
 ---
 
@@ -747,7 +842,7 @@ Public leaderboard displays two rankings: (1) most surveys completed (all-time a
 
 ### 4.17 Admin Panel
 
-**Description:** Admin manages users, moderates surveys, resolves disputes, processes top-ups, and monitors system integrity. Realizes UJ-3.
+**Description:** Admin manages users, moderates surveys, resolves disputes, resolves top-up refund requests, and monitors system integrity. Realizes UJ-3 and UJ-6.
 
 **Functional Requirements:**
 
@@ -784,7 +879,7 @@ Admin can view, search, and filter FraudLog. Can identify repeat offenders and t
 - System flags repeat offenders, but banning is strictly a manual decision by Admin (no auto-ban).
 
 #### FR-56: Transaction Dashboard
-Admin sees overview of all Point transactions across the system: top-ups pending, escrows active, refunds processed.
+Admin sees overview of all Point transactions across the system: PayOS top-ups by status, open refund requests, escrows active, refunds processed.
 
 **Consequences (testable):**
 - Dashboard shows aggregate metrics and individual transaction drill-down
@@ -798,7 +893,7 @@ Admin sees overview of all Point transactions across the system: top-ups pending
 **Functional Requirements:**
 
 #### FR-57: Event Notifications
-System sends notifications for: account activation, survey approved/rejected, Points earned, Points pending, Integrity Hold placed/released/retained/resolved, complaint filed/resolved, survey quota reached, ban/unban, top-up approved.
+System sends notifications for: account activation, survey approved/rejected, Points earned, Points pending, Integrity Hold placed/released/retained/resolved, complaint filed/resolved, survey quota reached, ban/unban, every top-up and top-up refund status change (FR-76).
 
 **Consequences (testable):**
 - In-app notifications appear in a notification center
@@ -934,7 +1029,7 @@ System explicitly records whether each integrity dimension applies.
 
 > **Added 2026-10-13 by sprint-change-proposal-2026-10-13 (Phase 2, after pilot launch).** Design source: Figma Rescom pages 20–27; business rules BR-01…BR-24 in the planning doc "Rescom — Đổi điểm lấy voucher F&B & Flash Sale" (2026-10-13). Architecture: AD-24.
 
-**Description:** Users spend Available Points on F&B partner vouchers, which becomes the second way to spend Points after publishing surveys. 1 Point ≈ 200 VNĐ, the top-up rate. Every Point in Available Balance can be redeemed, including topped-up Points and unlocked starter Points. Pending, Frozen, Escrow, and Integrity Hold Points can never be redeemed. Admins manage the catalog, code inventory, and time-boxed Flash Sales. Behavior that depends on Open Questions 23–26 stays gated until those questions are answered.
+**Description:** Users spend Available Points on F&B partner vouchers, which becomes the second way to spend Points after publishing surveys. 1 Point ≈ 200 VNĐ, the top-up rate. Every Point in Available Balance can be redeemed, including topped-up Points and unlocked starter Points. Pending, Frozen, Escrow, Integrity Hold, and Refund Hold Points can never be redeemed. Admins manage the catalog, code inventory, and time-boxed Flash Sales. Behavior that depends on Open Questions 23–26 stays gated until those questions are answered.
 
 **Functional Requirements:**
 
@@ -1021,11 +1116,11 @@ A user can report a code that does not work. An Admin resolves the report with a
 ## 5. Non-Goals (Explicit)
 
 - **RESCOM is NOT a money-making app.** Points are internal tokens — not currency, not cashable, not transferable between accounts.
-  > **Amendment 2026-10-13 (sprint-change-proposal-2026-10-13, Phase 2 Rewards):** Available Points, including topped-up Points, may also be spent on partner vouchers in the Rewards catalog (§4.20). Points can never be withdrawn as cash or converted back to money. Accounting/tax treatment is Open Question 24.
+  > **Amendment 2026-10-13 (sprint-change-proposal-2026-10-13, Phase 2 Rewards):** Available Points, including topped-up Points, may also be spent on partner vouchers in the Rewards catalog (§4.20). Points can never be withdrawn as cash or converted back to money, except the Admin-executed refund of an unspent top-up within 24 hours (FR-77, FR-78). Accounting/tax treatment is Open Question 24.
 - **RESCOM does NOT sell survey responses.** It is a distribution service connecting surveys to the right audience.
 - **RESCOM does NOT replace SurveyMonkey or Typeform.** The Form Builder serves academic survey needs, not enterprise research.
 - **RESCOM does NOT support organizational accounts (v1).** B2B features for lecturers, departments, and research groups are deferred to Phase 3.
-- **RESCOM does NOT provide automated payment processing (v1).** Top-ups are manual via Admin; Point withdrawal or cash-out does not exist.
+- **RESCOM does NOT process payments other than Point top-ups.** PayOS is used only to buy Points. Point withdrawal or cash-out does not exist; the only money return is the manual 24-hour top-up refund (FR-77, FR-78).
 - **RESCOM does NOT guarantee AI availability.** The AI Form Generator is an optional enhancement — all core features work without it.
 - **RESCOM does NOT claim full Integrity Engine coverage for External Forms.** External responses remain subject to existing verification and dispute controls.
 - **RESCOM does NOT treat a low score or review flag as proof of fraud.** FraudLog and integrity assessments remain distinct.
@@ -1059,7 +1154,7 @@ A user can report a code that does not work. An Admin resolves the report with a
 - **Gamification: Streak + Leaderboard**
 - Membership tiers (5 levels)
 - Admin panel: user management, moderation, complaints, top-ups, FraudLog
-- Manual top-up via Admin
+- Top-up via PayOS with automatic crediting and manual Admin refunds (§4.10)
 - Notification system (in-app + email)
 - **Survey reopen** with additional token payment
 - **Research Integrity Engine for Internal Forms:** consent-aware telemetry, Response Integrity, Assessment Confidence, Evidence Coverage, reason codes, and policy versioning
@@ -1072,7 +1167,6 @@ A user can report a code that does not work. An Admin resolves the report with a
 
 ### 6.2 Out of Scope for MVP
 
-- **Automated payment processing** — deferred to Phase 2. `[NOTE FOR PM]` This is the #1 user friction point for top-ups.
 - **Survey boost/promotion** — deferred to Phase 2.
 - **Rewards: voucher redemption + Flash Sale (§4.20)** — Phase 2, after pilot launch (Story 11.5). Approved by sprint-change-proposal-2026-10-13.
 - **Advanced dashboard analytics** (comparative reports, export to Excel/SPSS) — deferred to Phase 2/3. Basic response-file export and integrity-metadata export are not authorized for MVP unless Open Questions 6 and 11 are explicitly approved.
@@ -1152,6 +1246,8 @@ No accuracy target is declared until RESCOM has reviewed ground-truth labels. A 
 24. `[NOTE FOR PM — Owner: Product Manager + Accounting/Legal reviewer; gate: before Rewards production enable (Story 12.11)]` **Rewards accounting and tax:** Redeemable top-up Points mean vouchers are effectively sold for top-up money. Confirm invoice, tax, and recipient-information obligations, and the Wallet wording that Points are never withdrawn as cash. This document is not legal advice.
 25. `[NOTE FOR PM — Owner: Product Manager + Tech lead; gate: before Story 12.7 readiness]` **Code supply and usage:** Confirm CSV code import without partner API (default), code expiry at least 7 days after the redemption window, no refund for expired unused vouchers, faulty-code resolution within 1 business day, and self-marked "used" with 24-hour undo.
 26. `[NOTE FOR PM — Owner: Tech lead; gate: before Story 12.8 readiness]` **Quote TTL:** Confirm the quote lifetime (default 5 minutes, capped at the Flash end).
+27. `[NOTE FOR PM — Owner: Quan (Product Manager + Accounting/Legal reviewer); gate: before PayOS production enable]` **PayOS personal account terms:** Top-up money goes to a personal PayOS account and top-up Points can buy vouchers (see Open Question 24). Confirm PayOS fees, transaction limits, and terms for selling digital goods or Points from a personal account, plus the owner's tax obligations. PayOS documentation does not state these. This document is not legal advice.
+28. `[NOTE FOR PM — Owner: Tech lead; gate: before FR-35 story readiness]` **PayOS late and wrong-amount payments:** PayOS documentation does not define behavior for payments after expiry or for a wrong amount. Decided 2026-10-15: late full-amount payments credit; wrong-amount payments are flagged for Admin credit-or-refund (FR-35). Remains open only to confirm against real PayOS behavior during production testing.
 
 ---
 
@@ -1180,6 +1276,7 @@ No unresolved inference is approved as an implementation default. Former assumpt
 | NFR-8 | Server-side authority: startTime, Completion Code generation, point calculations — never trust client |
 | NFR-9 | All point transactions use ACID to ensure data consistency |
 | NFR-10 | FraudLog is append-only — no delete, no update |
+| NFR-31 | PayOS credentials stay server-side in secret configuration; payment confirmations are accepted only after signature verification and are never trusted from the client or redirect parameters |
 
 ### Reliability
 | ID | Requirement |
@@ -1189,6 +1286,7 @@ No unresolved inference is approved as an implementation default. Former assumpt
 | NFR-13 | Pending → Available auto-transfer runs on schedule (48h expiry) |
 | NFR-14 | System uptime target is ≥99% during the named peak-academic profile; service boundary, exclusions, and measurement window require Open Question 22 approval before release testing |
 | NFR-15 | AI failure must not impact core system (login, surveys, points, marketplace) |
+| NFR-32 | A reconciliation job runs every 1 minute and checks every Processing top-up, and every top-up expired within the last 24 hours, against PayOS, so a lost or failed confirmation never leaves a paid top-up uncredited or an expired one open. A payment arriving later than that window is credited only through the PayOS confirmation (FR-35) |
 
 ### Maintainability
 | ID | Requirement |
@@ -1243,7 +1341,7 @@ No unresolved inference is approved as an implementation default. Former assumpt
 
 ### Compliance
 - Points are NOT positioned as currency — cannot be bought, sold, or transferred between accounts
-- Points cannot be cashed out as money (one-way conversion only: VNĐ → Points)
+- Points cannot be cashed out as money (one-way conversion only: VNĐ → Points); the sole exception is the Admin-executed refund of an unspent top-up within 24 hours (FR-77, FR-78)
 - Production launch requires qualified Vietnamese privacy/legal review and documented compliance evidence; product and architecture documents do not by themselves establish legal compliance
 
 ### Cost

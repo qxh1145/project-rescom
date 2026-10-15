@@ -7,7 +7,7 @@ paradigm: 'Pragmatic Clean Architecture + Modular Monolith'
 scope: 'RESCOM platform (Frontend, Backend, DB, AI Integration)'
 status: final
 created: '2026-08-08'
-updated: '2026-09-26'
+updated: '2026-10-15'
 binds: [all]
 sources:
   - '../../../specs/spec-rescom/SPEC.md'
@@ -209,6 +209,105 @@ flowchart TD
 - **Prevents:** Overselling stock, double spend on retry, one code issued twice, client-trusted pricing, lock cycles with existing ledger flows, Points lost on a failed redemption.
 - **Rule:** Rewards owns Voucher, append-only VoucherPriceVersion, VoucherCode, FlashSale, FlashSaleItem, RedemptionQuote, append-only Redemption, and CodeIssueReport. `RedeemVoucher` runs as one PostgreSQL Unit of Work coordinated by Rewards: idempotency lookup → lock Voucher → lock FlashSaleItem (if any) → conditional stock decrement (`remaining > 0`, or `sold < quota`) → claim one code `FOR UPDATE SKIP LOCKED` → Economy `SpendPoints` (journal `redemption:{idempotencyKey}`, USER_AVAILABLE → SYSTEM_SINK; Economy locks ledger accounts by ascending id and enforces no-overdraft) → Redemption SUCCEEDED + Outbox event → commit. Lock order is fixed: Voucher → FlashSaleItem → VoucherCode → ledger accounts. Existing flows lock only ledger accounts, so no cycle is possible. The effective price (Flash > promo > base) is computed server-side at commit; a priceVersion mismatch with the quote returns PRICE_CHANGED. A failed attempt is recorded in a separate transaction with no journal. Flash start/end are idempotent jobs on the existing in-process scheduler. Refunds only by an Economy reversal journal (`redemption-refund:{caseId}`). DB constraints: remaining >= 0; unique (voucherId, code); unique VoucherCode.redemptionId; unique (flashItemId, userId) when per-user cap = 1; RESTRICT delete on a Voucher with redemptions. No Redis or queue at pilot scale; load-test the stock-row lock before opening Flash Sales beyond the pilot.
 
+### AD-25 — PayOS Top-Up Boundary [ADOPTED 2026-10-15]
+- **Binds:** Economy top-up checkout, payOS webhook, reconciliation job, Wallet/Admin top-up views, manual top-up retirement (PRD FR-34, FR-35, FR-76, FR-79; NFR-31, NFR-32).
+- **Prevents:** Double credit across webhook, reconciliation, manual approval and Admin mismatch resolution; a credit trusted from the client or redirect; two top-up histories; concurrent Processing top-ups; a paid top-up stuck uncredited; a provider SDK leaking into the domain; the webhook blocked at the edge; and a flag state that strands manual requests.
+- **Rule:**
+  - **Entity.** `TopUpRequest` stays the single top-up entity for both channels.
+    - New fields: `channel` (`MANUAL` | `PAYOS`), `orderCode` (from a PostgreSQL sequence, JS-safe integer, unique), `paymentLinkId`, `expiresAt`, `cancelledAt`, `pointsCredited`, and the write-once provider facts `amountPaidVnd`, `providerReference`, `paidAt`, and the nullable paying-account facts `counterAccountBankId`, `counterAccountBankName`, `counterAccountName`, `counterAccountNumber` (from the webhook `data` or the GET `transactions[]`; first non-null value wins).
+    - `transferReference` becomes nullable and stays unique for `MANUAL` rows.
+    - Legacy statuses keep their meaning.
+  - **Amount and constraints.** FR-34 bounds apply: 10,000–5,000,000 VND, a multiple of 200, and a 5-minute expiry. Requested Points = `amountVnd / 200`, and `pointsCredited` records what was actually credited.
+    - DB `CHECK`s enforce the bounds for `PAYOS` rows.
+    - A partial unique index allows at most one `PROCESSING` row per user.
+    - The existing unique `journalId` holds the single credit journal per top-up.
+    - Raw-SQL migrations own the index, checks, and sequence.
+  - **Checkout.** The `PROCESSING` row commits before `paymentRequests.create`, which is called with SDK `maxRetries: 0` (AD-10 adapter rule). A create failure marks the row `CANCELLED`. A user cancel calls the payOS cancel through the port, then sets `CANCELLED`.
+  - **Single credit path.** Every credit command first locks the `TopUpRequest` row `FOR UPDATE`, then applies a status compare-and-set (`WHERE status IN (allowed) AND channel = own`); zero rows means a no-op success. Economy lock order is `TopUpRequest` → `TopUpRefundRequest` → ledger accounts by ascending id. The credit commands are:
+    - `CreditTopUp` (`topup-credit:{topUpId}`, PAYOS only), called by both the webhook and reconciliation.
+    - `ResolveTopUpMismatch` (`topup-mismatch:{topUpId}`, Admin).
+    - Legacy `ApproveTopUp` (`topup-approval:{topUpId}`, MANUAL only).
+    - The credit journal is `SYSTEM_CLEARING → USER_AVAILABLE`. Status, provider facts, journal and an Outbox notification commit together.
+    - `ReverseJournal` is forbidden on top-up credit journals.
+  - **Proof and mapping.** Payment proof is only a verified webhook or a server-side `GET /v2/payment-requests/{id}`; `returnUrl` parameters never count.
+    - The webhook requires a valid HMAC signature, `code` and `data.code` = `"00"`, and an `orderCode` that matches the row. It then reads authoritative `amountPaid` and status through the GET.
+    - The adapter maps payOS `PaymentLinkStatus` (`@payos/node` 2.0.5 types) as follows:
+
+      | payOS status | Local effect |
+      | --- | --- |
+      | `PAID` with `amountPaid = amountVnd` | `CreditTopUp` → `SUCCESSFUL`. Also applies from local `CANCELLED`/`EXPIRED` (late payment wins). |
+      | `PAID` with another amount, or `UNDERPAID` | `AMOUNT_MISMATCH`, with `amountPaidVnd` = the cumulative `amountPaid`. |
+      | `PENDING` / `PROCESSING` | No change. |
+      | `CANCELLED` / `EXPIRED` / `FAILED` | No credit. A still-`PROCESSING` row moves to `CANCELLED`/`EXPIRED`. |
+
+    - `paidAt` is the payment `transactionDateTime` (from the webhook, or on the reconciliation path from the GET `transactions[]`; else the verification time), parsed as `Asia/Ho_Chi_Minh` and stored in UTC.
+  - **Webhook HTTP results.**
+    - Invalid signature: 401.
+    - Valid but unknown or duplicate order (including the `confirm-webhook` probe): 200 no-op.
+    - Processing failure: 5xx. Reconciliation recovers.
+  - **Webhook ingress.** The URL is registered on the frontend origin (`app.rescom.io.vn/api/...`), so `proxy.ts` adds the edge key and the AD-23 Caddy rule stays unchanged. The endpoint has no cookie, carries an explicit CSRF opt-out, and skips the per-IP throttler. The signature is its only authentication.
+  - **Reconciliation.** The job runs every minute on the Economy scheduler under AD-17 lease/fencing.
+    - It checks `PROCESSING` rows, unresolved `AMOUNT_MISMATCH` rows, and rows `EXPIRED` or `CANCELLED` within the last 24 hours.
+    - It marks `EXPIRED` by local clock past `expiresAt` and makes a best-effort payOS cancel.
+    - An Admin `RecheckTopUp` command (any `PAYOS` row, audited) runs the same GET + mapping + `CreditTopUp` path on demand, covering payments later than the 24-hour window.
+    - It raises an Admin alert (Admin notification plus Sentry) when a top-up is still uncredited 30 minutes after a verified payment, when an `AMOUNT_MISMATCH` is unresolved 3 business days after `paidAt` (FR-35), and on repeated provider failure.
+  - **Wallet status projection (FR-76).**
+    - `SUCCESSFUL` combines with the refund request state: Refund Requested, Refunded, or Refund Rejected.
+    - `AMOUNT_MISMATCH` shows Under review. `MANUAL_REFUNDED` shows Refunded.
+    - Legacy rows keep their labels.
+    - Every transition, including job-driven ones, writes its user notification to the Outbox in the same transaction.
+  - **Adapter and SDK.** `@payos/node` lives only in one Economy infrastructure adapter behind `PaymentProviderPort` (create, get, cancel, verify webhook). AD-23's provider-SDK ban covers hosting SDKs only.
+    - Secrets `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, and `PAYOS_CHECKSUM_KEY` are server-only, one set per environment.
+    - payOS has no sandbox, so non-production environments run with `PAYOS_ENABLED=false` or a fake adapter.
+  - **Enable flag (FR-79).**
+    - `PAYOS_ENABLED` uses the Rewards-flag pattern.
+    - If `PAYOS_ENABLED=true` while any `MANUAL` `PENDING` row exists (global), the process still starts but PayOS stays effectively off (checkout closed, manual flow on) and raises an Admin alert plus an error log; PayOS turns on only after a restart with no `PENDING` rows. A pre-deploy script reports `PENDING` rows. (Amended 2026-10-15 pre-mortem: refusing startup would take all of production down.)
+    - Flag on turns checkout on and manual submission off.
+    - Manual approve/reject stays available until no `PENDING` remains.
+    - Webhook, reconciliation, mismatch and refund commands are never flag-gated.
+
+```mermaid
+stateDiagram-v2
+    [*] --> PROCESSING: checkout (row before provider call)
+    PROCESSING --> SUCCESSFUL: PAID, amountPaid = amountVnd
+    PROCESSING --> AMOUNT_MISMATCH: UNDERPAID or PAID with other amount
+    PROCESSING --> CANCELLED: user cancel / create failed / provider CANCELLED
+    PROCESSING --> EXPIRED: local clock > expiresAt
+    CANCELLED --> SUCCESSFUL: late verified full payment
+    EXPIRED --> SUCCESSFUL: late verified full payment
+    AMOUNT_MISMATCH --> SUCCESSFUL: provider PAID full amount, or Admin credits floor(amountPaidVnd/200)
+    AMOUNT_MISMATCH --> MANUAL_REFUNDED: Admin refunds off-platform
+```
+
+### AD-26 — Top-Up Refund Hold [ADOPTED 2026-10-15]
+- **Binds:** Economy, refund request and Admin resolution (PRD FR-77, FR-78), Wallet balances, every Point-spending flow.
+- **Prevents:** Spending Points under a pending refund; a refund racing a redemption or survey publish; an escrow round-trip that hides a spend; eligibility read from another context's tables; a reversal that violates AD-1; and a resolution that underflows a hold-less request.
+- **Rule:**
+  - **Request.** Economy owns `TopUpRefundRequest`: at most one per top-up (unique `topUpId`), no resubmission after rejection, and a stored `topUpJournalId` reference.
+    - A new `LedgerAccountClass.REFUND_HOLD` (no overdraft) carries held Points. It is created before locking.
+    - The refund destination is the top-up's paying-account facts (AD-25), snapshotted onto the request; no user-supplied bank field exists. When those facts are null the request stores `destinationVerified = false` and the Admin view requires confirming the account with the user by email before `REFUNDED`.
+  - **Submission.** Submission locks the `TopUpRequest` row, then the user's ledger accounts in ascending id, the same order as `SpendPoints` (AD-24).
+    - The request is eligible only when all of these hold:
+      - the top-up is a `PAYOS` row in `SUCCESSFUL` (legacy `MANUAL` rows are never refundable);
+      - the request comes before `refundDeadline` = `paidAt` + 24 hours (server clock, exclusive), which the API returns for display;
+    - the top-up was not credited through `ResolveTopUpMismatch`;
+      - Available ≥ `pointsCredited`;
+      - no spend journal exists after the top-up credit journal in ledger order.
+    - A spend journal is any journal that debits the user's `USER_AVAILABLE` into `ESCROW` or `SYSTEM_SINK` (publish, reopen, redemption). Economy owns this as a named constant. A later escrow refund does not cancel a spend.
+    - An eligible request posts `USER_AVAILABLE → REFUND_HOLD` for `pointsCredited` (`topup-refund-hold:{requestId}`).
+    - An ineligible request is recorded with its reason and no journal.
+    - The request, journal and Outbox events (user notification, plus email to the configured `TOPUP_REFUND_MAILBOX`) commit together.
+  - **Resolution.** Resolution needs Identity capability, emits the Moderation admin-audit event, writes the user notification to the Outbox, and is keyed `topup-refund-resolve:{requestId}`.
+    - `REFUNDED` is allowed only for a held request. It posts `REFUND_HOLD → SYSTEM_CLEARING`.
+    - `REJECTED` requires a reason. It posts `REFUND_HOLD → USER_AVAILABLE` only if a hold exists. A hold-less request (including one refunded off-platform anyway) resolves `REJECTED` with a note and no journal.
+    - The Admin marks `REFUNDED` before the bank transfer (no either-order rule), so `WITHDRAWN` can never follow a transfer. `bankTransferReference` and `bankTransferredAt` are optional and may be set once after `REFUNDED`.
+    - Withdrawal and resolution both lock the request and compare-and-set from the unresolved states; the loser gets 409 `REFUND_ALREADY_RESOLVED`.
+    - A user ban never touches `REFUND_HOLD`. The mailbox email masks the account number to its last 4 digits.
+  - **Withdrawal.** `WithdrawTopUpRefund` (`topup-refund-withdraw:{requestId}`, owner only, same lock order) moves an unresolved request to `WITHDRAWN`, posts `REFUND_HOLD → USER_AVAILABLE` only if a hold exists, and writes user and Admin notifications to the Outbox; `WITHDRAWN` is terminal and blocks resubmission.
+    - The refund journal links to the top-up through `topUpJournalId`. It is never set as `reversesJournalId`, because it is not an exact negation (AD-1).
+    - An Economy scheduler job alerts the Admin about requests unresolved after 3 business days.
+  - **Bank transfer.** The bank transfer stays manual, because payOS has no refund API.
+
 ## Module and Durable-State Ownership Map
 
 These names are target contracts for the next schema design, not claims that the current Prisma draft implements them.
@@ -218,7 +317,7 @@ These names are target contracts for the next schema design, not claims that the
 | **Identity** | User, AuthIdentity, Session/session generation, authorization assignments, DemographicProfile, auth-security audit | Exposes identity/session/capability ports; no other context writes users or sessions. |
 | **Research** | Form, FormVersion, Form Definition, targeting and publication metadata | Publishes immutable version identity; never writes Attempts or Ledger. |
 | **Participation** | SurveyAttempt, Response, answers/submission lifecycle, logical-Form completion claim | Commits Response plus Outbox atomically; requests Economy/Integrity actions through contracts. |
-| **Economy** | LedgerAccount, LedgerJournal, LedgerEntry, escrow/hold/settlement state, Wallet projection | Sole writer of Point records; consumes idempotent business commands. |
+| **Economy** | LedgerAccount, LedgerJournal, LedgerEntry, escrow/hold/settlement state, Wallet projection, TopUpRequest (manual + PayOS), TopUpRefundRequest | Sole writer of Point records; consumes idempotent business commands. |
 | **Integrity** | IntegrityConsent, behavioral IntegrityEvent, IntegritySignal, policy versions/promotions, assessment revisions, IntegrityDecision, Reliability/Quality snapshots, IntegrityReview, optional TrustEdge projection | Events/signals/scoring/reliability/quality/review are internal components; never writes Response, FraudLog, or Ledger. |
 | **Marketplace** | Eligibility/ranking configurations and rebuildable feed projections | Reads approved Identity/Research/Participation projections; owns no source survey or profile state. |
 | **Moderation** | Survey moderation cases, External disputes/complaints, security FraudLog, admin-action audit | May invoke Integrity review ports; cannot recast an assessment as FraudLog automatically. |
@@ -241,7 +340,10 @@ This map specializes AD-16. All command IDs shown are stable unique identities; 
 | ENFORCED hold + decision/review | Economy creates the hold from the reward command; Integrity owns assessment/decision/review and sends only idempotent Economy commands. | `integrity-hold:{responseId}`, `integrity-decision:{decisionId}`, `integrity-review:{reviewOutcomeId}`; terminal/no-decision deadline invokes AD-14 fail-open release plus incident. |
 | Open External dispute before Pending release | Moderation `OpenExternalDispute` coordinator locks the pending claim and calls Economy `PlaceDisputeHold` under one shared Unit of Work. Economy's scheduled release locks the same state and requires no open hold. | `external-dispute:{caseId}`; case+hold commit or roll back; resolution command is keyed by immutable case outcome. |
 | Close Form/refund unused Escrow | Research `CloseForm` coordinator calls Economy `RefundUnusedEscrow` under one shared Unit of Work after locking publication/quota state. | `close-refund:{formId}:{closeVersion}`; close state and refund journal commit or roll back. |
-| Approve manual top-up | Economy `ApproveTopUp` coordinator verifies current Identity capability, owns approval state plus journal, records actor/correlation, and emits the Moderation admin-audit event. | `topup-approval:{topUpId}`; financial authority is the journal/approval transaction; audit delivery is replayable and cannot duplicate credit. |
+| Approve manual top-up (legacy; retired by FR-79 when `PAYOS_ENABLED`) | Economy `ApproveTopUp` coordinator verifies current Identity capability, owns approval state plus journal, records actor/correlation, and emits the Moderation admin-audit event. | `topup-approval:{topUpId}`; financial authority is the journal/approval transaction; audit delivery is replayable and cannot duplicate credit. |
+| Credit PayOS top-up | Economy `CreditTopUp`, called by the verified webhook and by the reconciliation job (AD-25); status, provider facts, journal and Outbox in one transaction. | `topup-credit:{topUpId}`; row lock + status compare-and-set + unique `journalId`, so the second caller is a no-op success; failure leaves the row for reconciliation. |
+| Resolve PayOS amount mismatch | Economy `ResolveTopUpMismatch` (Admin, Identity capability) posts the credit or records a manual refund, and emits the admin-audit event. | `topup-mismatch:{topUpId}`; one outcome per top-up. |
+| Submit / resolve top-up refund | Economy `SubmitTopUpRefund` and `ResolveTopUpRefund` under the user's ledger-account locks (AD-26). | `topup-refund-hold:{requestId}`, `topup-refund-resolve:{requestId}`; hold and release/refund journal at most once each; request, journal and Outbox notification/mailbox events commit together. |
 | Redeem voucher | Rewards `RedeemVoucher` coordinator calls Economy `SpendPoints` under one shared Unit of Work (AD-24 lock order). | `redemption:{idempotencyKey}`; stock, code claim, Redemption and journal commit or roll back together; retry returns the original result. |
 | Resolve faulty code with refund | Rewards `ResolveCodeIssue` coordinator (Admin) calls Economy `ReverseJournal` under one shared Unit of Work. | `redemption-refund:{caseId}`; at most one refund or replacement per case. |
 
@@ -275,6 +377,7 @@ This map specializes AD-16. All command IDs shown are stable unique identities; 
 | Object storage | Pilot: Cloudflare R2 via the S3 API (bucket-scoped tokens, one private bucket per environment); local dev only: MinIO pinned to a fixed tag (Community Edition archived upstream); malware scanning: ClamAV |
 | Ollama / Qwen | Optional AI Form Generator dependency; no host in the pilot (Epic 3 deferred) |
 | Tailscale | Private backend-to-AI transport; not provisioned until an AI host exists |
+| Payment provider | payOS API v2 via `@payos/node` 2.x (2.0.5 on 2026-10-15), one Economy adapter only (AD-25); no sandbox, no refund API |
 | Observability | Sentry + external uptime monitor (AD-23) |
 | CI/CD | GitHub Actions → GHCR → SSH deploy (AD-23) |
 
@@ -330,7 +433,7 @@ rescom-monorepo/
 ## Deferred
 
 - **B2B / Organization Accounts:** The data model does not yet account for multi-tenant departments or corporate billing.
-- **Advanced Payment Gateway Integration:** Manual top-ups are handled via Admin. Webhooks for MoMo/VNPay are deferred.
+- **Further payment gateways and automated refunds:** payOS is the only gateway (AD-25), and only for top-ups. MoMo/VNPay and API-driven refunds are deferred until payOS proves insufficient or offers a refund API.
 - **Turborepo:** Deferred until workspace build/test orchestration or caching has measured value; npm workspaces are sufficient first.
 - **Redis rollout:** Deferred until a second API replica or a measured shared rate-limit/cache/ephemeral-coordination requirement exists; AD-6 defines the boundary now.
 - **Frontend deployment split:** One Next.js app remains the default; split only for measured release, security, or scaling isolation.
@@ -357,3 +460,4 @@ rescom-monorepo/
 - **Before enabling Guest Internal in any shared/production environment:** Product, Security, and Privacy must approve the abuse-control artifact (rate-limit scopes, bot challenge, reservation expiry, retention, monitoring, and appeal/support posture).
 - **Before schema/client generation:** Product/Research/Moderation plus Engineering must approve and contract-test the Form publication/moderation lifecycle transition table; the schema may not infer it from enum names alone.
   > **Amendment 2026-09-26 (code-review decision E8-D1, option B) — lifecycle transition table signed off.** Quan (Product owner) approved the Story 8.1 table, the single source of truth in `packages/schemas/src/forms/form-publish.schema.ts` (`FORM_STATUS_TRANSITIONS`): `DRAFT → MODERATION_QUEUE`; `ESCROW_LOCKED → MODERATION_QUEUE | CLOSED` (legacy rows only); `MODERATION_QUEUE → PUBLISHED | CLOSED`; `PUBLISHED → CLOSED`; `CLOSED →` (none). Only an Admin approval reaches `PUBLISHED` (FR-20). Out-of-table commands: new version `PUBLISHED → DRAFT` (Story 2.7) and owner reopen `CLOSED → PUBLISHED` (Story 6.3), which requires an approved current version **and** that the last close was the owner's own: every close records `Form.closeKind` (`OWNER` | `ADMIN` | `MODERATION`), so an Admin takedown or a moderation rejection is final (`409 FORM_NOT_REOPENABLE`). Contract test: the exhaustive from→to matrix in `apps/backend/src/modules/forms/presentation/form-publish.schema.spec.ts`. Follow-up (not in Phase 1): route Admin takedowns of live surveys through a Moderation command with a reason, an audit event and a Publisher notification.
+- **Before enabling PayOS in production (`PAYOS_ENABLED`):** Open Question 27 (PRD) must be answered: personal payOS account terms, fees, and tax treatment for digital goods. payOS webhook retry behaviour is undocumented, so AD-25 reconciliation stays the recovery guarantee. Every manual `PENDING` top-up must be resolved (FR-79; checked at startup by AD-25, which keeps PayOS off and alerts if any remain).

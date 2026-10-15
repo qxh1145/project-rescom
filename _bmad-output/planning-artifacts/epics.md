@@ -5,6 +5,11 @@ inputDocuments:
   - _bmad-output/planning-artifacts/architecture/architecture-project-rescom-2026-08-08/ARCHITECTURE-SPINE.md
   - _bmad-output/planning-artifacts/sprint-change-proposal-2026-09-26.md
   - _bmad-output/brainstorming/brainstorm-backend-integration-deployment-2026-09-29/integration-deployment-plan.md
+  - _bmad-output/planning-artifacts/prds/prd-project-rescom-2026-08-08/addendum.md
+  - _bmad-output/planning-artifacts/architecture/architecture-project-rescom-2026-08-08/solution-design.md
+  - "Figma mkudD5Ngi5RPyIAVxCcxXi page 29 (178:2) · Nạp điểm PayOS & Hoàn tiền – Người dùng"
+  - "Figma mkudD5Ngi5RPyIAVxCcxXi page 30 (178:3) · Admin – Nạp điểm PayOS & Hoàn tiền"
+  - "Figma mkudD5Ngi5RPyIAVxCcxXi page 20 (113:3) · Component mới (chip trạng thái nạp, thẻ số dư, tooltip)"
 ---
 
 # project-rescom - Epic Breakdown
@@ -50,8 +55,8 @@ FR-30: Immutable Double-Entry Ledger
 FR-31: Wallet Dashboard
 FR-32: Escrow Refund on Survey Close
 FR-33: Survey Reopen with Additional Tokens
-FR-34: Manual Top-Up Request
-FR-35: Admin Top-Up Approval
+FR-34: Top-Up Checkout through PayOS (amended 2026-10-15; replaces Manual Top-Up Request) — 10,000–5,000,000 VNĐ, multiple of 200; Points = amount ÷ 200 server-side; unique orderCode; at most one Processing top-up per user; 5-minute expiry; return and cancel both land on `/wallet`
+FR-35: Automatic Crediting on Payment Confirmation (amended 2026-10-15; replaces Admin Top-Up Approval) — only verified confirmations with matching orderCode and amount credit; status + ledger + notification all-or-nothing; idempotent; retry/reconcile with Admin alert 30 min after an uncredited confirmation; late full payment on Cancelled/Expired still credits; amount mismatch is flagged for Admin credit (floor(amount ÷ 200)) or manual refund within 3 business days, overdue raises an Admin alert
 FR-36: Personalized Feed
 FR-37: Sort & Filter Options
 FR-38: Auto-Hide on Quota Completion
@@ -84,6 +89,11 @@ FR-64: Integrity Decision Modes
 FR-65: Integrity Review and Feedback Labels
 FR-66: TrustGraph-Ready Relationships
 FR-67: Assessment Applicability
+(FR-68 … FR-75: Rewards — see Epic 12.)
+FR-76: Top-Up Status on Wallet — statuses Processing, Successful, Cancelled, Expired, Refund Requested, Refunded, Refund Rejected; Processing self-updates; Cancelled/Expired change no balance; every status change notifies the user
+FR-77: Refund Request — own Successful PayOS top-up, within 24h, one request per top-up, no resubmission after rejection; read-only transaction code, amount, Points, top-up time, account email, and refund destination = the paying bank account reported by PayOS (masked; not user-editable; if unreported the request is destination-unverified and the Admin confirms by email); user fields reason (fixed list of 4) + mandatory note ≤ 300 chars; submission emails the Admin refund mailbox and notifies the user; eligible request moves the top-up Points to Refund Hold; eligibility check is atomic with Point spending
+FR-78: Refund Eligibility and Admin Resolution — eligible = within 24h and no Point-spending transaction since the top-up; Admin sees verdict and reason; Refunded only with a hold (reversal entry linked to the top-up); Rejected needs a reason and releases the hold; no negative balance; 3-business-day SLA with Admin alert; manual bank refund only to the paying account; every resolution notifies the user and is audited
+FR-79: Retirement of the Manual Top-Up Flow — all pending manual requests resolved before enabling PayOS; PayOS cannot be enabled while any is pending; manual form and approval queue removed; historical manual top-ups stay visible
 
 ### NonFunctional Requirements
 
@@ -109,6 +119,8 @@ NFR-19: Form Definition JSON schema as a shared package
 NFR-20: Modern, minimal UI targeting Gen Z students
 NFR-21: Survey creation follows a clear 3-step stepper flow
 NFR-22: CSAT target > 4.0/5.0
+NFR-31: PayOS credentials stay server-side in secret configuration; payment confirmations are accepted only after signature verification and are never trusted from the client or redirect parameters
+NFR-32: A reconciliation job runs every 1 minute over every Processing top-up and every top-up expired/cancelled within the last 24 hours, so a lost confirmation never leaves a paid top-up uncredited or an expired one open
 
 ### Additional Requirements
 
@@ -120,9 +132,67 @@ NFR-22: CSAT target > 4.0/5.0
 - Secure API communication with AI Gateway via Tailscale VPN
 - Database transaction handling for Double-Entry Ledger (Prisma `$transaction`)
 
+**PayOS top-up and refund (AD-25, AD-26, solution-design §PayOS flows; added 2026-10-15)**
+- `TopUpRequest` stays the single top-up entity: new `channel` (`MANUAL` | `PAYOS`), sequence-backed JS-safe `orderCode`, `paymentLinkId`, `expiresAt`, `cancelledAt`, `pointsCredited`, write-once provider facts (`amountPaidVnd`, `providerReference`, `paidAt`) and nullable paying-account facts (`counterAccountBankId/BankName/Name/Number`); `transferReference` nullable; DB `CHECK`s for FR-34 bounds; partial unique index = one `PROCESSING` per user; raw-SQL migration owns sequence, index and checks
+- Statuses add `PROCESSING`, `SUCCESSFUL`, `CANCELLED`, `EXPIRED`, `AMOUNT_MISMATCH`, `MANUAL_REFUNDED`; AD-25 payOS status mapping table is binding; late full payment wins over local Cancelled/Expired
+- Checkout commits the `PROCESSING` row before `paymentRequests.create` (`maxRetries: 0`); create failure → `CANCELLED`; user cancel calls payOS cancel through the port
+- One credit path: `CreditTopUp` (`topup-credit:{topUpId}`) used by webhook and reconciliation; `ResolveTopUpMismatch` (Admin); legacy `ApproveTopUp` (MANUAL only); row lock `FOR UPDATE` + status CAS; lock order `TopUpRequest` → `TopUpRefundRequest` → ledger accounts ascending; credit journal `SYSTEM_CLEARING → USER_AVAILABLE`; `ReverseJournal` forbidden on top-up credits
+- Payment proof = verified webhook (HMAC, `code`/`data.code` = "00", matching orderCode) or server-side `GET /v2/payment-requests/{id}`; `returnUrl` params never count; webhook 401 invalid signature, 200 no-op unknown/duplicate (incl. `confirm-webhook` probe), 5xx on processing failure
+- Webhook registered on `app.rescom.io.vn/api/...` so `proxy.ts` adds the edge key; no cookie, explicit CSRF opt-out, skips per-IP throttler
+- Reconciliation every minute on the Economy scheduler under AD-17 lease/fencing; expires by local clock with best-effort payOS cancel; Admin alerts (notification + Sentry) for uncredited 30 min after payment, mismatch unresolved 3 business days, repeated provider failure
+- `@payos/node` 2.x (Node 20+) only inside one Economy adapter behind `PaymentProviderPort` (create, get, cancel, verify webhook); secrets `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY` per environment
+- `PAYOS_ENABLED` uses the Rewards-flag pattern; if any `MANUAL` `PENDING` row exists at startup the process still boots with PayOS effectively off + Admin alert (never refuses startup), and a pre-deploy script reports `PENDING` rows; flag on = checkout on + manual submission off; webhook/reconciliation/mismatch/refund never flag-gated; enabled by server config only — no UI toggle
+- Economy owns `TopUpRefundRequest` (unique `topUpId`, `topUpJournalId`, snapshot of the paying-account destination, `destinationVerified`); new `LedgerAccountClass.REFUND_HOLD`; hold `USER_AVAILABLE → REFUND_HOLD` (`topup-refund-hold:{requestId}`); resolve keyed `topup-refund-resolve:{requestId}`: Refunded `REFUND_HOLD → SYSTEM_CLEARING`, Rejected releases hold to Available; spend journal = debit `USER_AVAILABLE` into `ESCROW` or `SYSTEM_SINK` (named Economy constant); legacy MANUAL top-ups never refundable
+- Request, journal and Outbox events (user notification + email to `TOPUP_REFUND_MAILBOX`) commit together; resolution emits the Moderation admin-audit event
+- No payOS sandbox: tests use a fake `PaymentProviderPort` and HMAC-signed fixtures; non-prod keeps `PAYOS_ENABLED=false`; production smoke uses 10,000 VNĐ refunded via FR-78
+- Business days for every SLA = Monday–Friday in `Asia/Ho_Chi_Minh`, no holiday calendar (ponytail: add a holiday list if false overdue alerts occur)
+- Spend-journal completeness test: every journal class that debits `USER_AVAILABLE` must be classified spend / non-spend, so a new spending feature cannot leave refunds eligible
+- Destination-unverified refunds: the Admin transfers only when the receiving holder name matches the paying account on the bank statement; otherwise reject
+- SLA and uncredited alerts go in-app and by email to `TOPUP_REFUND_MAILBOX` (single-Admin operation is an accepted risk)
+- Prod-enable checklist: `confirm-webhook` succeeds; a live 10,000 VNĐ top-up is credited by the webhook (not by reconciliation); one full refund drill; pre-deploy `PENDING` check; emergency-disable runbook (flag off closes checkout while webhook and reconciliation keep running; how to clear in-flight and paid-uncredited top-ups)
+- Live payOS probe before refund stories: a prod CLI script creates one payment link through the adapter (`PAYOS_ENABLED` stays false), pays 10,000 VNĐ, and records the real webhook payload and GET response to confirm `counterAccount*` presence, the status enum, and the webhook path through the Vercel proxy; if `counterAccount*` is usually null, revisit FR-77 before refund stories; the probe is paid from the Owner's own bank account, so no money refund is needed and the 50 Points stay on the Owner's account
+- Refund stories touch Point-spending flows owned by Epic 6 (publish/reopen escrow) and Epic 12 (voucher redemption): spend-journal classification and AD-24 lock order; both epics' regression suites must pass
+- `orderCode` sequence starts at `1000000000`; the payOS account is assumed dedicated to RESCOM (owner to confirm) so codes never collide with other payment links
+- Prod `top_up_requests` on 2026-10-15: 4 rows, all `PENDING` (none approved/rejected yet); the Admin resolves these 4 by checking the bank statement before `PAYOS_ENABLED` (FR-79). Re-count right before enable, because the manual flow stays open until then
+- Spend-journal completeness test classifies the complaint/dispute reversal that debits `USER_AVAILABLE` as non-spend; `Available ≥ pointsCredited` already blocks those refunds
+- Verified 2026-10-15: backend image is `node:22-bookworm-slim` (meets `@payos/node` Node 20+); voucher redemption posts `USER_AVAILABLE → SYSTEM_SINK` (`ledger.service.ts` `spendPoints`), matching the AD-26 spend definition
+- payOS `description` ≤ 9 characters (unverified docs limit for bank accounts not linked through payOS): use `RC` + last 7 digits of `orderCode`; the live probe confirms the limit
+- User cancel of an own `PROCESSING` top-up is exposed to the client (FR-34); `WithdrawTopUpRefund` adds terminal `WITHDRAWN` (AD-26); `REFUNDED` stores optional `bankTransferReference` / `bankTransferredAt`; Admin CSV export of PayOS top-ups and refunds by date range (FR-78)
+- Runbook also covers rotating `PAYOS_CHECKSUM_KEY` / API keys, re-running `confirm-webhook` after a key or domain change, and re-checking with the probe
+- Edge-case sweep 2026-10-15: Admin `RecheckTopUp` (on-demand GET + `CreditTopUp`); server `refundDeadline`; mismatch-credited top-ups not refundable in-app, < 200đ remainder not converted; mark `REFUNDED` before transfer (withdraw race closed), withdraw/resolve CAS loser → 409; ban leaves `REFUND_HOLD`; mailbox email masks account number; CSV export audit-logged without account numbers
+- Production enable gated by PRD Open Question 27 (personal payOS account terms, fees, tax); OQ-28 late/wrong-amount behavior confirmed during production testing
+
 ### UX Design Requirements
 
-(No UX document found for this project yet. Standard Next.js/Tailwind UI to be assumed as per PRD/Architecture).
+(No general UX spine; bmad-ux run `ux-project-rescom-2026-09-14` is an empty stub. Screens follow Figma `mkudD5Ngi5RPyIAVxCcxXi` and `docs/frontend/design-system.md`.)
+
+**PayOS top-up & refund (Figma page 29 `178:2`, page 30 `178:3`, components page 20 `113:3`, rules frame `191:3079`; added 2026-10-15).** Every screen ships Desktop 1440 + Mobile 390 and its default/loading/empty/error states as drawn. A designer fix pass (6 balance cards, paying-account refund destination, mismatch SLA, read-only B4) is pending; implement the fixed version.
+
+UX-DR-P1: Top-up status chip component with 7 variants — Processing (amber), Successful (green), Cancelled (grey + x icon), Expired (grey + hourglass icon), Refund Requested (teal), Refunded (dark teal), Refund Rejected (danger); always text + color, WCAG AA; plus Under review for `AMOUNT_MISMATCH` and "Thủ công (cũ)" / "PayOS" channel labels
+UX-DR-P2: Balance card component with (i) tooltip; `/wallet` shows 6 cards in order Khả dụng (emphasized) · Đang chờ · Ký quỹ · Đóng băng · Giữ để xét · Giữ chờ hoàn tiền
+UX-DR-P3: A1 `/wallet` — CTA "Nạp điểm"; self-updating Processing banner with "Xem chi tiết"; top-up history (code, amount, Points, time, status chip, channel label); states default / processing / loading (6-card skeleton) / empty / load error
+UX-DR-P4: A2 `/wallet/top-up` — VNĐ input with thousands formatting; quick chips 20.000 · 50.000 · 100.000 · 200.000 · 500.000; live "Bạn sẽ nhận N Điểm" preview; 5-minute QR note; "Thanh toán qua PayOS" CTA; inline errors below minimum, above maximum, not a multiple of 200 (suggest nearest valid); blocked state when a Processing top-up exists ("Tiếp tục thanh toán" / "Xem giao dịch", input disabled); redirecting overlay; create-failure error
+UX-DR-P5: A3 `/wallet/top-up/:id` return page — Processing (polls backend, never trusts URL params), Successful (+N Điểm, new balance, "Về ví" / "Đăng khảo sát"), Cancelled, Expired ("Tạo mã mới"), Amount mismatch (Admin will resolve), not found, load error
+UX-DR-P6: A4 top-up detail — info table, vertical status timeline, refund section: "Yêu cầu hoàn tiền" with 24h countdown when eligible, disabled with reason when >24h, already requested, or legacy manual; loading / not found / error states
+UX-DR-P7: A4 refund form — read-only locked block (code, amount, Points, time, email) + read-only "Tài khoản nhận hoàn tiền" (bank logo, bank name, •••• last 4, holder) with caption that the destination cannot change; destination-unverified variant (amber notice: Admin will confirm by email; submit still allowed); reason radio (Nạp nhầm số tiền · Nạp nhầm tài khoản Rescom · Không còn nhu cầu dùng Điểm · Lý do khác); note mandatory for every reason, ≤ 300 chars with counter; Refund Hold info callout; validation errors for reason and note only
+UX-DR-P8: A5 confirm dialog stating "Hoàn [amount] về [bank] •••• NNNN" and a submitting state; A6 result Eligible (Points held, expected resolution time) / Not eligible (Points spent since top-up, nothing held)
+UX-DR-P9: A7 refund status on detail — Refund Requested, Requested–not eligible, Refunded (Points removed, link to reversal entry), Refund Rejected (Admin reason, Points back to Available)
+UX-DR-P10: A8 notifications — bell dropdown + `/notifications` items for top-up successful, cancelled, expired, amount mismatch, refund requested, refunded, refund rejected; loading / empty / error
+UX-DR-P11: B1 `/admin/top-ups` with 4 tabs and count badges — "Giao dịch PayOS" (status/date filters, search by code/email), "Yêu cầu hoàn tiền" (verdict chip + short reason, 3-business-day SLA countdown, "Quá hạn"), "Cần xử lý" (amount mismatches with 3-business-day countdown/overdue, uncredited >30 min alerts), "Lịch sử thủ công (cũ)" read-only; loading / empty-filter / error
+UX-DR-P12: B2 refund detail drawer — original top-up, paying account (bank, full account number, holder) each with Copy, user reason + note, verdict card with explanation, audit trail; destination-unverified chip with "liên hệ qua email" + Copy email; actions: "Đánh dấu Đã hoàn tiền" (enabled only with a hold; confirm dialog states Points removed), "Từ chối" (reason required; checkbox "Tôi đã chuyển trả tiền thủ công" for hold-less requests); minimal mobile list + detail
+UX-DR-P13: B3 amount mismatch drawer — requested vs received amounts; "Cộng Điểm theo số thực nhận" with floor(received ÷ 200) preview, or "Đã hoàn tiền thủ công" with mandatory note; 3-business-day deadline
+UX-DR-P14: B4 FR-79 banner — read-only "PayOS: Tắt/Bật · cấu hình server (PAYOS_ENABLED)" chip; pending-manual variant with quick approve/reject list; ready variant with checklist and "báo kỹ thuật bật PAYOS_ENABLED và triển khai lại"; no toggle, no Super Admin
+UX-DR-P16: "Huỷ giao dịch" on A2 blocked state and A3 Processing; cancels the payOS link and frees the user to start a new top-up
+UX-DR-P17: A7 Refunded shows the bank transfer reference and time when the Admin recorded them; B2 "Đánh dấu Đã hoàn tiền" dialog has optional fields for both
+UX-DR-P18: A7 Refund Requested (eligible or not) has "Rút yêu cầu" with a confirm dialog; withdrawn returns the top-up to Successful with refund unavailable (reason "đã rút yêu cầu")
+UX-DR-P19: Every insufficient-Points message (publish, reopen, voucher redeem) names Points on Refund Hold when any exist: "N Điểm đang giữ chờ hoàn tiền"
+UX-DR-P20: B1 "Giao dịch PayOS" tab has "Xuất CSV" for a date range (top-ups and refunds: code, user email, amount, Points, status, paidAt, refund status, bank transfer reference)
+UX-DR-P21: B1/B2 "Kiểm tra lại với payOS" action on any PayOS top-up (result toast: credited / still unpaid / mismatch)
+UX-DR-P22: B2 "Đánh dấu Đã hoàn tiền" dialog states "Đánh dấu trước, rồi chuyển khoản"; bank reference/time can be added later from the drawer (once)
+UX-DR-P23: A4 refund countdown uses the server `refundDeadline`; mismatch-credited top-ups show refund unavailable with reason; A3 mismatch-credited notification states the < 200đ remainder
+UX-DR-P24: A3 Processing polls until a terminal status or expiry + 2 minutes, then shows "Kiểm tra lại" with "Nếu bạn đã thanh toán, Điểm vẫn sẽ được cộng"
+UX-DR-P25: Withdraw/resolve conflict shows "Yêu cầu đã được xử lý" and reloads; A6 Not eligible explains that a compensated failed redemption still counts as spending
+UX-DR-P15: PayOS and bank logos are placeholders in Figma; production uses the official logo sets
 
 ### FR Coverage Map
 
@@ -131,13 +201,15 @@ NFR-22: CSAT target > 4.0/5.0
 - **Epic 3: AI Form Generation Assistant** -> FR-17, FR-ADD-6, FR-ADD-7
 - **Epic 4: Survey Distribution & Public Access** -> FR-10, FR-11, FR-36, FR-37, FR-38, FR-ADD-8
 - **Epic 5: Survey Execution & Responses** -> FR-21, FR-22, FR-23, FR-24, FR-25, FR-26, FR-40, FR-ADD-9, FR-ADD-10, FR-13
-- **Epic 6: Point Ledger & Wallet** -> FR-4, FR-5, FR-8, FR-14, FR-15, FR-19, FR-29, FR-30, FR-31, FR-32, FR-33, FR-34, FR-35, FR-ADD-11
+- **Epic 6: Point Ledger & Wallet** -> FR-4, FR-5, FR-8, FR-14, FR-15, FR-19, FR-29, FR-30, FR-31, FR-32, FR-33, FR-34 (legacy manual, superseded by Epic 13), FR-35 (legacy manual, superseded by Epic 13), FR-ADD-11
 - **Epic 7: Demographics & Gamification** -> FR-6, FR-7, FR-9, FR-27, FR-49, FR-50, FR-51
 - **Epic 8: Moderation & Anti-Fraud** -> FR-20, FR-28, FR-45, FR-46, FR-47, FR-48, FR-53, FR-54, FR-55
 - **Epic 9: Analytics & Notifications** -> FR-41, FR-42, FR-43, FR-44, FR-56, FR-57
 - **Epic 10: Research Integrity Foundation & TrustGraph** -> FR-58, FR-59, FR-60, FR-61, FR-62, FR-63, FR-64, FR-65, FR-66, FR-67
 - **Epic IR: Integration Readiness** -> Phase 1 launch journeys and cross-cutting integration acceptance gates; gap-closing stories IR.2a/IR.2b/IR.4a/IR.4b add FR-39, FR-40 and complete FR-5, FR-9, FR-24, FR-32, FR-57 (email)
 - **Epic 11: Production Deployment & Pilot Readiness** -> NFR-ADD-3, NFR-ADD-4, NFR-ADD-5, AD-23 (no new FRs)
+- **Epic 12: Rewards — Voucher Redemption & Flash Sale** -> FR-68, FR-69, FR-70, FR-71, FR-72, FR-73, FR-74, FR-75
+- **Epic 13: PayOS Top-Up & 24-Hour Refund** -> FR-34 (PayOS, amended 2026-10-15), FR-35 (amended 2026-10-15), FR-31 (amend: Escrow + Refund Hold, 6 balances), FR-76, FR-77, FR-78, FR-79; NFR-31, NFR-32
 
 ## Epic List
 
@@ -163,7 +235,7 @@ NFR-22: CSAT target > 4.0/5.0
 
 ### Epic 6: Immutable Point Ledger & Wallet
 **Goal:** The system maintains an unalterable financial ledger for point transactions ensuring absolute integrity across balances, escrows, and top-ups.
-**FRs covered:** FR-4, FR-5, FR-8, FR-14, FR-15, FR-19, FR-29, FR-30, FR-31, FR-32, FR-33, FR-34, FR-35, FR-ADD-11
+**FRs covered:** FR-4, FR-5, FR-8, FR-14, FR-15, FR-19, FR-29, FR-30, FR-31, FR-32, FR-33, FR-34, FR-35, FR-ADD-11 (FR-34/FR-35 here are the legacy manual top-up, superseded by Epic 13 on 2026-10-15)
 
 ### Epic 7: Onboarding, Demographics & Gamification
 **Goal:** Respondents complete demographic profiles to unlock the platform and engage with gamification elements (streaks, tiers).
@@ -194,6 +266,13 @@ NFR-22: CSAT target > 4.0/5.0
 **Goal:** Users spend Available Points (earned, top-up, or unlocked starter) on F&B partner vouchers, including time-boxed Flash Sales, and always see the locked price before any Point is deducted. Admins manage catalog, code inventory, Flash Sales, and redemption stats.
 **FRs covered:** FR-68 … FR-75. **Architecture:** AD-24 (plus AD-1, AD-10, AD-16). Added by `sprint-change-proposal-2026-10-13.md`.
 **Dependency:** Starts after Story 11.5 for production. FE-mock Stories 12.1–12.6 may start immediately using planning-doc defaults in MSW mocks only. Backend gates: 12.7 by PRD OQ-25; 12.8 by OQ-23 and OQ-26; 12.11 (production enable) by OQ-24. UX source: Figma Rescom pages 20–27.
+
+### Epic 13: PayOS Top-Up & 24-Hour Refund
+**Goal:** Users top up Points by PayOS QR and are credited instantly without Admin approval, can cancel a Processing top-up, and track every top-up on a 6-balance Wallet. A mistaken top-up can be refunded within 24 hours, only to the paying bank account, and an unresolved request can be withdrawn. Admins resolve amount mismatches and refunds within 3 business days, re-check any payment against payOS, export CSV for reconciliation, and switch from manual top-up to PayOS without taking production down.
+**FRs covered:** FR-34, FR-35, FR-76, FR-77, FR-78, FR-79; FR-31 (amend). **NFRs:** NFR-31, NFR-32. **Architecture:** AD-25, AD-26 (+ AD-1, AD-10, AD-17, AD-23 edge proxy, AD-24 SpendPoints lock order). **UX:** UX-DR-P1 … P25 (Figma pages 29, 30, 20; designer fix and addendum pending). Added 2026-10-15 from the PayOS PRD amendment.
+**Ordering:** A live payOS probe runs right after the adapter story and before refund stories; if `counterAccount*` is usually null, revisit FR-77.
+**Cross-epic touch:** Refund stories change the spend flows of Epic 6 (publish/reopen) and Epic 12 (voucher redemption); both regression suites must pass.
+**Dependency:** Builds on Epic 6 and Epic 12; develop against a fake `PaymentProviderPort`. Production enable (`PAYOS_ENABLED`) requires OQ-27, the manual `PENDING` rows resolved (4 on 2026-10-15; re-count before enable), and the prod-enable checklist (confirm-webhook, 10,000 VNĐ credited by webhook, refund drill, pre-deploy `PENDING` check, runbook for emergency disable and key rotation).
 
 ### Additional Production Requirements (Newly Added)
 
@@ -1698,3 +1777,232 @@ So that the pilot economy is not put at risk.
 **And** the statistics API backs the Admin dashboard.
 **And** a load test of concurrent redemptions on one Flash voucher at start time records p95 latency and confirms no oversell and no double charge on the pilot VPS profile.
 **And** Rewards sits behind a feature flag that is off by default; production enable requires the PRD Open Question 24 decision (accounting and tax) to be recorded, and the Ví điểm copy says that Points are never withdrawn as cash.
+
+## Epic 13: PayOS Top-Up & 24-Hour Refund
+
+Users top up Points by PayOS QR and are credited instantly without Admin approval, can cancel a Processing top-up, and track every top-up on a 6-balance Wallet. A mistaken top-up can be refunded within 24 hours, only to the paying bank account, and an unresolved request can be withdrawn. Admins resolve amount mismatches and refunds within 3 business days, re-check any payment against payOS, export CSV for reconciliation, and switch from manual top-up to PayOS without taking production down. Architecture: AD-25, AD-26. UX source: Figma pages 29, 30, 20 (after the designer fix and addendum). Production enable is gated by PRD Open Question 27 and Story 13.13.
+
+### Story 13.1: Top-Up Schema for PayOS
+
+As a Developer,
+I want `TopUpRequest` extended for the PayOS channel,
+So that manual and PayOS top-ups share one durable, constrained entity.
+
+**Acceptance Criteria:**
+
+**Given** the current `top_up_requests` table with `PENDING`/`APPROVED`/`REJECTED` manual rows
+**When** the migration runs
+**Then** `TopUpRequest` gains `channel` (`MANUAL` | `PAYOS`, existing rows backfilled `MANUAL`), `orderCode` (unique, from a PostgreSQL sequence starting at `1000000000`), `paymentLinkId`, `expiresAt`, `cancelledAt`, `pointsCredited`, write-once provider facts `amountPaidVnd`, `providerReference`, `paidAt`, and nullable `counterAccountBankId`, `counterAccountBankName`, `counterAccountName`, `counterAccountNumber` (AD-25).
+**And** `TopUpStatus` adds `PROCESSING`, `SUCCESSFUL`, `CANCELLED`, `EXPIRED`, `AMOUNT_MISMATCH`, `MANUAL_REFUNDED`; legacy statuses keep their meaning and existing rows are unchanged.
+**And** `transferReference` becomes nullable and stays unique for `MANUAL` rows.
+**And** raw-SQL migration steps own the sequence, the `CHECK`s for `PAYOS` rows (10,000 ≤ `amountVnd` ≤ 5,000,000, `amountVnd % 200 = 0`), and the partial unique index allowing at most one `PROCESSING` row per user.
+**And** a second `PROCESSING` insert for the same user fails at the database, proven by an integration test.
+**And** the full migration chain applies from an empty database and from the current production snapshot, and the existing manual top-up tests still pass.
+
+### Story 13.2: PaymentProviderPort & payOS Adapter
+
+As a Developer,
+I want one Economy adapter behind `PaymentProviderPort`,
+So that the payOS SDK never leaks into the domain and every test runs without real money.
+
+**Acceptance Criteria:**
+
+**Given** `@payos/node` 2.x is added to the backend only
+**When** the adapter is implemented
+**Then** `PaymentProviderPort` exposes create, get, cancel, and verify-webhook, and only the Economy infrastructure adapter imports `@payos/node` (enforced by a lint/boundary rule) (AD-25, AD-10).
+**And** create sends `orderCode`, exact `amount`, `description` = `RC` + last 7 digits of `orderCode` (≤ 9 characters), `returnUrl`, `cancelUrl`, `expiredAt` = now + 5 minutes, with SDK `maxRetries: 0`.
+**And** the adapter maps payOS statuses to local effects exactly as the AD-25 table (`PAID` full / other amount / `UNDERPAID` / `PENDING` / `PROCESSING` / `CANCELLED` / `EXPIRED` / `FAILED`), and extracts `amountPaid`, `transactionDateTime` (parsed `Asia/Ho_Chi_Minh`, stored UTC), and `counterAccount*` (first non-null wins).
+**And** `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY` are read from server-only config, validated at startup when used, and never logged or sent to the client (NFR-31).
+**And** a fake adapter and HMAC-signed fixture webhooks are available to tests; contract tests run against recorded payOS payloads, including null `counterAccount*`.
+
+### Story 13.3: Top-Up Checkout, User Cancel & Enable Guard
+
+As a User,
+I want to start a PayOS top-up for an exact amount and cancel it if I change my mind,
+So that I can pay by QR without waiting for an Admin.
+
+**Acceptance Criteria:**
+
+**Given** `PAYOS_ENABLED=true` and no manual `PENDING` row existed at startup
+**When** the user posts a checkout amount
+**Then** amounts below 10,000, above 5,000,000, or not a multiple of 200 VNĐ are rejected with a field error before any payOS call (FR-34).
+**And** the server computes Points = amount ÷ 200; any client-supplied Points value is ignored.
+**And** the `PROCESSING` row commits before `paymentRequests.create`; on success `paymentLinkId` is stored and `checkoutUrl` returned; on create failure the row moves to `CANCELLED` and the user sees a retryable error (AD-25).
+**And** a second checkout while one is `PROCESSING` returns 409 with the existing top-up id.
+**And** the owner can cancel their `PROCESSING` top-up: payOS cancel is called through the port, the row becomes `CANCELLED`, and a new checkout is allowed at once; cancelling another user's top-up returns 404.
+**And** if any `MANUAL` `PENDING` row exists at startup, the process still starts with PayOS effectively off (checkout closed, manual submission open), raises an Admin alert and an error log, and turns PayOS on only after a restart with no `PENDING` rows (FR-79, AD-25).
+**And** with PayOS effectively off, checkout returns 404/feature-disabled and the manual flow behaves exactly as before.
+**And** a pre-deploy script prints the count of `MANUAL` `PENDING` rows and exits non-zero when any exist.
+
+### Story 13.4: Payment Webhook & Automatic Credit
+
+As a User,
+I want my Points credited the moment PayOS confirms payment,
+So that I can use them without waiting.
+
+**Acceptance Criteria:**
+
+**Given** a `PAYOS` top-up and a payOS webhook delivered to `app.rescom.io.vn/api/...` (proxied with the edge key; no cookie, explicit CSRF opt-out, no per-IP throttling) (AD-25)
+**When** the webhook arrives
+**Then** an invalid signature returns 401 and changes nothing; a valid but unknown or duplicate `orderCode` (including the `confirm-webhook` probe) returns 200 with no effect; a processing failure returns 5xx (NFR-31).
+**And** a valid `code`/`data.code` = `"00"` triggers a server-side GET for the authoritative `amountPaid` and status; `returnUrl` parameters are never treated as proof.
+**And** `CreditTopUp` (`topup-credit:{topUpId}`) locks the row `FOR UPDATE`, compare-and-sets the status, writes provider facts and `counterAccount*`, posts `SYSTEM_CLEARING → USER_AVAILABLE` for `amountVnd / 200`, sets `pointsCredited`, and writes the user notification to the Outbox in one transaction (FR-35).
+**And** a full payment on a local `CANCELLED` or `EXPIRED` row still credits and moves it to `SUCCESSFUL` with a notification.
+**And** `PAID` with another amount or `UNDERPAID` moves the row to `AMOUNT_MISMATCH` with cumulative `amountPaidVnd`, credits nothing, and notifies the user.
+**And** concurrent and repeated deliveries credit at most once, proven by a concurrency test of two webhooks plus a direct `CreditTopUp` call; `ReverseJournal` on a top-up credit journal is rejected.
+
+### Story 13.5: Reconciliation Job, Alerts & Admin Re-Check
+
+As an Admin,
+I want lost confirmations recovered automatically and on demand,
+So that no paid top-up stays uncredited and no expired one stays open.
+
+**Acceptance Criteria:**
+
+**Given** the Economy scheduler with AD-17 lease/fencing
+**When** the job runs every minute
+**Then** it checks `PROCESSING` rows, unresolved `AMOUNT_MISMATCH` rows, and rows `EXPIRED` or `CANCELLED` within the last 24 hours against payOS GET and applies the AD-25 mapping through `CreditTopUp` (NFR-32).
+**And** a `PROCESSING` row past `expiresAt` (local clock) becomes `EXPIRED`, with a best-effort payOS cancel and a user notification.
+**And** an Admin alert (in-app notification, email to `TOPUP_REFUND_MAILBOX`, Sentry) fires once per condition: uncredited 30 minutes after a verified payment; `AMOUNT_MISMATCH` unresolved 3 business days after `paidAt`; repeated provider failure.
+**And** business days are Monday–Friday in `Asia/Ho_Chi_Minh` with no holiday calendar, implemented in one shared helper with tests across a weekend.
+**And** Admin `RecheckTopUp` on any `PAYOS` row runs the same GET + mapping + `CreditTopUp` path on demand, is idempotent, is audited, and returns credited / still unpaid / mismatch.
+**And** two job instances never process the same row concurrently, proven by a lease test, and job + webhook racing still credits once.
+
+### Story 13.6: Live payOS Probe in Production
+
+As the Product Owner,
+I want one real payment captured before refund work starts,
+So that the refund design rests on payOS behavior we have observed, not assumed.
+
+**Acceptance Criteria:**
+
+**Given** Stories 13.1–13.5 are deployed to production with `PAYOS_ENABLED=false` and the webhook registered through `confirm-webhook`
+**When** the Owner runs the probe CLI script on the VPS
+**Then** the script creates one 10,000 VNĐ payment link through the adapter for an Owner-designated account, without opening checkout to users.
+**And** after the Owner pays, the webhook arrives through the Vercel proxy and the top-up is credited by the webhook path, not by reconciliation (log evidence).
+**And** the recorded webhook payload and GET response (secrets and full account numbers redacted) are saved as test fixtures and attached to the story record, confirming the status enum, `amountPaid`, `transactionDateTime`, whether `counterAccount*` is present, and whether a 9-character `description` is accepted.
+**And** if `counterAccount*` is null, the Owner decides whether FR-77 changes before Story 13.10 starts; the decision is recorded in the PRD.
+**And** the probe is paid from the Owner's own bank account to the Owner's payOS account, so no money refund is needed; the 50 credited Points stay on the Owner's RESCOM account and are noted in the story record (no ad-hoc ledger adjustment).
+
+### Story 13.7: Wallet & Top-Up Screens
+
+As a User,
+I want to top up, follow each payment, and see all my balances,
+So that I always know where my Points and money are.
+
+**Acceptance Criteria:**
+
+**Given** the fixed Figma page 29 frames A1–A4 and A8 and the Story 13.3–13.5 APIs
+**When** the user opens `/wallet`
+**Then** six balance cards show in order Khả dụng (emphasized), Đang chờ, Ký quỹ, Đóng băng, Giữ để xét, Giữ chờ hoàn tiền, each with a tooltip (FR-31, UX-DR-P2).
+**And** top-up history shows code, amount, Points, time, status chip (7 statuses plus Under review for mismatch, icon + text, WCAG AA) and channel label PayOS / Thủ công (cũ) (FR-76, UX-DR-P1, P3).
+**And** `/wallet/top-up` validates min, max, and multiple of 200 inline with a nearest-valid suggestion, shows the Points preview and quick chips, and redirects to `checkoutUrl`; when a `PROCESSING` top-up exists the input is disabled with "Tiếp tục thanh toán", "Xem giao dịch", and "Huỷ giao dịch" (UX-DR-P4, P16).
+**And** `/wallet/top-up/:id` shows Processing, Successful, Cancelled, Expired, mismatch, not found, and error states from the backend only, never from URL parameters (NFR-31, UX-DR-P5).
+**And** Processing polls until a terminal status or expiry + 2 minutes, then shows "Kiểm tra lại" with the note that a completed payment will still be credited (UX-DR-P24).
+**And** the top-up detail shows the info table and status timeline; the refund section is hidden until Story 13.11.
+**And** notifications render for top-up successful, cancelled, expired, and mismatch (UX-DR-P10).
+**And** every screen ships Desktop 1440 and Mobile 390 with loading, empty, and error states, and the manual top-up form remains reachable only while PayOS is effectively off.
+
+### Story 13.8: Admin Top-Up Console
+
+As an Admin,
+I want one place to see every top-up, re-check payments, and export records,
+So that I can support users and reconcile against the bank.
+
+**Acceptance Criteria:**
+
+**Given** the fixed Figma page 30 frame B1
+**When** the Admin opens `/admin/top-ups`
+**Then** the page shows tabs with count badges; this story ships "Giao dịch PayOS" (filters by status and date, search by code or email) and "Lịch sử thủ công (cũ)" (read-only, existing manual rows) (UX-DR-P11).
+**And** while any manual `PENDING` row exists, the existing approve/reject actions stay available until Story 13.13 retires them.
+**And** each PayOS row offers "Kiểm tra lại với payOS", calling `RecheckTopUp` and showing the credited / still unpaid / mismatch toast (UX-DR-P21).
+**And** "Xuất CSV" exports PayOS top-ups for a chosen date range with code, user email, amount, Points, status, and `paidAt` columns, and without any bank account number (Story 13.12 adds refund columns); only ADMIN can export, and each export writes an admin-audit event (FR-78, UX-DR-P20).
+**And** loading, empty-filter, and error states match Figma; the page has a minimal mobile layout.
+
+### Story 13.9: Amount Mismatch Resolution
+
+As an Admin,
+I want to resolve payments whose amount differs from the request,
+So that the user gets either fair Points or their money back.
+
+**Acceptance Criteria:**
+
+**Given** an `AMOUNT_MISMATCH` top-up
+**When** the Admin opens the "Cần xử lý" tab and the B3 drawer
+**Then** the tab lists mismatches with requested vs received amount and a 3-business-day countdown that turns "Quá hạn" when overdue, plus uncredited-over-30-minutes alerts (UX-DR-P11, P13).
+**And** "Cộng Điểm theo số thực nhận" runs `ResolveTopUpMismatch` (`topup-mismatch:{topUpId}`), credits floor(`amountPaidVnd` ÷ 200), moves the row to `SUCCESSFUL`, and notifies the user, stating any remainder below 200 VNĐ is not converted (FR-35).
+**And** "Đã hoàn tiền thủ công" requires a note, moves the row to `MANUAL_REFUNDED` without any journal, and notifies the user.
+**And** a credit through mismatch resolution is identifiable from its journal key (`topup-mismatch:{topUpId}`) so later refund eligibility can exclude it (FR-77), and both actions are audited and idempotent; a concurrent provider `PAID` full-amount result and an Admin resolution credit at most once.
+
+### Story 13.10: Refund Request, Refund Hold & Withdrawal
+
+As a User,
+I want to request a refund of a mistaken top-up within 24 hours,
+So that I get my money back to the account I paid from.
+
+**Acceptance Criteria:**
+
+**Given** Story 13.6 confirmed the refund destination data, and a `PAYOS` `SUCCESSFUL` top-up not credited through mismatch resolution
+**When** the owner submits a refund request before `refundDeadline` = `paidAt` + 24 hours (server clock, exclusive; returned by the API)
+**Then** Economy creates `TopUpRefundRequest` (unique `topUpId`, `topUpJournalId`, reason from the fixed list, note 1–300 characters, snapshot of `counterAccount*`, `destinationVerified` false when they are null) and the `LedgerAccountClass.REFUND_HOLD` class exists (AD-26).
+**And** the request is eligible only if Available ≥ `pointsCredited` and no spend journal follows the top-up credit journal; eligible posts `USER_AVAILABLE → REFUND_HOLD` (`topup-refund-hold:{requestId}`), ineligible records the reason with no journal (FR-77, FR-78).
+**And** spend journals are defined by one named Economy constant (publish and reopen into `ESCROW`, voucher redemption into `SYSTEM_SINK`); a completeness test fails when any journal type debiting `USER_AVAILABLE` is unclassified, and complaint/dispute reversals are classified non-spend.
+**And** the hold is atomic with spending under the AD-24 lock order: a concurrent publish or redemption either completes first (request becomes not eligible) or fails for insufficient Available, proven by a concurrency test.
+**And** request, journal, user notification, and an email to `TOPUP_REFUND_MAILBOX` (account number masked to the last 4 digits, link to the Admin Panel) commit together through the Outbox.
+**And** a second request for the same top-up, a request after the deadline, on a legacy `MANUAL` top-up, or on another user's top-up is refused.
+**And** `WithdrawTopUpRefund` (`topup-refund-withdraw:{requestId}`, owner only) moves an unresolved request to terminal `WITHDRAWN`, releases any hold to Available, and notifies user and Admin; resubmission is refused.
+**And** insufficient-Points errors in publish, reopen, and voucher redemption include the Refund Hold amount when one exists (UX-DR-P19); Epic 6 and Epic 12 regression suites pass.
+
+### Story 13.11: Refund Screens
+
+As a User,
+I want a clear refund form and status,
+So that I know what will happen to my Points and money.
+
+**Acceptance Criteria:**
+
+**Given** the fixed Figma frames A4–A7 and A8 and the Story 13.10 API
+**When** the user opens a Successful top-up detail
+**Then** "Yêu cầu hoàn tiền" shows a countdown from the server `refundDeadline`, and is disabled with the reason when expired, already requested or withdrawn, legacy manual, or credited through mismatch resolution (UX-DR-P6, P23).
+**And** the form shows read-only code, amount, Points, time, email, and "Tài khoản nhận hoàn tiền" (bank, holder, •••• last 4) with the no-change caption, or the destination-unverified notice; the user only picks a reason and writes a note (required, ≤ 300, counter) (UX-DR-P7).
+**And** the confirm dialog names the amount and masked account; the result shows Eligible (Points held) or Not eligible (with reason, including that a compensated failed redemption still counts as spending) (UX-DR-P8, P25).
+**And** status views show Refund Requested, Requested–not eligible, Refunded (with bank transfer reference/time when present), Refund Rejected (with reason), and Withdrawn; "Rút yêu cầu" has a confirm dialog (UX-DR-P9, P17, P18).
+**And** a conflict response shows "Yêu cầu đã được xử lý" and reloads (UX-DR-P25); notifications render refund requested, refunded, rejected, and withdrawn.
+**And** publish, reopen, and redeem screens show "N Điểm đang giữ chờ hoàn tiền" in their insufficient-Points message (UX-DR-P19); all screens ship Desktop and Mobile with loading, empty, and error states.
+
+### Story 13.12: Admin Refund Resolution
+
+As an Admin,
+I want to review and resolve refund requests within the SLA,
+So that users are refunded correctly and the ledger stays balanced.
+
+**Acceptance Criteria:**
+
+**Given** the fixed Figma frames B1 "Yêu cầu hoàn tiền" and B2
+**When** the Admin opens the tab
+**Then** it lists requests with verdict chip and short reason, destination-verified state, and a 3-business-day countdown that shows "Quá hạn" when overdue; an overdue request raises a one-time Admin alert (FR-78, UX-DR-P11).
+**And** the drawer shows the original top-up, the paying account in full with copy buttons (or the unverified chip with copy email and the instruction to match the holder name on the bank statement), the user's reason and note, the verdict explanation, and the audit trail (UX-DR-P12).
+**And** "Đánh dấu Đã hoàn tiền" is enabled only for a held request, tells the Admin to mark before transferring, and runs `ResolveTopUpRefund` REFUNDED: `REFUND_HOLD → SYSTEM_CLEARING` linked by `topUpJournalId`, never as `reversesJournalId` (AD-26, UX-DR-P22).
+**And** `TopUpRefundRequest` gains optional `bankTransferReference` and `bankTransferredAt`; they can be set once after marking, and the user then sees them.
+**And** the Story 13.8 CSV export gains refund status, refund resolution time, and bank transfer reference columns, still without account numbers.
+**And** "Từ chối" requires a reason, releases any hold to Available, and for a hold-less request offers "Tôi đã chuyển trả tiền thủ công", recorded as a note with no journal.
+**And** withdrawal and resolution of the same request cannot both succeed; the loser gets 409 `REFUND_ALREADY_RESOLVED`, proven by a concurrency test.
+**And** every resolution notifies the user, writes the Moderation admin-audit event, keeps every balance non-negative, and works for banned users.
+
+### Story 13.13: Manual Top-Up Retirement & Production Enable
+
+As the Product Owner,
+I want to switch production from manual top-up to PayOS safely,
+So that users get instant top-ups without stranded requests or downtime.
+
+**Acceptance Criteria:**
+
+**Given** Stories 13.1–13.12 are deployed and PRD Open Question 27 is answered
+**When** the Admin opens `/admin/top-ups`
+**Then** the B4 banner shows a read-only "PayOS: Tắt/Bật · cấu hình server (PAYOS_ENABLED)" chip; with manual `PENDING` rows it lists them with approve/reject, otherwise it shows the ready checklist with no toggle (FR-79, UX-DR-P14).
+**And** each resolved manual request notifies its user; the 4 rows pending on 2026-10-15 are recounted and resolved before enable.
+**And** after enable, the manual request form and approval queue are no longer reachable, while historical manual top-ups stay visible in Wallet and Admin history.
+**And** the prod-enable checklist is executed and recorded: pre-deploy `PENDING` check is zero; `confirm-webhook` succeeds; a live 10,000 VNĐ top-up is credited by the webhook; one full refund drill (request → hold → mark Refunded → bank transfer → reference added) passes.
+**And** the runbook in `docs/` covers emergency disable (flag off closes checkout while webhook and reconciliation keep running), clearing in-flight and paid-uncredited top-ups, rotating payOS keys with a `confirm-webhook` re-run, and re-checking with the probe.
+**And** `TOPUP_REFUND_MAILBOX` and payOS secrets are present in `deploy/.env.prod` and absent from the repository.
+**And** placeholder PayOS and bank logos are replaced with the official logo sets before enable (UX-DR-P15).

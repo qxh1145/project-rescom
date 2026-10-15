@@ -354,3 +354,26 @@ The 2026-08-16 Architecture Update resolves the earlier handoff conflicts as fol
 6. `RESCOM Architecture V2 — Research Integrity Engine` is a superseded, non-canonical historical proposal and cannot override the SPEC companion chain.
 
 The current Prisma schema has no migration history in the repository and live database state is not evidenced; it must be redesigned against the updated Spine before client generation or migration work.
+
+## 12. PayOS Integration Notes (2026-10-15)
+
+Technical context for architecture and stories for PRD §4.10 (FR-34, FR-35, FR-76–FR-79). Sourced from official payOS docs as of 2026-10-15. Items marked unverified must be confirmed with payOS support.
+
+- **Account:** The owner uses a personal payOS account (CCCD verification, linked personal bank account). Fees, limits, and terms for digital goods are undocumented (Open Question 27).
+- **Create payment:** `POST https://api-merchant.payos.vn/v2/payment-requests` with headers `x-client-id` and `x-api-key`.
+  - Required: integer `orderCode` (unique; must fit a JS safe integer), integer `amount` in VNĐ, `description`, `returnUrl`, `cancelUrl`, and `signature`.
+  - `signature` is HMAC-SHA256 with `checksum_key` over the alphabetically sorted `amount`, `cancelUrl`, `description`, `orderCode`, and `returnUrl`.
+  - `expiredAt` is a Unix timestamp; set it to now + 5 minutes.
+  - The response contains `checkoutUrl`, `qrCode`, and `paymentLinkId`.
+- **Webhook:** Register it with `POST /confirm-webhook`. payOS sends a test call, and the endpoint must return 2XX.
+  - Verify the `data` signature with HMAC-SHA256 and `checksum_key`. The SDK provides `webhooks.verify()`.
+  - `code "00"` means paid.
+  - Retry behavior is undocumented. FR-35 idempotency and the NFR-32 reconciliation job cover this gap.
+- **Reconciliation:** `GET /v2/payment-requests/{orderCode|paymentLinkId}` returns status, `amountPaid`, `amountRemaining`, and transactions. Cancel with `POST /v2/payment-requests/{id}/cancel`.
+  - The status enum is only partly documented (PENDING, CANCELLED). Confirm it from the SDK types.
+- **Refund:** No refund API exists, so refunds are manual (FR-78).
+  - Admin refund mailbox: `trananhquan1104.work@gmail.com`, stored as configuration rather than hard-coded.
+- **Sandbox:** None exists. Testing runs on production with small real amounts (the minimum top-up is 10,000 VNĐ), and those test payments are refunded manually.
+- **SDK:** `@payos/node` (needs Node 20+): `paymentRequests.create`, `webhooks.verify`, `webhooks.confirm`.
+- **Existing code affected:** The manual flow in `apps/backend/src/modules/economy/application/top-up.service.ts` uses VietQR instructions and Admin approve/reject. FR-79 retires it.
+- **Redirect handling:** `returnUrl` query parameters are never treated as payment proof (NFR-31). `/wallet` reads the top-up status from the backend.
