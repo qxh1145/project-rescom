@@ -18,4 +18,5 @@ export interface AdminCapabilityPort {
    * serialises with the financial decision.
    */
   findCurrentCapability(userId: string): Promise<ActorCapability | null>;
+  listActiveAdminIds(): Promise<string[]>;
 }

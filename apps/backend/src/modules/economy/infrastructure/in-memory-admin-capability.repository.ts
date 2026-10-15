@@ -19,7 +19,16 @@ export class InMemoryAdminCapabilityRepository implements AdminCapabilityPort {
     private readonly findUser: (
       userId: string,
     ) => Promise<CapabilitySourceUser | null>,
+    private readonly listUsers?: () => Promise<CapabilitySourceUser[]>,
   ) {}
+
+  async listActiveAdminIds(): Promise<string[]> {
+    return this.listUsers
+      ? (await this.listUsers())
+          .filter((user) => user.role === 'ADMIN' && user.status === 'ACTIVE')
+          .map((user) => user.id)
+      : [];
+  }
 
   async findCurrentCapability(userId: string): Promise<ActorCapability | null> {
     const user = await this.findUser(userId);

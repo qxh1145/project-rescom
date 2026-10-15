@@ -52,6 +52,7 @@ describe('Notification contracts (Story 9.6, FR-57)', () => {
         'ACCOUNT_UNLOCKED',
         'VOUCHER_EXPIRING',
         'CODE_ISSUE_RESOLVED',
+        'TOPUP_CANCELLED',
       ]);
     });
 

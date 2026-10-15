@@ -186,6 +186,7 @@ enum NotificationType {
   ACCOUNT_UNLOCKED
   VOUCHER_EXPIRING
   CODE_ISSUE_RESOLVED
+  TOPUP_CANCELLED
 }
 
 /// Story IR.4b B5: one email delivery attempt per notification. Mirrors
@@ -1018,6 +1019,7 @@ model TopUpRequest {
   channel                TopUpChannel @default(MANUAL)
   orderCode              Int?         @unique @map("order_code")
   paymentLinkId          String?      @unique @map("payment_link_id")
+  checkoutUrl            String?      @map("checkout_url")
   expiresAt              DateTime?    @map("expires_at")
   cancelledAt            DateTime?    @map("cancelled_at")
   pointsCredited         Int?         @map("points_credited")

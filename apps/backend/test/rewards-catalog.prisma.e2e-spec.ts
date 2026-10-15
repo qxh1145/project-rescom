@@ -216,6 +216,7 @@ describe('Rewards catalog on PostgreSQL', () => {
           flashSales: new PrismaFlashSaleReadRepository(prisma),
           redemptions: new PrismaRedemptionRepository(prisma),
           adminCapability: {
+            listActiveAdminIds: async () => [],
             findCurrentCapability: async (id: string) => ({
               userId: id,
               role: 'ADMIN',

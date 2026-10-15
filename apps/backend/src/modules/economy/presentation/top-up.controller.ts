@@ -21,6 +21,7 @@ import { AuthenticatedUser } from '../../auth/presentation/types/authenticated-r
 import { JsonOnlyGuard } from '../../../common/http/json-only.guard';
 import { ZodValidationPipe } from '../../../common/http/zod-validation.pipe';
 import { createSuccessEnvelope } from '../../../common/http/response.envelope';
+import { ManualCheckoutEnabledGuard } from './payos-checkout-enabled.guard';
 import { TopUpService } from '../application/top-up.service';
 
 /**
@@ -35,7 +36,7 @@ export class TopUpController {
   /** Creates a "Pending Payment" request with bank info and transfer syntax. */
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @UseGuards(CsrfGuard, JsonOnlyGuard)
+  @UseGuards(ManualCheckoutEnabledGuard, CsrfGuard, JsonOnlyGuard)
   async create(
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(createTopUpRequestSchema))

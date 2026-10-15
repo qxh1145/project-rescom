@@ -16,6 +16,14 @@ import {
 export class PrismaAdminCapabilityRepository implements AdminCapabilityPort {
   constructor(private readonly prisma: PrismaService) {}
 
+  async listActiveAdminIds(): Promise<string[]> {
+    const rows = await this.prisma.user.findMany({
+      where: { role: 'ADMIN', status: 'ACTIVE' },
+      select: { id: true },
+    });
+    return rows.map((row) => row.id);
+  }
+
   async findCurrentCapability(userId: string): Promise<ActorCapability | null> {
     return runInTransaction(this.prisma, async (tx) => {
       const rows = await tx.$queryRaw<

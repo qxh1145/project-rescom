@@ -12,6 +12,21 @@ import { ACCOUNT_FUNDING_PORT } from '../rewards/application/ports/account-stand
 import { PrismaAccountFundingReader } from './infrastructure/prisma-account-funding.reader';
 import { PrismaWalletBalanceReader } from './infrastructure/prisma-wallet-balance.reader';
 import { PrismaModule } from '../../common/database/prisma.module';
+import { PayosAvailability } from './application/payos-availability';
+import { PayosTopUpService } from './application/payos-top-up.service';
+import { TopUpNotificationHandler } from './application/top-up-notification.handler';
+import {
+  PAYOS_TOP_UP_REPOSITORY_PORT,
+  PayosTopUpRepositoryPort,
+} from './application/ports/payos-top-up-repository.port';
+import { PaymentProviderPort } from './application/ports/payment-provider.port';
+import { PrismaPayosTopUpRepository } from './infrastructure/prisma-payos-top-up.repository';
+import { PayosEnableGuard } from './infrastructure/payos-enable-guard';
+import { PayosTopUpController } from './presentation/payos-top-up.controller';
+import {
+  PayosCheckoutEnabledGuard,
+  ManualCheckoutEnabledGuard,
+} from './presentation/payos-checkout-enabled.guard';
 import { CLOCK, Clock } from '../../common/time/clock';
 import { EconomySchedulerRegistrar } from './infrastructure/economy-scheduler.registrar';
 import { AuthModule } from '../auth/auth.module';
@@ -72,6 +87,7 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     LedgerController,
     StarterPointsController,
     TopUpController,
+    PayosTopUpController,
     AdminTopUpController,
   ],
   providers: [
@@ -127,6 +143,37 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     // Story IR.2b: pending-release + starter-expiry jobs and the
     // InternalRewardRequested Outbox handler.
     EconomySchedulerRegistrar,
+    { provide: PayosAvailability, useValue: new PayosAvailability() },
+    PayosEnableGuard,
+    PayosCheckoutEnabledGuard,
+    ManualCheckoutEnabledGuard,
+    {
+      provide: PAYOS_TOP_UP_REPOSITORY_PORT,
+      useClass: PrismaPayosTopUpRepository,
+    },
+    {
+      provide: PayosTopUpService,
+      useFactory: (
+        repository: PayosTopUpRepositoryPort,
+        provider: PaymentProviderPort,
+        env: EnvService,
+      ) =>
+        new PayosTopUpService({
+          repository,
+          provider,
+          appBaseUrl: env.emailAppBaseUrl,
+          limit: env.payosCheckoutLimit,
+          windowSeconds: env.payosCheckoutWindowSeconds,
+          logger: new Logger(PayosTopUpService.name),
+        }),
+      inject: [PAYOS_TOP_UP_REPOSITORY_PORT, PAYMENT_PROVIDER_PORT, EnvService],
+    },
+    {
+      provide: TopUpNotificationHandler,
+      useFactory: (publisher: NotificationPublisherPort) =>
+        new TopUpNotificationHandler(publisher),
+      inject: [NOTIFICATION_PUBLISHER_PORT],
+    },
     {
       // Epic 6 review P2: server-side dispute check for Pending releases.
       // Phase 1 has no dispute cases; Story 8.5 must bind a real query.

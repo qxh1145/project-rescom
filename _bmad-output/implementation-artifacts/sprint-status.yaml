@@ -153,8 +153,8 @@ development_status:
   epic-13: in-progress
   13-1-top-up-schema-for-payos: done  # created 2026-10-15; schema only, refund entity stays in 13.10
   13-2-payment-provider-port-payos-adapter: done  # created 2026-10-15; port+adapter+fake+config only, no caller
-  13-3-top-up-checkout-user-cancel-enable-guard: backlog
-  13-4-payment-webhook-automatic-credit: backlog
+  13-3-top-up-checkout-user-cancel-enable-guard: done  # created 2026-10-15; code review 2026-10-15 (3 patches applied); checkout+cancel+enable guard+pre-deploy script; first ECONOMY_TOPUP_STATUS_CHANGED producer
+  13-4-payment-webhook-automatic-credit: ready-for-dev  # created 2026-10-15; webhook+GET-verified CreditTopUp+mismatch+late payment; builds on unmerged 13.3
   13-5-reconciliation-job-alerts-admin-recheck: backlog
   13-6-live-payos-probe-in-production: backlog
   13-7-wallet-top-up-screens: backlog
