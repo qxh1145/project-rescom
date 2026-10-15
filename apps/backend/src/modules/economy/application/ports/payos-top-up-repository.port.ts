@@ -84,5 +84,10 @@ export interface PayosTopUpRepositoryPort {
     event: TopUpStatusEvent,
   ): Promise<{ changed: boolean }>;
   findOwned(id: string, userId: string): Promise<PayosTopUp | null>;
+  listByUser(
+    userId: string,
+    options: { limit: number; offset: number },
+  ): Promise<{ items: PayosTopUp[]; total: number }>;
   countManualPending(): Promise<number>;
 }
+

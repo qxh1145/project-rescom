@@ -151,7 +151,23 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
     const row = this.rows.get(id);
     return row?.userId === userId ? row : null;
   }
+  async listByUser(
+    userId: string,
+    options: { limit: number; offset: number },
+  ): Promise<{ items: PayosTopUp[]; total: number }> {
+    const userRows = [...this.rows.values()]
+      .filter((row) => row.userId === userId)
+      .sort((a, b) => {
+        const timeDiff = b.createdAt.getTime() - a.createdAt.getTime();
+        if (timeDiff !== 0) return timeDiff;
+        return b.id.localeCompare(a.id);
+      });
+    const total = userRows.length;
+    const items = userRows.slice(options.offset, options.offset + options.limit);
+    return { items, total };
+  }
   async countManualPending(): Promise<number> {
     return this.manualPending;
   }
 }
+

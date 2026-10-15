@@ -390,6 +390,7 @@ export const MOCK_WALLETS: Record<string, WalletBalanceDto> = {
     escrow: 0,
     frozen: 100,
     integrityHold: 0,
+    refundHold: 0,
     total: 100,
   },
   "user-active-002": {
@@ -398,6 +399,7 @@ export const MOCK_WALLETS: Record<string, WalletBalanceDto> = {
     escrow: 0,
     frozen: 0,
     integrityHold: 0,
+    refundHold: 0,
     total: 135,
   },
   "user-onboarding-003": {
@@ -406,6 +408,7 @@ export const MOCK_WALLETS: Record<string, WalletBalanceDto> = {
     escrow: 0,
     frozen: 100,
     integrityHold: 0,
+    refundHold: 0,
     total: 100,
   },
 };

@@ -288,9 +288,32 @@ export class PrismaPayosTopUpRepository implements PayosTopUpRepositoryPort {
     });
     return row ? toTopUp(row) : null;
   }
+  async listByUser(
+    userId: string,
+    options: { limit: number; offset: number },
+  ): Promise<{ items: PayosTopUp[]; total: number }> {
+    const where = {
+      userId,
+      channel: 'PAYOS' as const,
+    };
+    const [rows, total] = await Promise.all([
+      this.prisma.topUpRequest.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: options.limit,
+        skip: options.offset,
+      }),
+      this.prisma.topUpRequest.count({ where }),
+    ]);
+    return {
+      items: rows.map(toTopUp),
+      total,
+    };
+  }
   countManualPending(): Promise<number> {
     return this.prisma.topUpRequest.count({
       where: { channel: 'MANUAL', status: 'PENDING' },
     });
   }
 }
+

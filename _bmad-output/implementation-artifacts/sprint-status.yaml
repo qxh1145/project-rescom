@@ -157,7 +157,7 @@ development_status:
   13-4-payment-webhook-automatic-credit: done  # created 2026-10-15; refreshed vs 13.3 (merged PR #38 a269ea4); webhook+GET-verified CreditTopUp+mismatch+late payment
   13-5-reconciliation-job-alerts-admin-recheck: backlog
   13-6-live-payos-probe-in-production: backlog
-  13-7-wallet-top-up-screens: ready-for-dev  # created 2026-10-15; FE + 2 contract adds (PayOS history list, wallet refundHold default 0); needs 13.3 merged; expired notification waits on 13.5
+  13-7-wallet-top-up-screens: done
   13-8-admin-top-up-console: backlog
   13-9-amount-mismatch-resolution: backlog
   13-10-refund-request-refund-hold-withdrawal: backlog

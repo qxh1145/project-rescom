@@ -734,6 +734,7 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
         escrow: 0,
         frozen: 0,
         integrityHold: 0,
+        refundHold: 0,
         total: 0,
       });
 

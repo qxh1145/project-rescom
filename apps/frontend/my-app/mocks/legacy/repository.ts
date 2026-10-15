@@ -608,6 +608,7 @@ class MockRepository {
       escrow: 0,
       frozen: 100,
       integrityHold: 0,
+      refundHold: 0,
       total: 100,
     };
     state.wallets[newUserId] = initialWallet;
