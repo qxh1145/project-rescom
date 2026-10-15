@@ -3,7 +3,7 @@ baseline_commit: 1e7b6d68480231ca34533967e3400865f0537904
 ---
 # Story 12.1: Rewards Contracts & MSW Mock Domain
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -76,6 +76,24 @@ Source: `_bmad-output/planning-artifacts/epics.md` § Epic 12 → Story 12.1 (FR
   - [x] 10.2 `cd apps/frontend/my-app && npm test && npm run typecheck && npm run lint`.
   - [x] 10.3 Backend still compiles against the new exports: `npm --prefix apps/backend run typecheck`. No backend source change is expected.
   - [x] 10.4 Manual: run `npm run dev` with `NEXT_PUBLIC_API_MOCKING=enabled`, sign in as the activated demo user, and hit the routes from the browser console (or a scratch `fetch`). Run them once per `?msw=rewards-*` scenario and confirm that `/economy/wallet` shows the debited balance after a success. **No UI is built in this story.**
+
+### Review Findings
+
+_Code review 2026-10-15 on HEAD `74dc210` (code since evolved through 12.2–12.13; only live defects in 12.1 scope are patches). Blind Hunter, Edge Case Hunter, Acceptance Auditor; severity by lead after reading code._
+
+- [x] [Review][Patch] (medium) Quote is not single-use in the mock: a second redeem of the same `quoteId` with a new Idempotency-Key issues another ticket, takes another code and debits again. Backend 12.8 rejects with 409 `QUOTE_ALREADY_REDEEMED`; mirror it (reject when a SUCCEEDED redemption already used the quote). [apps/frontend/my-app/mocks/data/rewards.ts:277]
+- [x] [Review][Patch] (medium) `forcedCode` is derived for every `rewards-*` scenario except `redeem-lost`, so the 12.12 `rewards-resolve-*` scenarios force `SOLD_OUT` on user redeem (via `forcedError` default) and write a FAILED history row. Force only codes in `REDEMPTION_ERROR_CODES`. [apps/frontend/my-app/mocks/handlers/rewards.ts:112]
+- [x] [Review][Patch] (low) Schema refines order ISO instants by string compare; mixed fractional precision (`…:00Z` vs `…:00.000Z`) orders wrongly. Use `Date.parse`. [packages/schemas/src/rewards/redemption.schema.ts:12, voucher-catalog.schema.ts:36, rewards-admin.schema.ts:24]
+- [x] [Review][Patch] (low) AC5 / Task 2.2, 9.1, 9.3 coverage gaps: no negative case for `flashSaleItemSchema` (flashPoints >= basePoints, wrong discount), `voucherTicketSchema` (usedAt set while not USED), `redemptionHistoryEntrySchema` (SUCCEEDED positive points, REFUNDED with RDM ref), `codeIssueReportSchema` (REPLACED without code; OPEN/REJECTED with resolution), unknown `accountNotEligibleReason`, whitespace `q`, 7-day code-expiry boundary; mock tests miss flash `startsAt` boundary, `ticketStatus` at exactly 7 days, points-range/brand filters and sold-out-last sort, non-PAUSED `VOUCHER_UNAVAILABLE`. [packages/schemas/src/rewards/*.spec.ts, apps/frontend/my-app/tests/rewards-mock.test.mjs]
+- [x] [Review][Defer] Mock does not enforce `perUserCap`, daily/per-voucher limits or `NO_RECENT_SURVEY`; only reachable via forced scenario (backend 12.8 enforces). [mocks/data/rewards-rules.ts:53] — deferred, pre-existing
+- [x] [Review][Defer] Ended Flash quota returns to stock only when an admin endpoint settles; user catalog can show SOLD_OUT meanwhile (12.6 lazy settle). [mocks/data/rewards.ts:510] — deferred, pre-existing
+- [x] [Review][Defer] `discountPercent` rounds to 100 for tiny flash prices (e.g. 1 vs 300), exceeding schema max 99; no lower-bound guard in `flashConflicts`. [rewards-rules.ts:22] — deferred, pre-existing
+- [x] [Review][Defer] `RDM-yymm` reference month uses UTC, not Vietnam time. [mocks/data/rewards.ts:333] — deferred, pre-existing
+- [x] [Review][Defer] Schema cross-field invariants missing (FLASH source ↔ `flash`, `stockRemaining <= stockTotal`, result ↔ ticket ids/points, non-FLASH quote with `flashSaleItemId`; `adminCodeIssueSchema` status ↔ resolution coherence). — deferred, pre-existing
+- [x] [Review][Defer] 12.5 admin mock gaps: shared-code create drops `sharedCode` (voucher ACTIVE in admin but SOLD_OUT to users; schema doesn't cross-check `isSharedCode`/`sharedCode`); price change not checked against existing Flash prices; code import ignores already-issued codes; update cannot clear `terms`/`imageUrl`; admin redemptions drop REFUNDED rows; admin-created voucher has `description`/`whereToUse` `""` failing `voucherDetailSchema` min(1); `adminVoucherStatus` ACTIVE before `redeemStartsAt`; flash quota not checked against `codesAvailable`. [mocks/data/rewards.ts:420-500, rewards-rules.ts:160-235] — deferred, pre-existing (Story 12.5/12.6 scope)
+- [x] [Review][Defer] 12.12 refund mock skips wallet credit when wallet missing while marking REFUNDED. [mocks/data/rewards.ts:706] — deferred, pre-existing
+
+_Dismissed (6): QUOTE_NOT_FOUND/IDEMPOTENCY_KEY_CONFLICT are generic API errors, not redemption payloads; expired quote → PRICE_CHANGED is by design (client re-quotes); forced failure replayed under same key is correct idempotency; cross-user reference collision (mock-only, negligible); FS code regex `\d{6}` is intentional later change; wallet debit as separate collection update is acceptable._
 
 ## Dev Notes
 
@@ -331,3 +349,12 @@ Brands (6): `highlands` Highlands Coffee, `phuc-long` Phúc Long, `kfc` KFC, `lo
 - `apps/frontend/my-app/tests/contract-callsites.test.mjs` (exempt uncalled rewards routes)
 - `apps/frontend/my-app/tests/pilot-scope.test.mjs` (exempt uncalled rewards routes)
 - `_bmad-output/implementation-artifacts/12-1-rewards-contracts-msw-mock-domain.md` (task status and records)
+
+### Code review patch pass 2026-10-15
+
+- Mock quote is single-use: success stamps `redeemedAt`; a new key on a redeemed quote returns 409 `QUOTE_ALREADY_REDEEMED` (mirrors backend 12.8). Replay with the original key still returns the first result.
+- Redeem handler forces only codes in `REDEMPTION_ERROR_CODES`; `rewards-resolve-*` and `rewards-redeem-lost` no longer force a user failure.
+- Schema refines compare instants with `Date.parse` (`flashSaleSchema`, `redemptionQuoteSchema`, `adminVoucherInputSchema`).
+- Tests: negative case per refinement, mixed-precision instants, 7-day code-expiry boundary, flash `startsAt` boundary, `ticketStatus` at exactly 7 days, points/brand filters, sold-out-last sort, HIDDEN/EXPIRED `VOUCHER_UNAVAILABLE`, quote single-use, handler-level scenario test (fails without the fix).
+- Verification: frontend `npm test` 910/910, `tsc --noEmit` 0, lint 0 errors (1 known warning); schemas jest 46 suites / 645; backend rewards + http jest 11 suites / 224.
+- Status → done.

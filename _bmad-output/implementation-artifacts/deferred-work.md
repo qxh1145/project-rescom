@@ -437,3 +437,13 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 
 - Admin code-issue pagination (`CodeIssuesScreen.tsx`) renders one button per page with no windowing; add first/last/current±2 windowing when the ALL/RESOLVED backlog exceeds ~10 pages.
 - `useApiQuery` drops data on key change, so tab/page switches on the code-issue queue blank the list, pagination and tab counts until the new page loads (pre-existing hook behaviour, shared by other admin screens).
+
+## Deferred from: code review of 12-1-rewards-contracts-msw-mock-domain (2026-10-15)
+
+- Rewards mock does not enforce `perUserCap`, daily/per-voucher limits or `NO_RECENT_SURVEY` (backend 12.8 does); only reachable via forced scenarios.
+- Ended Flash quota returns to stock only when an admin Flash endpoint settles; user catalog may show SOLD_OUT until then.
+- `discountPercent` can round to 100 for tiny flash prices, exceeding schema max 99; `flashConflicts` has no lower-bound guard.
+- Mock `RDM-yymm` reference month uses UTC instead of Vietnam time.
+- Rewards schemas lack cross-field invariants (FLASH source ↔ flash, stockRemaining <= stockTotal, result ↔ ticket, non-FLASH quote with flashSaleItemId, adminCodeIssueSchema status ↔ resolution).
+- Admin voucher mock (12.5): shared-code create drops `sharedCode`; price change unchecked vs Flash prices; code import ignores issued codes; update cannot clear terms/imageUrl; admin redemptions drop REFUNDED rows; admin-created voucher `description`/`whereToUse` "" fails voucherDetailSchema; adminVoucherStatus ACTIVE before redeemStartsAt; flash quota unchecked vs codesAvailable.
+- Code-issue refund mock (12.12) skips wallet credit when the wallet is missing but still marks REFUNDED.

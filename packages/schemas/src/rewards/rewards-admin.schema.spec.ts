@@ -83,3 +83,14 @@ describe("admin rewards contracts (Story 12.1, FR-73)", () => {
     });
   });
 });
+describe("admin voucher input review gaps (Story 12.1, AC5)", () => {
+  const issuePaths = (v: object) => adminVoucherInputSchema.safeParse({ ...input, ...v }).error?.issues.map(i => i.path.join(".")) ?? [];
+  it("compares redeem window by instant even with mixed precision", () => {
+    expect(issuePaths({ redeemStartsAt: "2026-10-01T00:00:00Z", redeemEndsAt: "2026-10-01T00:00:00.000Z" })).toContain("redeemEndsAt");
+    expect(issuePaths({ redeemStartsAt: "2026-10-01T00:00:00Z", redeemEndsAt: "2026-10-01T00:00:00.500Z" })).not.toContain("redeemEndsAt");
+  });
+  it("requires codeExpiresAt >= redeemEndsAt + 7 days (boundary)", () => {
+    expect(adminVoucherInputSchema.safeParse({ ...input, codeExpiresAt: "2026-10-09T00:00:00.000Z" }).success).toBe(true);
+    expect(issuePaths({ codeExpiresAt: "2026-10-08T23:59:59.999Z" })).toContain("codeExpiresAt");
+  });
+});

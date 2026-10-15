@@ -33,7 +33,7 @@ export const voucherDetailResponseSchema = z.object({ voucher: voucherDetailSche
 export const flashSaleItemStateSchema = z.enum(["UPCOMING", "ACTIVE", "ENDED", "SOLD_OUT"]);
 // ASSUMED API CONTRACT (Story 12.2, additive)
 export const flashSaleItemSchema = z.object({ id, voucherId: id, voucherTitle: z.string().min(1), brand: voucherBrandSchema, category: voucherCategorySchema, valueVnd: z.number().int().positive(), flashPoints: z.number().int().positive(), basePoints: z.number().int().positive(), discountPercent: z.number().int().min(0).max(99), quota: z.number().int().positive(), sold: count, perUserCap: z.number().int().min(1), state: flashSaleItemStateSchema }).refine(v => v.flashPoints < v.basePoints && v.sold <= v.quota && v.discountPercent === voucherDiscountPercent(v.flashPoints, v.basePoints));
-export const flashSaleSchema = z.object({ id, code: z.string().regex(/^FS-\d{6}-[A-Z]$/), startsAt: instant, endsAt: instant, items: z.array(flashSaleItemSchema).min(1) }).refine(v => v.endsAt > v.startsAt, { path: ["endsAt"] }).refine(v => new Set(v.items.map(i => i.voucherId)).size === v.items.length, { path: ["items"] });
+export const flashSaleSchema = z.object({ id, code: z.string().regex(/^FS-\d{6}-[A-Z]$/), startsAt: instant, endsAt: instant, items: z.array(flashSaleItemSchema).min(1) }).refine(v => Date.parse(v.endsAt) > Date.parse(v.startsAt), { path: ["endsAt"] }).refine(v => new Set(v.items.map(i => i.voucherId)).size === v.items.length, { path: ["items"] });
 export const flashSaleListSchema = z.object({ items: z.array(flashSaleSchema), serverTime: instant });
 
 export type VoucherCategory = z.infer<typeof voucherCategorySchema>;

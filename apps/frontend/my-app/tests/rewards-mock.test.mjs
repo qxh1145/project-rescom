@@ -153,3 +153,62 @@ test('(Story 12.1, AC4) forced errors: real details from state, failure leaves c
     if (code === 'INSUFFICIENT_POINTS') assert.equal(result.details.available, 10);
   });
 });
+
+test('(Story 12.1 review) quote is single-use: new key on a redeemed quote → 409 QUOTE_ALREADY_REDEEMED, state unchanged', () => {
+  const user = 'test-quote-single-use';
+  const viewer = { available: 300 };
+  const voucherId = mock.catalogOf(user, viewer).items.find(v => v.price.points === 120).id;
+  const quoteId = mock.createVoucherQuote(user, voucherId, viewer).result.quoteId;
+  assert.equal(mock.redeemVoucherQuote(user, quoteId, viewer, Date.now(), 'key-A').ok, true);
+  const stock = mock.voucherOf(voucherId, viewer).voucher.stockRemaining;
+  const tickets = mock.rewardsState.get().users[user].tickets.length;
+  const second = mock.redeemVoucherQuote(user, quoteId, viewer, Date.now(), 'key-B');
+  assert.deepEqual([second.ok, second.status, second.code], [false, 409, 'QUOTE_ALREADY_REDEEMED']);
+  assert.equal(mock.voucherOf(voucherId, viewer).voucher.stockRemaining, stock);
+  assert.equal(mock.rewardsState.get().users[user].tickets.length, tickets);
+  const replay = mock.redeemVoucherQuote(user, quoteId, viewer, Date.now(), 'key-A');
+  assert.equal(replay.ok, true);
+  assert.equal(replay.replayed, true);
+});
+
+test('(Story 12.1 review) flash window includes startsAt, excludes startsAt - 1ms', () => {
+  const start = Date.parse(flash[0].startsAt);
+  assert.equal(effectiveVoucherPrice(voucher, flash, start).price.source, 'FLASH');
+  assert.equal(effectiveVoucherPrice(voucher, flash, start - 1).price.source, 'BASE');
+});
+
+test('(Story 12.1 review) ticketStatus: exactly 7 days left is EXPIRING, 7 days + 1ms is UNUSED', () => {
+  assert.equal(ticketStatus({ usedAt: null, expiresAt: new Date(now + 7 * day).toISOString() }, now), 'EXPIRING');
+  assert.equal(ticketStatus({ usedAt: null, expiresAt: new Date(now + 7 * day + 1).toISOString() }, now), 'UNUSED');
+});
+
+test('(Story 12.1 review) decideRedemption: hidden or expired voucher → VOUCHER_UNAVAILABLE with status', () => {
+  const hidden = decideRedemption({ ...voucher, isVisible: false }, flash, quote, 300, now);
+  assert.equal(hidden.code, 'VOUCHER_UNAVAILABLE');
+  assert.equal(hidden.details.status, 'HIDDEN');
+  const expired = decideRedemption({ ...voucher, redeemEndsAt: new Date(now).toISOString() }, flash, quote, 300, now);
+  assert.equal(expired.code, 'VOUCHER_UNAVAILABLE');
+  assert.equal(expired.details.status, 'EXPIRED');
+});
+
+test('(Story 12.1 review) catalog: points range, brand multi-select, sold-out/expired sorted last', () => {
+  const viewer = { available: 186, pending: 18 };
+  const all = mock.catalogOf('user-active-002', viewer).items;
+  const ranged = mock.catalogOf('user-active-002', viewer, { minPoints: 100, maxPoints: 150 });
+  assert.ok(ranged.total > 0 && ranged.total < all.length);
+  assert.ok(ranged.items.every(v => v.price.points >= 100 && v.price.points <= 150));
+  assert.equal(ranged.total, all.filter(v => v.price.points >= 100 && v.price.points <= 150).length);
+  const brands = [...new Set(all.map(v => v.brand.id))].slice(0, 2);
+  const byBrand = mock.catalogOf('user-active-002', viewer, { brand: brands });
+  assert.equal(byBrand.total, all.filter(v => brands.includes(v.brand.id)).length);
+  assert.ok(byBrand.items.every(v => brands.includes(v.brand.id)));
+  const snapshot = structuredClone(mock.rewardsCatalog.get());
+  try {
+    mock.rewardsCatalog.update(d => { Object.assign(d.vouchers.find(v => v.id === all[0].id), { stockRemaining: 0 }); });
+    mock.rewardsCatalog.update(d => { Object.assign(d.vouchers.find(v => v.id === all[1].id), { redeemEndsAt: new Date(Date.now() - 1000).toISOString() }); });
+    const sorted = mock.catalogOf('user-active-002', viewer, { sort: 'POINTS_ASC' }).items;
+    const rank = v => (v.status === 'AVAILABLE' || v.status === 'PAUSED' ? 0 : 1);
+    assert.ok(sorted.some(v => rank(v) === 1));
+    assert.deepEqual(sorted.map(rank), [...sorted.map(rank)].sort());
+  } finally { mock.rewardsCatalog.set(snapshot); }
+});

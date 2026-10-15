@@ -1,6 +1,7 @@
 import { HttpResponse, http, type RequestHandler } from "msw";
 import {
   IDEMPOTENCY_KEY_HEADER,
+  REDEMPTION_ERROR_CODES,
   createCodeIssueReportSchema,
   createRedemptionQuoteSchema,
   idempotencyKeySchema,
@@ -109,9 +110,8 @@ export const rewardHandlers: RequestHandler[] = [
     const key = idempotencyKeySchema.safeParse(request.headers.get(IDEMPOTENCY_KEY_HEADER));
     if (!parsed.success || !key.success) return fail(400, "VALIDATION_ERROR", "Invalid redemption request.");
     const scenario = getActiveScenario();
-    const forcedCode = scenario.startsWith("rewards-") && scenario !== "rewards-redeem-lost"
-      ? scenario.slice("rewards-".length).replaceAll("-", "_").toUpperCase()
-      : undefined;
+    const scenarioCode = scenario.startsWith("rewards-") ? scenario.slice("rewards-".length).replaceAll("-", "_").toUpperCase() : "";
+    const forcedCode = (REDEMPTION_ERROR_CODES as readonly string[]).includes(scenarioCode) ? scenarioCode : undefined;
     const outcome = redeemVoucherQuote(user.id, parsed.data.quoteId, viewerOf(user), Date.now(), key.data, forcedCode);
     if (outcome.ok && !outcome.replayed) {
       updateWallet(user, wallet => { wallet.available -= outcome.result.pointsSpent; });
