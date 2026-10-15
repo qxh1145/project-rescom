@@ -26,6 +26,7 @@ export const PILOT_HIDDEN_ROUTES: ReadonlyArray<{ route: string; guard: string }
   { route: "/admin/flash-sales", guard: "(signed-in)/(admin)/admin/flash-sales/page.tsx" },
   { route: "/admin/flash-sales/new", guard: "(signed-in)/(admin)/admin/flash-sales/new/page.tsx" },
   { route: "/admin/flash-sales/[id]/edit", guard: "(signed-in)/(admin)/admin/flash-sales/[id]/edit/page.tsx" },
+  { route: "/admin/code-issues", guard: "(signed-in)/(admin)/admin/code-issues/page.tsx" },
   { route: "/admin/voucher-stats", guard: "(signed-in)/(admin)/admin/voucher-stats/page.tsx" },
   { route: "/forms/new/builder/ai", guard: "(signed-in)/(focus)/forms/new/builder/ai/page.tsx" },
   { route: "/forms/[id]/builder/ai", guard: "(signed-in)/(focus)/forms/[id]/builder/ai/page.tsx" },
