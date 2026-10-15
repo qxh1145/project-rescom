@@ -82,6 +82,26 @@ describe('Prisma migration chain on PostgreSQL', () => {
     return rows[0]?.def;
   }
 
+  it('creates PayOS sequence, constraints and one-processing index (13.1)', async () => {
+    if (!dbAvailable) return;
+    const sequence = await prisma.$queryRaw<Array<{ start_value: bigint }>>`
+      SELECT start_value FROM pg_sequences WHERE schemaname = current_schema()
+        AND sequencename = 'top_up_order_code_seq'`;
+    expect(sequence[0]?.start_value).toBe(BigInt(1000000000));
+    await expect(
+      indexDef('top_up_requests_one_processing_per_user'),
+    ).resolves.toMatch(/UNIQUE INDEX .* WHERE .*'PROCESSING'/);
+    await expect(
+      constraintDef('top_up_requests_payos_amount_check'),
+    ).resolves.toContain('amount_vnd');
+    await expect(
+      constraintDef('top_up_requests_channel_shape_check'),
+    ).resolves.toContain('order_code');
+    await expect(
+      constraintDef('top_up_requests_channel_status_check'),
+    ).resolves.toContain('PROCESSING');
+  });
+
   it('creates every table previously built only by db push', async () => {
     if (!dbAvailable) return;
     const rows = await prisma.$queryRaw<Array<{ table_name: string }>>`

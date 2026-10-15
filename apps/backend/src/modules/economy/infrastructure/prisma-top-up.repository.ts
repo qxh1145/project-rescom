@@ -38,7 +38,11 @@ export class PrismaTopUpRepository implements TopUpRepositoryPort {
           SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`top-up:${request.userId}`}))
         `;
         const pendingCount = await tx.topUpRequest.count({
-          where: { userId: request.userId, status: 'PENDING' },
+          where: {
+            userId: request.userId,
+            channel: 'MANUAL',
+            status: 'PENDING',
+          },
         });
         if (pendingCount >= maxPendingRequests) {
           return { outcome: 'LIMIT_REACHED' as const, pendingCount };
@@ -66,23 +70,27 @@ export class PrismaTopUpRepository implements TopUpRepositoryPort {
   }
 
   async findById(id: string): Promise<TopUpRequestEntity | null> {
-    const row = await this.prisma.topUpRequest.findUnique({ where: { id } });
+    const row = await this.prisma.topUpRequest.findFirst({
+      where: { id, channel: 'MANUAL' },
+    });
     return row ? toEntity(row) : null;
   }
 
   async findByIdForUpdate(id: string): Promise<TopUpRequestEntity | null> {
     return runInTransaction(this.prisma, async (tx) => {
       await tx.$queryRaw`
-        SELECT id FROM top_up_requests WHERE id = ${id}::uuid FOR UPDATE
+        SELECT id FROM top_up_requests WHERE id = ${id}::uuid AND channel = 'MANUAL' FOR UPDATE
       `;
-      const row = await tx.topUpRequest.findUnique({ where: { id } });
+      const row = await tx.topUpRequest.findFirst({
+        where: { id, channel: 'MANUAL' },
+      });
       return row ? toEntity(row) : null;
     });
   }
 
   async findReviewRecordById(id: string): Promise<TopUpReviewRecord | null> {
-    const row = await this.prisma.topUpRequest.findUnique({
-      where: { id },
+    const row = await this.prisma.topUpRequest.findFirst({
+      where: { id, channel: 'MANUAL' },
       include: { user: { select: { email: true } } },
     });
     return row ? toReviewRecord(row) : null;
@@ -93,6 +101,7 @@ export class PrismaTopUpRepository implements TopUpRepositoryPort {
     params: ListUserTopUpsParams,
   ): Promise<TopUpPage<TopUpRequestEntity>> {
     const where: Prisma.TopUpRequestWhereInput = {
+      channel: 'MANUAL',
       userId,
       ...(params.status ? { status: params.status } : {}),
     };
@@ -111,7 +120,10 @@ export class PrismaTopUpRepository implements TopUpRepositoryPort {
   async listForReview(
     params: ListTopUpsForReviewParams,
   ): Promise<TopUpPage<TopUpReviewRecord>> {
-    const where: Prisma.TopUpRequestWhereInput = { status: params.status };
+    const where: Prisma.TopUpRequestWhereInput = {
+      channel: 'MANUAL',
+      status: params.status,
+    };
     const direction = params.status === 'PENDING' ? 'asc' : 'desc';
     const [rows, total] = await Promise.all([
       this.prisma.topUpRequest.findMany({
@@ -133,7 +145,7 @@ export class PrismaTopUpRepository implements TopUpRepositoryPort {
     return runInTransaction(this.prisma, async (tx) => {
       // Conditional transition: only a row that is still PENDING moves.
       const transitioned = await tx.topUpRequest.updateMany({
-        where: { id: decision.id, status: 'PENDING' },
+        where: { id: decision.id, channel: 'MANUAL', status: 'PENDING' },
         data: {
           status: decision.status,
           adminId: decision.adminId,
@@ -173,13 +185,20 @@ export class PrismaTopUpRepository implements TopUpRepositoryPort {
 }
 
 function toEntity(row: TopUpRequestRow): TopUpRequestEntity {
+  if (
+    row.channel !== 'MANUAL' ||
+    row.transferReference === null ||
+    !['PENDING', 'APPROVED', 'REJECTED'].includes(row.status)
+  ) {
+    throw new Error('Expected manual top-up row');
+  }
   return new TopUpRequestEntity({
     id: row.id,
     userId: row.userId,
     amount: row.amount,
     amountVnd: row.amountVnd,
     transferReference: row.transferReference,
-    status: row.status,
+    status: row.status as TopUpRequestEntity['status'],
     adminId: row.adminId,
     journalId: row.journalId,
     rejectionReason: row.rejectionReason,
