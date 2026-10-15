@@ -70,9 +70,9 @@ test('pagination, tabs and overdue text', () => {
 test('pilot page guard and nav entry', () => {
  const base = path.join(root, 'app/(signed-in)/(admin)/admin/code-issues');
  const page = readFileSync(path.join(base, 'page.tsx'), 'utf8');
- assert.match(page, /if \(PILOT_BUILD\) notFound\(\);/);
+ assert.match(page, /if \(!REWARDS_ENABLED\) notFound\(\);/);
  const nav = readFileSync(path.join(root, 'components/layout/admin/admin-nav.ts'), 'utf8');
- assert.match(nav, /PILOT_BUILD \? \[\] : \[[\s\S]*?\/admin\/code-issues/);
+ assert.match(nav, /!REWARDS_ENABLED \? \[\] : \[[\s\S]*?\/admin\/code-issues/);
 });
 
 test('mock queue integrates with view labels and refund toast', async () => {

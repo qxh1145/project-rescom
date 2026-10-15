@@ -1,3 +1,4 @@
+import { RewardsEnabledGuard } from './rewards-enabled.guard';
 import {
   Body,
   Controller,
@@ -28,7 +29,7 @@ import { createSuccessEnvelope } from '../../../common/http/response.envelope';
 import { RewardsAdminCodeIssuesService } from '../application/rewards-admin-code-issues.service';
 
 @Controller(['admin/rewards', 'api/admin/rewards'])
-@UseGuards(SessionAuthGuard, RolesGuard)
+@UseGuards(RewardsEnabledGuard, SessionAuthGuard, RolesGuard)
 @Roles('ADMIN')
 export class AdminRewardsCodeIssuesController {
   constructor(private readonly service: RewardsAdminCodeIssuesService) {}

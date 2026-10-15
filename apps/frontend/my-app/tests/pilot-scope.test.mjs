@@ -20,7 +20,7 @@ import {
  */
 process.env.NEXT_PUBLIC_PILOT_BUILD = "true";
 
-const { PILOT_BUILD, PILOT_HIDDEN_ROUTES, assertPilotMockingDisabled } = await import("../lib/pilot-scope.ts");
+const { PILOT_BUILD, REWARDS_ENABLED, PILOT_HIDDEN_ROUTES, REWARDS_ROUTES, assertPilotMockingDisabled } = await import("../lib/pilot-scope.ts");
 const { ADMIN_NAV } = await import("../components/layout/admin/admin-nav.ts");
 const { DESKTOP_NAV, MOBILE_NAV } = await import("../components/layout/app/nav-items.ts");
 const { DISPUTE_TABS } = await import("../lib/admin/disputes-view.ts");
@@ -34,7 +34,7 @@ const routeRegex = (route) => new RegExp(`^${route.replace(/\[[^\]]+\]/g, "[^/]+
 const GUARD = ["PILOT_BUILD", ...Object.entries(scope).filter(([, value]) => value === false).map(([name]) => name)].join("|");
 /** Flags a pilot build forces off (`assertPilotMockingDisabled`): a service that tests one itself never calls its mock route in the pilot. */
 const SERVICE_SELF_GATE = /\b(?:isApiMockingEnabled|isHybridMocking)\b/;
-const hiddenDirs = PILOT_HIDDEN_ROUTES.map(({ guard }) => `app/${path.dirname(guard)}/`);
+const hiddenDirs = [...PILOT_HIDDEN_ROUTES, ...REWARDS_ROUTES].map(({ guard }) => `app/${path.dirname(guard)}/`);
 const inHiddenDir = (file) => hiddenDirs.some((dir) => file.startsWith(dir));
 
 test("the pilot flag is on and turns the results flags off", () => {
@@ -44,6 +44,17 @@ test("the pilot flag is on and turns the results flags off", () => {
   assert.equal(scope.RESPONSE_EXPORT_ENABLED, false);
   assert.equal(scope.PUBLISHER_DISPUTES_ENABLED, false);
   assert.equal(scope.VERSION_DETAIL_ENABLED, true);
+});
+
+test("every rewards route guards with REWARDS_ENABLED and notFound() inside its page/layout function", () => {
+  assert.ok(REWARDS_ROUTES.length > 0);
+  for (const { route, guard } of REWARDS_ROUTES) {
+    const code = stripComments(read(`app/${guard}`));
+    const at = code.indexOf("if (!REWARDS_ENABLED) notFound();");
+    assert.ok(at >= 0, `${route} (${guard}): no \`if (!REWARDS_ENABLED) notFound();\``);
+    assert.ok(enclosingFunctions(code, at).length > 0, `${route} (${guard}): the guard is outside the page/layout function`);
+    assert.match(code, /import \{[^}]*\bnotFound\b[^}]*\} from "next\/navigation"/, route);
+  }
 });
 
 test("every hidden route guards with PILOT_BUILD and notFound() inside its page/layout function", () => {
@@ -76,8 +87,11 @@ test("proxy.ts 404s exactly the hidden routes (IR.5 E1)", () => {
   assert.ok(all.includes("/api/:path*"));
   const matcher = all.filter((route) => route !== "/api/:path*");
   const normalize = (route) => route.replace(/\[[^\]]+\]|:[^/]+/g, ":p");
-  assert.deepEqual(matcher.map(normalize).sort(), PILOT_HIDDEN_ROUTES.map(({ route }) => normalize(route)).sort());
+  const allHidden = [...PILOT_HIDDEN_ROUTES, ...REWARDS_ROUTES];
+  assert.deepEqual(matcher.map(normalize).sort(), allHidden.map(({ route }) => normalize(route)).sort());
   assert.match(read("proxy.ts"), /if \(!PILOT_BUILD\) return NextResponse\.next\(\);/);
+  // Story 12.11: Rewards routes are hidden on REWARDS_ENABLED, before (and independent of) the PILOT_BUILD check.
+  assert.match(read("proxy.ts"), /if \(isRewardsRoute\) \{\s*if \(!REWARDS_ENABLED\) \{\s*return NextResponse\.rewrite/);
 });
 
 test("nav configs contain no hidden route", () => {
@@ -178,4 +192,16 @@ test("a pilot build refuses enabled/hybrid API mocking", () => {
   }
   assert.doesNotThrow(() => assertPilotMockingDisabled(true, "disabled"));
   assert.doesNotThrow(() => assertPilotMockingDisabled(false, "hybrid"));
+});
+
+test("REWARDS_ENABLED is false when env var is unset", () => {
+  assert.equal(REWARDS_ENABLED, false);
+});
+
+test("with REWARDS_ENABLED off, nav configs contain no Rewards route", () => {
+  const hrefs = [...ADMIN_NAV, ...DESKTOP_NAV, ...MOBILE_NAV].flatMap((item) => [item.href, ...(item.match ?? [])]);
+  for (const { route } of REWARDS_ROUTES) {
+    const re = routeRegex(route);
+    assert.deepEqual(hrefs.filter((href) => re.test(href)), [], route);
+  }
 });

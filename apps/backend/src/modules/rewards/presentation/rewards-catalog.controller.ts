@@ -1,3 +1,4 @@
+import { RewardsEnabledGuard } from './rewards-enabled.guard';
 import {
   Controller,
   Get,
@@ -19,7 +20,7 @@ import { ParseUUIDPipe } from '../../../common/http/parse-uuid.pipe';
 import { RewardsCatalogService } from '../application/rewards-catalog.service';
 
 @Controller(['rewards', 'api/rewards'])
-@UseGuards(SessionAuthGuard)
+@UseGuards(RewardsEnabledGuard, SessionAuthGuard)
 export class RewardsCatalogController {
   constructor(private readonly catalog: RewardsCatalogService) {}
 

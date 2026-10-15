@@ -89,7 +89,7 @@ test('source guards: service self-gates every function, no mocks/ imports in UI,
   const service = readFileSync(path.join(root, 'lib/admin/rewards-flash-service.ts'), 'utf8');
   const bodies = service.split(/^export function /m).slice(1);
   assert.ok(bodies.length >= 6);
-  for (const fn of bodies) assert.match(fn, /if \(PILOT_BUILD\) throw/, fn.split('(')[0]);
+  for (const fn of bodies) assert.match(fn, /if \(!REWARDS_ENABLED\) throw/, fn.split('(')[0]);
   const walk = dir => readdirSync(dir).flatMap(name => { const file = path.join(dir, name); return statSync(file).isDirectory() ? walk(file) : [file]; });
   const ui = [...walk(path.join(root, 'app/(signed-in)/(admin)/admin/flash-sales')), ...walk(path.join(root, 'app/(signed-in)/(admin)/admin/voucher-stats'))].filter(file => /\.tsx?$/.test(file));
   for (const file of ui) assert.doesNotMatch(readFileSync(file, 'utf8'), /from ["'][^"']*\/mocks\//, file);

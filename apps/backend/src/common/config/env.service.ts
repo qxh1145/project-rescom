@@ -73,6 +73,14 @@ export class EnvService {
     return this.config.SCHEDULER_ENABLED;
   }
 
+  get rewardsEnabled(): boolean {
+    return this.config.REWARDS_ENABLED;
+  }
+
+  get rewardsAccountingDecisionRef(): string | undefined {
+    return this.config.REWARDS_ACCOUNTING_DECISION_REF;
+  }
+
   get schedulerTickSeconds(): number {
     return this.config.SCHEDULER_TICK_SECONDS;
   }

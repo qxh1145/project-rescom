@@ -126,6 +126,7 @@ describe('Admin Rewards Flash Sales HTTP contracts (in memory)', () => {
       JWT_ACCESS_TTL_SECONDS: 900,
       BCRYPT_ROUNDS: 12,
       FRONTEND_ORIGINS: ORIGIN,
+      REWARDS_ENABLED: true,
     });
 
     const module = await Test.createTestingModule({ imports: [AppModule] })

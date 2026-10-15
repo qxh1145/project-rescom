@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { PILOT_BUILD } from "@/lib/pilot-scope";
+import { REWARDS_ENABLED } from "@/lib/pilot-scope";
 import { RewardsScreen } from "./components/RewardsScreen";
 
 export const metadata: Metadata = {
@@ -8,6 +8,6 @@ export const metadata: Metadata = {
 };
 
 export default function RewardsPage() {
-  if (PILOT_BUILD) notFound();
+  if (!REWARDS_ENABLED) notFound();
   return <RewardsScreen />;
 }

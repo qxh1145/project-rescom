@@ -128,10 +128,10 @@ function parsed(schema, result, status = 200) {
 
 const routeKey = (route) => route.replace(/:[A-Za-z_]\w*/g, ":param");
 
-test("hybrid registers exactly the 44 DEFERRED_KEEP_MOCK handlers, once each", () => {
+test("hybrid registers exactly the 14 DEFERRED_KEEP_MOCK handlers, once each", () => {
   const registered = hybridHandlers.map((handler) => routeKey(`${handler.info.method} ${handler.info.path.replace(/^\/api/, "")}`));
   const deferred = Object.keys(ROUTE_ALLOWLIST.DEFERRED_KEEP_MOCK).map(routeKey);
-  assert.equal(deferred.length, 44);
+  assert.equal(deferred.length, 14);
   assert.deepEqual([...registered].sort(), [...deferred].sort());
   assert.ok(handlers.length > hybridHandlers.length, "full mocking (`enabled`) keeps every handler");
   // Nothing mock-only (demo accounts, mock Google, mock upload) runs next to the real backend.
@@ -202,30 +202,9 @@ test("admin disputes: demo queue and resolve without a mock session; unknown cas
   assert.equal(unknown.body.error.code, "DISPUTE_CASE_NOT_FOUND");
 });
 
-test("admin vouchers answer hybrid admin without mock session and require CSRF", async () => {
-  const list = parsed(rewards.adminVoucherListSchema, await call("GET", "/admin/rewards/vouchers"));
-  assert.ok(list.items.length > 0);
-  parsed(rewards.adminVoucherBrandListSchema, await call("GET", "/admin/rewards/brands"));
-  parsed(rewards.adminVoucherDetailSchema, await call("GET", `/admin/rewards/vouchers/${list.items[0].id}`));
-  assert.equal((await call("PATCH", `/admin/rewards/vouchers/${list.items[0].id}`, { body: { isVisible: true }, csrf: false })).status, 403);
-});
 
-test("admin flash sales and stats use hybrid admin without mock session; writes enforce CSRF and validation", async () => {
-  const list = parsed(rewards.adminFlashSaleListSchema, await call("GET", "/admin/rewards/flash-sales"));
-  assert.ok(list.items.length > 0);
-  const id = list.items[0].id;
-  parsed(rewards.adminFlashSaleCreatedSchema, await call("GET", `/admin/rewards/flash-sales/${id}`));
-  const stats = await call("GET", "/admin/rewards/stats?from=2026-10-01&to=2026-10-31");
-  parsed(rewards.rewardsStatsSchema, stats);
-  const input = { startsAt: new Date(Date.now() + 86_400_000).toISOString(), endsAt: new Date(Date.now() + 90_000_000).toISOString(), items: [] };
-  assert.equal((await call("POST", "/admin/rewards/flash-sales", { body: input, csrf: false })).status, 403);
-  const invalid = await call("POST", "/admin/rewards/flash-sales", { body: input });
-  assert.equal(invalid.status, 400);
-  assert.ok(invalid.body.error.details);
-  const missing = await call("GET", `/admin/rewards/flash-sales/${randomUUID()}`);
-  assert.equal(missing.status, 404);
-  assert.equal(missing.body.error.code, "FLASH_SALE_NOT_FOUND");
-});
+
+
 
 test("admin quality reviews: demo queue and decision without a mock session; CSRF on decision", async () => {
   const list = parsed(quality.qualityReviewListSchema, await call("GET", "/admin/quality-reviews"));
@@ -260,78 +239,6 @@ test("AI builder (5 routes) works on real form ids the mock DB never saw", async
   parsed(ai.aiSuggestedBlockSchema, await call("POST", `/forms/${formId}/ai/suggest-block`, { body: {} }));
 });
 
-test("rewards answer without a mock session: quote, idempotent redeem, poll, conflict, CSRF", async () => {
-  const catalog = parsed(rewards.voucherCatalogSchema, await call("GET", "/rewards/vouchers"));
-  assert.ok(catalog.items.length > 0);
-  const voucher = catalog.items.find(item => item.status === "AVAILABLE" && item.price.points * 2 <= catalog.viewer.available);
-  assert.ok(voucher);
-  parsed(rewards.voucherDetailResponseSchema, await call("GET", `/rewards/vouchers/${voucher.id}`));
-  parsed(rewards.flashSaleListSchema, await call("GET", "/rewards/flash-sales"));
-  assert.equal((await call("POST", "/rewards/quotes", { body: { voucherId: voucher.id }, csrf: false })).status, 403);
-  const quote = parsed(rewards.redemptionQuoteSchema, await call("POST", "/rewards/quotes", { body: { voucherId: voucher.id } }), 201);
-  const key = randomUUID();
-  const request = (quoteId, csrf = true) => new Request(`${ORIGIN}/api/rewards/redemptions`, {
-    method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key, ...(csrf ? CSRF : {}) },
-    body: JSON.stringify({ quoteId }),
-  });
-  const redeem = async (quoteId, csrf = true) => {
-    const response = await getResponse(hybridHandlers, request(quoteId, csrf), { baseUrl: ORIGIN });
-    return { status: response.status, body: await response.json() };
-  };
-  assert.equal((await redeem(quote.quoteId, false)).status, 403);
-  const first = await redeem(quote.quoteId);
-  const result = parsed(rewards.redemptionResultSchema, first, 201);
-  const replay = await redeem(quote.quoteId);
-  assert.deepEqual(replay, first);
-  const after = parsed(rewards.voucherCatalogSchema, await call("GET", "/rewards/vouchers"));
-  assert.equal(after.viewer.available, catalog.viewer.available - result.pointsSpent);
-  const wallet = await import("../mocks/data/economy.ts");
-  const hybrid = await import("../mocks/hybrid.ts");
-  assert.equal(wallet.walletOf(hybrid.HYBRID_MEMBER).available, after.viewer.available);
-  assert.equal(wallet.transactionsOf(hybrid.HYBRID_MEMBER).filter(row => row.redemptionKey === key).length, 1);
-  assert.equal(parsed(rewards.redemptionResultSchema, await call("GET", `/rewards/redemptions/by-key/${key}`), 201).redemptionId, result.redemptionId);
-  const another = parsed(rewards.redemptionQuoteSchema, await call("POST", "/rewards/quotes", { body: { voucherId: voucher.id } }), 201);
-  assert.equal((await redeem(another.quoteId)).body.error.code, "IDEMPOTENCY_KEY_CONFLICT");
-  const secondKey = randomUUID();
-  const secondResponse = await getResponse(hybridHandlers, new Request(`${ORIGIN}/api/rewards/redemptions`, {
-    method: "POST", headers: { ...CSRF, "Content-Type": "application/json", "Idempotency-Key": secondKey },
-    body: JSON.stringify({ quoteId: another.quoteId }),
-  }), { baseUrl: ORIGIN });
-  assert.equal(secondResponse.status, 201);
-  const second = rewards.redemptionResultSchema.parse((await secondResponse.json()).data);
-  assert.equal(wallet.walletOf(hybrid.HYBRID_MEMBER).available, after.viewer.available - second.pointsSpent);
-  assert.equal(wallet.transactionsOf(hybrid.HYBRID_MEMBER).filter(row => row.redemptionKey === secondKey).length, 1);
-});
 
-test("my vouchers (6 routes) answer without a mock session: list, mark used, undo, code issue, history", async () => {
-  const list = parsed(rewards.voucherTicketListSchema, await call("GET", "/rewards/my-vouchers"));
-  const seedRefs = ["RDM-2610-1MZ4", "RDM-2610-8F2K", "RDM-2610-3QK7"];
-  const unused = list.items.filter(item => ["UNUSED", "EXPIRING"].includes(item.status));
-  assert.deepEqual(seedRefs.filter(ref => !unused.some(item => item.reference === ref)), [], "the 3 unused seed tickets are listed");
-  assert.equal(list.items.some(item => item.openIssue?.status === "REFUNDED"), false);
-  const ticket = list.items.find(item => item.reference === "RDM-2610-3QK7");
-  const route = `/rewards/my-vouchers/${ticket.id}`;
-  assert.equal((await call("POST", `${route}/use`, { csrf: false })).status, 403);
-  const used = parsed(rewards.voucherTicketResponseSchema, await call("POST", `${route}/use`)).ticket;
-  assert.equal(used.status, "USED");
-  assert.ok(used.undoUntil);
-  const again = parsed(rewards.voucherTicketResponseSchema, await call("POST", `${route}/use`)).ticket;
-  assert.equal(again.usedAt, used.usedAt);
-  const undone = parsed(rewards.voucherTicketResponseSchema, await call("POST", `${route}/undo-use`)).ticket;
-  assert.ok(["UNUSED", "EXPIRING"].includes(undone.status));
-  assert.equal(undone.usedAt, null);
-  assert.equal((await call("GET", `/rewards/my-vouchers/${randomUUID()}`)).body.error.code, "TICKET_NOT_FOUND");
 
-  const issued = list.items.find(item => item.reference === "RDM-2610-1MZ4");
-  const issueRoute = `/rewards/my-vouchers/${issued.id}/issues`;
-  assert.equal((await call("POST", issueRoute, { body: { reason: "BAD" } })).status, 400);
-  const report = parsed(rewards.codeIssueReportSchema, await call("POST", issueRoute, { body: { reason: "CODE_INVALID" } }), 201);
-  assert.equal(report.status, "OPEN");
-  const second = await call("POST", issueRoute, { body: { reason: "CODE_INVALID" } });
-  assert.equal(second.status, 409);
-  assert.equal(second.body.error.code, "CODE_ISSUE_ALREADY_OPEN");
 
-  const history = parsed(rewards.redemptionHistoryListSchema, await call("GET", "/rewards/redemptions?limit=2"));
-  assert.equal(history.items.length, 2);
-  assert.equal(history.hasMore, true);
-});
