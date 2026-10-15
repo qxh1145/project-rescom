@@ -18,8 +18,12 @@ import { PrismaUserProfileRepository } from './infrastructure/prisma-user-profil
 import { UserProfileService } from './application/user-profile.service';
 import { ADMIN_USER_DIRECTORY_PORT } from './application/ports/admin-user-directory.port';
 import { PrismaAdminUserDirectory } from './infrastructure/prisma-admin-user-directory';
+import { ACCOUNT_STATUS_PORT } from '../rewards/application/ports/account-standing.port';
+import { PrismaAccountStatusReader } from './infrastructure/prisma-account-status.reader';
 @Module({
   providers: [
+    // Rewards eligibility: read-only users.status fact.
+    { provide: ACCOUNT_STATUS_PORT, useClass: PrismaAccountStatusReader },
     // Admin FraudLog view (mock-off plan 4.2): account status and search.
     {
       provide: ADMIN_USER_DIRECTORY_PORT,
@@ -60,6 +64,7 @@ import { PrismaAdminUserDirectory } from './infrastructure/prisma-admin-user-dir
     },
   ],
   exports: [
+    ACCOUNT_STATUS_PORT,
     ADMIN_USER_DIRECTORY_PORT,
     USER_REPOSITORY_PORT,
     USER_ADMIN_TRANSACTION_PORT,

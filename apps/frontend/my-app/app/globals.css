@@ -60,6 +60,9 @@
   --color-tone-amber-fg: #7a5200;
   --color-danger: #b42318;
   --color-danger-soft: #fef3f2;
+  /* Figma 20 (140:4346): color/sale/* alias red; only for discount % and struck prices, never for errors. */
+  --color-sale-bg: var(--color-danger-soft);
+  --color-sale-text: var(--color-danger);
   /* Page 15 (63:3990) form alert: text + icon on danger-soft, and the links in field errors. */
   --color-danger-strong: #912018;
   /* Page 15 starter-points note (63:3459): icon tile and body copy on tone-amber-bg. */
@@ -165,6 +168,14 @@
    only apply under a `.dark` class, which nothing sets — so a dark OS no longer
    mixes a light Figma screen with dark legacy cards. */
 @custom-variant dark (&:where(.dark, .dark *));
+
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
 
 :root {
   color-scheme: light;
@@ -399,4 +410,15 @@ html.reorder-dragging * {
   .thought-progress {
     display: none;
   }
+}
+
+@keyframes redeem-confetti {
+  to { transform: translateY(48px) rotate(70deg); opacity: 0; }
+}
+.redeem-confetti { animation: redeem-confetti 600ms ease-out forwards; }
+@keyframes redeem-pop { from { transform: scale(.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.redeem-pop { animation: redeem-pop 600ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .redeem-confetti { display: none; }
+  .redeem-pop { animation: none; }
 }

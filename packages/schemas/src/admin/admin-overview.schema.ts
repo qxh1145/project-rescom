@@ -93,7 +93,8 @@ export type AdminTodoKind = AdminTodoItem["kind"];
 /**
  * An account with FraudLog entries in the last `windowDays` days
  * ("Tài khoản cần xem"). `types` are FraudLog kinds (`fraudLogKindSchema`:
- * the backend `FraudLogType`, with a wrong completion code shown as
+ * the backend `FraudLogType` (including the non-blocking `FLASH_AFTER_TOPUP`
+ * flag of Story 12.8), with a wrong completion code shown as
  * `COMPLETION_CODE`); `repeated` = repeat offender (the system only flags,
  * an Admin decides the lock).
  */

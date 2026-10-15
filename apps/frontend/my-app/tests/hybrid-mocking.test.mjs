@@ -101,6 +101,8 @@ const { disputeResultSchema } = await import("../lib/forms/dispute-service.ts");
 const { formQualitySchema } = await import("../lib/forms/results-service.ts");
 const ai = await import("../lib/forms/builder-ai.ts");
 
+const rewards = await import("@rescom/schemas");
+
 const ORIGIN = "http://localhost";
 const CSRF = { "X-CSRF-Token": "real-session-token" };
 
@@ -200,6 +202,10 @@ test("admin disputes: demo queue and resolve without a mock session; unknown cas
   assert.equal(unknown.body.error.code, "DISPUTE_CASE_NOT_FOUND");
 });
 
+
+
+
+
 test("admin quality reviews: demo queue and decision without a mock session; CSRF on decision", async () => {
   const list = parsed(quality.qualityReviewListSchema, await call("GET", "/admin/quality-reviews"));
   assert.ok(list.items.length > 0, "the demo queue has reviews");
@@ -232,3 +238,7 @@ test("AI builder (5 routes) works on real form ids the mock DB never saw", async
   assert.equal(parsed(ai.aiConversationSchema, await call("GET", `/forms/${formId}/ai/conversation`)).formId, formId);
   parsed(ai.aiSuggestedBlockSchema, await call("POST", `/forms/${formId}/ai/suggest-block`, { body: {} }));
 });
+
+
+
+

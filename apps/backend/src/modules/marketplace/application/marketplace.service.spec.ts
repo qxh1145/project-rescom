@@ -1071,7 +1071,10 @@ describe('MarketplaceService', () => {
       });
 
       const all = await service.getFeed(respondentHanoiId);
-      expect(all.surveys.map((s) => s.topic).sort()).toEqual(['IT', 'MENTAL_HEALTH']);
+      expect(all.surveys.map((s) => s.topic).sort()).toEqual([
+        'IT',
+        'MENTAL_HEALTH',
+      ]);
 
       const bySynonym = await service.getFeed(respondentHanoiId, {
         search: 'suc khoe',

@@ -186,9 +186,14 @@ NFR-22: CSAT target > 4.0/5.0
 **FRs covered:** FR-39, FR-40 (IR.4a) and completion of FR-5, FR-24, FR-32 (IR.2b), FR-9 and FR-57 email (IR.4b), added 2026-09-30 from the implementation-readiness report; otherwise integrates the completed Phase 1 capabilities from Epics 1, 2, 4, 5, 6, 7, 8 and 9. Epic 3, Epic 10 and all other deferred Phase 2 scope remain excluded unless separately approved.
 
 ### Epic 11: Production Deployment & Pilot Readiness
-**Goal:** The Phase 1 platform runs for pilot students on a simple, portable Google Cloud topology (Architecture AD-23) with automated deploys, error and uptime alerts, tested backups, and a rehearsed exit path to another provider.
+**Goal:** The Phase 1 platform runs for pilot students on a simple, portable single-VPS topology (Hostinger VPS + Cloudflare R2, Architecture AD-23 amended 2026-10-05) with automated deploys, error and uptime alerts, tested backups, and a rehearsed exit path to another provider.
 **FRs covered:** none (operational epic) — NFR-ADD-3, NFR-ADD-4, NFR-ADD-5, AD-23. Added by `sprint-change-proposal-2026-09-26.md`.
 **Dependency:** Packaging, infrastructure and pipeline work may proceed in parallel with Epic IR after IR.1 confirms scope and architecture. Staging promotion requires IR.5; production launch review in Story 11.5 requires IR.6 and Stories 11.1–11.4.
+
+### Epic 12: Rewards — Voucher Redemption & Flash Sale (Phase 2)
+**Goal:** Users spend Available Points (earned, top-up, or unlocked starter) on F&B partner vouchers, including time-boxed Flash Sales, and always see the locked price before any Point is deducted. Admins manage catalog, code inventory, Flash Sales, and redemption stats.
+**FRs covered:** FR-68 … FR-75. **Architecture:** AD-24 (plus AD-1, AD-10, AD-16). Added by `sprint-change-proposal-2026-10-13.md`.
+**Dependency:** Starts after Story 11.5 for production. FE-mock Stories 12.1–12.6 may start immediately using planning-doc defaults in MSW mocks only. Backend gates: 12.7 by PRD OQ-25; 12.8 by OQ-23 and OQ-26; 12.11 (production enable) by OQ-24. UX source: Figma Rescom pages 20–27.
 
 ### Additional Production Requirements (Newly Added)
 
@@ -1123,7 +1128,7 @@ So that the team knows which contracts are real, which gaps must close, and whic
 **Given** the approved integration and deployment plan and the completed Phase 1 epics
 **When** the G0/G1 review is completed
 **Then** the pilot journey list, Integration Lead, Release Manager, domain owners, decision owners and due dates are recorded.
-**And** AD-23 is confirmed with `app.rescom.com.vn` as the canonical browser origin and relative `/api` requests rewritten through Vercel, the public API edge/Cloudflare, Caddy and NestJS on private port 4000.
+**And** AD-23 is confirmed with `app.rescom.io.vn` as the canonical browser origin and relative `/api` requests rewritten through Vercel, the public API edge/Cloudflare, Caddy and NestJS on private port 4000.
 **And** every reachable frontend API call and direct `mockRepository` consumer is mapped to a controller, shared/request-response schema, access mode, status codes, idempotency/pagination behavior and applicable error states, with status `verified`, `assumed` or `mock-only`.
 **And** every `assumed` or `mock-only` item has an owner, milestone and acceptance test; no launch-critical call is unclassified.
 **And** a contract coverage report proves 100% of pilot-journey calls are mapped and no `mock-only` route remains reachable in the pilot build.
@@ -1349,7 +1354,7 @@ So that the production go/no-go decision is based on executable evidence rather 
 
 ## Epic 11: Production Deployment & Pilot Readiness
 
-**Goal:** The Phase 1 platform runs for pilot students on a simple, portable Google Cloud topology (Architecture AD-23) with automated deploys, error and uptime alerts, tested backups, and a rehearsed exit path to another provider.
+**Goal:** The Phase 1 platform runs for pilot students on a simple, portable single-VPS topology (Hostinger VPS + Cloudflare R2, Architecture AD-23 amended 2026-10-05) with automated deploys, error and uptime alerts, tested backups, and a rehearsed exit path to another provider.
 
 **Dependency and gate model:** Stories 11.1–11.4 may run alongside Epic IR after IR.1 confirms AD-23, the canonical origin and owners. Staging promotion requires the IR.5 local integration gate. Story 11.5 requires IR.6 plus Stories 11.1–11.4 and is the G6 gate and only path to production dark deploy and cohort opening. Story 11.6 is the G7 post-launch gate, follows a successful pilot and does not expand Phase 1 launch scope.
 
@@ -1357,7 +1362,7 @@ So that the production go/no-go decision is based on executable evidence rather 
 
 As a Developer,
 I want the backend packaged as one production Docker image with a production Compose file,
-So that the same artifact runs locally, on the Google Cloud VM, and on any later host.
+So that the same artifact runs locally, on the pilot VPS, and on any later host.
 
 **Acceptance Criteria:**
 
@@ -1369,29 +1374,32 @@ So that the same artifact runs locally, on the Google Cloud VM, and on any later
 **And** the `Caddyfile` proxies edge traffic to NestJS on private port 4000 and the trusted-proxy configuration restores, logs and rate-limits by the real client IP across the approved multi-hop chain.
 **And** liveness and readiness endpoints exist; readiness reports database reachability and scanner reachability without leaking payloads (AD-17, NFR-ADD-4).
 **And** scheduled durable work (pending-credit release, frozen-starter expiry, reservation expiry, Outbox dispatch) runs in-process behind one configuration flag so exactly one scheduler owner exists, still claiming work through PostgreSQL (AD-5 amendment, AD-10).
-**And** the S3 client sets `requestChecksumCalculation` and `responseChecksumValidation` to `WHEN_REQUIRED`, and presigned upload plus download pass against Google Cloud Storage's S3 interoperability endpoint as well as local MinIO.
+**And** the S3 client sets `requestChecksumCalculation` and `responseChecksumValidation` to `WHEN_REQUIRED`, and presigned upload plus download pass against the pilot S3-compatible store (Cloudflare R2, verified in Story 11.2) as well as local MinIO.
 **And** local `docker-compose.yml` pins MinIO and `minio/mc` to fixed tags instead of `latest`.
 **And** no provider-specific SDK (`@google-cloud/*`) is introduced (AD-23).
 
-### Story 11.2: Google Cloud Pilot Infrastructure Provisioning
+### Story 11.2: Hostinger VPS Pilot Infrastructure Provisioning
+
+> Re-scoped 2026-10-05 from Google Cloud by `sprint-change-proposal-2026-10-04-hostinger-vps.md` (owner decisions B1–B4).
 
 As an Operator,
-I want the pilot infrastructure provisioned in one region with least exposure,
+I want the pilot infrastructure provisioned on the owner's Hostinger VPS with least exposure,
 So that the API, database and storage are reachable only through the intended paths.
 
 **Acceptance Criteria:**
 
-**Given** a Google Cloud project on the trial billing account
-**When** the environment is provisioned in `asia-southeast1`
-**Then** budget alerts fire at USD 50, 100 and 200.
-**And** Cloud SQL for PostgreSQL has private IP only, automated backups and point-in-time recovery, and `prisma migrate deploy` has been applied.
-**And** one private Cloud Storage bucket exists per environment with HMAC credentials scoped to it and CORS limited to the frontend origin for presigned uploads; the bucket name is chosen so it can be reused on the post-trial host or its rewrite is planned (`StoredObject.bucket`).
-**And** the VM firewall admits 80/443 only from Cloudflare IP ranges; SSH uses keys only and is limited to team addresses.
-**And** Cloudflare provides the public API edge to the VM with SSL mode Full (strict), while the NestJS port remains private.
-**And** Vercel serves `app.rescom.com.vn` from region `sin1` and external-rewrites same-origin `/api` to the public API edge; browser code does not call a backend origin directly.
-**And** the Google OAuth client lists the canonical same-host callback under `app.rescom.com.vn/api/...` and the approved frontend URLs.
-**And** secrets live in the VM `.env` (file mode 600) and GitHub Actions secrets only, never in the repository (NFR-ADD-3).
-**And** staging uses a separate database, bucket, OAuth client/secret, domain and synthetic accounts while mirroring the production proxy topology.
+**Given** the greenfield Hostinger VPS (Debian 12, x86_64, 2 vCPU, 7.8 GiB RAM, 99 GB SSD)
+**When** the pilot stack is provisioned with Docker Compose
+**Then** the host has a swapfile, cron/systemd timers and a measured resource baseline after the stack starts.
+**And** PostgreSQL 15 runs as a private container on a durable volume with no public port; `prisma migrate deploy` runs explicitly from the API image, never on API startup.
+**And** WAL archiving and a base backup ship to a dedicated private Cloudflare R2 bucket, and archive failures are visible (RPO 15 min / RTO 4 h targets; restore drill belongs to Story 11.4).
+**And** each environment has one private Cloudflare R2 bucket for uploads, accessed through the existing S3 adapter with a token scoped to that bucket, and CORS limited to that environment's frontend origin; no MinIO runs on the VPS (`StoredObject.bucket` naming recorded).
+**And** the host firewall admits 80/443 only from Cloudflare IP ranges, SSH uses keys only and is limited to team addresses, and Docker-published ports cannot bypass it; NestJS 4000, ClamAV 3310 and PostgreSQL 5432 are not public.
+**And** Cloudflare provides the public API edge to the VPS with SSL mode Full (strict), and Caddy enforces the edge-key gate and signed client-IP chain.
+**And** Vercel serves the canonical frontend origin from region `sin1` and external-rewrites same-origin `/api` to the public API edge; browser code does not call a backend origin directly.
+**And** the Google OAuth client lists the canonical same-host callback under the frontend origin's `/api/...` path and the approved frontend URLs.
+**And** secrets live in the VPS `.env` (file mode 600), Vercel server-only variables and GitHub Actions secrets only, never in the repository (NFR-ADD-3).
+**And** staging uses a separate database, R2 bucket, OAuth client/secret, domain, edge key and synthetic accounts while mirroring the production proxy topology, run sequentially on the shared VPS.
 
 ### Story 11.3: CI/CD Pipeline with Rollback
 
@@ -1422,8 +1430,8 @@ So that pilot incidents are noticed and recoverable.
 **When** observability is configured
 **Then** Sentry captures frontend and backend exceptions with release tags, with request bodies, cookies and personal data scrubbed (NFR-ADD-4).
 **And** an external uptime monitor checks the canonical frontend and a documented TLS readiness path through the public API edge/Caddy chain and alerts Telegram or email.
-**And** Cloud SQL backup failures, database connectivity, VM disk above 80% and ClamAV health raise alerts.
-**And** one point-in-time restore of Cloud SQL into a scratch instance has been performed and its steps written down; RPO, RTO and backup retention are proposed for Operations approval (NFR-ADD-5).
+**And** WAL-archive or base-backup failures to R2, database connectivity, VPS disk above 80%, memory exhaustion and ClamAV health raise alerts.
+**And** one point-in-time restore from the R2 base backup + WAL into an isolated scratch PostgreSQL container has been performed, timed against the approved RPO 15 min / RTO 4 h, and its steps written down; backup retention is proposed for Operations approval (NFR-ADD-5).
 **And** a previous-image rollback has been rehearsed against a compatible schema and its evidence is retained for the G5 review.
 **And** G4 is recorded as passed only when staging mirrors the approved domain/proxy topology, the database and bucket are private, migrations run only through the controlled pipeline, and previous-image deployment/rollback is reproducible.
 
@@ -1447,20 +1455,246 @@ So that the first pilot students meet a working, governed platform.
 **And** only after dark-deploy evidence passes is a limited cohort opened; any approved stop condition closes the cohort or triggers rollback.
 **And** general pilot access requires a recorded decision after the limited cohort completes without a launch-critical incident.
 
-### Story 11.6: Post-Trial Hosting Decision, Post-Launch Review and Portability Rehearsal
+### Story 11.6: Post-Pilot Hosting Review, Post-Launch Review and Portability Rehearsal
+
+> Re-scoped 2026-10-05: Google Cloud dropped; no trial clock. The pilot runs on the owner-held Hostinger VPS (AD-23 amendment 2026-10-05).
 
 As the Product Owner,
-I want the pilot reviewed and the post-trial hosting choice made and rehearsed before the credit ends,
-So that launch learnings are owned and the pilot never loses data to trial expiry.
+I want the pilot reviewed and the long-term hosting choice made and rehearsed,
+So that launch learnings are owned and the platform can move hosts without data loss.
 
 **Acceptance Criteria:**
 
-**Given** Story 11.5 has completed the limited cohort and the Google Cloud trial reaches about day 70
-**When** the hosting decision is prepared
-**Then** the team asks the university about FPT Cloud sponsorship and compares it with paid Google Cloud.
-**And** if FPT Cloud is a candidate, FPT Object Storage passes presigned upload/download with the unchanged AWS SDK storage adapter (fallback: Cloudflare R2).
-**And** a rehearsal restores a copy of the database and objects on the target, switches configuration only, and passes the smoke test.
-**And** the chosen path is executed before trial day 90, and never later than the end of the 30-day grace period, with a maintenance window that stops writes during `pg_dump`/`pg_restore` so the ledger stays consistent.
+**Given** Story 11.5 has completed the limited cohort
+**When** the hosting review is prepared
+**Then** measured VPS CPU, RAM and disk utilization, R2 usage/cost and the Hostinger renewal price are compared with any alternative the team proposes.
+**And** a rehearsal restores the database from R2 (base backup + WAL) on a fresh host, keeps R2 objects in place, switches configuration only, and passes the smoke test.
+**And** any host change is executed in a maintenance window that stops writes during the final restore/cutover so the ledger stays consistent.
 **And** the G7 review records contract gaps, journey failures, incidents, support signals and a remediation backlog with an owner for every launch-critical item.
 **And** remaining hybrid mock workarounds are closed, the AI entry point remains hidden, and recurring restore drills, secret rotation, dependency/image updates and rollback-artifact retention have assigned owners.
 **And** multi-replica scaling, Redis, advanced synthetic journeys, richer dashboards and other deferred work remain Phase 2 unless a separate decision promotes them.
+
+## Epic 12: Rewards — Voucher Redemption & Flash Sale (Phase 2)
+
+**Goal:** Users spend Available Points (earned, top-up, or unlocked starter) on F&B partner vouchers, including time-boxed Flash Sales, and always see the locked price before any Point is deducted. Admins manage the catalog, code inventory, Flash Sales, and redemption statistics.
+
+**FRs covered:** FR-68 … FR-75. **Architecture:** AD-24 (plus AD-1, AD-10, AD-16). Added by `sprint-change-proposal-2026-10-13.md`.
+
+**Dependency and gate model:** Production enable follows Story 11.5 (pilot launch). FE-mock Stories 12.1–12.6 may start immediately and use the planning-doc defaults only inside MSW mocks. Backend gates: Story 12.7 requires PRD Open Question 25; Story 12.8 requires Open Questions 23 and 26; Story 12.11 (production enable) requires Open Question 24.
+
+**UX source:** Figma Rescom (`mkudD5Ngi5RPyIAVxCcxXi`), pages 20–27. Components and tokens are on page 20 (node `113:3`); screens are on 21 (`113:4`), 22 (`113:5`), 23 (`113:6`), 24 (`113:7`), 25 (`113:8`), 26 (`113:9`), and 27 (`140:2`). Business rules are BR-01…BR-24 in the planning doc "Rescom — Đổi điểm lấy voucher F&B & Flash Sale" (2026-10-13).
+
+**Out of scope:** Partner-API code issuance, a tablet layout, a fifth mobile tab, and fixes for the three existing design-system mismatches (TabBar "Tạo khảo sát", DesktopTopBar showing frozen instead of available points, and the non-component Admin sidebar). The mismatches are tracked separately.
+
+### Story 12.1: Rewards Contracts & MSW Mock Domain
+
+As a Developer,
+I want versioned Rewards contracts and a mock Rewards domain,
+So that the User Portal and Admin screens can be built and reviewed before the backend exists.
+
+**Acceptance Criteria:**
+
+**Given** `packages/schemas`
+**When** the Rewards contracts are added
+**Then** Zod schemas exist for voucher (list item and detail), price and status, Flash Sale and Flash item, quote, redeem command (`quoteId` + `Idempotency-Key`), redemption result, my-voucher ticket, redemption history entry, code-issue report, and Admin voucher, Flash Sale, and statistics payloads.
+**And** the error codes `SOLD_OUT`, `PRICE_CHANGED`, `INSUFFICIENT_POINTS`, `VOUCHER_UNAVAILABLE`, and `ACCOUNT_NOT_ELIGIBLE` are a closed enum, and `PRICE_CHANGED` and `INSUFFICIENT_POINTS` carry the new price or balance.
+**And** the MSW mock repository seeds 7 vouchers across 4 categories and 6 brands, one active Flash Sale, a user with 186 Available and 18 Pending Points, and 3 unused tickets, and the mock `SCHEMA_VERSION` is bumped.
+**And** mock handlers implement idempotent redeem (same key returns the first result) and can be switched to each failure code for UI review.
+**And** contract spec tests cover every schema and error payload.
+
+### Story 12.2: Voucher Marketplace, Filters & Detail
+
+As a User,
+I want to browse vouchers and Flash Sales and see whether I can afford each one,
+So that I can choose what to redeem with my Points.
+
+**Acceptance Criteria:**
+
+**Given** a signed-in, activated user
+**When** they open Đổi quà (under the Ví điểm tab on mobile, or the fourth top-bar item on desktop)
+**Then** the page shows the Available Balance card ("Dùng được cả điểm nạp. N điểm chờ duyệt chưa được tính."), search, category chips, the Flash Sale strip with a Countdown, and the voucher list, matching Figma page 21 at 390 px and 1440 px (FR-68).
+**And** the filter opens as a bottom sheet on mobile and a 264 px left column on desktop, with category, brand, point range, "Chỉ voucher đang giảm giá", and "Chỉ voucher tôi đủ điểm đổi", plus a sort control.
+**And** Loading (skeleton, no layout shift), Empty (with suggestions), and Error (retry; "Điểm và voucher của bạn vẫn an toàn") states are implemented.
+**And** voucher detail (page 22) shows the Enough, Not enough (suggests both surveys and top-up), and Sold out states, plus the regular price when Flash is sold out but stock remains.
+**And** Countdown uses server time from the API and announces to screen readers only when the minute changes; status is always shown as text, and progress bars always show numbers.
+**And** new components VoucherCard (Row/Tile × Default/Sale/Sold out/Expired), FlashSaleCard (Upcoming/Active/Ended/Sold out), Countdown, Toggle, and SegmentedControl reuse existing tokens; `color/sale/*` is added as an alias to existing red; touch targets are at least 44 px, including chips.
+
+### Story 12.3: Confirm & Redemption Result
+
+As a User,
+I want to confirm the exact price before Points are deducted and get a clear result,
+So that I never lose Points by mistake.
+
+**Acceptance Criteria:**
+
+**Given** a voucher the user can redeem
+**When** they tap Đổi ngay
+**Then** a quote is requested and a confirmation opens (bottom sheet on mobile, dialog on desktop) showing the locked price, balance after redemption, and the Flash price end time (page 23, FR-69).
+**And** one idempotency key is created when the confirmation opens; the confirm button locks after the first tap; resubmitting returns the first result.
+**And** success shows the ticket summary, the balance counting down in 400 ms, and a mascot with light confetti in 600 ms, all disabled under reduced motion.
+**And** `SOLD_OUT`, `PRICE_CHANGED` (shows the new price and asks to confirm again), and `INSUFFICIENT_POINTS` (shows the new balance) have their own screens; `VOUCHER_UNAVAILABLE` and `ACCOUNT_NOT_ELIGIBLE` use the shared error sheet; every error says "bạn chưa bị trừ điểm" and offers one next action.
+**And** on network loss the client polls by idempotency key 3 times (after 2, 4, and 8 seconds), then shows "Đang kiểm tra kết quả".
+**And** the confirmation traps focus and returns focus to Đổi ngay when closed.
+
+### Story 12.4: My Vouchers, Code/QR & History
+
+As a User,
+I want to see my vouchers and use their codes at the counter,
+So that I can actually claim what I redeemed.
+
+**Acceptance Criteria:**
+
+**Given** a user with redeemed vouchers
+**When** they open Voucher của tôi
+**Then** tickets (VoucherTicket: Unused, Expiring, Used, Expired) appear in Unused, Used, and Expired tabs, sorted by nearest expiry, with an Empty state (page 24, FR-70).
+**And** opening a ticket shows the code, a QR code, a copy action, store instructions, and expiry.
+**And** the user can mark a ticket as used and undo it within 24 hours.
+**And** "Báo mã lỗi" creates a code-issue report and shows its status (FR-75).
+**And** redemption history shows Success, Failed, and Refunded entries.
+**And** the header badge shows the unused count.
+
+### Story 12.5: Admin Voucher Catalog & Codes
+
+As an Admin,
+I want to create vouchers, upload codes, and manage stock and price,
+So that the catalog stays accurate and never oversells.
+
+**Acceptance Criteria:**
+
+**Given** an Admin in the Admin console
+**When** they open Voucher (new sidebar entry; AdminSidebar becomes a component with Voucher, Flash Sale, and Thống kê voucher)
+**Then** the list shows each voucher's status, stock, price, and visibility toggle, plus an action menu with pause, hide, and archive (page 25, FR-72).
+**And** create/edit shows a live VoucherCard preview and field-level validation (code expiry at least 7 days after the redemption window, shared-code flag).
+**And** CSV upload reports in-file duplicates and already-stored codes before saving.
+**And** stock adjustment cannot go below issued plus Flash-reserved units, and a price change shows that it applies only to future redemptions.
+**And** voucher detail shows stock, price history, and redemption history.
+
+### Story 12.6: Admin Flash Sale & Rewards Statistics
+
+As an Admin,
+I want to schedule and monitor Flash Sales and see redemption statistics,
+So that I can run promotions safely and measure them.
+
+**Acceptance Criteria:**
+
+**Given** an Admin
+**When** they create a Flash Sale
+**Then** the form validates overlap, Flash price below the regular price, and quota within unreserved stock, and it previews the result with the User Portal FlashSaleCard (page 26, FR-73).
+**And** monitoring shows all five program states with sold/quota counts.
+**And** Kết thúc sớm requires a confirmation dialog that explains that quota returns to stock and the price returns to regular.
+**And** the statistics dashboard (page 27) shows 5 KPIs, redemptions by day, redemptions by brand, and Flash Sale performance; the usage rate is labelled as self-reported.
+
+### Story 12.7: Rewards Schema, Catalog & Code Inventory API
+
+As a Developer,
+I want the Rewards module, data model, and Admin catalog API,
+So that the catalog and code inventory are durable and consistent.
+
+**Acceptance Criteria:**
+
+**Given** PRD Open Question 25 is answered
+**When** the Rewards module and migrations are added
+**Then** Rewards owns Voucher, VoucherPriceVersion (append-only), VoucherCode, FlashSale, FlashSaleItem, RedemptionQuote, Redemption (append-only), and CodeIssueReport (AD-24, AD-16).
+**And** the database enforces `remaining >= 0`, unique `(voucherId, code)`, unique `VoucherCode.redemptionId`, and RESTRICT delete on vouchers with redemptions (BR-04, BR-14, BR-15, BR-24).
+**And** the Admin API supports create, edit, pause, hide, archive, CSV code import with dedup, and stock adjustment within the unissued, unreserved portion (BR-06), and every change is audited (FR-ADD-13).
+**And** a price change writes a new price version and never rewrites a past redemption (BR-12); the BR-13 deviation rule follows the Open Question 23 decision.
+**And** user catalog endpoints return effective price, status, and server time, and match the Story 12.1 contracts.
+**And** the full migration chain applies from an empty database and from the previous snapshot.
+
+### Story 12.8: Quote & Redemption Transaction
+
+As a User,
+I want my redemption to be exact and safe under concurrency,
+So that I am charged once, at the agreed price, or not at all.
+
+**Acceptance Criteria:**
+
+**Given** PRD Open Questions 23 and 26 are answered
+**When** the user requests a quote
+**Then** the server returns `quoteId`, effective price (Flash > promotion > base), `priceVersion`, and an expiry no later than the quote TTL or the Flash end, after checking eligibility (BR-02, BR-21).
+**And** `RedeemVoucher` follows AD-24 in one transaction: idempotency lookup, lock Voucher then FlashSaleItem, compare `priceVersion`, conditional stock decrement, claim one code with `FOR UPDATE SKIP LOCKED`, Economy `SpendPoints` keyed `redemption:{idempotencyKey}` (USER_AVAILABLE → SYSTEM_SINK, ledger accounts locked by ascending id), Redemption SUCCEEDED plus Outbox event, then commit.
+**And** per-user limits (per voucher per 30 days, per day in Points, Flash cap) are counted inside the transaction after the wallet lock (BR-19, BR-20).
+**And** any failure rolls back everything; the failed attempt is recorded in a separate transaction with no journal (BR-07, BR-09).
+**And** a Flash redemption within 24 hours after a top-up creates a FraudLog flag but is not blocked.
+**And** PostgreSQL integration tests prove: two users racing for the last unit (one success, one `SOLD_OUT`, no deduction); a double submit with the same key (one journal); balance changed between quote and confirm (`INSUFFICIENT_POINTS`); price changed or Flash ended (`PRICE_CHANGED`); stock > 0 with no free code (rollback, Admin alert, `SOLD_OUT` to the user); ledger sum per journal is zero.
+
+### Story 12.9: Flash Sale Lifecycle
+
+As an Admin,
+I want Flash Sales to start and end automatically and correctly,
+So that quota and price are always right without manual work.
+
+**Acceptance Criteria:**
+
+**Given** a scheduled Flash Sale
+**When** its start time arrives
+**Then** an idempotent job on the existing in-process scheduler reserves the quota from regular stock (BR-05).
+**And** at end, sell-out, or early end, the regular price applies immediately and unsold quota returns to stock exactly once (BR-05, BR-17).
+**And** the Admin Flash API rejects overlapping windows, a Flash price ≥ the regular price, and a quota above unreserved stock (BR-18).
+**And** windows use server time in Asia/Ho_Chi_Minh and `[start, end)` boundaries.
+**And** the per-user cap is enforced with unique `(flashItemId, userId)` when the cap is 1 (BR-19).
+**And** job reruns and scheduler restarts do not double-reserve or double-return quota.
+
+### Story 12.10: My Vouchers, Reminders & Faulty-Code Resolution
+
+As a User,
+I want reminders before my vouchers expire and a fix when a code fails,
+So that I do not lose what I redeemed.
+
+**Acceptance Criteria:**
+
+**Given** redeemed vouchers
+**When** the user opens Voucher của tôi or the redemption history
+**Then** the API returns tickets by tab and nearest expiry, plus history with Success, Failed, and Refunded entries, matching the Story 12.1 contracts (FR-70).
+**And** mark-used is allowed with undo within 24 hours.
+**And** reminders 7 days and 1 day before expiry are emitted through the Outbox to the existing notification system (AD-10).
+**And** a code-issue report enters a Rewards-owned Admin queue; Admin resolves it with either a replacement code or a refund keyed `redemption-refund:{caseId}` through an Economy reversal journal, at most one outcome per report, and the user is notified (FR-75, BR-22).
+**And** Admin may instead reject a report with a mandatory note; a rejection moves no stock, code or Points, counts as the report's one outcome, and the user is notified (decision 2026-10-14).
+**And** expired, unused vouchers are not refunded (BR-23).
+
+### Story 12.12: Admin Code-Issue Queue — Contract & MSW Mock
+
+As a Developer,
+I want the Admin code-issue queue contracts and a mock domain,
+So that the queue screen can be built and reviewed against the exact backend contract of Story 12.10.
+
+**Acceptance Criteria:**
+
+**Given** the Admin schemas defined by Story 12.10 in `packages/schemas`
+**When** the frontend adopts them
+**Then** MSW handlers exist for `GET /admin/rewards/code-issues`, `GET /admin/rewards/code-issues/:id`, and `POST /admin/rewards/code-issues/:id/resolve`, parse every payload with the shared Zod schemas, and are listed in `DEFERRED_KEEP_MOCK` until Story 12.11.
+**And** the mock state and rules mirror the backend: one OPEN report per redemption, at most one outcome (REPLACE, REFUND, or REJECT with a mandatory note), `canReplace` and `replaceBlockedReason` (shared code, no stock, no code, expired ticket), repeat of the same outcome is a no-op, a different outcome returns `CODE_ISSUE_ALREADY_RESOLVED`.
+**And** resolving in the mock updates the user's ticket and history (replacement code, REFUNDED entry with an `RFD-` reference and points back, or unchanged for REJECT) so both portals stay consistent.
+**And** no Admin payload contains an original or replacement code value.
+**And** mock-only unit tests cover the rules and every error code; the route-diff and allowlist tests stay green.
+
+### Story 12.13: Admin Code-Issue Queue Screen
+
+As an Admin,
+I want a queue of faulty-code reports with clear resolve actions,
+So that users get a replacement, a refund, or an explanation within the target of one business day.
+
+**Acceptance Criteria:**
+
+**Given** an Admin in the Admin console
+**When** they open Báo cáo mã lỗi (new AdminSidebar entry next to Voucher, Flash Sale, and Thống kê voucher)
+**Then** the list shows open reports oldest first with voucher, brand, reason, note, points, age, and ticket status, filters Open, Resolved, and All, and paginates (FR-75).
+**And** the detail shows the redemption reference and the resolution history, and offers Thay mã, Hoàn điểm, and Từ chối; Thay mã is disabled with the reason when `canReplace` is false.
+**And** each action asks for confirmation that explains its effect (replacement uses one stock unit and one code; refund returns the Points and cannot be undone; rejection requires a note that the user will see).
+**And** loading, empty, error, and already-resolved states are handled, and success and failure toasts use the backend error codes.
+**And** the screen works against the Story 12.12 mock; the design source is a new Figma page for the queue that must exist before this story starts (Open Question: design owner Quan).
+
+### Story 12.11: Rewards Integration Without Mocks & Enable Gate
+
+As the Product Owner,
+I want Rewards proven end to end on the real stack before it is enabled,
+So that the pilot economy is not put at risk.
+
+**Acceptance Criteria:**
+
+**Given** Stories 12.1–12.10, 12.12, and 12.13 are done
+**When** Rewards journeys run with mocks disabled
+**Then** browse, redeem (success and every failure code), my vouchers, faulty-code resolution (user report and Admin queue), Admin catalog, Flash Sale, and statistics pass against the real backend.
+**And** the statistics API backs the Admin dashboard.
+**And** a load test of concurrent redemptions on one Flash voucher at start time records p95 latency and confirms no oversell and no double charge on the pilot VPS profile.
+**And** Rewards sits behind a feature flag that is off by default; production enable requires the PRD Open Question 24 decision (accounting and tax) to be recorded, and the Ví điểm copy says that Points are never withdrawn as cash.

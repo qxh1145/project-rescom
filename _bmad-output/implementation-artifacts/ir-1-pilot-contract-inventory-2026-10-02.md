@@ -334,3 +334,5 @@ Recommended defaults are grounded in what is built and tested. "Approve" = in th
 - **Deploy:** `deploy/docker-compose.prod.yml` builds with mocking `disabled` and the pilot flag; domains are `app.rescom.com.vn` (plus `s3.rescom.com.vn` and mail `@rescom.com.vn`, confirmed by the owner).
 - **Production defaults:** `env.schema.ts` now refuses `replace_with_*` / `changeme*` / `example*` placeholders in secrets, storage and SMTP credentials, and the default DB password.
 - **Still open:** guest `/f/[id]` is hidden until a real Turnstile integration exists; seed demo admins must not be loaded on staging/production.
+
+> **Superseded 2026-10-05 (owner decision, Story 11.2 Hostinger pivot):** canonical domain changed from `rescom.com.vn` to `rescom.io.vn`. Canonical browser origin is now `https://app.rescom.io.vn`, API edge `https://api.rescom.io.vn`. References to `app.rescom.com.vn` above are historical.

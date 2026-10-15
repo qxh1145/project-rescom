@@ -177,13 +177,7 @@ export function validateAnswer(block: FormBlock, value: unknown): string | null 
         return `Cần ít nhất ${block.minLength} ký tự.`;
       }
       if (text.length > max) return `Tối đa ${max} ký tự.`;
-      if (block.type === "text" && block.pattern) {
-        try {
-          if (!new RegExp(block.pattern).test(text)) return "Câu trả lời chưa đúng định dạng.";
-        } catch {
-          return null;
-        }
-      }
+      // `pattern` is never executed (ReDoS, CWE-1333); see form-preview.ts.
       return null;
     }
     case "number": {

@@ -29,6 +29,7 @@ export type HistoryKind =
   | "DISPUTE_HOLD"
   | "DISPUTE_RESOLUTION"
   | "TOP_UP"
+  | "VOUCHER_REDEMPTION"
   | "SURVEY_ESCROW"
   | "ESCROW_REFUND"
   | "REVERSAL"
@@ -82,6 +83,7 @@ const KEY_PREFIXES: ReadonlyArray<readonly [string, HistoryKind]> = [
   ["external-dispute:", "DISPUTE_HOLD"],
   ["dispute-resolution:", "DISPUTE_RESOLUTION"],
   ["topup-approval:", "TOP_UP"],
+  ["redemption:", "VOUCHER_REDEMPTION"],
   ["publish:", "SURVEY_ESCROW"],
   ["reopen-escrow:", "SURVEY_ESCROW"],
   ["close-refund:", "ESCROW_REFUND"],
@@ -117,6 +119,7 @@ const TITLES: Record<HistoryKind, string> = {
   DISPUTE_HOLD: "Giữ điểm khi khiếu nại",
   DISPUTE_RESOLUTION: "Kết quả khiếu nại",
   TOP_UP: "Nạp điểm",
+  VOUCHER_REDEMPTION: "Đổi voucher",
   SURVEY_ESCROW: "Ký quỹ khảo sát",
   ESCROW_REFUND: "Hoàn ký quỹ",
   REVERSAL: "Điều chỉnh giao dịch",
@@ -171,6 +174,10 @@ function notesOf(kind: HistoryKind, entry: WalletTransaction, payout: boolean): 
     case "TOP_UP": {
       const reference = entry.description?.match(/RESCOM[A-Z0-9]+/)?.[0];
       const note = reference ? `Chuyển khoản ${reference}` : "Chuyển khoản ngân hàng";
+      return { note, shortNote: note };
+    }
+    case "VOUCHER_REDEMPTION": {
+      const note = titleFromDescription(entry.description) ?? "Voucher";
       return { note, shortNote: note };
     }
     case "SURVEY_ESCROW":

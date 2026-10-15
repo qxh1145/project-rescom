@@ -10,7 +10,7 @@ import { CsrfGuard } from './csrf.guard';
 
 describe('CsrfGuard', () => {
   const envService = {
-    frontendOrigins: ['https://app.rescom.com.vn'],
+    frontendOrigins: ['https://app.rescom.io.vn'],
   } as EnvService;
   const secretProtection = {
     verifyCsrfToken: jest.fn(
@@ -44,7 +44,7 @@ describe('CsrfGuard', () => {
     expect(
       guard.canActivate(
         context({
-          origin: 'https://app.rescom.com.vn',
+          origin: 'https://app.rescom.io.vn',
           'sec-fetch-site': 'same-site',
           'x-csrf-token': 'csrf-token',
         }),
@@ -60,12 +60,12 @@ describe('CsrfGuard', () => {
 
   it('rejects a missing or invalid CSRF token', () => {
     expect(() =>
-      guard.canActivate(context({ origin: 'https://app.rescom.com.vn' })),
+      guard.canActivate(context({ origin: 'https://app.rescom.io.vn' })),
     ).toThrow(InvalidCsrfTokenException);
     expect(() =>
       guard.canActivate(
         context({
-          origin: 'https://app.rescom.com.vn',
+          origin: 'https://app.rescom.io.vn',
           'x-csrf-token': 'wrong-token',
         }),
       ),

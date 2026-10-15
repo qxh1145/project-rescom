@@ -1,0 +1,9 @@
+[Unit]
+Description=RESCOM archive check every 15 minutes (RPO 15m)
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+
+[Install]
+WantedBy=timers.target

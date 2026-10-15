@@ -123,6 +123,7 @@ enum FraudLogType {
   DEMO_MISMATCH
   RECAPTCHA_FAIL
   SECURITY_VIOLATION
+  FLASH_AFTER_TOPUP
 }
 
 enum IntegrityIncidentType {
@@ -183,6 +184,8 @@ enum NotificationType {
   TOPUP_REJECTED
   ACCOUNT_LOCKED
   ACCOUNT_UNLOCKED
+  VOUCHER_EXPIRING
+  CODE_ISSUE_RESOLVED
 }
 
 /// Story IR.4b B5: one email delivery attempt per notification. Mirrors
@@ -1192,4 +1195,293 @@ model PasswordResetToken {
 
   @@index([userId, createdAt])
   @@map("password_reset_tokens")
+}
+
+enum VoucherCategory {
+  COFFEE
+  TEA
+  CHICKEN_BURGER
+  BAKERY_DESSERT
+}
+
+enum VoucherState {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum RedemptionStatus {
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum CodeIssueStatus {
+  OPEN
+  REPLACED
+  REFUNDED
+  REJECTED
+}
+
+enum CodeIssueReason {
+  CODE_INVALID
+  CODE_ALREADY_USED
+  STORE_REFUSED
+  OTHER
+}
+
+enum VoucherPriceSource {
+  BASE
+  PROMO
+  FLASH
+}
+
+model VoucherBrand {
+  id       String    @id
+  name     String
+  vouchers Voucher[]
+
+  @@map("voucher_brands")
+}
+
+model Voucher {
+  id             String                @id @default(uuid()) @db.Uuid
+  title          String
+  brandId        String                @map("brand_id")
+  category       VoucherCategory
+  valueVnd       Int                   @map("value_vnd")
+  basePoints     Int                   @map("base_points")
+  promoPoints    Int?                  @map("promo_points")
+  priceVersion   Int                   @default(1) @map("price_version")
+  stockTotal     Int                   @default(0) @map("stock_total")
+  stockRemaining Int                   @default(0) @map("stock_remaining")
+  state          VoucherState          @default(ACTIVE)
+  isVisible      Boolean               @default(true) @map("is_visible")
+  isSharedCode   Boolean               @default(false) @map("is_shared_code")
+  sharedCode     String?               @map("shared_code")
+  redeemStartsAt DateTime              @map("redeem_starts_at")
+  redeemEndsAt   DateTime              @map("redeem_ends_at")
+  codeExpiresAt  DateTime              @map("code_expires_at")
+  description    String?               @db.Text
+  whereToUse     String?               @map("where_to_use") @db.Text
+  terms          String[]              @default([])
+  howToUse       String[]              @default([]) @map("how_to_use")
+  imageUrl       String?               @map("image_url")
+  createdById    String                @map("created_by_id") @db.Uuid
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  brand          VoucherBrand          @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  priceVersions  VoucherPriceVersion[]
+  codes          VoucherCode[]
+  flashItems     FlashSaleItem[]
+  quotes         RedemptionQuote[]
+  redemptions    Redemption[]
+
+  @@index([state, isVisible])
+  @@index([brandId])
+  @@index([category])
+  @@map("vouchers")
+}
+
+model VoucherPriceVersion {
+  id            String   @id @default(uuid()) @db.Uuid
+  voucherId     String   @map("voucher_id") @db.Uuid
+  version       Int
+  basePoints    Int      @map("base_points")
+  promoPoints   Int?     @map("promo_points")
+  effectiveFrom DateTime @map("effective_from")
+  changedById   String   @map("changed_by_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  voucher       Voucher  @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+
+  @@unique([voucherId, version])
+  @@map("voucher_price_versions")
+}
+
+model VoucherCode {
+  id           String            @id @default(uuid()) @db.Uuid
+  voucherId    String            @map("voucher_id") @db.Uuid
+  code         String
+  redemptionId  String?            @unique @map("redemption_id") @db.Uuid
+  issueReportId String?            @unique @map("issue_report_id") @db.Uuid
+  createdAt     DateTime           @default(now()) @map("created_at")
+  voucher       Voucher            @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+  redemption    Redemption?        @relation("IssuedCode", fields: [redemptionId], references: [id], onDelete: Restrict)
+  issueReport   CodeIssueReport?   @relation("ReplacedCode", fields: [issueReportId], references: [id], onDelete: Restrict)
+  redemptions   Redemption[]       @relation("RedeemedCode")
+  replacements  CodeIssueReport[]  @relation("ReplacementTargetCode")
+
+  @@unique([voucherId, code])
+  @@map("voucher_codes")
+}
+
+model FlashSale {
+  id           String          @id @default(uuid()) @db.Uuid
+  code         String          @unique
+  title        String
+  startsAt     DateTime        @map("starts_at")
+  endsAt       DateTime        @map("ends_at")
+  endedEarlyAt DateTime?       @map("ended_early_at")
+  endReason    String?         @map("end_reason")
+  rules        Json            @db.JsonB
+  createdById  String          @map("created_by_id") @db.Uuid
+  reservedAt   DateTime?       @map("reserved_at")
+  settledAt    DateTime?       @map("settled_at")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+  items        FlashSaleItem[]
+
+  @@map("flash_sales")
+}
+
+model FlashSaleItem {
+  id          String            @id @default(uuid()) @db.Uuid
+  flashSaleId String            @map("flash_sale_id") @db.Uuid
+  voucherId   String            @map("voucher_id") @db.Uuid
+  flashPoints Int               @map("flash_points")
+  quota       Int
+  sold        Int               @default(0)
+  perUserCap  Int               @map("per_user_cap")
+  soldOutAt   DateTime?         @map("sold_out_at")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  flashSale   FlashSale         @relation(fields: [flashSaleId], references: [id], onDelete: Restrict)
+  voucher     Voucher           @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+  quotes      RedemptionQuote[]
+  redemptions Redemption[]
+  claims      FlashItemClaim[]
+
+  @@unique([flashSaleId, voucherId])
+  @@index([voucherId])
+  @@map("flash_sale_items")
+}
+
+model RedemptionQuote {
+  id              String             @id @default(uuid()) @db.Uuid
+  userId          String             @map("user_id") @db.Uuid
+  voucherId       String             @map("voucher_id") @db.Uuid
+  flashSaleItemId String?            @map("flash_sale_item_id") @db.Uuid
+  priceVersion    Int                @map("price_version")
+  pricePoints     Int                @map("price_points")
+  priceSource     VoucherPriceSource @map("price_source")
+  expiresAt       DateTime           @map("expires_at")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  voucher         Voucher            @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+  flashSaleItem   FlashSaleItem?     @relation(fields: [flashSaleItemId], references: [id], onDelete: Restrict)
+  redemptions     Redemption[]
+
+  @@index([userId, voucherId])
+  @@index([expiresAt])
+  @@map("redemption_quotes")
+}
+
+model Redemption {
+  id              String             @id @default(uuid()) @db.Uuid
+  userId          String             @map("user_id") @db.Uuid
+  voucherId       String             @map("voucher_id") @db.Uuid
+  voucherCodeId   String?            @map("voucher_code_id") @db.Uuid
+  flashSaleItemId String?            @map("flash_sale_item_id") @db.Uuid
+  quoteId         String?            @map("quote_id") @db.Uuid
+  idempotencyKey  String             @map("idempotency_key")
+  status          RedemptionStatus
+  pricePoints     Int                @map("price_points")
+  priceSource     VoucherPriceSource @map("price_source")
+  priceVersion    Int                @map("price_version")
+  journalId       String?            @map("journal_id") @db.Uuid
+  balanceAfter    Int?               @map("balance_after")
+  failureCode     String?            @map("failure_code")
+  failureDetails  Json?              @map("failure_details")
+  reference       String             @unique
+  createdAt       DateTime           @default(now()) @map("created_at")
+  voucher         Voucher            @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+  voucherCode     VoucherCode?       @relation("RedeemedCode", fields: [voucherCodeId], references: [id], onDelete: Restrict)
+  issuedCode      VoucherCode?       @relation("IssuedCode")
+  flashSaleItem   FlashSaleItem?     @relation(fields: [flashSaleItemId], references: [id], onDelete: Restrict)
+  quote           RedemptionQuote?   @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+  flashItemClaim     FlashItemClaim?
+  usage              RedemptionUsage?
+  refund             RedemptionRefund?
+  reminders          RedemptionReminder[]
+  reports            CodeIssueReport[]
+
+  @@unique([userId, idempotencyKey])
+  @@index([voucherId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("redemptions")
+}
+
+model RedemptionUsage {
+  redemptionId String     @id @map("redemption_id") @db.Uuid
+  usedAt       DateTime   @map("used_at")
+  undoUntil    DateTime   @map("undo_until")
+  redemption   Redemption @relation(fields: [redemptionId], references: [id], onDelete: Restrict)
+
+  @@map("redemption_usages")
+}
+
+model RedemptionRefund {
+  id           String          @id @default(uuid()) @db.Uuid
+  redemptionId String          @unique @map("redemption_id") @db.Uuid
+  reportId     String          @unique @map("report_id") @db.Uuid
+  journalId    String          @unique @map("journal_id") @db.Uuid
+  reference    String          @unique
+  points       Int
+  createdAt    DateTime        @default(now()) @map("created_at")
+  redemption   Redemption      @relation(fields: [redemptionId], references: [id], onDelete: Restrict)
+  report       CodeIssueReport @relation(fields: [reportId], references: [id], onDelete: Restrict)
+
+  @@map("redemption_refunds")
+}
+
+model RedemptionReminder {
+  redemptionId String     @map("redemption_id") @db.Uuid
+  window       String     @db.VarChar(10)
+  emittedAt    DateTime   @default(now()) @map("emitted_at")
+  redemption   Redemption @relation(fields: [redemptionId], references: [id], onDelete: Restrict)
+
+  @@id([redemptionId, window])
+  @@map("redemption_reminders")
+}
+
+model FlashItemClaim {
+  flashSaleItemId String        @map("flash_sale_item_id") @db.Uuid
+  userId          String        @map("user_id") @db.Uuid
+  redemptionId    String        @unique @map("redemption_id") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at")
+  flashSaleItem   FlashSaleItem @relation(fields: [flashSaleItemId], references: [id], onDelete: Restrict)
+  redemption      Redemption    @relation(fields: [redemptionId], references: [id], onDelete: Restrict)
+
+  @@id([flashSaleItemId, userId])
+  @@map("flash_item_claims")
+}
+
+model CodeIssueReport {
+  id                String            @id @default(uuid()) @db.Uuid
+  redemptionId      String            @map("redemption_id") @db.Uuid
+  reason            CodeIssueReason
+  note              String?           @db.Text
+  status            CodeIssueStatus   @default(OPEN)
+  replacementCodeId String?           @unique @map("replacement_code_id") @db.Uuid
+  refundJournalId   String?           @unique @map("refund_journal_id") @db.Uuid
+  resolvedById      String?           @map("resolved_by_id") @db.Uuid
+  resolutionNote    String?           @map("resolution_note") @db.Text
+  createdAt         DateTime          @default(now()) @map("created_at")
+  resolvedAt        DateTime?         @map("resolved_at")
+  redemption        Redemption        @relation(fields: [redemptionId], references: [id], onDelete: Restrict)
+  replacementCode   VoucherCode?      @relation("ReplacementTargetCode", fields: [replacementCodeId], references: [id], onDelete: Restrict)
+  assignedCode      VoucherCode?      @relation("ReplacedCode")
+  refund            RedemptionRefund?
+
+  @@index([status, createdAt])
+  @@index([redemptionId, createdAt(sort: Desc)])
+  @@map("code_issue_reports")
+}
+
+model RewardsSettings {
+  id               Int      @id @default(1) @db.SmallInt
+  dailyPointsLimit Int      @default(500) @map("daily_points_limit")
+  updatedById      String?  @map("updated_by_id") @db.Uuid
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("rewards_settings")
 }

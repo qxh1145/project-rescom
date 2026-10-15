@@ -17,6 +17,7 @@ import { StorageModule } from './modules/storage/storage.module';
 import { EconomyModule } from './modules/economy/economy.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ModerationModule } from './modules/moderation/moderation.module';
+import { RewardsModule } from './modules/rewards/rewards.module';
 import { ProductToursModule } from './modules/product-tours/product-tours.module';
 import { UserProfileHttpModule } from './modules/users/user-profile-http.module';
 import { requestIdMiddleware } from './common/http/request-id.middleware';
@@ -39,6 +40,7 @@ import { requestIdMiddleware } from './common/http/request-id.middleware';
     EconomyModule,
     NotificationsModule,
     ModerationModule,
+    RewardsModule,
     ProductToursModule,
     UserProfileHttpModule,
   ],

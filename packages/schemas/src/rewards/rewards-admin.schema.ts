@@ -1,0 +1,142 @@
+// ASSUMED API CONTRACT: backend Stories 12.7–12.10 must match or update these schemas.
+import { z } from "zod";
+import { MAX_PAGINATION_OFFSET } from "../common/pagination.schema";
+import { voucherBrandSchema, voucherCategorySchema, voucherPriceSchema, flashSaleItemSchema } from "./voucher-catalog.schema";
+import { redemptionHistoryKindSchema } from "./redemption.schema";
+const id = z.string().uuid();
+const instant = z.string().datetime();
+const count = z.number().int().nonnegative();
+const positive = z.number().int().positive();
+const ratio = z.number().min(0).max(1);
+const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v);
+export const REWARDS_CODE_EXPIRY_MIN_DAYS = 7;
+export const REWARDS_ADMIN_ERROR_CODES = [
+  "VALIDATION_ERROR", "REWARDS_ADMIN_CAPABILITY_REQUIRED", "VOUCHER_NOT_FOUND", "BRAND_NOT_FOUND",
+  "REDEMPTION_WINDOW_ENDED", "VOUCHER_ARCHIVED", "SHARED_FLAG_LOCKED", "SHARED_CODE_VOUCHER",
+  "STOCK_BELOW_COMMITTED", "STOCK_INCREASE_NEEDS_CODES", "STOCK_EXCEEDS_CODES",
+] as const;
+export const adminVoucherStateSchema = z.enum(["ACTIVE", "PAUSED", "ARCHIVED"]);
+export const adminVoucherStatusSchema = z.enum(["ACTIVE", "PAUSED", "SOLD_OUT", "EXPIRED", "HIDDEN", "ARCHIVED"]);
+export const adminVoucherStockSchema = z.object({ total: count, issued: count, flashReserved: count, remaining: count, codesAvailable: count }).refine(v => v.remaining === v.total - v.issued - v.flashReserved, { path: ["remaining"] });
+const pointsInput = z.object({ basePoints: positive, promoPoints: positive.nullable() }).refine(v => v.promoPoints === null || v.promoPoints < v.basePoints, { path: ["promoPoints"] });
+export const adminVoucherInputSchema = z.object({ title: z.string().min(1).max(80), brandId: voucherBrandSchema.shape.id, category: voucherCategorySchema, valueVnd: positive, basePoints: positive, promoPoints: positive.nullable(), isSharedCode: z.boolean(), sharedCode: z.string().regex(/^[A-Za-z0-9-]{4,64}$/).optional(), redeemStartsAt: instant, redeemEndsAt: instant, codeExpiresAt: instant, terms: z.array(z.string()).max(10), howToUse: z.array(z.string()).max(10), imageUrl: z.string().url().nullable() }).superRefine((v, ctx) => {
+  if (v.promoPoints !== null && v.promoPoints >= v.basePoints) ctx.addIssue({ code: "custom", path: ["promoPoints"], message: "Promo must be below base" });
+  if (Date.parse(v.redeemEndsAt) <= Date.parse(v.redeemStartsAt)) ctx.addIssue({ code: "custom", path: ["redeemEndsAt"], message: "End must follow start" });
+  if (Date.parse(v.codeExpiresAt) < Date.parse(v.redeemEndsAt) + REWARDS_CODE_EXPIRY_MIN_DAYS * 86400000) ctx.addIssue({ code: "custom", path: ["codeExpiresAt"], message: "Codes must remain valid for seven days" });
+});
+export const adminVoucherSchema = z.object({ id, title: z.string().min(1), brand: voucherBrandSchema, category: voucherCategorySchema, valueVnd: positive, price: voucherPriceSchema, basePoints: positive, promoPoints: positive.nullable(), state: adminVoucherStateSchema, status: adminVoucherStatusSchema, isVisible: z.boolean(), stock: adminVoucherStockSchema, isSharedCode: z.boolean(), redeemStartsAt: instant, redeemEndsAt: instant, codeExpiresAt: instant, priceDeviationPercent: z.number(), createdAt: instant, updatedAt: instant });
+export const adminVoucherPriceVersionSchema = pointsInput.innerType().extend({ version: positive, effectiveFrom: instant, changedBy: z.object({ id, name: z.string().min(1) }) }).refine(v => v.promoPoints === null || v.promoPoints < v.basePoints, { path: ["promoPoints"] });
+export const adminVoucherDetailSchema = z.object({ voucher: adminVoucherSchema, priceHistory: z.array(adminVoucherPriceVersionSchema), redemptions: z.array(z.object({ reference: z.string(), userLabel: z.string(), points: z.number().int(), kind: redemptionHistoryKindSchema, createdAt: instant })) });
+export const adminVoucherListSchema = z.object({ items: z.array(adminVoucherSchema), summary: z.object({ total: count, active: count, paused: count, soldOut: count, expired: count, hidden: count, archived: count, lowStock: z.array(z.object({ voucherId: id, label: z.string().min(1) })), codesAvailable: count, flashReserved: count, activeFlashSales: count }), serverTime: instant });
+export const adminVoucherListQuerySchema = z.object({ filter: z.enum(["ALL", "ACTIVE", "PAUSED", "SOLD_OUT", "EXPIRED", "HIDDEN"]).default("ALL"), q: z.string().trim().min(1).max(100).optional() });
+export const adminVoucherStatePatchSchema = z.object({ state: adminVoucherStateSchema.optional(), isVisible: z.boolean().optional() }).refine(v => v.state !== undefined || v.isVisible !== undefined);
+export const adminVoucherBrandListSchema = z.object({ items: z.array(voucherBrandSchema) });
+export const adminVoucherCreatedSchema = z.object({ voucher: adminVoucherSchema });
+export type AdminVoucherListDto = z.infer<typeof adminVoucherListSchema>;
+export type AdminVoucherListQueryDto = z.infer<typeof adminVoucherListQuerySchema>;
+export type AdminVoucherStatePatchDto = z.infer<typeof adminVoucherStatePatchSchema>;
+export type AdminVoucherBrandListDto = z.infer<typeof adminVoucherBrandListSchema>;
+export type AdminVoucherCreatedDto = z.infer<typeof adminVoucherCreatedSchema>;
+
+export const adminVoucherPriceChangeSchema = pointsInput;
+export const adminStockAdjustmentSchema = z.object({ total: count, reason: z.string().trim().min(5).max(500) });
+export const adminCodeImportRequestSchema = z.object({ codes: z.array(z.string().regex(/^[A-Za-z0-9-]{4,64}$/)).min(1).max(5000), mode: z.enum(["VALIDATE", "COMMIT"]) });
+export const adminCodeImportResultSchema = z.object({ received: count, accepted: count, duplicatesInFile: z.array(z.string()), alreadyStored: z.array(z.string()), committed: z.boolean() }).refine(v => !v.committed || (v.duplicatesInFile.length === 0 && v.alreadyStored.length === 0));
+export const adminFlashSaleStatusSchema = z.enum(["SCHEDULED", "UPCOMING", "ACTIVE", "SOLD_OUT", "ENDED"]);
+export const adminFlashEndReasonSchema = z.enum(["WRONG_PRICE", "STOCK_ISSUE", "PARTNER_REQUEST", "OTHER"]);
+export const adminFlashEndRequestSchema = z.object({ reason: adminFlashEndReasonSchema, note: z.string().trim().max(200).optional() }).refine(v => v.reason !== "OTHER" || !!v.note, { path: ["note"] });
+export const adminFlashRulesSchema = z.object({ requireRecentSurvey: z.boolean().default(true), remindBefore10m: z.boolean().default(true), blockFlagged: z.boolean().default(true) });
+export const adminFlashSaleInputSchema = z.object({ title: z.string().trim().min(1).max(60), startsAt: instant, endsAt: instant, rules: adminFlashRulesSchema.default({}), items: z.array(z.object({ voucherId: id, flashPoints: positive, quota: positive, perUserCap: positive.default(1) })).min(1) })
+  .refine(v => Date.parse(v.endsAt) > Date.parse(v.startsAt), { path: ["endsAt"], message: "End must follow start" })
+  .refine(v => Date.parse(v.endsAt) - Date.parse(v.startsAt) <= 6 * 3600000, { path: ["endsAt"], message: "Flash Sale maximum six hours" })
+  .refine(v => new Set(v.items.map(i => i.voucherId)).size === v.items.length, { path: ["items"] });
+export const adminFlashSaleItemSchema = z.intersection(flashSaleItemSchema, z.object({ unsold: count, pointsSpent: count, perMinute: z.number().nonnegative(), soldOutAt: instant.nullable(), etaAt: instant.nullable(), regularPoints: positive }));
+export const adminFlashSaleSchema = z.object({ id, code: z.string().regex(/^FS-\d{6}-[A-Z]$/), title: z.string().min(1), createdBy: z.object({ id, name: z.string().min(1) }), rules: adminFlashRulesSchema, remindCount: count, endReason: adminFlashEndReasonSchema.nullable(), succeededCount: count, participants: count, failures: z.object({ SOLD_OUT: count, INSUFFICIENT_POINTS: count, OTHER: count }), afterTopUp: z.object({ count, rate: ratio, flagged: count }), startsAt: instant, endsAt: instant, status: adminFlashSaleStatusSchema, endedEarlyAt: instant.nullable(), items: z.array(adminFlashSaleItemSchema), pointsSpent: count });
+export const adminFlashSaleListQuerySchema = z.object({ status: adminFlashSaleStatusSchema.optional() });
+export const adminFlashSaleListSchema = z.object({ items: z.array(adminFlashSaleSchema), summary: z.object({ active: count, upcoming: count, scheduled: count, soldOut: count, ended: count }), serverTime: instant });
+export const adminFlashSaleCreatedSchema = z.object({ flashSale: adminFlashSaleSchema });
+export type AdminFlashSaleDto = z.infer<typeof adminFlashSaleSchema>;
+export type AdminFlashSaleInputDto = z.infer<typeof adminFlashSaleInputSchema>;
+export type AdminFlashSaleListDto = z.infer<typeof adminFlashSaleListSchema>;
+export type AdminFlashSaleListQueryDto = z.infer<typeof adminFlashSaleListQuerySchema>;
+export type AdminFlashSaleCreatedDto = z.infer<typeof adminFlashSaleCreatedSchema>;
+export type AdminFlashEndRequestDto = z.infer<typeof adminFlashEndRequestSchema>;
+
+export const rewardsStatsQuerySchema = z.object({ from: date, to: date }).refine(v => v.to >= v.from && (Date.parse(v.to) - Date.parse(v.from)) / 86400000 <= 366, { path: ["to"] });
+export const rewardsStatsSchema = z.object({ range: z.object({ from: date, to: date }), updatedAt: instant, kpis: z.object({ activeVouchers: z.object({ active: count, total: count, soldOut: count, expired: count }), redemptions: z.object({ count, avgPerRegularDay: z.number().nonnegative() }), pointsSpent: z.object({ points: count, vndEquivalent: count }), redemptionRate: z.object({ redeemed: count, offered: count, rate: ratio }), topVoucher: z.object({ voucherId: id, label: z.string(), count, share: ratio }).nullable(), selfReportedUsageRate: ratio }), daily: z.array(z.object({ date, count, flashSaleCodes: z.array(z.string()) })), byBrand: z.array(z.object({ brand: voucherBrandSchema, redemptions: count, pointsSpent: count, soldRatio: ratio })), flashSales: z.array(z.object({ flashSaleId: id, code: z.string(), startsAt: instant, itemsLabel: z.string(), sold: count, quota: count, status: adminFlashSaleStatusSchema, pointsSpent: count, soldOutAfterMinutes: count.nullable() })) });
+
+export type RewardsStatsDto = z.infer<typeof rewardsStatsSchema>;
+export type RewardsStatsQueryDto = z.infer<typeof rewardsStatsQuerySchema>;
+
+// Story 12.10: Rewards Admin Code Issues Queue contracts
+export const adminCodeIssueStatusFilterSchema = z.enum(["OPEN", "RESOLVED", "ALL"]);
+export const adminCodeIssueListQuerySchema = z.object({
+  status: adminCodeIssueStatusFilterSchema.default("OPEN"),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  offset: z.coerce.number().int().min(0).max(MAX_PAGINATION_OFFSET).default(0),
+});
+
+export const adminCodeIssueReplaceBlockedReasonSchema = z.enum([
+  "SHARED_CODE", "NO_STOCK", "NO_CODE", "TICKET_EXPIRED",
+]);
+
+export const adminCodeIssueSchema = z.object({
+  id,
+  redemptionId: id,
+  reference: z.string().regex(/^RDM-\d{4}-[0-9A-Z]{4}$/),
+  userLabel: z.string(),
+  voucher: z.object({
+    id,
+    title: z.string().min(1),
+    brand: voucherBrandSchema,
+  }),
+  reason: z.enum(["CODE_INVALID", "CODE_ALREADY_USED", "STORE_REFUSED", "OTHER"]),
+  note: z.string().nullable(),
+  status: z.enum(["OPEN", "REPLACED", "REFUNDED", "REJECTED"]),
+  createdAt: instant,
+  resolvedAt: instant.nullable(),
+  resolvedBy: z.object({ id, name: z.string().min(1) }).nullable(),
+  pricePoints: positive,
+  priceSource: z.enum(["BASE", "PROMO", "FLASH"]),
+  ticketStatus: z.enum(["UNUSED", "EXPIRING", "USED", "EXPIRED"]),
+  canReplace: z.boolean(),
+  replaceBlockedReason: adminCodeIssueReplaceBlockedReasonSchema.nullable(),
+  resolution: z.object({
+    outcome: z.enum(["REPLACED", "REFUNDED", "REJECTED"]),
+    refundReference: z.string().regex(/^RFD-\d{4}-[0-9A-Z]{4}$/).optional(),
+  }).nullable(),
+  resolutionNote: z.string().nullable(),
+});
+
+export const adminCodeIssueListSchema = z.object({
+  items: z.array(adminCodeIssueSchema),
+  total: count,
+  limit: positive,
+  offset: count,
+  hasMore: z.boolean(),
+  summary: z.object({
+    open: count,
+    oldestOpenAt: instant.nullable(),
+  }),
+});
+
+export const adminResolveCodeIssueSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("REPLACE"),
+    note: z.string().trim().max(500).optional(),
+  }),
+  z.object({
+    outcome: z.literal("REFUND"),
+    note: z.string().trim().max(500).optional(),
+  }),
+  z.object({
+    outcome: z.literal("REJECT"),
+    note: z.string().trim().min(1, "Note is required for rejection").max(500),
+  }),
+]);
+
+export type AdminCodeIssueStatusFilter = z.infer<typeof adminCodeIssueStatusFilterSchema>;
+export type AdminCodeIssueListQuery = z.infer<typeof adminCodeIssueListQuerySchema>;
+export type AdminCodeIssueDto = z.infer<typeof adminCodeIssueSchema>;
+export type AdminCodeIssueListDto = z.infer<typeof adminCodeIssueListSchema>;
+export type AdminResolveCodeIssueDto = z.infer<typeof adminResolveCodeIssueSchema>;

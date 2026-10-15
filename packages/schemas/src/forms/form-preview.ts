@@ -90,9 +90,8 @@ export function validateBlockAnswer(
           error: `Maximum length is ${maxLength} characters`,
         };
       }
-      if (block.pattern && !new RegExp(block.pattern).test(value)) {
-        return { isValid: false, error: "Answer does not match the required format" };
-      }
+      // `pattern` is deliberately never executed: a publisher-authored regex
+      // run by the backtracking engine is a ReDoS vector (CWE-1333).
       return { isValid: true };
     }
 

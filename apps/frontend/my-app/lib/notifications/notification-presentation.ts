@@ -36,6 +36,8 @@ export const NOTIFICATION_PRESENTATION: Record<NotificationType, NotificationPre
   TOPUP_REJECTED: { icon: "bank", tone: "danger", href: "/wallet" },
   ACCOUNT_LOCKED: { icon: "lock", tone: "danger", href: null },
   ACCOUNT_UNLOCKED: { icon: "unlock", tone: "green", href: null },
+  VOUCHER_EXPIRING: { icon: "clock", tone: "amber", href: null },
+  CODE_ISSUE_RESOLVED: { icon: "check-circle", tone: "green", href: null },
 };
 
 /**
@@ -96,6 +98,8 @@ export const NOTIFICATION_TITLES: Record<NotificationType, string> = {
   TOPUP_REJECTED: "Yêu cầu nạp điểm bị từ chối",
   ACCOUNT_LOCKED: "Tài khoản đã bị khoá",
   ACCOUNT_UNLOCKED: "Tài khoản đã được mở khoá",
+  VOUCHER_EXPIRING: "Voucher sắp hết hạn",
+  CODE_ISSUE_RESOLVED: "Khiếu nại voucher đã xử lý",
 };
 
 const WARNING_TITLES: Record<WarningTopic, string> = {

@@ -87,7 +87,7 @@ test("every MSW-only endpoint is in a category of mocks/route-allowlist.ts", () 
 
 test("no allowlist entry is served by the backend", () => {
   const served = [...allowlist]
-    .filter(([key]) => backend.has(key))
+    .filter(([key, entry]) => backend.has(key))
     .map(([key, entry]) => `${entry.endpoint} (${entry.category}; backend ${backend.get(key)})`);
   assert.deepEqual(served, [], `The backend now serves these allowlisted endpoints, delete them:\n  ${served.join("\n  ")}`);
 });

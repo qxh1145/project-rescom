@@ -1,0 +1,9 @@
+# Daily full pgBackRest backup of the prod DB to R2 (Story 11.2 AC3). Install: see 01-wal-backup-runbook.md.
+[Unit]
+Description=RESCOM pgBackRest full backup to R2
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker exec -u postgres rescom-postgres-1 pgbackrest --stanza=rescom --type=full backup

@@ -1,0 +1,206 @@
+{
+  "run": "rewards-flash-load-2026-10-15T05-17-35-350Z",
+  "base": "http://localhost:4001",
+  "database": "rescom_rewards_check",
+  "params": {
+    "users": 300,
+    "quota": 100,
+    "voucherStock": 100,
+    "perUserCap": 1,
+    "requireRecentSurvey": false,
+    "doubleSubmitUsers": 20,
+    "flashPoints": 600,
+    "basePoints": 1000,
+    "fundPerUser": 2100,
+    "startDelaySeconds": 90
+  },
+  "commit": "eedb620",
+  "startedAt": "2026-10-15T05:17:35.362Z",
+  "hardware": {
+    "clientHost": {
+      "platform": "darwin arm64",
+      "cpus": 10,
+      "memoryGiB": 16,
+      "node": "v22.18.0"
+    },
+    "dockerVm": "10 CPUs, 8218034176 bytes, aarch64",
+    "backend": {
+      "container": "rescom-api-load",
+      "inspect": "cpus=2000000000ns cpuset=0,1 memory=8375186227B image=rescom-api:rewards-check",
+      "nprocInside": "2",
+      "cgroupCpuMax": "200000 100000",
+      "cgroupMemoryMax": "8375185408"
+    },
+    "postgres": {
+      "container": "rescom_load_pg",
+      "inspect": "cpus=0ns cpuset=0,1 memory=0B image=postgres:15-alpine3.22",
+      "cgroupCpuMax": "max 100000",
+      "nprocInside": "2"
+    }
+  },
+  "authRateLimit": "AUTH_RATE_LIMIT_MAX_REQUESTS raised on the scratch backend (see hardware/env note in the evidence pack); users registered through POST /auth/register",
+  "setupRegisterSeconds": 76.9,
+  "ids": {
+    "voucherId": "eeb85744-eaad-4058-8207-3aca9fa61e8f",
+    "flashSaleId": "c226dc0b-49e3-4a48-8ea0-165cc58944fa",
+    "flashCode": "FS-261015-A",
+    "flashSaleItemId": "bf571e84-0aed-4372-849c-0cfbd435f932",
+    "startsAt": "2026-10-15T05:20:25.176Z",
+    "reservedAt": "2026-10-15T05:20:34.904Z"
+  },
+  "reserveDelaySecondsAfterStart": 9.7,
+  "wallClockSeconds": 2.578,
+  "latencyMs": {
+    "quote": {
+      "count": 300,
+      "p50": 670.2,
+      "p95": 795.7,
+      "p99": 797.4,
+      "max": 829.9,
+      "min": 623.8
+    },
+    "redeem": {
+      "count": 280,
+      "p50": 1518.4,
+      "p95": 1826.7,
+      "p99": 1927.1,
+      "max": 1929.8,
+      "min": 359.8
+    },
+    "redeemDoubleSubmit": {
+      "count": 40,
+      "p50": 1774.6,
+      "p95": 1948.3,
+      "p99": 1949.6,
+      "max": 1949.6,
+      "min": 294.2
+    },
+    "redeemAll": {
+      "count": 320,
+      "p50": 1518.9,
+      "p95": 1923.7,
+      "p99": 1946.2,
+      "max": 1949.6,
+      "min": 294.2
+    }
+  },
+  "nfr1": {
+    "thresholdMs": 500,
+    "redeemP95Ms": 1923.7,
+    "quoteP95Ms": 795.7,
+    "note": "information only; PRD OQ-22 owns SLOs"
+  },
+  "errorsByCode": {
+    "quote": {
+      "201:OK": 300
+    },
+    "redeem": {
+      "409:SOLD_OUT": 186,
+      "201:OK": 94
+    },
+    "redeemDoubleSubmit": {
+      "201:OK": 12,
+      "409:SOLD_OUT": 28
+    }
+  },
+  "skippedUsers": {},
+  "networkErrorSamples": [],
+  "counts": {
+    "apiFlashSuccessesSingle": 94,
+    "sqlSucceededFlashRedemptions": 100,
+    "flashItemSold": 100,
+    "quotes201": 300
+  },
+  "doubleSubmit": {
+    "pairs": 20,
+    "violations": 0,
+    "winnersAmongPairs": 6
+  },
+  "backendStatsAfterRun": "cpu=1.21% mem=139.1MiB / 7.654GiB",
+  "finishedAt": "2026-10-15T05:20:39.654Z",
+  "invariants": [
+    {
+      "name": "warm-up: all users reach the API",
+      "ok": true,
+      "detail": {
+        "200:OK": 300
+      }
+    },
+    {
+      "name": "SUCCEEDED Flash redemptions == quota (100)",
+      "ok": true,
+      "detail": "sql=100"
+    },
+    {
+      "name": "flash_sale_items.sold == quota",
+      "ok": true,
+      "detail": "sold=100 quota=100"
+    },
+    {
+      "name": "every SUCCEEDED redemption is at the Flash price",
+      "ok": true,
+      "detail": "100 rows"
+    },
+    {
+      "name": "no user has two SUCCEEDED redemptions for the item",
+      "ok": true,
+      "detail": "users with 2+=0"
+    },
+    {
+      "name": "non-winners fail only with SOLD_OUT (no 5xx, no network error, no other code)",
+      "ok": true,
+      "detail": {}
+    },
+    {
+      "name": "quotes fail only with SOLD_OUT (after sell-out); no 5xx, no network error",
+      "ok": true,
+      "detail": {}
+    },
+    {
+      "name": "API 201 <=> SQL SUCCEEDED (no phantom success)",
+      "ok": true,
+      "detail": "phantom=0"
+    },
+    {
+      "name": "one zero-sum 2-entry journal per success",
+      "ok": true,
+      "detail": "rows=100 violations=0"
+    },
+    {
+      "name": "sum of wallet debits == sum of success prices",
+      "ok": true,
+      "detail": "debits=60000 prices=60000"
+    },
+    {
+      "name": "losers' wallets unchanged",
+      "ok": true,
+      "detail": "changed=0"
+    },
+    {
+      "name": "winners debited exactly the Flash price once",
+      "ok": true,
+      "detail": "wrong=0"
+    },
+    {
+      "name": "stock identity: stock_total = stock_remaining + flash reserved + issued",
+      "ok": true,
+      "detail": "{\"stock_total\":100,\"stock_remaining\":0,\"flash_reserved\":0,\"issued\":100}"
+    },
+    {
+      "name": "no code assigned twice",
+      "ok": true,
+      "detail": "dup=0"
+    },
+    {
+      "name": "double-submit pairs produce one result (1 redemption row, <=1 journal, same outcome both responses)",
+      "ok": true,
+      "detail": "20 pairs ok"
+    },
+    {
+      "name": "ledger: every journal sums to zero, no drift, no negative user account",
+      "ok": true,
+      "detail": "unbalanced=0 drift=0 negative=0"
+    }
+  ],
+  "passed": true
+}

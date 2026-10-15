@@ -1,4 +1,3 @@
-import { ConflictException } from '@nestjs/common';
 import {
   ListPublishedSurveysQuery,
   PublishedSurveyPage,
@@ -8,6 +7,7 @@ import type { PublishedFormAdminPort } from '../../forms/application/ports/publi
 import type { AdminUserDirectoryPort } from '../../users/application/ports/admin-user-directory.port';
 import type { AuditLogRepositoryPort } from './ports/audit-log-repository.port';
 import { FormNotFoundException } from '../../forms/application/exceptions/form.exceptions';
+import { SurveyNotPublishedException } from './exceptions/audit-log.exceptions';
 
 export interface AdminPublishedSurveysDependencies {
   forms: PublishedFormAdminPort;
@@ -58,10 +58,7 @@ export class AdminPublishedSurveysService {
     const status = await this.deps.forms.findStatus(formId);
     if (!status) throw new FormNotFoundException(formId);
     if (pinned && status !== 'PUBLISHED') {
-      throw new ConflictException({
-        code: 'SURVEY_NOT_PUBLISHED',
-        message: `Only a PUBLISHED survey can be pinned (status ${status}).`,
-      });
+      throw new SurveyNotPublishedException(status);
     }
     await this.deps.forms.setPinned(formId, pinned);
     await this.deps.audit.append({

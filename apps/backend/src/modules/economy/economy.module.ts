@@ -1,4 +1,16 @@
 import { Global, Logger, Module } from '@nestjs/common';
+import { WALLET_BALANCE_PORT } from '../rewards/application/ports/wallet-balance.port';
+import {
+  SPEND_POINTS_PORT,
+  SpendPointsPort,
+} from '../rewards/application/ports/spend-points.port';
+import {
+  REVERSE_SPEND_PORT,
+  ReverseSpendPort,
+} from '../rewards/application/ports/reverse-spend.port';
+import { ACCOUNT_FUNDING_PORT } from '../rewards/application/ports/account-standing.port';
+import { PrismaAccountFundingReader } from './infrastructure/prisma-account-funding.reader';
+import { PrismaWalletBalanceReader } from './infrastructure/prisma-wallet-balance.reader';
 import { PrismaModule } from '../../common/database/prisma.module';
 import { CLOCK, Clock } from '../../common/time/clock';
 import { EconomySchedulerRegistrar } from './infrastructure/economy-scheduler.registrar';
@@ -61,6 +73,35 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     AdminTopUpController,
   ],
   providers: [
+    { provide: WALLET_BALANCE_PORT, useClass: PrismaWalletBalanceReader },
+    { provide: ACCOUNT_FUNDING_PORT, useClass: PrismaAccountFundingReader },
+    {
+      provide: SPEND_POINTS_PORT,
+      useFactory: (ledger: LedgerService): SpendPointsPort => ({
+        spendPoints: async (params, options) => {
+          const journal = await ledger.spendPoints(params, options);
+          return {
+            journalId: journal.id,
+            idempotencyKey: journal.idempotencyKey,
+          };
+        },
+      }),
+      inject: [LedgerService],
+    },
+    {
+      provide: REVERSE_SPEND_PORT,
+      useFactory: (ledger: LedgerService): ReverseSpendPort => ({
+        reverseSpend: async (params) => {
+          const journal = await ledger.reverseJournal({
+            targetJournalId: params.journalId,
+            idempotencyKey: params.idempotencyKey,
+            reason: params.reason,
+          });
+          return { journalId: journal.id };
+        },
+      }),
+      inject: [LedgerService],
+    },
     // Admin read views (IR.4b part C, mock-off plan 4.1 and 4.3).
     {
       provide: ADMIN_ECONOMY_STATS_PORT,
@@ -177,6 +218,10 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     },
   ],
   exports: [
+    WALLET_BALANCE_PORT,
+    ACCOUNT_FUNDING_PORT,
+    SPEND_POINTS_PORT,
+    REVERSE_SPEND_PORT,
     ADMIN_ECONOMY_STATS_PORT,
     LedgerService,
     TopUpService,

@@ -1043,10 +1043,10 @@ export class FormsService {
     const targetStatus: FormStatusEnum = isOfficial
       ? 'PUBLISHED'
       : (dto.targetStatus ??
-      determinePublishTargetStatus({
-        type: existing.form.type,
-        rewardPerResponse: existing.form.rewardPerResponse,
-      }));
+        determinePublishTargetStatus({
+          type: existing.form.type,
+          rewardPerResponse: existing.form.rewardPerResponse,
+        }));
     // DRAFT -> CLOSED is a table edge for re-versioned drafts (decision D2),
     // but it is the close command, never a publication.
     if (
