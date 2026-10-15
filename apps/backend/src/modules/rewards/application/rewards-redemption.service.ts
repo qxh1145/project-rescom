@@ -249,9 +249,17 @@ export class RewardsRedemptionService {
 
         // 2.e: Pure decision (stock & price checks)
         // Note: code availability is checked under lock at 2.h to distinguish
-        // normal SOLD_OUT from inventory drift.
+        // normal SOLD_OUT from inventory drift. A Flash reservation moves the
+        // quota out of stock_remaining, so a quota equal to the whole stock
+        // leaves it at 0 while codes remain: take the larger of the two.
         const decisionRejection = decideRedemption(
-          { ...voucher, codesAvailable: voucher.stockRemaining },
+          {
+            ...voucher,
+            codesAvailable: Math.max(
+              voucher.codesAvailable,
+              voucher.stockRemaining,
+            ),
+          },
           activeFlash
             ? {
                 id: activeFlash.id,

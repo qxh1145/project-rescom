@@ -131,6 +131,7 @@ export async function bootHarness(options: BootOptions = {}): Promise<Harness> {
     JWT_ACCESS_TTL_SECONDS: 900,
     BCRYPT_ROUNDS: 12,
     FRONTEND_ORIGINS: ALLOWED_ORIGIN,
+    REWARDS_ENABLED: true, // Story 12.11: the flag defaults off; the Rewards PG suites exercise the routes
     ...options.env,
   });
   const moduleFixture = await Test.createTestingModule({

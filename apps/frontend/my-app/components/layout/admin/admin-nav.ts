@@ -1,4 +1,4 @@
-import { PILOT_BUILD } from "../../../lib/pilot-scope.ts";
+import { PILOT_BUILD, REWARDS_ENABLED } from "../../../lib/pilot-scope.ts";
 import type { IconName } from "@/components/ui/Icon";
 import type { AdminQueue } from "@/lib/admin/admin-queue-service";
 
@@ -21,7 +21,7 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
   { href: "/admin/users", label: "Người dùng", icon: "users" },
   { href: "/admin/fraud-log", label: "FraudLog", icon: "shield-alert" },
   { href: "/admin/transactions", label: "Giao dịch", icon: "arrows-swap" },
-  ...(PILOT_BUILD ? [] : [
+  ...(!REWARDS_ENABLED ? [] : [
     { href: "/admin/vouchers", label: "Voucher", icon: "ticket" as const },
     { href: "/admin/flash-sales", label: "Flash Sale", icon: "zap" as const },
     { href: "/admin/code-issues", label: "Báo cáo mã lỗi", icon: "alert-circle" as const },

@@ -144,7 +144,7 @@ development_status:
   12-10-my-vouchers-reminders-faulty-code-resolution: done
   12-12-admin-code-issue-queue-contract-msw-mock: done  # created 2026-10-14; contract frozen to 12.10, seed mirrors Figma page 28 (node 150:2)
   12-13-admin-code-issue-queue-screen: done  # created 2026-10-14; Figma 28 adapted to frozen 12.10 contract (Option A); FE-only
-  12-11-rewards-integration-without-mocks-enable-gate: ready-for-dev  # created 2026-10-14; dev starts after 12.12 + 12.13 done (Quan 2026-10-14); prod enable waits for 11.5 + OQ-24
+  12-11-rewards-integration-without-mocks-enable-gate: done  # created 2026-10-14; dev starts after 12.12 + 12.13 done (Quan 2026-10-14); prod enable waits for 11.5 + OQ-24
   epic-12-retrospective: optional
 
 # ==============================================================================

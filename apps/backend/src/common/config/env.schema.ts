@@ -201,6 +201,9 @@ export const envSchema = z
     // (Story 11.1 sets it in docker-compose.prod.yml). Never starts under
     // NODE_ENV=test. Per-job cadences and leases are code constants.
     SCHEDULER_ENABLED: booleanEnv(false),
+    // Story 12.11, PRD OQ-24: Rewards stays off until accounting/tax decision is recorded.
+    REWARDS_ENABLED: booleanEnv(false),
+    REWARDS_ACCOUNTING_DECISION_REF: z.string().trim().min(1).optional(),
     SCHEDULER_TICK_SECONDS: z.coerce.number().int().min(1).max(300).default(15),
     OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(50).default(8),
 
@@ -412,6 +415,15 @@ export const envSchema = z
       // IR.5 E3.1 (AD-5 amendment): the single production replica owns the
       // scheduler and Outbox dispatcher; without it nothing matures, expires
       // or sends email.
+      if (data.REWARDS_ENABLED && !data.REWARDS_ACCOUNTING_DECISION_REF) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['REWARDS_ACCOUNTING_DECISION_REF'],
+          message:
+            'REWARDS_ACCOUNTING_DECISION_REF is required to enable Rewards in production: record the PRD Open Question 24 accounting/tax decision',
+        });
+      }
+
       if (!data.SCHEDULER_ENABLED) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

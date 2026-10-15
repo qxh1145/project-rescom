@@ -1,3 +1,4 @@
+import { RewardsEnabledGuard } from './rewards-enabled.guard';
 import {
   Body,
   Controller,
@@ -28,7 +29,7 @@ import { createSuccessEnvelope } from '../../../common/http/response.envelope';
 import { RewardsMyVouchersService } from '../application/rewards-my-vouchers.service';
 
 @Controller(['rewards', 'api/rewards'])
-@UseGuards(SessionAuthGuard)
+@UseGuards(RewardsEnabledGuard, SessionAuthGuard)
 export class RewardsMyVouchersController {
   constructor(private readonly service: RewardsMyVouchersService) {}
 

@@ -186,7 +186,7 @@ test('voucher service exports guard pilot build; admin voucher components avoid 
   const service = readFileSync(new URL('../lib/admin/rewards-vouchers-service.ts', import.meta.url), 'utf8');
   const exports = service.split(/export function /).slice(1);
   assert.ok(exports.length > 0);
-  for (const entry of exports) assert.match(entry, /^\w+[\s\S]*?\{\s*if \(PILOT_BUILD\)/);
+  for (const entry of exports) assert.match(entry, /if \(!REWARDS_ENABLED\)/);
   const scan = dir => {
     for (const item of readdirSync(dir, { withFileTypes: true })) {
       const url = new URL(item.name + (item.isDirectory() ? '/' : ''), dir);

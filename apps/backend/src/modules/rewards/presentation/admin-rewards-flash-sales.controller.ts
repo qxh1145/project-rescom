@@ -1,3 +1,4 @@
+import { RewardsEnabledGuard } from './rewards-enabled.guard';
 import {
   Body,
   Controller,
@@ -32,7 +33,7 @@ import { createSuccessEnvelope } from '../../../common/http/response.envelope';
 import { RewardsAdminFlashService } from '../application/rewards-admin-flash.service';
 
 @Controller(['admin/rewards', 'api/admin/rewards'])
-@UseGuards(SessionAuthGuard, RolesGuard)
+@UseGuards(RewardsEnabledGuard, SessionAuthGuard, RolesGuard)
 @Roles('ADMIN')
 export class AdminRewardsFlashSalesController {
   constructor(private readonly adminFlash: RewardsAdminFlashService) {}

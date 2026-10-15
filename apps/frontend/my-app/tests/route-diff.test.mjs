@@ -85,28 +85,9 @@ test("every MSW-only endpoint is in a category of mocks/route-allowlist.ts", () 
   );
 });
 
-test("no allowlist entry is served by the backend, except deferred Rewards routes until 12.11", () => {
-  // Story 12.7 & 12.8 ship these APIs before 12.11 switches frontend Rewards off MSW.
-  const deferredRewards = new Set([
-    "GET /admin/rewards/vouchers", "POST /admin/rewards/vouchers",
-    "GET /admin/rewards/vouchers/:param", "PUT /admin/rewards/vouchers/:param",
-    "PATCH /admin/rewards/vouchers/:param", "POST /admin/rewards/vouchers/:param/price",
-    "POST /admin/rewards/vouchers/:param/stock", "POST /admin/rewards/vouchers/:param/codes",
-    "GET /admin/rewards/brands", "GET /rewards/vouchers",
-    "GET /rewards/vouchers/:param", "GET /rewards/flash-sales",
-    "POST /rewards/quotes", "POST /rewards/redemptions", "GET /rewards/redemptions/by-key/:param",
-    "GET /admin/rewards/settings", "PUT /admin/rewards/settings",
-    "GET /admin/rewards/flash-sales", "POST /admin/rewards/flash-sales",
-    "GET /admin/rewards/flash-sales/:param", "PUT /admin/rewards/flash-sales/:param",
-    "POST /admin/rewards/flash-sales/:param/end",
-    "GET /admin/rewards/code-issues", "GET /admin/rewards/code-issues/:param",
-    "POST /admin/rewards/code-issues/:param/resolve",
-    "GET /rewards/my-vouchers", "GET /rewards/my-vouchers/:param",
-    "POST /rewards/my-vouchers/:param/use", "POST /rewards/my-vouchers/:param/undo-use",
-    "POST /rewards/my-vouchers/:param/issues", "GET /rewards/redemptions",
-  ]);
+test("no allowlist entry is served by the backend", () => {
   const served = [...allowlist]
-    .filter(([key, entry]) => backend.has(key) && !(entry.category === "DEFERRED_KEEP_MOCK" && deferredRewards.has(key)))
+    .filter(([key, entry]) => backend.has(key))
     .map(([key, entry]) => `${entry.endpoint} (${entry.category}; backend ${backend.get(key)})`);
   assert.deepEqual(served, [], `The backend now serves these allowlisted endpoints, delete them:\n  ${served.join("\n  ")}`);
 });
@@ -119,10 +100,10 @@ test("every allowlist entry still has its MSW handler", () => {
   assert.deepEqual(orphaned, [], `These allowlisted endpoints have no MSW handler left, delete them:\n  ${orphaned.join("\n  ")}`);
 });
 
-test("gate G: only MOCK_ONLY (3) and DEFERRED_KEEP_MOCK (44) remain; every other MSW route is a backend route", () => {
+test("gate G: only MOCK_ONLY (3) and DEFERRED_KEEP_MOCK (14) remain; every other MSW route is a backend route", () => {
   assert.deepEqual(
     Object.fromEntries(Object.entries(ROUTE_ALLOWLIST).map(([category, endpoints]) => [category, Object.keys(endpoints).length])),
-    { MOCK_ONLY: 3, DEFERRED_KEEP_MOCK: 44, PLANNED: 0, REMOVE: 0 },
+    { MOCK_ONLY: 3, DEFERRED_KEEP_MOCK: 14, PLANNED: 0, REMOVE: 0 },
   );
   const outside = [...new Set(handlers.map((handler) => handler.key))]
     .filter((key) => !backend.has(key) && !["MOCK_ONLY", "DEFERRED_KEEP_MOCK"].includes(allowlist.get(key)?.category))

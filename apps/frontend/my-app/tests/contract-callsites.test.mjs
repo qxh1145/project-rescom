@@ -32,15 +32,13 @@ test("every frontend call is a backend route or an allowlisted one", () => {
   assert.deepEqual(stray, [], `frontend calls that no controller serves and no allowlist entry covers:\n  ${stray.join("\n  ")}`);
 });
 
-test("allowlist entries carry a reason and are neither stale nor served by the backend, except Rewards until 12.11", () => {
+test("allowlist entries carry a reason and are neither stale nor served by the backend", () => {
   const called = new Set(calls.map(key));
   for (const [route, entry] of allowlist) {
     assert.ok(["deferred-hidden", "out-of-api"].includes(entry.reason), `${entry.endpoint}: reason "${entry.reason}"`);
     assert.ok(entry.note?.length > 10, `${entry.endpoint}: note`);
     assert.ok(called.has(route), `${entry.endpoint} is allowlisted but no call site uses it: delete the entry`);
-    const deferredRewards = entry.reason === "deferred-hidden" && entry.note.includes("Epic 12 Phase 2") &&
-      Object.keys(ROUTE_ALLOWLIST.DEFERRED_KEEP_MOCK).some((endpoint) => routeKey(...endpoint.split(" ")) === route);
-    assert.ok(!backend.has(route) || deferredRewards, `${entry.endpoint} is served by ${backend.get(route)}: delete the entry`);
+    assert.ok(!backend.has(route), `${entry.endpoint} is served by ${backend.get(route)}: delete the entry`);
   }
 });
 
@@ -61,13 +59,6 @@ test("the matrix has one row per distinct call and no unmatched row", () => {
 
 test("every matched call is exercised by at least one backend e2e spec (AC 1)", () => {
   const { matrix } = buildMatrix();
-  // ponytail: backend e2e uses `write(method, path)` dynamic calls the parser can't match;
-  // exempt deferred-hidden Epic 12 Phase 2 routes until 12.11 adds literal supertest calls.
-  const deferredRewardsAdmin = new Set([
-    "GET /admin/rewards/vouchers/:param", "PUT /admin/rewards/vouchers/:param",
-    "PATCH /admin/rewards/vouchers/:param", "POST /admin/rewards/vouchers/:param/price",
-    "POST /admin/rewards/vouchers/:param/stock", "POST /admin/rewards/vouchers/:param/codes",
-  ]);
-  const untested = matrix.filter((row) => row.status === "matched" && row.specs.length === 0 && !deferredRewardsAdmin.has(row.key)).map((row) => row.key);
+  const untested = matrix.filter((row) => row.status === "matched" && row.specs.length === 0).map((row) => row.key);
   assert.deepEqual(untested, [], "matched calls with no backend e2e spec calling the path");
 });

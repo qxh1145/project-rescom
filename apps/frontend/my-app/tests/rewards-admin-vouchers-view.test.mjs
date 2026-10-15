@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseCodeCsv, voucherFormErrors, deviationWarning, preCheckItems, voucherRowView, voucherActionsOf, STATUS_FILTERS } from "../lib/admin/rewards-vouchers-view.ts";
+process.env.NEXT_PUBLIC_REWARDS_ENABLED = "true";
+const { parseCodeCsv, voucherFormErrors, deviationWarning, preCheckItems, voucherRowView, voucherActionsOf, STATUS_FILTERS } = await import("../lib/admin/rewards-vouchers-view.ts");
 
 test("CSV strips BOM/header, accepts separators and records bad line numbers", () => {
   assert.deepEqual(parseCodeCsv("\uFEFFcode\r\nABCD;ignore\r\n\r\nBAD!\r\nEFGH,ignore"), {

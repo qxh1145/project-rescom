@@ -6,7 +6,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { Icon } from "@/components/ui/Icon";
-import { PILOT_BUILD } from "@/lib/pilot-scope";
+import { REWARDS_ENABLED } from "@/lib/pilot-scope";
 import { walletLoadErrorMessage } from "@/lib/wallet/wallet-messages";
 import { useWallet } from "../hooks/use-wallet";
 import { BalanceCard } from "./BalanceCard";
@@ -58,7 +58,7 @@ export function WalletScreen() {
           <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[440px_minmax(0,1fr)] lg:items-start lg:gap-7">
             <div className="flex flex-col gap-4">
               <BalanceCard available={wallet.balance.available} />
-              {!PILOT_BUILD && (
+              {REWARDS_ENABLED && (
                 <Link
                   href="/rewards"
                   className="flex items-center justify-between rounded-[20px] border border-line bg-surface p-4 shadow-xs hover:border-primary/50 transition-colors"

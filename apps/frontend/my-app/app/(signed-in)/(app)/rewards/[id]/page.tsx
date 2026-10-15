@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { PILOT_BUILD } from "@/lib/pilot-scope";
+import { REWARDS_ENABLED } from "@/lib/pilot-scope";
 import { VoucherDetailScreen } from "../components/VoucherDetailScreen";
 
 export const metadata: Metadata = {
@@ -12,7 +12,7 @@ interface VoucherDetailPageProps {
 }
 
 export default async function VoucherDetailPage({ params }: VoucherDetailPageProps) {
-  if (PILOT_BUILD) notFound();
+  if (!REWARDS_ENABLED) notFound();
   const { id } = await params;
   return <VoucherDetailScreen voucherId={id} />;
 }

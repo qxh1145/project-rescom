@@ -1,3 +1,4 @@
+import { RewardsEnabledGuard } from './rewards-enabled.guard';
 import {
   BadRequestException,
   Body,
@@ -30,7 +31,7 @@ import { RewardsQuoteService } from '../application/rewards-quote.service';
 import { RewardsRedemptionService } from '../application/rewards-redemption.service';
 
 @Controller(['rewards', 'api/rewards'])
-@UseGuards(SessionAuthGuard)
+@UseGuards(RewardsEnabledGuard, SessionAuthGuard)
 export class RewardsRedemptionController {
   constructor(
     private readonly quoteService: RewardsQuoteService,

@@ -447,3 +447,10 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 - Rewards schemas lack cross-field invariants (FLASH source ↔ flash, stockRemaining <= stockTotal, result ↔ ticket, non-FLASH quote with flashSaleItemId, adminCodeIssueSchema status ↔ resolution).
 - Admin voucher mock (12.5): shared-code create drops `sharedCode`; price change unchecked vs Flash prices; code import ignores issued codes; update cannot clear terms/imageUrl; admin redemptions drop REFUNDED rows; admin-created voucher `description`/`whereToUse` "" fails voucherDetailSchema; adminVoucherStatus ACTIVE before redeemStartsAt; flash quota unchecked vs codesAvailable.
 - Code-issue refund mock (12.12) skips wallet credit when the wallet is missing but still marks REFUNDED.
+
+## Deferred from: code review of 12-11-rewards-integration-without-mocks-enable-gate (2026-10-15)
+
+- Turning `REWARDS_ENABLED` off while a Flash Sale is reserved or active skips `FlashSaleLifecycleJob` (Task 1.5 by design), so the sale is never settled and its reserve is never released. The rollback runbook must require no active or reserved sale, or settle the sale first.
+- Admin stats Flash table `sold` and `pointsSpent` use `flash_sale_items.sold`, which includes refunded flash redemptions; the KPIs exclude refunds. This matches the 12.6 mock definition. Revisit if Finance needs refund-net flash figures.
+- Production compose files do not pass `NEXT_PUBLIC_REWARDS_ENABLED` (or other `NEXT_PUBLIC_*`) as frontend build args. This only matters if the frontend is ever built through compose instead of Vercel.
+- At 390 px the Admin Rewards screens overflow horizontally. On `/admin/vouchers/new` and `/admin/vouchers/[id]/edit`, form inputs are clipped (441 px). On `/admin/flash-sales`, the "Kết thúc sớm" column overflows (418 px). On `/admin/voucher-stats`, the daily table is not in a scroll container (449 px). Found in the 12.11 Task 8.6 browser pass; the pages are fine at 1440 px. Fix when Admin mobile matters, using `min-w-0`/`w-full` on fields and `overflow-x-auto` wrappers.

@@ -104,6 +104,15 @@ import { RewardsOutboxRegistrar } from './infrastructure/rewards-outbox.registra
 import { RewardsMyVouchersController } from './presentation/rewards-my-vouchers.controller';
 import { AdminRewardsCodeIssuesController } from './presentation/admin-rewards-code-issues.controller';
 
+import { RewardsEnabledGuard } from './presentation/rewards-enabled.guard';
+import { AdminRewardsStatsController } from './presentation/admin-rewards-stats.controller';
+import { RewardsAdminStatsService } from './application/rewards-admin-stats.service';
+import {
+  REWARDS_STATS_READ_PORT,
+  RewardsStatsReadPort,
+} from './application/ports/rewards-stats-read.port';
+import { PrismaRewardsStatsRepository } from './infrastructure/prisma-rewards-stats.repository';
+
 @Module({
   imports: [
     PrismaModule,
@@ -115,12 +124,28 @@ import { AdminRewardsCodeIssuesController } from './presentation/admin-rewards-c
   controllers: [
     AdminRewardsVouchersController,
     AdminRewardsFlashSalesController,
+    AdminRewardsStatsController,
     RewardsCatalogController,
     RewardsRedemptionController,
     RewardsMyVouchersController,
     AdminRewardsCodeIssuesController,
   ],
   providers: [
+    RewardsEnabledGuard,
+    PrismaRewardsStatsRepository,
+    {
+      provide: REWARDS_STATS_READ_PORT,
+      useExisting: PrismaRewardsStatsRepository,
+    },
+    {
+      provide: RewardsAdminStatsService,
+      useFactory: (statsRead: RewardsStatsReadPort, clock: Clock) =>
+        new RewardsAdminStatsService({
+          statsRead,
+          now: () => clock.now(),
+        }),
+      inject: [REWARDS_STATS_READ_PORT, CLOCK],
+    },
     { provide: VOUCHER_REPOSITORY_PORT, useClass: PrismaVoucherRepository },
     {
       provide: VOUCHER_CODE_REPOSITORY_PORT,

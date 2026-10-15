@@ -625,6 +625,29 @@ describeSuite(
       ).not.toBeNull();
     });
 
+    it('quota equal to the whole stock: Flash redeem succeeds while stock_remaining is 0', async () => {
+      const voucher = await createVoucher(3);
+      const user = await activeRespondent(1000);
+      const now = new Date();
+      await insertSale(voucher.id, {
+        startsAt: new Date(now.getTime() - 1000),
+        endsAt: new Date(now.getTime() + 3600_000),
+        quota: 3,
+      });
+      await lifecycle.runDue(now, 100);
+      expect(await stockOf(voucher.id)).toBe(0);
+      const quote = await quoteOf(user, voucher.id);
+      expect(quote.price.source).toBe('FLASH');
+
+      const res = await redeem(user, quote.quoteId);
+      expect(res.status).toBe(201);
+      expect(
+        await harness.prisma.redemption.count({
+          where: { userId: user.id, status: 'SUCCEEDED' },
+        }),
+      ).toBe(1);
+    });
+
     it('getMonitoringStats counts distinct participants, after-top-up logs/users and SOLD_OUT failures only', async () => {
       const voucher = await createVoucher(20);
       const now = new Date();
