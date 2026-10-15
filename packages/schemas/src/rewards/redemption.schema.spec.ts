@@ -1,4 +1,4 @@
-import { REDEMPTION_ERROR_CODES, redemptionErrorCodeSchema, redemptionErrorSchema, redemptionQuoteSchema, redeemVoucherSchema, createRedemptionQuoteSchema, voucherTicketSchema, redemptionResultSchema, redemptionHistoryEntrySchema, codeIssueReportSchema, createCodeIssueReportSchema, voucherTicketListSchema, voucherTicketResponseSchema, redemptionHistoryListSchema, redemptionHistoryQuerySchema, REDEMPTION_ERROR_HTTP_STATUS } from "./redemption.schema";
+import { REDEMPTION_ERROR_CODES, redemptionErrorCodeSchema, redemptionErrorSchema, redemptionQuoteSchema, redeemVoucherSchema, createRedemptionQuoteSchema, voucherTicketSchema, redemptionResultSchema, redemptionHistoryEntrySchema, codeIssueReportSchema, createCodeIssueReportSchema, voucherTicketListSchema, voucherTicketResponseSchema, redemptionHistoryListSchema, redemptionHistoryQuerySchema, REDEMPTION_ERROR_HTTP_STATUS, accountNotEligibleReasonSchema } from "./redemption.schema";
 const id = "11111111-1111-4111-8111-111111111111";
 const now = "2026-10-01T00:00:00.000Z";
 const brand = { id: "highlands", name: "Highlands" };
@@ -57,5 +57,31 @@ describe("redemption contracts (Story 12.1, FR-69)", () => {
     expect(codeIssueReportSchema.safeParse({ ...report, status: "REFUNDED", resolvedAt: now, refundReference: "RDM-2610-7HC2" }).success).toBe(false);
     expect(codeIssueReportSchema.safeParse({ ...report, status: "REPLACED", resolvedAt: now, replacementCode: "NEW-CODE" }).success).toBe(true);
     expect(codeIssueReportSchema.safeParse({ ...report, replacementCode: "NEW-CODE" }).success).toBe(false);
+  });
+});
+describe("redemption review gaps (Story 12.1, AC5)", () => {
+  const row = { id, reference: ticket.reference, kind: "SUCCEEDED", voucherTitle: "Coffee", brand, valueVnd: 50000, isFlash: true, points: -150, failureCode: null, journalId: id, note: null, createdAt: now };
+  const report = { id, redemptionId: id, ticketId: id, reason: "CODE_INVALID", note: null, status: "OPEN", createdAt: now, resolvedAt: null, replacementCode: null, refundReference: null };
+  it("compares quote expiry to flashEndsAt by instant", () => {
+    const quote = { quoteId: id, voucherId: id, price, flashSaleItemId: id, expiresAt: "2026-10-01T00:00:00.000Z", flashEndsAt: "2026-10-01T00:00:00Z", balance: { available: 186, after: 36 }, serverTime: now };
+    expect(redemptionQuoteSchema.safeParse(quote).success).toBe(true);
+    expect(redemptionQuoteSchema.safeParse({ ...quote, expiresAt: "2026-10-01T00:00:00.001Z" }).success).toBe(false);
+  });
+  it("rejects usedAt on a non-USED ticket", () => {
+    expect(voucherTicketSchema.safeParse({ ...ticket, usedAt: now }).success).toBe(false);
+  });
+  it("rejects history rows with inconsistent sign or reference", () => {
+    expect(redemptionHistoryEntrySchema.safeParse({ ...row, points: 150 }).success).toBe(false);
+    expect(redemptionHistoryEntrySchema.safeParse({ ...row, kind: "REFUNDED", points: 150 }).success).toBe(false);
+  });
+  it("rejects code-issue reports with inconsistent resolution", () => {
+    expect(codeIssueReportSchema.safeParse({ ...report, status: "REPLACED", resolvedAt: now }).success).toBe(false);
+    expect(codeIssueReportSchema.safeParse({ ...report, resolvedAt: now }).success).toBe(false);
+    expect(codeIssueReportSchema.safeParse({ ...report, status: "REJECTED", resolvedAt: now }).success).toBe(true);
+    expect(codeIssueReportSchema.safeParse({ ...report, status: "REJECTED", resolvedAt: now, replacementCode: "NEW-CODE" }).success).toBe(false);
+  });
+  it("rejects unknown account-not-eligible reason", () => {
+    expect(accountNotEligibleReasonSchema.safeParse("ACCOUNT_LOCKED").success).toBe(true);
+    expect(accountNotEligibleReasonSchema.safeParse("UNKNOWN_REASON").success).toBe(false);
   });
 });

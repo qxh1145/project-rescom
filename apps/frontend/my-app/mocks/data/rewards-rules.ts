@@ -17,6 +17,8 @@ export interface RedemptionQuote {
   quoteId: string; voucherId: string; userId: string;
   price: VoucherPrice; flashSaleItemId: string | null;
   expiresAt: string; flashEndsAt: string | null; balance: { available: number; after: number }; serverTime: string;
+  /** Set when a redeem with this quote succeeded; a quote is single-use (mirrors backend 12.8). */
+  redeemedAt?: string;
 }
 export const VOUCHER_BRAND_IDS = ["highlands", "lotteria", "phuc-long", "kfc", "gong-cha", "the-coffee-house"];
 export const discountPercent = (points: number, base: number): number => Math.round((1 - points / base) * 100);

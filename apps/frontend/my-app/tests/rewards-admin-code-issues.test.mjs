@@ -228,3 +228,20 @@ test('demo report stays equal across template and clone; user payload stays publ
   assert.equal(users[cloneId].issues.find(i => i.id === reported.result.id).status, 'REFUNDED');
   assert.deepEqual(users['user-active-002'], users[cloneId]);
 });
+
+test('code-issue scenarios do not force a user redeem failure', async () => {
+  const post = (route, body, headers = {}) => getResponse(rewardHandlers, new Request(`http://localhost/api/rewards/${route}`, {
+    method: 'POST', headers: { 'X-CSRF-Token': 'test', 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body),
+  }), { baseUrl: 'http://localhost' }).then(async response => ({ status: response.status, body: await response.json() }));
+  const { getMockSessionUser } = await import('../mocks/db/session.ts');
+  economy.wallets.set({ [(await getMockSessionUser()).id]: { available: 10000, pending: 0, escrow: 0, frozen: 0, integrityHold: 0 } });
+  window.location.search = '?msw=rewards-resolve-already-resolved';
+  let quote;
+  for (const voucher of mock.rewardsCatalog.get().vouchers) {
+    const response = await post('quotes', { voucherId: voucher.id });
+    if (response.status < 300) { quote = response.body.data; break; }
+  }
+  assert.ok(quote, 'some voucher must be quotable');
+  const redeemed = await post('redemptions', { quoteId: quote.quoteId }, { 'Idempotency-Key': crypto.randomUUID() });
+  assert.equal(redeemed.status, 201, JSON.stringify(redeemed.body));
+});

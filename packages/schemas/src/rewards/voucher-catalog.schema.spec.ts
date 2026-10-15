@@ -32,3 +32,18 @@ describe("voucher catalog contracts (Story 12.1, FR-68)", () => {
     for (const query of [{ onSale: "yes" }, { minPoints: 201, maxPoints: 100 }, { offset: 10001 }]) expect(voucherCatalogQuerySchema.safeParse(query).success).toBe(false);
   });
 });
+describe("voucher catalog review gaps (Story 12.1, AC5)", () => {
+  const flash = { id, code: "FS-261013-A", startsAt: "2026-10-01T10:00:00Z", endsAt: "2026-10-01T10:00:00.500Z", items: [flashItem] };
+  it("compares flash instants numerically, not as strings", () => {
+    expect(flashSaleSchema.safeParse(flash).success).toBe(true);
+    expect(flashSaleSchema.safeParse({ ...flash, endsAt: "2026-10-01T10:00:00.000Z" }).success).toBe(false);
+  });
+  it("rejects flash item with flashPoints >= basePoints or wrong discountPercent", () => {
+    expect(flashSaleItemSchema.safeParse({ ...flashItem, flashPoints: 250, discountPercent: 0 }).success).toBe(false);
+    expect(flashSaleItemSchema.safeParse({ ...flashItem, discountPercent: 39 }).success).toBe(false);
+  });
+  it("rejects whitespace-only q (trimmed to empty)", () => {
+    expect(voucherCatalogQuerySchema.safeParse({ q: "   " }).success).toBe(false);
+    expect(voucherCatalogQuerySchema.parse({ q: " tea " }).q).toBe("tea");
+  });
+});

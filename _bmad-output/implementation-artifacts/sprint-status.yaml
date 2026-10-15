@@ -132,12 +132,12 @@ development_status:
   # Added 2026-10-13 by sprint-change-proposal-2026-10-13 (Rewards: voucher redemption + Flash Sale, Phase 2, AD-24)
   # FE-mock stories 12.1-12.6 may start now; backend 12.7+ gated by PRD OQ-23..26; production enable after 11.5
   epic-12: in-progress
-  12-1-rewards-contracts-msw-mock-domain: review
+  12-1-rewards-contracts-msw-mock-domain: done  # code-reviewed 2026-10-15 on HEAD; 4 patches applied, 7 deferred
   12-2-voucher-marketplace-filters-detail: done
   12-3-confirm-redemption-result: done
-  12-4-my-vouchers-code-qr-history: review
+  12-4-my-vouchers-code-qr-history: done  # code-reviewed 2026-10-13, PR #20; story file already done (sprint entry was stale)
   12-5-admin-voucher-catalog-codes: done
-  12-6-admin-flash-sale-rewards-stats: review
+  12-6-admin-flash-sale-rewards-stats: done  # code-reviewed 2026-10-13; patches in 8b621d1; closed 2026-10-15
   12-7-rewards-schema-catalog-code-inventory-api: done
   12-8-quote-redemption-transaction: done
   12-9-flash-sale-lifecycle: done

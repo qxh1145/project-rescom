@@ -9,7 +9,7 @@ export const REDEMPTION_REFERENCE_PATTERN = /^RDM-\d{4}-[0-9A-Z]{4}$/;
 export const REFUND_REFERENCE_PATTERN = /^RFD-\d{4}-[0-9A-Z]{4}$/;
 const redemptionReference = z.string().regex(REDEMPTION_REFERENCE_PATTERN);
 export const createRedemptionQuoteSchema = z.object({ voucherId: id });
-export const redemptionQuoteSchema = z.object({ quoteId: id, voucherId: id, price: voucherPriceSchema, flashSaleItemId: id.nullable(), expiresAt: instant, flashEndsAt: instant.nullable(), balance: z.object({ available: count, after: count }), serverTime: instant }).refine(v => v.balance.after === v.balance.available - v.price.points, { path: ["balance", "after"] }).refine(v => (v.price.source === "FLASH") === (v.flashSaleItemId !== null && v.flashEndsAt !== null) && (v.flashEndsAt === null || v.expiresAt <= v.flashEndsAt), { path: ["flashEndsAt"] });
+export const redemptionQuoteSchema = z.object({ quoteId: id, voucherId: id, price: voucherPriceSchema, flashSaleItemId: id.nullable(), expiresAt: instant, flashEndsAt: instant.nullable(), balance: z.object({ available: count, after: count }), serverTime: instant }).refine(v => v.balance.after === v.balance.available - v.price.points, { path: ["balance", "after"] }).refine(v => (v.price.source === "FLASH") === (v.flashSaleItemId !== null && v.flashEndsAt !== null) && (v.flashEndsAt === null || Date.parse(v.expiresAt) <= Date.parse(v.flashEndsAt)), { path: ["flashEndsAt"] });
 export const redeemVoucherSchema = z.object({ quoteId: id });
 export const REDEMPTION_ERROR_CODES = ["SOLD_OUT", "PRICE_CHANGED", "INSUFFICIENT_POINTS", "VOUCHER_UNAVAILABLE", "ACCOUNT_NOT_ELIGIBLE"] as const;
 export const redemptionErrorCodeSchema = z.enum(REDEMPTION_ERROR_CODES);

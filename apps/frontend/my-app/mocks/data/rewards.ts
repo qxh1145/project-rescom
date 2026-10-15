@@ -277,6 +277,7 @@ export function redeemVoucherQuote(userId: string, quoteId: string, viewer: { av
   const userState = rewardsState.get();
   const quote = userState.quotes[quoteId];
   if (!quote || quote.userId !== userId) return { ok: false, status: 404, code: "QUOTE_NOT_FOUND", details: {} };
+  if (quote.redeemedAt) return { ok: false, status: 409, code: "QUOTE_ALREADY_REDEEMED", details: {} };
 
   const catalog = structuredClone(rewardsCatalog.get());
   const users = structuredClone(userState.users);
@@ -322,6 +323,7 @@ export function redeemVoucherQuote(userId: string, quoteId: string, viewer: { av
   rewardsCatalog.update((draft) => { draft.vouchers = catalog.vouchers; draft.flashes = catalog.flashes; draft.codePools = catalog.codePools; });
   rewardsState.update((draft) => {
     draft.users = users;
+    draft.quotes[quoteId] = { ...draft.quotes[quoteId], redeemedAt: iso(now) };
     if (recordKey) draft.idempotency[recordKey] = { fingerprint: quoteId, response: { status: 201, body: result as unknown as Record<string, unknown> } };
   });
   return result;

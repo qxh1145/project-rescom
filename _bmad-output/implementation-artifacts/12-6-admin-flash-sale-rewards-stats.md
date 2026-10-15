@@ -4,7 +4,7 @@ baseline_commit: 3b19942fd5df5df60afb8cced9a45f785a541ab0
 
 # Story 12.6: Admin Flash Sale & Rewards Statistics
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -346,6 +346,7 @@ _Dismissed as noise/handled: Zod `.default({})` on zod 3 OK; chart colours dark-
 - 2026-10-13: Implemented FE + MSW scope; pending manual browser and pilot verification before review.
 - 2026-10-13: Applied review patches (see Completion Notes); 8.2 manual and 8.3 pilot build still open.
 - 2026-10-15: Close-out: re-verified on develop, ticked tasks, status → review.
+- 2026-10-15: Code review (2026-10-13 pass) accepted; no re-review needed; status → done.
 
 ### Review verification 2026-10-13 (8.2 / 8.3)
 
