@@ -60,6 +60,8 @@ test('pagination, tabs and overdue text', () => {
  assert.equal(v.tabLabel('OPEN', list, 'RESOLVED'), 'Đang mở · 6');
  assert.equal(v.tabLabel('RESOLVED', list, 'RESOLVED'), 'Đã xử lý · 6');
  assert.equal(v.tabLabel('ALL', list, 'RESOLVED'), 'Tất cả');
+ assert.equal(v.tabLabel('ALL', list, 'ALL'), 'Tất cả · 6');
+ assert.equal(v.tabLabel('RESOLVED', list, 'ALL'), 'Đã xử lý');
  assert.match(v.pageRangeText(list, 'OPEN', Date.parse('2026-10-15T00:00:00Z')), /dòng nền đỏ/);
  assert.equal(v.pageRangeText({ ...list, offset: 10, total: 32, items: Array(10).fill(issue) }, 'RESOLVED'), 'Hiển thị 11–20 trong 32 báo cáo đã xử lý');
  assert.equal(v.clampOffset(20, 20), 0);
@@ -90,6 +92,9 @@ test('mock queue integrates with view labels and refund toast', async () => {
  assert.deepEqual([...list.items].map(row => row.createdAt), [...list.items].map(row => row.createdAt).sort());
  for (const row of list.items) assert.equal(row.canReplace, row.replaceBlockedReason === null, row.reference);
  assert.equal(v.REPLACE_BLOCKED_COPY.NO_STOCK, 'Hết tồn kho.');
+ const blockedRows = list.items.filter(row => row.replaceBlockedReason);
+ assert.ok(blockedRows.length > 0);
+ for (const row of blockedRows) assert.equal(typeof v.REPLACE_BLOCKED_COPY[row.replaceBlockedReason], 'string', row.reference);
  const highlands = list.items.find(row => row.voucher.brand.name.includes('Highlands'));
  assert.match(v.successToast('REFUND', highlands).title, new RegExp(`${highlands.pricePoints} điểm`));
 });

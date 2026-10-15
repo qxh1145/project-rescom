@@ -3,7 +3,7 @@ baseline_commit: 254854a
 ---
 # Story 12.13: Admin Code-Issue Queue Screen
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -277,6 +277,16 @@ Code review 2026-10-15 (Blind Hunter + Edge Case Hunter + Acceptance Auditor, So
 - [x] [Review][Defer] Pagination renders one button per page with no windowing [app/(signed-in)/(admin)/admin/code-issues/components/CodeIssuesScreen.tsx:62] — deferred, not required by spec; add windowing when backlog exceeds ~10 pages
 - [x] [Review][Defer] Tab/page change blanks list, pagination and tab counts until the new key loads [lib/api/use-api-query.ts:41] — deferred, pre-existing useApiQuery key semantics
 
+Code review round 2 2026-10-15 (Blind Hunter + Edge Case Hunter + Acceptance Auditor, Sonnet; diff 254854a..a2cc472). 7 patch, 0 decision, 0 new defer, 13 dismissed.
+
+- [x] [Review][Patch] Drawer header date omits the year; spec requires "Gửi {dd/MM/yyyy HH:mm}" (AC 2, Task 5.3) [app/(signed-in)/(admin)/admin/code-issues/components/CodeIssueDrawer.tsx:27]
+- [x] [Review][Patch] `resolvedSlaView` uses `issue.resolvedAt!`; schema allows `resolvedAt: null` on non-OPEN rows, so the cell renders "NaN phút" [lib/admin/rewards-code-issues-view.ts:43]
+- [x] [Review][Patch] Empty state shows when `items` is empty but `total > 0` (offset past end before clamp lands); gate it on `total === 0` [app/(signed-in)/(admin)/admin/code-issues/components/CodeIssuesScreen.tsx:69]
+- [x] [Review][Patch] Focus restore after a successful resolve targets the removed row button and falls to `<body>`; fall back to the active tab [app/(signed-in)/(admin)/admin/code-issues/components/CodeIssuesScreen.tsx:29]
+- [x] [Review][Patch] Clipboard failure gives no feedback (rejection sets `copied=false` silently); announce "Không sao chép được" [app/(signed-in)/(admin)/admin/code-issues/components/CodeIssueDrawer.tsx:32]
+- [x] [Review][Patch] Test 7.6 does not assert the blocked copy per OPEN row against `replaceBlockedReason` [tests/rewards-admin-code-issues-view.test.mjs]
+- [x] [Review][Patch] Test 7.5 lacks the ALL-active `tabLabel` case [tests/rewards-admin-code-issues-view.test.mjs:62]
+
 ## Dev Notes
 
 ### Scope boundaries (read first)
@@ -446,3 +456,4 @@ Gemini 3.8 Flash (Medium)
 - 2026-10-14: Admin code-issue queue implemented and automated checks passed; browser verification pending.
 
 - 2026-10-14: Story created (create-story). Figma 28 adapted to the frozen 12.10 contract (Option A); Open points 1–3 for Quan.
+- 2026-10-15: Code review round 2: 7 patches applied (drawer date with year, null `resolvedAt` guard, empty state on `total === 0`, focus to OPEN tab after resolve, clipboard failure feedback, tests 7.5/7.6); `npm test` 904/904, typecheck pass, lint clean. Status → done.

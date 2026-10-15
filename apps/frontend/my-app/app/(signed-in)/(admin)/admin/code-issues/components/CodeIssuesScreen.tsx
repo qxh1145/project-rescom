@@ -54,6 +54,8 @@ export function CodeIssuesScreen() {
   function resolved(outcome: AdminResolveCodeIssueDto["outcome"]) {
     if (!selected) return;
     push({ tone: "success", ...successToast(outcome, selected) });
+    // The resolved row leaves the OPEN list, so return focus to the tab instead.
+    if (filter === "OPEN") opener.current = tabRefs.current[0];
     setSelected(null);
     if (filter === "OPEN" && list && list.items.length === 1 && offset) setOffset(clampOffset(offset, list.total - 1));
     else query.reload();
@@ -66,7 +68,7 @@ export function CodeIssuesScreen() {
     <div id="code-issues-panel" role="tabpanel" aria-labelledby={`code-issue-tab-${filter}`} aria-busy={query.loading && !list}>
       {query.loading && !list ? <div role="status" className="grid gap-3" aria-label="Đang tải danh sách báo cáo">{Array.from({ length: 6 }, (_, i) => <div key={i} className="h-16 animate-pulse rounded-card bg-surface-subtle" />)}</div>
       : query.error && !list ? <section className="flex flex-col items-center gap-3 rounded-card border border-line bg-surface p-10 text-center"><Mascot name="offline" height={120} /><h2 className="font-bold">Không tải được danh sách báo cáo</h2><p>Kết nối tới máy chủ bị gián đoạn. Dữ liệu báo cáo không bị thay đổi.</p><Button onClick={query.reload}>Thử lại</Button><p>Mã lỗi: {isApiError(query.error) ? query.error.code ?? "REPORTS_LOAD_FAILED" : "REPORTS_LOAD_FAILED"}</p></section>
-      : list?.items.length === 0 ? <section className="flex flex-col items-center gap-3 rounded-card border border-line bg-surface p-10"><Mascot name="cheer" height={120} /><h2 className="font-bold">{filter === "OPEN" ? "Không còn báo cáo nào đang mở" : filter === "RESOLVED" ? "Chưa có báo cáo nào được xử lý" : "Chưa có báo cáo mã lỗi nào"}</h2>{filter === "OPEN" && <><p>Mọi báo cáo mã lỗi đã được xử lý. Báo cáo mới sẽ hiện ở đây.</p><Button onClick={() => choose("RESOLVED")}>Xem báo cáo đã xử lý</Button></>}</section>
+      : list?.total === 0 ? <section className="flex flex-col items-center gap-3 rounded-card border border-line bg-surface p-10"><Mascot name="cheer" height={120} /><h2 className="font-bold">{filter === "OPEN" ? "Không còn báo cáo nào đang mở" : filter === "RESOLVED" ? "Chưa có báo cáo nào được xử lý" : "Chưa có báo cáo mã lỗi nào"}</h2>{filter === "OPEN" && <><p>Mọi báo cáo mã lỗi đã được xử lý. Báo cáo mới sẽ hiện ở đây.</p><Button onClick={() => choose("RESOLVED")}>Xem báo cáo đã xử lý</Button></>}</section>
       : list && <><div className="overflow-x-auto rounded-card border border-line bg-surface"><table className="w-full min-w-250 text-left text-body-sm"><thead className="bg-surface-subtle text-ink-muted"><tr>{["Voucher", "Lý do", "Ghi chú", "Điểm", "User", filter === "OPEN" ? "Thời gian chờ ↑" : filter === "RESOLVED" ? "Xử lý sau" : "Thời gian", "Ticket", "Báo cáo", ""].map((title, index) => <th key={index} className="px-3 py-4">{index === 5 && filter === "OPEN" ? <span className="inline-flex items-center gap-1"><Icon name="clock" size={16} />{title}</span> : title}</th>)}</tr></thead><tbody>{list.items.map(issue => {
         const sla = issue.status === "OPEN" ? openSlaView(issue, nowMs) : null;
         const resolvedSla = issue.status !== "OPEN" ? resolvedSlaView(issue) : null;

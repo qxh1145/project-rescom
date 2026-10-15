@@ -41,7 +41,8 @@ export function openSlaView(issue: AdminCodeIssueDto, nowMs: number) {
   return { age: formatWait(nowMs - Date.parse(issue.createdAt)), overdue, line: `${overdue ? "Quá hạn" : "Còn"} ${formatWait(Math.abs(delta))}`, dueAt };
 }
 export function resolvedSlaView(issue: AdminCodeIssueDto) {
-  const resolvedAt = issue.resolvedAt!;
+  const resolvedAt = issue.resolvedAt;
+  if (!resolvedAt) return { took: "—", at: "—", late: null };
   const lateMs = Date.parse(resolvedAt) - Date.parse(slaDueAt(issue.createdAt));
   return { took: formatWait(Date.parse(resolvedAt) - Date.parse(issue.createdAt)), at: formatShortDateTime(resolvedAt), late: lateMs > 0 ? `trễ hạn ${formatWait(lateMs)}` : null };
 }
