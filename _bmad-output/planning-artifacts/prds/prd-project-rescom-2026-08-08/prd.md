@@ -135,10 +135,10 @@ New respondents begin as `UNESTABLISHED`, not untrustworthy. Until sufficient el
 - **Entry state:** Authenticated, on `/wallet`.
 - **Path:**
   1. Linh opens the **Top up Points** section on `/wallet`.
-  2. She enters a VNĐ amount (minimum 10,000 VNĐ, multiple of 200). RESCOM shows the Points she will receive at 1 Point = 200 VNĐ.
+  2. She enters a VNĐ amount (minimum 10,000 VNĐ, maximum 5,000,000 VNĐ, multiple of 200). RESCOM shows the Points she will receive at 1 Point = 200 VNĐ.
   3. She confirms. RESCOM creates a PayOS payment for that exact amount and redirects her to the PayOS checkout page. The QR code is valid for 5 minutes.
   4. Linh scans the QR and pays. PayOS confirms the payment to RESCOM, which credits her Available Balance, records the ledger entry, and notifies her in one atomic step.
-  5. PayOS returns her to `/wallet`, where she sees her new balance.
+  5. PayOS returns her to the top-up result page (`/wallet/top-up/:id`), which shows the result from RESCOM and links to `/wallet` with her new balance.
 - **Climax:** Points arrive without waiting for an Admin.
 - **Resolution:** Linh publishes her survey.
 - **Edge cases:** If Linh cancels on PayOS or the QR expires, she returns to `/wallet` with a cancelled/expired message and no Point change. If she returns before PayOS confirms, `/wallet` shows **Processing** and updates itself when the result arrives.
@@ -578,7 +578,9 @@ User enters a VNĐ amount on `/wallet`; RESCOM creates a PayOS payment for that 
 - A user can have at most one Processing top-up at a time
 - The PayOS payment expires 5 minutes after creation
 - The user can cancel their own Processing top-up; RESCOM cancels the PayOS payment and the top-up becomes Cancelled, so a new top-up can start at once
-- Successful payment returns the user to `/wallet`; cancellation also returns to `/wallet`
+- Successful payment and cancellation both return the user to the top-up result page (`/wallet/top-up/:id`); the result shown comes from RESCOM, never from return parameters
+- If PayOS payment creation fails or times out, the top-up becomes Cancelled, no balance changes, and the user sees a retryable error on screen (no separate notification)
+- A user can start at most 5 checkouts per 10 minutes
 
 #### FR-35: Automatic Crediting on Payment Confirmation
 When PayOS confirms a payment, RESCOM credits the Points to the user's Available Balance without Admin action.
@@ -589,19 +591,20 @@ When PayOS confirms a payment, RESCOM credits the Points to the user's Available
 - Repeated confirmations for the same top-up never credit Points more than once
 - If a payment is confirmed but crediting fails, RESCOM retries and reconciles against PayOS until the Points are credited, and alerts the Admin if the top-up is still uncredited 30 minutes after confirmation
 - A verified full-amount payment for a top-up already marked Cancelled or Expired still credits the Points, moves the top-up to Successful, and notifies the user
-- A payment whose amount differs from the top-up credits nothing automatically and is flagged; the Admin either credits Points for the amount actually received (amount ÷ 200, rounded down) or refunds it manually, and the user is notified of the outcome
+- A payment whose amount differs from the top-up credits nothing automatically, is flagged, and shows the user the status Under review; the Admin either credits Points for the amount actually received (amount ÷ 200, rounded down) or refunds it manually, and the user is notified of the outcome
 - When the Admin credits a mismatch, any remainder below 200 VNĐ is not converted and the user notification states it
 - The Admin can re-check any PayOS top-up against PayOS at any time; a verified payment found this way credits through the same idempotent path (covers payments arriving after the 24-hour reconciliation window)
 - The Admin resolves each flagged amount mismatch within 3 business days of the payment; an unresolved mismatch past that deadline raises an Admin alert
+- Business days in every SLA (FR-35, FR-78) are Monday–Friday in Asia/Ho_Chi_Minh, with no holiday calendar
 
 #### FR-76: Top-Up Status on Wallet
 The Wallet shows every top-up with its current status and keeps the user informed of each change.
 
 **Consequences (testable):**
-- Statuses: Processing, Successful, Cancelled, Expired, Refund Requested, Refunded, Refund Rejected
+- Statuses: Processing, Successful, Cancelled, Expired, Under review (amount mismatch awaiting Admin), Refund Requested, Refunded, Refund Rejected, Withdrawn; a mismatch refunded manually by the Admin shows Refunded with copy stating no Points were credited
 - A user returning before confirmation sees Processing, and the page updates itself when the result arrives
 - Cancelled and Expired top-ups change no balance
-- Every status change sends the user a notification
+- Every status change sends the user a notification, except a top-up cancelled because PayOS payment creation failed (the error is shown on screen)
 
 #### FR-77: Refund Request
 User can request a refund of a Successful top-up through a templated in-app form.
@@ -897,7 +900,7 @@ System sends notifications for: account activation, survey approved/rejected, Po
 
 **Consequences (testable):**
 - In-app notifications appear in a notification center
-- Email notifications sent for critical events (complaint resolution, ban, top-up)
+- Email notifications sent for critical events (complaint resolution, ban, top-up Successful, top-up Refunded, top-up Refund Rejected)
 - Integrity Hold notifications identify the current non-spendable state and next review/appeal action without exposing sensitive evidence
 - Push notifications are excluded from MVP under §6.2
 
@@ -1340,7 +1343,7 @@ No unresolved inference is approved as an implementation default. Former assumpt
 - Production integrity telemetry remains disabled until purpose and consent-notice versions, event-field allowlist/data minimization, classification, retention/deletion/anonymization, access audit, subject-rights flows, policy-promotion owner, review/appeal owner, and Survey Quality evidence threshold are approved
 
 ### Compliance
-- Points are NOT positioned as currency — cannot be bought, sold, or transferred between accounts
+- Points are NOT positioned as currency — they can be acquired with money only through PayOS top-up (FR-34) and cannot be sold or transferred between accounts
 - Points cannot be cashed out as money (one-way conversion only: VNĐ → Points); the sole exception is the Admin-executed refund of an unspent top-up within 24 hours (FR-77, FR-78)
 - Production launch requires qualified Vietnamese privacy/legal review and documented compliance evidence; product and architecture documents do not by themselves establish legal compliance
 

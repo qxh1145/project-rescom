@@ -166,7 +166,7 @@ NFR-32: A reconciliation job runs every 1 minute over every Processing top-up an
 
 (No general UX spine; bmad-ux run `ux-project-rescom-2026-09-14` is an empty stub. Screens follow Figma `mkudD5Ngi5RPyIAVxCcxXi` and `docs/frontend/design-system.md`.)
 
-**PayOS top-up & refund (Figma page 29 `178:2`, page 30 `178:3`, components page 20 `113:3`, rules frame `191:3079`; added 2026-10-15).** Every screen ships Desktop 1440 + Mobile 390 and its default/loading/empty/error states as drawn. A designer fix pass (6 balance cards, paying-account refund destination, mismatch SLA, read-only B4) is pending; implement the fixed version.
+**PayOS top-up & refund (Figma page 29 `178:2`, page 30 `178:3`, components page 20 `113:3`, rules frame `191:3079`; added 2026-10-15).** Every screen ships Desktop 1440 + Mobile 390 and its default/loading/empty/error states as drawn. A designer fix pass (6 balance cards, paying-account refund destination, mismatch SLA, read-only B4) is pending; implement the fixed version. For NFR-20, the canonical UX artifact for Epic 13 is UX-DR-P1…P25 in this document together with the fixed Figma frames above (decision 2026-10-15, Owner Quan); the empty `ux-designs/ux-project-rescom-2026-09-14` spine is not required for Epic 13 UI stories. UI stories 13.7, 13.8, 13.9, 13.11, 13.12, 13.13 must not be created until the designer fix pass lands and the frames are re-verified.
 
 UX-DR-P1: Top-up status chip component with 7 variants — Processing (amber), Successful (green), Cancelled (grey + x icon), Expired (grey + hourglass icon), Refund Requested (teal), Refunded (dark teal), Refund Rejected (danger); always text + color, WCAG AA; plus Under review for `AMOUNT_MISMATCH` and "Thủ công (cũ)" / "PayOS" channel labels
 UX-DR-P2: Balance card component with (i) tooltip; `/wallet` shows 6 cards in order Khả dụng (emphasized) · Đang chờ · Ký quỹ · Đóng băng · Giữ để xét · Giữ chờ hoàn tiền
@@ -209,7 +209,7 @@ UX-DR-P15: PayOS and bank logos are placeholders in Figma; production uses the o
 - **Epic IR: Integration Readiness** -> Phase 1 launch journeys and cross-cutting integration acceptance gates; gap-closing stories IR.2a/IR.2b/IR.4a/IR.4b add FR-39, FR-40 and complete FR-5, FR-9, FR-24, FR-32, FR-57 (email)
 - **Epic 11: Production Deployment & Pilot Readiness** -> NFR-ADD-3, NFR-ADD-4, NFR-ADD-5, AD-23 (no new FRs)
 - **Epic 12: Rewards — Voucher Redemption & Flash Sale** -> FR-68, FR-69, FR-70, FR-71, FR-72, FR-73, FR-74, FR-75
-- **Epic 13: PayOS Top-Up & 24-Hour Refund** -> FR-34 (PayOS, amended 2026-10-15), FR-35 (amended 2026-10-15), FR-31 (amend: Escrow + Refund Hold, 6 balances), FR-76, FR-77, FR-78, FR-79; NFR-31, NFR-32
+- **Epic 13: PayOS Top-Up & 24-Hour Refund** -> FR-34 (PayOS, amended 2026-10-15), FR-35 (amended 2026-10-15), FR-31 (amend: Escrow + Refund Hold, 6 balances), FR-76, FR-77, FR-78, FR-79; NFR-31, NFR-32; FR-56 amendment (PayOS top-ups by status, open refund requests) covered by the Story 13.8 B1 tab count badges, Epic 9 dashboard unchanged; FR-57 amendment (top-up and refund notifications, email for Successful/Refunded/Refund Rejected) covered by Stories 13.3, 13.4, 13.5, 13.9, 13.10, 13.12
 
 ## Epic List
 
@@ -1829,7 +1829,9 @@ So that I can pay by QR without waiting for an Admin.
 **And** the server computes Points = amount ÷ 200; any client-supplied Points value is ignored.
 **And** the `PROCESSING` row commits before `paymentRequests.create`; on success `paymentLinkId` is stored and `checkoutUrl` returned; on create failure the row moves to `CANCELLED` and the user sees a retryable error (AD-25).
 **And** a second checkout while one is `PROCESSING` returns 409 with the existing top-up id.
-**And** the owner can cancel their `PROCESSING` top-up: payOS cancel is called through the port, the row becomes `CANCELLED`, and a new checkout is allowed at once; cancelling another user's top-up returns 404.
+**And** the owner can cancel their `PROCESSING` top-up: payOS cancel is called through the port, the row becomes `CANCELLED`, the user notification is written to the Outbox, and a new checkout is allowed at once; cancelling another user's top-up returns 404 (FR-76).
+**And** if the payOS cancel call fails or times out, the row still becomes `CANCELLED` locally, the failure is logged, and a later full payment is credited through the existing late-payment path (FR-35, AD-25).
+**And** checkout is limited per user (5 checkouts per 10 minutes, configurable); excess requests return 429 before any payOS call (NFR-7).
 **And** if any `MANUAL` `PENDING` row exists at startup, the process still starts with PayOS effectively off (checkout closed, manual submission open), raises an Admin alert and an error log, and turns PayOS on only after a restart with no `PENDING` rows (FR-79, AD-25).
 **And** with PayOS effectively off, checkout returns 404/feature-disabled and the manual flow behaves exactly as before.
 **And** a pre-deploy script prints the count of `MANUAL` `PENDING` rows and exits non-zero when any exist.
@@ -1846,7 +1848,8 @@ So that I can use them without waiting.
 **When** the webhook arrives
 **Then** an invalid signature returns 401 and changes nothing; a valid but unknown or duplicate `orderCode` (including the `confirm-webhook` probe) returns 200 with no effect; a processing failure returns 5xx (NFR-31).
 **And** a valid `code`/`data.code` = `"00"` triggers a server-side GET for the authoritative `amountPaid` and status; `returnUrl` parameters are never treated as proof.
-**And** `CreditTopUp` (`topup-credit:{topUpId}`) locks the row `FOR UPDATE`, compare-and-sets the status, writes provider facts and `counterAccount*`, posts `SYSTEM_CLEARING → USER_AVAILABLE` for `amountVnd / 200`, sets `pointsCredited`, and writes the user notification to the Outbox in one transaction (FR-35).
+**And** a valid signature with `code` or `data.code` ≠ `"00"` returns 200, changes nothing, and is logged; reconciliation (Story 13.5) remains the recovery path.
+**And** `CreditTopUp` (`topup-credit:{topUpId}`) locks the row `FOR UPDATE`, compare-and-sets the status, writes provider facts and `counterAccount*`, posts `SYSTEM_CLEARING → USER_AVAILABLE` for `amountVnd / 200`, sets `pointsCredited`, and writes the user notification and the user email (top-up Successful) to the Outbox in one transaction (FR-35, FR-57).
 **And** a full payment on a local `CANCELLED` or `EXPIRED` row still credits and moves it to `SUCCESSFUL` with a notification.
 **And** `PAID` with another amount or `UNDERPAID` moves the row to `AMOUNT_MISMATCH` with cumulative `amountPaidVnd`, credits nothing, and notifies the user.
 **And** concurrent and repeated deliveries credit at most once, proven by a concurrency test of two webhooks plus a direct `CreditTopUp` call; `ReverseJournal` on a top-up credit journal is rejected.
@@ -1863,6 +1866,7 @@ So that no paid top-up stays uncredited and no expired one stays open.
 **When** the job runs every minute
 **Then** it checks `PROCESSING` rows, unresolved `AMOUNT_MISMATCH` rows, and rows `EXPIRED` or `CANCELLED` within the last 24 hours against payOS GET and applies the AD-25 mapping through `CreditTopUp` (NFR-32).
 **And** a `PROCESSING` row past `expiresAt` (local clock) becomes `EXPIRED`, with a best-effort payOS cancel and a user notification.
+**And** this story introduces the server-only config key `TOPUP_REFUND_MAILBOX` (validated at startup when PayOS is used; Story 13.10 reuses it for refund emails).
 **And** an Admin alert (in-app notification, email to `TOPUP_REFUND_MAILBOX`, Sentry) fires once per condition: uncredited 30 minutes after a verified payment; `AMOUNT_MISMATCH` unresolved 3 business days after `paidAt`; repeated provider failure.
 **And** business days are Monday–Friday in `Asia/Ho_Chi_Minh` with no holiday calendar, implemented in one shared helper with tests across a weekend.
 **And** Admin `RecheckTopUp` on any `PAYOS` row runs the same GET + mapping + `CreditTopUp` path on demand, is idempotent, is audited, and returns credited / still unpaid / mismatch.
@@ -1876,9 +1880,14 @@ So that the refund design rests on payOS behavior we have observed, not assumed.
 
 **Acceptance Criteria:**
 
-**Given** Stories 13.1–13.5 are deployed to production with `PAYOS_ENABLED=false` and the webhook registered through `confirm-webhook`
-**When** the Owner runs the probe CLI script on the VPS
-**Then** the script creates one 10,000 VNĐ payment link through the adapter for an Owner-designated account, without opening checkout to users.
+**Given** Stories 13.1–13.5 are deployed to production with `PAYOS_ENABLED=false`
+**When** the Owner completes the payOS setup and runs the probe CLI script on the VPS
+**Then** this story delivers a `confirm-webhook` CLI script (through `PaymentProviderPort`, no SDK use outside the adapter) and an Owner-run setup checklist in `docs/` with these steps, each recorded with date in the story record:
+  1. create the payOS payment channel linked to the Owner's bank account and copy Client ID, API Key, and Checksum Key;
+  2. add `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY`, and `TOPUP_REFUND_MAILBOX` to `deploy/.env.prod` on the VPS only (never committed), then rebuild and restart the `backend` service;
+  3. run the `confirm-webhook` script with the production webhook URL (`https://app.rescom.io.vn/api/...` from Story 13.4) and record success; the probe-delivery webhook returns 200 with no effect.
+**And** the probe script refuses to run when any `PAYOS_*` key is missing or `confirm-webhook` has not succeeded.
+**And** the script creates one 10,000 VNĐ payment link through the adapter for an Owner-designated account, without opening checkout to users.
 **And** after the Owner pays, the webhook arrives through the Vercel proxy and the top-up is credited by the webhook path, not by reconciliation (log evidence).
 **And** the recorded webhook payload and GET response (secrets and full account numbers redacted) are saved as test fixtures and attached to the story record, confirming the status enum, `amountPaid`, `transactionDateTime`, whether `counterAccount*` is present, and whether a 9-character `description` is accepted.
 **And** if `counterAccount*` is null, the Owner decides whether FR-77 changes before Story 13.10 starts; the decision is recorded in the PRD.
@@ -1896,6 +1905,9 @@ So that I always know where my Points and money are.
 **When** the user opens `/wallet`
 **Then** six balance cards show in order Khả dụng (emphasized), Đang chờ, Ký quỹ, Đóng băng, Giữ để xét, Giữ chờ hoàn tiền, each with a tooltip (FR-31, UX-DR-P2).
 **And** top-up history shows code, amount, Points, time, status chip (7 statuses plus Under review for mismatch, icon + text, WCAG AA) and channel label PayOS / Thủ công (cũ) (FR-76, UX-DR-P1, P3).
+**And** while a `PROCESSING` top-up exists, `/wallet` shows the Processing banner and polls the same status query as `/wallet/top-up/:id` until a terminal status or expiry + 2 minutes, then refreshes balances and history without a page reload (FR-76, UX-DR-P3).
+**And** a `MANUAL_REFUNDED` top-up shows the Refunded chip with the copy "Đã hoàn tiền thủ công cho thanh toán sai số tiền — không có Điểm nào được cộng" and no reversal-entry link (FR-76, UX-DR-P1, P9).
+**And** the Point-history list labels a PayOS top-up credit as "Nạp Điểm qua PayOS" and a mismatch credit as "Nạp Điểm (đã điều chỉnh theo số thực nhận)" (FR-31).
 **And** `/wallet/top-up` validates min, max, and multiple of 200 inline with a nearest-valid suggestion, shows the Points preview and quick chips, and redirects to `checkoutUrl`; when a `PROCESSING` top-up exists the input is disabled with "Tiếp tục thanh toán", "Xem giao dịch", and "Huỷ giao dịch" (UX-DR-P4, P16).
 **And** `/wallet/top-up/:id` shows Processing, Successful, Cancelled, Expired, mismatch, not found, and error states from the backend only, never from URL parameters (NFR-31, UX-DR-P5).
 **And** Processing polls until a terminal status or expiry + 2 minutes, then shows "Kiểm tra lại" with the note that a completed payment will still be credited (UX-DR-P24).
@@ -1951,7 +1963,8 @@ So that I get my money back to the account I paid from.
 **And** request, journal, user notification, and an email to `TOPUP_REFUND_MAILBOX` (account number masked to the last 4 digits, link to the Admin Panel) commit together through the Outbox.
 **And** a second request for the same top-up, a request after the deadline, on a legacy `MANUAL` top-up, or on another user's top-up is refused.
 **And** `WithdrawTopUpRefund` (`topup-refund-withdraw:{requestId}`, owner only) moves an unresolved request to terminal `WITHDRAWN`, releases any hold to Available, and notifies user and Admin; resubmission is refused.
-**And** insufficient-Points errors in publish, reopen, and voucher redemption include the Refund Hold amount when one exists (UX-DR-P19); Epic 6 and Epic 12 regression suites pass.
+**And** insufficient-Points error payloads in publish, reopen, and voucher redemption carry the Refund Hold amount as a field when one exists; Story 13.11 renders the message (UX-DR-P19); Epic 6 and Epic 12 regression suites pass.
+**And** the Point-history list labels the hold as "Giữ chờ hoàn tiền" and its release (withdrawal or rejection) as "Hoàn lại từ giữ chờ hoàn tiền" (FR-31).
 
 ### Story 13.11: Refund Screens
 
@@ -1987,7 +2000,8 @@ So that users are refunded correctly and the ledger stays balanced.
 **And** the Story 13.8 CSV export gains refund status, refund resolution time, and bank transfer reference columns, still without account numbers.
 **And** "Từ chối" requires a reason, releases any hold to Available, and for a hold-less request offers "Tôi đã chuyển trả tiền thủ công", recorded as a note with no journal.
 **And** withdrawal and resolution of the same request cannot both succeed; the loser gets 409 `REFUND_ALREADY_RESOLVED`, proven by a concurrency test.
-**And** every resolution notifies the user, writes the Moderation admin-audit event, keeps every balance non-negative, and works for banned users.
+**And** every resolution notifies the user in-app and by email (Refunded, Refund Rejected) through the Outbox, writes the Moderation admin-audit event, keeps every balance non-negative, and works for banned users (FR-57, FR-78).
+**And** the Point-history list labels the `REFUND_HOLD → SYSTEM_CLEARING` journal as "Hoàn tiền nạp Điểm" with a link to the original top-up (FR-31).
 
 ### Story 13.13: Manual Top-Up Retirement & Production Enable
 

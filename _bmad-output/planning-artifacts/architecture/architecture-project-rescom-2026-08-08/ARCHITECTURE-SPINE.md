@@ -222,7 +222,7 @@ flowchart TD
     - A partial unique index allows at most one `PROCESSING` row per user.
     - The existing unique `journalId` holds the single credit journal per top-up.
     - Raw-SQL migrations own the index, checks, and sequence.
-  - **Checkout.** The `PROCESSING` row commits before `paymentRequests.create`, which is called with SDK `maxRetries: 0` (AD-10 adapter rule). A create failure marks the row `CANCELLED`. A user cancel calls the payOS cancel through the port, then sets `CANCELLED`.
+  - **Checkout.** The `PROCESSING` row commits before `paymentRequests.create`, which is called with SDK `maxRetries: 0` (AD-10 adapter rule). A create failure marks the row `CANCELLED`. A user cancel calls the payOS cancel through the port, then sets `CANCELLED` even when that call fails or times out (logged); a later full payment credits through the late-payment path. Checkout is rate-limited per user (default 5 per 10 minutes) before any port call.
   - **Single credit path.** Every credit command first locks the `TopUpRequest` row `FOR UPDATE`, then applies a status compare-and-set (`WHERE status IN (allowed) AND channel = own`); zero rows means a no-op success. Economy lock order is `TopUpRequest` → `TopUpRefundRequest` → ledger accounts by ascending id. The credit commands are:
     - `CreditTopUp` (`topup-credit:{topUpId}`, PAYOS only), called by both the webhook and reconciliation.
     - `ResolveTopUpMismatch` (`topup-mismatch:{topUpId}`, Admin).
@@ -290,7 +290,7 @@ stateDiagram-v2
     - The request is eligible only when all of these hold:
       - the top-up is a `PAYOS` row in `SUCCESSFUL` (legacy `MANUAL` rows are never refundable);
       - the request comes before `refundDeadline` = `paidAt` + 24 hours (server clock, exclusive), which the API returns for display;
-    - the top-up was not credited through `ResolveTopUpMismatch`;
+      - the top-up was not credited through `ResolveTopUpMismatch`;
       - Available ≥ `pointsCredited`;
       - no spend journal exists after the top-up credit journal in ledger order.
     - A spend journal is any journal that debits the user's `USER_AVAILABLE` into `ESCROW` or `SYSTEM_SINK` (publish, reopen, redemption). Economy owns this as a named constant. A later escrow refund does not cancel a spend.

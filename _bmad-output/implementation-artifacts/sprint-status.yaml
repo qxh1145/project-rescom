@@ -147,6 +147,25 @@ development_status:
   12-11-rewards-integration-without-mocks-enable-gate: done  # created 2026-10-14; dev starts after 12.12 + 12.13 done (Quan 2026-10-14); prod enable waits for 11.5 + OQ-24
   epic-12-retrospective: optional
 
+  # Added 2026-10-15 by sprint-change-proposal-2026-10-15 (PayOS top-up + 24h refund, AD-25/AD-26)
+  # Backend 13.1-13.5 may start now; 13.6 needs Owner payOS setup; 13.10-13.12 wait for the 13.6 counterAccount result;
+  # UI stories 13.7/13.8/13.9/13.11/13.12/13.13 wait for the Figma designer fix pass; prod enable (13.13) gated by OQ-27
+  epic-13: backlog
+  13-1-top-up-schema-for-payos: backlog
+  13-2-payment-provider-port-payos-adapter: backlog
+  13-3-top-up-checkout-user-cancel-enable-guard: backlog
+  13-4-payment-webhook-automatic-credit: backlog
+  13-5-reconciliation-job-alerts-admin-recheck: backlog
+  13-6-live-payos-probe-in-production: backlog
+  13-7-wallet-top-up-screens: backlog
+  13-8-admin-top-up-console: backlog
+  13-9-amount-mismatch-resolution: backlog
+  13-10-refund-request-refund-hold-withdrawal: backlog
+  13-11-refund-screens: backlog
+  13-12-admin-refund-resolution: backlog
+  13-13-manual-top-up-retirement-production-enable: backlog
+  epic-13-retrospective: optional
+
 # ==============================================================================
 # PHASE 2 DEFERRED EPICS & SUB-EPICS (Post-MVP Scope)
 # Deferred on 2026-09-17 per BMAD scope pruning decision
