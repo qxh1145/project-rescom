@@ -1,3 +1,4 @@
+import { ProviderPaymentFacts } from '../application/ports/payment-provider.port';
 import {
   CreateProcessingResult,
   PayosTopUp,
@@ -49,6 +50,14 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
       checkoutUrl: null,
       cancelledAt: null,
       paidAt: null,
+      journalId: null,
+      pointsCredited: null,
+      amountPaidVnd: null,
+      providerReference: null,
+      counterAccountBankId: null,
+      counterAccountBankName: null,
+      counterAccountName: null,
+      counterAccountNumber: null,
     };
     this.rows.set(row.id, row);
     return { outcome: 'CREATED', topUp: row };
@@ -72,6 +81,71 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
     row.cancelledAt = cancelledAt;
     if (event) this.events.push(event);
     return { changed: true, topUp: row };
+  }
+  async findByOrderCode(orderCode: number): Promise<PayosTopUp | null> {
+    return (
+      [...this.rows.values()].find((row) => row.orderCode === orderCode) ?? null
+    );
+  }
+  async lockForUpdate(id: string): Promise<PayosTopUp | null> {
+    return this.rows.get(id) ?? null;
+  }
+  private storeFacts(
+    row: PayosTopUp,
+    facts: ProviderPaymentFacts,
+    verifiedAt: Date,
+  ): void {
+    row.amountPaidVnd = facts.amountPaidVnd;
+    row.providerReference = facts.providerReference;
+    row.paidAt = facts.paidAt ?? verifiedAt;
+    for (const key of [
+      'counterAccountBankId',
+      'counterAccountBankName',
+      'counterAccountName',
+      'counterAccountNumber',
+    ] as const)
+      row[key] ??= facts[key];
+  }
+  async markSuccessful(
+    id: string,
+    data: {
+      journalId: string;
+      pointsCredited: number;
+      facts: ProviderPaymentFacts;
+      verifiedAt: Date;
+    },
+    event: TopUpStatusEvent,
+  ): Promise<{ changed: boolean }> {
+    const row = this.rows.get(id);
+    if (
+      !row ||
+      !['PROCESSING', 'CANCELLED', 'EXPIRED', 'AMOUNT_MISMATCH'].includes(
+        row.status,
+      )
+    )
+      return { changed: false };
+    row.status = 'SUCCESSFUL';
+    row.journalId = data.journalId;
+    row.pointsCredited = data.pointsCredited;
+    this.storeFacts(row, data.facts, data.verifiedAt);
+    this.events.push(event);
+    return { changed: true };
+  }
+  async markAmountMismatch(
+    id: string,
+    data: {
+      facts: ProviderPaymentFacts;
+      verifiedAt: Date;
+    },
+    event: TopUpStatusEvent,
+  ): Promise<{ changed: boolean }> {
+    const row = this.rows.get(id);
+    if (!row || !['PROCESSING', 'CANCELLED', 'EXPIRED'].includes(row.status))
+      return { changed: false };
+    row.status = 'AMOUNT_MISMATCH';
+    this.storeFacts(row, data.facts, data.verifiedAt);
+    this.events.push(event);
+    return { changed: true };
   }
   async findOwned(id: string, userId: string): Promise<PayosTopUp | null> {
     const row = this.rows.get(id);

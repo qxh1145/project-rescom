@@ -163,6 +163,7 @@ describe("admin ledger contracts", () => {
   it("gives every prefix to exactly one segment", () => {
     const all = Object.values(ADMIN_LEDGER_FILTER_KEY_PREFIXES).flat();
     expect(new Set(all).size).toBe(all.length);
+    expect(ADMIN_LEDGER_FILTER_KEY_PREFIXES["top-up"]).toContain("topup-credit:");
     expect(all.every((prefix) => prefix.endsWith(":"))).toBe(true);
   });
 

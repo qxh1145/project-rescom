@@ -23,6 +23,7 @@ import { PaymentProviderPort } from './application/ports/payment-provider.port';
 import { PrismaPayosTopUpRepository } from './infrastructure/prisma-payos-top-up.repository';
 import { PayosEnableGuard } from './infrastructure/payos-enable-guard';
 import { PayosTopUpController } from './presentation/payos-top-up.controller';
+import { PayosWebhookController } from './presentation/payos-webhook.controller';
 import {
   PayosCheckoutEnabledGuard,
   ManualCheckoutEnabledGuard,
@@ -88,6 +89,7 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     StarterPointsController,
     TopUpController,
     PayosTopUpController,
+    PayosWebhookController,
     AdminTopUpController,
   ],
   providers: [
@@ -157,8 +159,12 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
         repository: PayosTopUpRepositoryPort,
         provider: PaymentProviderPort,
         env: EnvService,
+        unitOfWork: UnitOfWorkPort,
+        ledgerService: LedgerService,
       ) =>
         new PayosTopUpService({
+          unitOfWork,
+          ledgerService,
           repository,
           provider,
           appBaseUrl: env.emailAppBaseUrl,
@@ -166,7 +172,13 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
           windowSeconds: env.payosCheckoutWindowSeconds,
           logger: new Logger(PayosTopUpService.name),
         }),
-      inject: [PAYOS_TOP_UP_REPOSITORY_PORT, PAYMENT_PROVIDER_PORT, EnvService],
+      inject: [
+        PAYOS_TOP_UP_REPOSITORY_PORT,
+        PAYMENT_PROVIDER_PORT,
+        EnvService,
+        UNIT_OF_WORK_PORT,
+        LedgerService,
+      ],
     },
     {
       provide: TopUpNotificationHandler,
