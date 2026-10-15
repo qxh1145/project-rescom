@@ -7,6 +7,10 @@ import {
   PendingCreditNotFoundException,
   PendingRewardForbiddenException,
   PendingRewardNotMaturedException,
+  PayosTopUpAlreadyProcessingException,
+  PayosCheckoutRateLimitedException,
+  PayosCheckoutUnavailableException,
+  PayosTopUpNotCancellableException,
   InvalidTopUpRequestException,
   TopUpAdminCapabilityRequiredException,
   TopUpAlreadyReviewedException,
@@ -109,11 +113,44 @@ describe('HttpExceptionFilter (Unit Tests)', () => {
     expect(mockJson).not.toHaveBeenCalled();
   });
 
+  it('sets Retry-After on PayOS checkout rate limit', () => {
+    const json = jest.fn();
+    const setHeader = jest.fn();
+    const status = jest.fn().mockReturnValue({ json });
+    filter.catch(
+      new PayosCheckoutRateLimitedException(61),
+      createMockHost({ status, setHeader, headersSent: false }),
+    );
+    expect(status).toHaveBeenCalledWith(HttpStatus.TOO_MANY_REQUESTS);
+    expect(setHeader).toHaveBeenCalledWith('Retry-After', '61');
+    expect(json.mock.calls[0][0].error.details.retryAfterSeconds).toBe(61);
+  });
+
   it.each([
     [
       new InvalidTopUpRequestException(),
       HttpStatus.BAD_REQUEST,
       'TOPUP_INVALID_REQUEST',
+    ],
+    [
+      new PayosTopUpAlreadyProcessingException('id', null),
+      HttpStatus.CONFLICT,
+      'TOPUP_ALREADY_PROCESSING',
+    ],
+    [
+      new PayosCheckoutRateLimitedException(60),
+      HttpStatus.TOO_MANY_REQUESTS,
+      'TOPUP_CHECKOUT_RATE_LIMITED',
+    ],
+    [
+      new PayosCheckoutUnavailableException(),
+      HttpStatus.SERVICE_UNAVAILABLE,
+      'TOPUP_PROVIDER_UNAVAILABLE',
+    ],
+    [
+      new PayosTopUpNotCancellableException('SUCCESSFUL'),
+      HttpStatus.CONFLICT,
+      'TOPUP_NOT_CANCELLABLE',
     ],
     [
       new TopUpRequestNotFoundException('33333333-3333-4333-8333-333333333333'),

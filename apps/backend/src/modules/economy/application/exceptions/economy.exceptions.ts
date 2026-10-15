@@ -259,3 +259,31 @@ export class TopUpSelfReviewForbiddenException extends Error {
     this.name = 'TopUpSelfReviewForbiddenException';
   }
 }
+
+export class PayosTopUpAlreadyProcessingException extends Error {
+  readonly code = 'TOPUP_ALREADY_PROCESSING';
+  constructor(
+    public readonly topUpId: string,
+    public readonly checkoutUrl: string | null,
+  ) {
+    super('A top-up is already processing.');
+  }
+}
+export class PayosCheckoutRateLimitedException extends Error {
+  readonly code = 'TOPUP_CHECKOUT_RATE_LIMITED';
+  constructor(public readonly retryAfterSeconds: number) {
+    super('Too many top-up checkouts.');
+  }
+}
+export class PayosCheckoutUnavailableException extends Error {
+  readonly code = 'TOPUP_PROVIDER_UNAVAILABLE';
+  constructor() {
+    super('Top-up checkout is temporarily unavailable. Please retry.');
+  }
+}
+export class PayosTopUpNotCancellableException extends Error {
+  readonly code = 'TOPUP_NOT_CANCELLABLE';
+  constructor(public readonly currentStatus: string) {
+    super('Top-up cannot be cancelled.');
+  }
+}

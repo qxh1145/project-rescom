@@ -458,6 +458,10 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 ## Deferred from: code review of 13-2-payment-provider-port-payos-adapter.md (2026-10-15)
 
 - `paymentFacts` (payos-mapping.ts) takes the last `transactions[]` element as latest for `providerReference`/`paidAt`; verify payOS ordering against real captures in Story 13.6.
-- `createPaymentProvider` binds the live payOS client whenever credentials exist, regardless of `PAYOS_ENABLED`; Story 13.3 must gate checkout/usage on the flag.
-- `createPayment` timeout/connection errors are outcome-unknown (link may already exist) but surface as plain `PaymentProviderUnavailableError`; Story 13.3/13.5 must reconcile by orderCode instead of blind retry.
+- **Resolved by 13.3:** `createPaymentProvider` binds the live payOS client whenever credentials exist, regardless of `PAYOS_ENABLED`; only checkout is flag-gated; cancel, webhook, reconciliation, probe remain available.
+- **Resolved by 13.3:** `createPayment` timeout/connection errors are outcome-unknown (link may already exist) but surface as plain `PaymentProviderUnavailableError`; checkout marks row CANCELLED retaining orderCode, never retries create; 13.4/13.5 reconcile late payments by orderCode.
 - `mapPaymentLink` maps `CANCELLED`/`FAILED`/`EXPIRED` to `CANCELLED`/`EXPIRED` even when `amountPaid > 0` (kept per AD-25, decided by Quan 2026-10-15). Story 13.5 reconciliation must alert/route to refund mailbox when `facts.amountPaidVnd > 0` on these effects.
+
+## Deferred from: code review of 13-3-top-up-checkout-user-cancel-enable-guard (2026-10-15)
+
+- `PrismaPayosTopUpRepository.createProcessing` P2002 backstop matches `meta.target` with `/user_id|userId|one_processing_per_user/`. An unmatched Prisma error shape (index name or undefined target) would surface as 500 instead of ALREADY_PROCESSING. Rare because `pg_advisory_xact_lock` serialises per-user creates.

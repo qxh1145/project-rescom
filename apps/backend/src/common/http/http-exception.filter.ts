@@ -127,6 +127,10 @@ import {
   PendingCreditNotFoundException,
   PendingRewardNotMaturedException,
   PendingRewardForbiddenException,
+  PayosTopUpAlreadyProcessingException,
+  PayosCheckoutRateLimitedException,
+  PayosCheckoutUnavailableException,
+  PayosTopUpNotCancellableException,
   InvalidTopUpRequestException,
   TopUpRequestNotFoundException,
   TopUpAlreadyReviewedException,
@@ -560,6 +564,29 @@ export class HttpExceptionFilter implements ExceptionFilter {
           requiredAmount: exception.requiredAmount,
         };
       }
+    } else if (exception instanceof PayosTopUpAlreadyProcessingException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = {
+        topUpId: exception.topUpId,
+        checkoutUrl: exception.checkoutUrl,
+      };
+    } else if (exception instanceof PayosCheckoutRateLimitedException) {
+      status = HttpStatus.TOO_MANY_REQUESTS;
+      code = exception.code;
+      message = exception.message;
+      retryAfterSeconds = exception.retryAfterSeconds;
+      details = { retryAfterSeconds: exception.retryAfterSeconds };
+    } else if (exception instanceof PayosCheckoutUnavailableException) {
+      status = HttpStatus.SERVICE_UNAVAILABLE;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof PayosTopUpNotCancellableException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = { currentStatus: exception.currentStatus };
     } else if (exception instanceof InvalidTopUpRequestException) {
       status = HttpStatus.BAD_REQUEST;
       code = exception.code;

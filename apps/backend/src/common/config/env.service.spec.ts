@@ -876,6 +876,25 @@ describe('EnvService', () => {
     it('validates payOS credentials and exposes only a complete set', () => {
       const blank = new EnvService(validBaseEnv);
       expect(blank.payosEnabled).toBe(false);
+      expect(blank.payosCheckoutLimit).toBe(5);
+      expect(blank.payosCheckoutWindowSeconds).toBe(600);
+      expect(
+        new EnvService({
+          ...validBaseEnv,
+          PAYOS_CHECKOUT_LIMIT: '3',
+          PAYOS_CHECKOUT_WINDOW_SECONDS: '120',
+        }).payosCheckoutLimit,
+      ).toBe(3);
+      expect(
+        () => new EnvService({ ...validBaseEnv, PAYOS_CHECKOUT_LIMIT: '0' }),
+      ).toThrow(/PAYOS_CHECKOUT_LIMIT/);
+      expect(
+        () =>
+          new EnvService({
+            ...validBaseEnv,
+            PAYOS_CHECKOUT_WINDOW_SECONDS: '59',
+          }),
+      ).toThrow(/PAYOS_CHECKOUT_WINDOW_SECONDS/);
       expect(blank.payosCredentials).toBeNull();
       expect(
         () => new EnvService({ ...validBaseEnv, PAYOS_CLIENT_ID: 'client' }),

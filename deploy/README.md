@@ -21,6 +21,7 @@ Trình duyệt ──HTTPS──> Caddy ──> Next.js (frontend, /api/* rewrit
 
 - Caddy tự xin và gia hạn chứng chỉ HTTPS (Let's Encrypt). Chỉ Caddy mở cổng 80/443.
 - Backend tự chạy `prisma migrate deploy` mỗi lần khởi động.
+- Trước khi deploy với `PAYOS_ENABLED=true`, chạy `deploy/check-manual-topups.js` trong backend container để xác nhận không còn top-up thủ công PENDING.
 - Frontend build pilot (IR.1): `NEXT_PUBLIC_API_MOCKING=disabled` (không có MSW, chỉ gọi backend thật) và
   `NEXT_PUBLIC_PILOT_BUILD=true` (ẩn các màn hình hoãn: độ tin cậy, khiếu nại, chất lượng khảo sát, xuất file,
   so sánh phiên bản, streak/hạng/xếp hạng, AI builder, form khách `/f/[id]`). Xuất file chạy hoàn toàn ở trình duyệt nên cờ

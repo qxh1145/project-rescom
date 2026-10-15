@@ -73,6 +73,14 @@ export class EnvService {
     return this.config.SCHEDULER_ENABLED;
   }
 
+  get payosCheckoutLimit(): number {
+    return this.config.PAYOS_CHECKOUT_LIMIT;
+  }
+
+  get payosCheckoutWindowSeconds(): number {
+    return this.config.PAYOS_CHECKOUT_WINDOW_SECONDS;
+  }
+
   get payosEnabled(): boolean {
     return this.config.PAYOS_ENABLED;
   }
