@@ -1,4 +1,8 @@
 import {
+  PaymentProviderSignatureError,
+  PaymentProviderUnavailableError,
+} from '../../modules/economy/application/ports/payment-provider.port';
+import {
   ExceptionFilter,
   Catch,
   ArgumentsHost,
@@ -564,6 +568,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
           requiredAmount: exception.requiredAmount,
         };
       }
+    } else if (exception instanceof PaymentProviderSignatureError) {
+      status = HttpStatus.UNAUTHORIZED;
+      code = 'PAYOS_WEBHOOK_SIGNATURE_INVALID';
+      message = 'Invalid payment webhook signature.';
+    } else if (exception instanceof PaymentProviderUnavailableError) {
+      status = HttpStatus.SERVICE_UNAVAILABLE;
+      code = 'PAYMENT_PROVIDER_UNAVAILABLE';
+      message = 'Payment provider unavailable.';
     } else if (exception instanceof PayosTopUpAlreadyProcessingException) {
       status = HttpStatus.CONFLICT;
       code = exception.code;

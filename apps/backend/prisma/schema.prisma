@@ -187,6 +187,7 @@ enum NotificationType {
   VOUCHER_EXPIRING
   CODE_ISSUE_RESOLVED
   TOPUP_CANCELLED
+  TOPUP_AMOUNT_MISMATCH
 }
 
 /// Story IR.4b B5: one email delivery attempt per notification. Mirrors

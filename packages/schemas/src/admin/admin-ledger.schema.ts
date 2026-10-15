@@ -26,7 +26,7 @@ export type AdminLedgerFilter = z.infer<typeof adminLedgerFilterSchema>;
  * that.
  */
 export const ADMIN_LEDGER_FILTER_KEY_PREFIXES: Record<Exclude<AdminLedgerFilter, "all">, readonly string[]> = {
-  "top-up": ["topup-approval:"],
+  "top-up": ["topup-approval:", "topup-credit:"],
   escrow: ["publish:", "reopen-escrow:"],
   reward: [
     "internal-reward:",

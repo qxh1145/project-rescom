@@ -1,4 +1,5 @@
 import { PayosTopUpDto } from '@rescom/schemas';
+import { ProviderPaymentFacts } from './payment-provider.port';
 
 export const PAYOS_TOP_UP_REPOSITORY_PORT = Symbol(
   'PAYOS_TOP_UP_REPOSITORY_PORT',
@@ -15,6 +16,14 @@ export interface PayosTopUp {
   expiresAt: Date;
   cancelledAt: Date | null;
   paidAt: Date | null;
+  journalId: string | null;
+  pointsCredited: number | null;
+  amountPaidVnd: number | null;
+  providerReference: string | null;
+  counterAccountBankId: string | null;
+  counterAccountBankName: string | null;
+  counterAccountName: string | null;
+  counterAccountNumber: string | null;
   createdAt: Date;
 }
 export interface TopUpStatusEvent {
@@ -32,7 +41,8 @@ export interface TopUpStatusEvent {
     orderCode: number;
     amountVnd: number;
     points: number;
-    status: 'CANCELLED';
+    status: 'CANCELLED' | 'SUCCESSFUL' | 'AMOUNT_MISMATCH';
+    amountPaidVnd?: number;
     occurredAt: string;
   };
 }
@@ -56,6 +66,23 @@ export interface PayosTopUpRepositoryPort {
     cancelledAt: Date,
     event: TopUpStatusEvent | null,
   ): Promise<{ changed: boolean; topUp: PayosTopUp }>;
+  findByOrderCode(orderCode: number): Promise<PayosTopUp | null>;
+  lockForUpdate(id: string): Promise<PayosTopUp | null>;
+  markSuccessful(
+    id: string,
+    data: {
+      journalId: string;
+      pointsCredited: number;
+      facts: ProviderPaymentFacts;
+      verifiedAt: Date;
+    },
+    event: TopUpStatusEvent,
+  ): Promise<{ changed: boolean }>;
+  markAmountMismatch(
+    id: string,
+    data: { facts: ProviderPaymentFacts; verifiedAt: Date },
+    event: TopUpStatusEvent,
+  ): Promise<{ changed: boolean }>;
   findOwned(id: string, userId: string): Promise<PayosTopUp | null>;
   countManualPending(): Promise<number>;
 }

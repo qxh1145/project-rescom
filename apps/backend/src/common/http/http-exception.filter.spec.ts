@@ -1,3 +1,7 @@
+import {
+  PaymentProviderSignatureError,
+  PaymentProviderUnavailableError,
+} from '../../modules/economy/application/ports/payment-provider.port';
 import { ArgumentsHost, HttpStatus } from '@nestjs/common';
 import { ThrottlerException } from '@nestjs/throttler';
 import { HttpExceptionFilter } from './http-exception.filter';
@@ -94,6 +98,30 @@ describe('HttpExceptionFilter (Unit Tests)', () => {
       },
       meta: {},
     });
+  });
+
+  it('maps provider signature failure to generic 401 and provider outage to generic 503', () => {
+    for (const [exception, expectedStatus, code] of [
+      [
+        new PaymentProviderSignatureError(),
+        HttpStatus.UNAUTHORIZED,
+        'PAYOS_WEBHOOK_SIGNATURE_INVALID',
+      ],
+      [
+        new PaymentProviderUnavailableError('SENSITIVE ACCOUNT', 'secret'),
+        HttpStatus.SERVICE_UNAVAILABLE,
+        'PAYMENT_PROVIDER_UNAVAILABLE',
+      ],
+    ] as const) {
+      const json = jest.fn();
+      const status = jest.fn().mockReturnValue({ json });
+      filter.catch(exception, createMockHost({ status, headersSent: false }));
+      expect(status).toHaveBeenCalledWith(expectedStatus);
+      expect(json.mock.calls[0][0].error.code).toBe(code);
+      expect(JSON.stringify(json.mock.calls[0][0])).not.toContain(
+        'SENSITIVE ACCOUNT',
+      );
+    }
   });
 
   it('should do nothing if response.headersSent is true', () => {

@@ -6,6 +6,9 @@ export const PAYOS_TOP_UP_MAX_VND = 5_000_000;
 export const PAYOS_TOP_UP_EXPIRY_MS = 5 * 60_000;
 export const TOP_UP_STATUS_CHANGED_EVENT_TYPE = "ECONOMY_TOPUP_STATUS_CHANGED";
 export const topUpCancelKey = (id: string): string => `topup-cancel:${id}`;
+export const topUpCreditKey = (id: string): string => `topup-credit:${id}`;
+export const topUpMismatchNoticeKey = (id: string, amountPaidVnd: number): string =>
+  `topup-mismatch-notice:${id}:${amountPaidVnd}`;
 
 export const payosCheckoutSchema = z.object({
   amountVnd: z
@@ -52,6 +55,7 @@ export const topUpStatusChangedEventSchema = z.object({
   orderCode: z.number().int(),
   amountVnd: z.number().int(),
   points: z.number().int(),
-  status: z.enum(["CANCELLED"]),
+  status: z.enum(["CANCELLED", "SUCCESSFUL", "AMOUNT_MISMATCH"]),
+  amountPaidVnd: z.number().int().nonnegative().optional(),
   occurredAt: z.string().datetime(),
 });

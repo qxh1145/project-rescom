@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, TopUpRequest } from '@prisma/client';
+import { Prisma, TopUpRequest, TopUpStatus } from '@prisma/client';
+import { ProviderPaymentFacts } from '../application/ports/payment-provider.port';
 import { PrismaService } from '../../../common/database/prisma.service';
 import { runInTransaction } from '../../../common/database/prisma-unit-of-work';
 import {
@@ -28,6 +29,14 @@ function toTopUp(row: TopUpRequest): PayosTopUp {
     expiresAt: row.expiresAt,
     cancelledAt: row.cancelledAt,
     paidAt: row.paidAt,
+    journalId: row.journalId,
+    pointsCredited: row.pointsCredited,
+    amountPaidVnd: row.amountPaidVnd,
+    providerReference: row.providerReference,
+    counterAccountBankId: row.counterAccountBankId,
+    counterAccountBankName: row.counterAccountBankName,
+    counterAccountName: row.counterAccountName,
+    counterAccountNumber: row.counterAccountNumber,
     createdAt: row.createdAt,
   };
 }
@@ -164,6 +173,114 @@ export class PrismaPayosTopUpRepository implements PayosTopUpRepositoryPort {
         ),
       };
     });
+  }
+  async findByOrderCode(orderCode: number): Promise<PayosTopUp | null> {
+    const row = await this.prisma.topUpRequest.findFirst({
+      where: { orderCode, channel: 'PAYOS' },
+    });
+    return row ? toTopUp(row) : null;
+  }
+  async lockForUpdate(id: string): Promise<PayosTopUp | null> {
+    return runInTransaction(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM top_up_requests WHERE id = ${id}::uuid AND channel = 'PAYOS' FOR UPDATE`;
+      const row = await tx.topUpRequest.findFirst({
+        where: { id, channel: 'PAYOS' },
+      });
+      return row ? toTopUp(row) : null;
+    });
+  }
+  private async transition(
+    id: string,
+    statuses: TopUpStatus[],
+    status: TopUpStatus,
+    data: {
+      facts: ProviderPaymentFacts;
+      verifiedAt: Date;
+      journalId?: string;
+      pointsCredited?: number;
+    },
+    event: TopUpStatusEvent,
+  ): Promise<{ changed: boolean }> {
+    return runInTransaction(this.prisma, async (tx) => {
+      const row = await tx.topUpRequest.findFirst({
+        where: { id, channel: 'PAYOS', status: { in: statuses } },
+      });
+      if (!row) return { changed: false };
+      const facts = data.facts;
+      const changed =
+        (
+          await tx.topUpRequest.updateMany({
+            where: { id, channel: 'PAYOS', status: { in: statuses } },
+            data: {
+              status,
+              ...(data.journalId
+                ? {
+                    journalId: data.journalId,
+                    pointsCredited: data.pointsCredited,
+                  }
+                : {}),
+              amountPaidVnd: facts.amountPaidVnd,
+              providerReference: facts.providerReference,
+              paidAt: facts.paidAt ?? data.verifiedAt,
+              counterAccountBankId:
+                row.counterAccountBankId ?? facts.counterAccountBankId,
+              counterAccountBankName:
+                row.counterAccountBankName ?? facts.counterAccountBankName,
+              counterAccountName:
+                row.counterAccountName ?? facts.counterAccountName,
+              counterAccountNumber:
+                row.counterAccountNumber ?? facts.counterAccountNumber,
+            },
+          })
+        ).count === 1;
+      if (changed)
+        await tx.outboxEvent.create({
+          data: {
+            id: event.id,
+            idempotencyKey: event.idempotencyKey,
+            eventType: event.eventType,
+            schemaVersion: 1,
+            producer: event.producer,
+            aggregateType: event.aggregateType,
+            aggregateId: event.aggregateId,
+            aggregateVersion: event.aggregateVersion,
+            status: 'PENDING',
+            payload: event.payload as Prisma.InputJsonValue,
+          },
+        });
+      return { changed };
+    });
+  }
+  markSuccessful(
+    id: string,
+    data: {
+      journalId: string;
+      pointsCredited: number;
+      facts: ProviderPaymentFacts;
+      verifiedAt: Date;
+    },
+    event: TopUpStatusEvent,
+  ): Promise<{ changed: boolean }> {
+    return this.transition(
+      id,
+      ['PROCESSING', 'CANCELLED', 'EXPIRED', 'AMOUNT_MISMATCH'],
+      'SUCCESSFUL',
+      data,
+      event,
+    );
+  }
+  markAmountMismatch(
+    id: string,
+    data: { facts: ProviderPaymentFacts; verifiedAt: Date },
+    event: TopUpStatusEvent,
+  ): Promise<{ changed: boolean }> {
+    return this.transition(
+      id,
+      ['PROCESSING', 'CANCELLED', 'EXPIRED'],
+      'AMOUNT_MISMATCH',
+      data,
+      event,
+    );
   }
   async findOwned(id: string, userId: string): Promise<PayosTopUp | null> {
     const row = await this.prisma.topUpRequest.findFirst({
