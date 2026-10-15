@@ -134,7 +134,38 @@ test("wallet history rows (Figma 7)", async (t) => {
     assert.equal(rows[0].direction, "out");
     assert.equal(rows[1].kind, "TOP_UP");
     assert.equal(rows[1].note, "Chuyển khoản RESCOMK7Q2M9XA");
+    // `topup-approval:` stays the manual kind (not TOP_UP_PAYOS) after the PayOS prefixes were added.
+    assert.notEqual(rows[1].kind, "TOP_UP_PAYOS");
+    assert.equal(rows[1].title, history.toHistoryRows([entry(topUp, "USER_AVAILABLE", 100, `topup-approval:${topUp}`)], NOW)[0].title);
   });
+
+  await t.test("PayOS top-up credit and mismatch credit have correct titles and appear in top-up filter", () => {
+    const payosCredit = uuid();
+    const mismatchCredit = uuid();
+    const rows = history.toHistoryRows(
+      [
+        entry(payosCredit, "USER_AVAILABLE", 50, "topup-credit:1001", {
+          description: "PayOS top-up credit: order 1001 (50 points)",
+        }),
+        entry(mismatchCredit, "USER_AVAILABLE", 45, "topup-mismatch:1002", {
+          description: "PayOS mismatch adjustment credit: order 1002 (45 points)",
+        }),
+      ],
+      NOW,
+    );
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].kind, "TOP_UP_PAYOS");
+    assert.equal(rows[0].title, "Nạp Điểm qua PayOS");
+    assert.equal(rows[0].amount, 50);
+
+    assert.equal(rows[1].kind, "TOP_UP_MISMATCH");
+    assert.equal(rows[1].title, "Nạp Điểm (đã điều chỉnh theo số thực nhận)");
+    assert.equal(rows[1].amount, 45);
+
+    const filtered = history.filterHistory(rows, "top-up");
+    assert.equal(filtered.length, 2);
+  });
+
 
   await t.test("voucher redemption journal shows Đổi voucher and outgoing points", () => {
     const journal = uuid();

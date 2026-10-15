@@ -465,3 +465,7 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 ## Deferred from: code review of 13-3-top-up-checkout-user-cancel-enable-guard (2026-10-15)
 
 - `PrismaPayosTopUpRepository.createProcessing` P2002 backstop matches `meta.target` with `/user_id|userId|one_processing_per_user/`. An unmatched Prisma error shape (index name or undefined target) would surface as 500 instead of ALREADY_PROCESSING. Rare because `pg_advisory_xact_lock` serialises per-user creates.
+
+## Deferred from: code review of 13-7-wallet-top-up-screens (2026-10-15)
+
+- `TOPUP_AMOUNT_MISMATCH` notification type does not exist in `NOTIFICATION_TYPES`; no FE mapping possible until backend adds it (13.5/13.8, Gap 3).

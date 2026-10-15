@@ -177,4 +177,36 @@ describe('PayosTopUpService', () => {
       expect.objectContaining({ topUpId: row.id, cancelled: true }),
     );
   });
+  it('lists owned top-ups with pagination, correct ordering and excludes other users', async () => {
+    const repository = new InMemoryPayosTopUpRepository();
+    const provider = new FakePaymentProvider('test');
+    const service = new PayosTopUpService({
+      repository,
+      provider,
+      appBaseUrl: 'http://localhost',
+      limit: 10,
+      windowSeconds: 600,
+      logger: { warn: jest.fn() },
+    });
+    const otherUser = '77777777-7777-4777-8777-777777777777';
+    await service.checkout(otherUser, { amountVnd: 10_000 });
+    const userRow1 = await service.checkout(userId, { amountVnd: 10_000 });
+    await service.cancel(userId, userRow1.topUp.id);
+    const userRow2 = await service.checkout(userId, { amountVnd: 20_000 });
+
+    const list1 = await service.listOwned(userId, { limit: 1, offset: 0 });
+    expect(list1.total).toBe(2);
+    expect(list1.items).toHaveLength(1);
+    expect(list1.items[0].id).toBe(userRow2.topUp.id);
+    expect(list1.hasMore).toBe(true);
+
+    const list2 = await service.listOwned(userId, { limit: 1, offset: 1 });
+    expect(list2.items).toHaveLength(1);
+    expect(list2.items[0].id).toBe(userRow1.topUp.id);
+    expect(list2.hasMore).toBe(false);
+
+    const otherList = await service.listOwned(otherUser, { limit: 10, offset: 0 });
+    expect(otherList.total).toBe(1);
+  });
 });
+

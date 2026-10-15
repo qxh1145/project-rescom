@@ -392,6 +392,7 @@ export class LedgerService {
       escrow,
       frozen,
       integrityHold,
+      refundHold: 0, // not part of total (13.7 decision); 13.10 adds REFUND_HOLD
       total,
     };
 

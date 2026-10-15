@@ -145,6 +145,8 @@ const TITLES: Record<HistoryKind, string> = {
   DISPUTE_HOLD: "Giữ điểm khi khiếu nại",
   DISPUTE_RESOLUTION: "Kết quả khiếu nại",
   TOP_UP: "Nạp điểm",
+  TOP_UP_PAYOS: "Nạp Điểm qua PayOS",
+  TOP_UP_MISMATCH: "Nạp Điểm (điều chỉnh sai số tiền)",
   VOUCHER_REDEMPTION: "Đổi voucher",
   SURVEY_ESCROW: "Khoá ký quỹ",
   ESCROW_REFUND: "Hoàn ký quỹ",

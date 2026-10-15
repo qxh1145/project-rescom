@@ -84,6 +84,14 @@ test("Figma 14d: presentation per type", () => {
   // Figma icons and tones.
   assert.deepEqual(notificationPresentation("REWARD_PENDING"), { icon: "hourglass", tone: "amber", href: "/wallet" });
   assert.deepEqual(notificationPresentation("SURVEY_REJECTED"), { icon: "x-circle", tone: "danger", href: "/forms" });
+  // Top-up types (Story 13.7): tone, target and title. TOPUP_AMOUNT_MISMATCH / expired do not exist yet (13.5/13.8).
+  const { NOTIFICATION_TITLES } = presentation;
+  assert.deepEqual(notificationPresentation("TOPUP_SUCCESS"), { icon: "bank", tone: "green", href: "/wallet" });
+  assert.deepEqual(notificationPresentation("TOPUP_CANCELLED"), { icon: "bank", tone: "amber", href: "/wallet" });
+  assert.deepEqual(notificationPresentation("TOPUP_REJECTED"), { icon: "bank", tone: "danger", href: "/wallet" });
+  assert.equal(NOTIFICATION_TITLES.TOPUP_SUCCESS, "Nạp điểm thành công");
+  assert.equal(NOTIFICATION_TITLES.TOPUP_CANCELLED, "Giao dịch nạp Điểm đã huỷ");
+  assert.equal(NOTIFICATION_TITLES.TOPUP_REJECTED, "Yêu cầu nạp điểm bị từ chối");
   // Unknown types (and prototype keys) render neutrally and link nowhere.
   for (const type of ["POINTS_EARNED", "toString", ""]) {
     assert.deepEqual(notificationPresentation(type), { icon: "bell", tone: "neutral", href: null });
