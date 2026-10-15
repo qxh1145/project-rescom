@@ -24,6 +24,7 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
   ...(PILOT_BUILD ? [] : [
     { href: "/admin/vouchers", label: "Voucher", icon: "ticket" as const },
     { href: "/admin/flash-sales", label: "Flash Sale", icon: "zap" as const },
+    { href: "/admin/code-issues", label: "Báo cáo mã lỗi", icon: "alert-circle" as const },
     { href: "/admin/voucher-stats", label: "Thống kê voucher", icon: "bar-chart" as const },
   ]),
 ];

@@ -432,3 +432,8 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 - `adjustVoucherStock` nhánh dương chưa chặn vượt `stock_total`; kiểm CHECK trong schema.
 - Chữ ký polymorphic + `(deps as any)` trong `rewards-admin-flash.service.ts`.
 - Overlap candidates gồm sale chưa reserve đã qua end khi job lag.
+
+## Deferred from: code review of 12-13-admin-code-issue-queue-screen (2026-10-15)
+
+- Admin code-issue pagination (`CodeIssuesScreen.tsx`) renders one button per page with no windowing; add first/last/current±2 windowing when the ALL/RESOLVED backlog exceeds ~10 pages.
+- `useApiQuery` drops data on key change, so tab/page switches on the code-issue queue blank the list, pagination and tab counts until the new page loads (pre-existing hook behaviour, shared by other admin screens).

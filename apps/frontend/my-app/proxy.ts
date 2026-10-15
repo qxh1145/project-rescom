@@ -43,6 +43,7 @@ export const config = {
     "/admin/flash-sales",
     "/admin/flash-sales/new",
     "/admin/flash-sales/:id/edit",
+    "/admin/code-issues",
     "/admin/voucher-stats",
     "/forms/new/builder/ai",
     "/forms/:id/builder/ai",
