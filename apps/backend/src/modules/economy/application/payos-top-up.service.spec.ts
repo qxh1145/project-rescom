@@ -476,7 +476,10 @@ describe('PayosTopUpService', () => {
     expect(list2.items[0].id).toBe(userRow1.topUp.id);
     expect(list2.hasMore).toBe(false);
 
-    const otherList = await service.listOwned(otherUser, { limit: 10, offset: 0 });
+    const otherList = await service.listOwned(otherUser, {
+      limit: 10,
+      offset: 0,
+    });
     expect(otherList.total).toBe(1);
   });
 });

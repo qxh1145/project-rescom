@@ -14,6 +14,7 @@ import {
   pointsToVnd,
   rejectTopUpRequestSchema,
   topUpAdminAuditEventPayloadSchema,
+  topUpExportAuditEventPayloadSchema,
   topUpRecheckAuditEventPayloadSchema,
   topUpReferenceSchema,
   topUpRequestSchema,
@@ -382,3 +383,13 @@ describe('Top-up schemas (Story 6.6, FR-34/FR-35)', () => {
   });
 });
 
+
+describe('top-up export audit', () => {
+  it('accepts no PII or bank fields', () => {
+    const event = { schemaVersion: 1, action: 'TOPUP_EXPORTED', auditCategory: 'MODERATION_ADMIN_ACTION',
+      exportId: TOP_UP_ID, adminId: ADMIN_ID, from: '2026-10-16', to: '2026-10-17',
+      rowCount: 0, correlationId: null, occurredAt: '2026-10-16T00:00:00.000Z' };
+    expect(topUpExportAuditEventPayloadSchema.parse(event)).toEqual(event);
+    expect(topUpExportAuditEventPayloadSchema.safeParse({ ...event, userEmail: 'secret@example.com' }).success).toBe(false);
+  });
+});

@@ -17,6 +17,7 @@ export interface ApiRequestOptions<T> {
   /** Validates the envelope `data`. Omit only for 204 endpoints. */
   schema?: ResponseSchema<T>;
   signal?: AbortSignal;
+  as?: "blob";
   /**
    * Send `X-CSRF-Token` (default: true for every non-GET request). Only
    * login/register and guest-callable routes opt out.
@@ -137,6 +138,13 @@ async function readJson(res: Response): Promise<unknown> {
   }
 }
 
+export function attachmentFileName(header: string | null): string | null {
+  if (!header) return null;
+  const encoded = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header)?.[1];
+  if (encoded) { try { return decodeURIComponent(encoded); } catch { return null; } }
+  return /filename\s*=\s*"?([^";]+)"?/i.exec(header)?.[1]?.trim() ?? null;
+}
+
 /**
  * Typed JSON request against the RESCOM API envelope
  * (`{ data, error, meta }`). The same code path talks to MSW or the real
@@ -152,7 +160,7 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const { method = "GET", body, schema, signal } = options;
   const useCsrf = options.csrf ?? method !== "GET";
-  const headers: Record<string, string> = { ...options.headers, Accept: "application/json" };
+  const headers: Record<string, string> = { ...options.headers, Accept: options.as === "blob" ? "text/csv" : "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
   // The token promise the last attempt used: a 403 only discards that one.
@@ -201,6 +209,8 @@ export async function apiRequest<T>(
       retryAfterSeconds: parseRetryAfter(res.headers.get("Retry-After")),
     });
   }
+
+  if (options.as === "blob") return { blob: await res.blob(), fileName: attachmentFileName(res.headers.get("Content-Disposition")) } as T;
 
   if (res.status === 204 || !schema) {
     return undefined as T;

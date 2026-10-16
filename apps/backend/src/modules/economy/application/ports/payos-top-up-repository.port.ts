@@ -82,7 +82,42 @@ export interface ListReconcileCandidatesParams {
   limit: number;
 }
 
+export type AdminPayosRow = Pick<
+  PayosTopUp,
+  | 'id'
+  | 'userId'
+  | 'orderCode'
+  | 'amountVnd'
+  | 'points'
+  | 'pointsCredited'
+  | 'amountPaidVnd'
+  | 'status'
+  | 'createdAt'
+  | 'paidAt'
+  | 'expiresAt'
+  | 'cancelledAt'
+> & { userEmail: string | null };
+export interface AdminPayosListParams {
+  status?: PayosTopUp['status'];
+  fromUtc?: Date;
+  toUtcExclusive?: Date;
+  orderCode?: number;
+  emailContains?: string;
+  limit: number;
+  offset: number;
+}
+
 export interface PayosTopUpRepositoryPort {
+  listForAdmin(
+    params: AdminPayosListParams,
+  ): Promise<{ items: AdminPayosRow[]; total: number }>;
+  listForExport(params: {
+    fromUtc: Date;
+    toUtcExclusive: Date;
+    limit: number;
+  }): Promise<AdminPayosRow[]>;
+  countByChannel(): Promise<{ payos: number; manual: number }>;
+
   createProcessing(
     input: Pick<
       PayosTopUp,
@@ -136,4 +171,3 @@ export interface PayosTopUpRepositoryPort {
   enqueueAdminAlert(event: TopUpAdminAlertEvent): Promise<{ created: boolean }>;
   recordAdminAudit(event: TopUpAdminAuditEvent): Promise<void>;
 }
-

@@ -138,3 +138,35 @@ export const payosRecheckResultSchema = z.object({
 export type PayosRecheckResultDto = z.infer<typeof payosRecheckResultSchema>;
 export type PayosRecheckResult = PayosRecheckResultDto;
 
+
+const dateKeySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((key) => {
+  const day = new Date(`${key}T00:00:00.000Z`);
+  return !Number.isNaN(day.getTime()) && day.toISOString().slice(0, 10) === key;
+}, 'Invalid date');
+
+export const adminPayosTopUpSchema = z.object({
+  id: z.string().uuid(), orderCode: z.number().int(), userId: z.string().uuid(),
+  userEmail: z.string().nullable(), amountVnd: z.number().int(), points: z.number().int(),
+  pointsCredited: z.number().int().nullable(), amountPaidVnd: z.number().int().nullable(),
+  status: payosTopUpStatusSchema, createdAt: z.string().datetime(),
+  paidAt: z.string().datetime().nullable(), expiresAt: z.string().datetime(),
+  cancelledAt: z.string().datetime().nullable(),
+}).strict();
+export type AdminPayosTopUp = z.infer<typeof adminPayosTopUpSchema>;
+
+export const listAdminPayosTopUpsQuerySchema = listPayosTopUpsQuerySchema.extend({
+  status: payosTopUpStatusSchema.optional(), from: dateKeySchema.optional(),
+  to: dateKeySchema.optional(), q: z.string().trim().min(1).max(100).optional(),
+}).strict().refine((q) => !q.from || !q.to || q.from <= q.to, { path: ['from'], message: 'from cannot be after to' });
+export type ListAdminPayosTopUpsQuery = z.output<typeof listAdminPayosTopUpsQuerySchema>;
+export const adminPayosTopUpListSchema = z.object({
+  items: z.array(adminPayosTopUpSchema), total: z.number().int().nonnegative(),
+  limit: z.number().int().positive(), offset: z.number().int().nonnegative(), hasMore: z.boolean(),
+}).strict();
+export const adminTopUpTabCountsSchema = z.object({ payos: z.number().int().nonnegative(), manual: z.number().int().nonnegative() }).strict();
+export const PAYOS_TOP_UP_EXPORT_MAX_ROWS = 10_000;
+export const exportAdminPayosTopUpsSchema = z.object({ from: dateKeySchema, to: dateKeySchema }).strict()
+  .refine(({ from, to }) => from <= to, { path: ['from'], message: 'from cannot be after to' })
+  .refine(({ from, to }) => (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000 < 366,
+    { path: ['to'], message: 'Range cannot exceed 366 days' });
+export type ExportAdminPayosTopUps = z.infer<typeof exportAdminPayosTopUpsSchema>;

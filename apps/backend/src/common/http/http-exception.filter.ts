@@ -131,6 +131,7 @@ import {
   PendingCreditNotFoundException,
   PendingRewardNotMaturedException,
   PendingRewardForbiddenException,
+  TopUpExportTooLargeException,
   PayosTopUpAlreadyProcessingException,
   PayosCheckoutRateLimitedException,
   PayosCheckoutUnavailableException,
@@ -599,6 +600,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
       code = exception.code;
       message = exception.message;
       details = { currentStatus: exception.currentStatus };
+    } else if (exception instanceof TopUpExportTooLargeException) {
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+      details = { maxRows: exception.maxRows };
     } else if (exception instanceof InvalidTopUpRequestException) {
       status = HttpStatus.BAD_REQUEST;
       code = exception.code;

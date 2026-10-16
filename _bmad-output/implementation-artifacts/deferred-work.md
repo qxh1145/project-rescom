@@ -469,3 +469,7 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 ## Deferred from: code review of 13-7-wallet-top-up-screens (2026-10-15)
 
 - `TOPUP_AMOUNT_MISMATCH` notification type does not exist in `NOTIFICATION_TYPES`; no FE mapping possible until backend adds it (13.5/13.8, Gap 3).
+
+## Deferred from: code review of 13-8-admin-top-up-console (2026-10-16)
+
+- Manual top-up queue segmented control (Chờ duyệt / Đã duyệt / Đã từ chối) overflows a 390 px viewport by 7 px inside the review card (pre-existing `TopUpReviewScreen` UI, unchanged by 13.8; retired in 13.13).

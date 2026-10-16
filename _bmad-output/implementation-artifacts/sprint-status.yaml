@@ -158,7 +158,7 @@ development_status:
   13-5-reconciliation-job-alerts-admin-recheck: done  # created 2026-10-15; code review 2026-10-16 (14 patches applied, D1=C1 expiry, D2=FAILED audit); job+expiry+mismatch refresh+alerts (Outbox-deduped)+TOPUP_REFUND_MAILBOX+business-day helper+admin recheck; Sentry=tagged log until 11.4
   13-6-live-payos-probe-in-production: backlog
   13-7-wallet-top-up-screens: done
-  13-8-admin-top-up-console: backlog
+  13-8-admin-top-up-console: done  # created 2026-10-15; 13.5 merged (30fb28c), recheck contract verified 2026-10-16; Figma B1 re-read; D1-D3 Owner-confirmed; code review 2026-10-16: 13 patches applied, checks green; visual check + Figma restyle done 2026-10-16 (uncommitted)
   13-9-amount-mismatch-resolution: backlog
   13-10-refund-request-refund-hold-withdrawal: backlog
   13-11-refund-screens: backlog
