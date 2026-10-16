@@ -9,8 +9,12 @@ import {
   PayosTopUpRepositoryPort,
   TopUpAdminAlertEvent,
   TopUpAdminAuditEvent,
+  TopUpRefundRow,
+  TopUpRowForRefund,
   TopUpStatusEvent,
+  UserTopUpRefundSummary,
 } from '../application/ports/payos-top-up-repository.port';
+import { TopUpRefundAlreadyRequestedException } from '../application/exceptions/economy.exceptions';
 
 export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
   readonly rows = new Map<string, PayosTopUp>();
@@ -22,6 +26,24 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
   readonly userEmails = new Map<string, string>();
   private nextCode = 1_000_000_000;
   private readonly mismatchJournals = new Map<string, string>();
+
+  readonly refundRequests = new Map<string, TopUpRefundRow>();
+  readonly refundRequestsByTopUp = new Map<string, TopUpRefundRow>();
+  readonly refundEvents: Array<{
+    id: string;
+    idempotencyKey: string;
+    eventType: string;
+    producer: string;
+    aggregateType: string;
+    aggregateId: string;
+    aggregateVersion: number;
+    payload: Record<string, unknown>;
+  }> = [];
+  readonly creditJournals = new Map<
+    string,
+    { id: string; idempotencyKey: string; createdAt: Date }
+  >();
+  readonly manualTopUps = new Map<string, TopUpRowForRefund>();
 
   private adminRow(row: PayosTopUp): AdminPayosRow {
     return {
@@ -442,5 +464,157 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
 
   async recordAdminAudit(event: TopUpAdminAuditEvent): Promise<void> {
     this.auditEvents.push(event);
+  }
+
+  async lockTopUpForRefund(id: string): Promise<TopUpRowForRefund | null> {
+    const payos = this.rows.get(id);
+    if (payos) {
+      return {
+        id: payos.id,
+        userId: payos.userId,
+        channel: 'PAYOS',
+        orderCode: payos.orderCode,
+        amountVnd: payos.amountVnd,
+        points: payos.points,
+        status: payos.status,
+        paidAt: payos.paidAt,
+        journalId: payos.journalId,
+        pointsCredited: payos.pointsCredited,
+        amountPaidVnd: payos.amountPaidVnd,
+        counterAccountBankId: payos.counterAccountBankId,
+        counterAccountBankName: payos.counterAccountBankName,
+        counterAccountName: payos.counterAccountName,
+        counterAccountNumber: payos.counterAccountNumber,
+        createdAt: payos.createdAt,
+      };
+    }
+    const manual = this.manualTopUps.get(id);
+    if (manual) {
+      return manual;
+    }
+    return null;
+  }
+
+  async lockRefundRequestByTopUp(
+    topUpId: string,
+  ): Promise<TopUpRefundRow | null> {
+    return this.refundRequestsByTopUp.get(topUpId) ?? null;
+  }
+
+  async createRefundRequest(
+    data: Parameters<PayosTopUpRepositoryPort['createRefundRequest']>[0],
+    events: Parameters<PayosTopUpRepositoryPort['createRefundRequest']>[1],
+  ): Promise<TopUpRefundRow> {
+    if (this.refundRequestsByTopUp.has(data.topUpId)) {
+      throw new TopUpRefundAlreadyRequestedException();
+    }
+    const row: TopUpRefundRow = {
+      id: data.id,
+      topUpId: data.topUpId,
+      userId: data.userId,
+      topUpJournalId: data.topUpJournalId,
+      holdJournalId: data.holdJournalId,
+      releaseJournalId: null,
+      status: data.status,
+      eligibility: data.eligibility,
+      ineligibleReason: data.ineligibleReason,
+      reason: data.reason,
+      note: data.note,
+      points: data.points,
+      amountVnd: data.amountVnd,
+      counterAccountBankId: data.counterAccountBankId,
+      counterAccountBankName: data.counterAccountBankName,
+      counterAccountName: data.counterAccountName,
+      counterAccountNumber: data.counterAccountNumber,
+      destinationVerified: data.destinationVerified,
+      withdrawnAt: null,
+      resolvedAt: null,
+      correlationId: data.correlationId,
+      createdAt: data.createdAt,
+      updatedAt: data.createdAt,
+    };
+    this.refundRequests.set(row.id, row);
+    this.refundRequestsByTopUp.set(row.topUpId, row);
+    this.refundEvents.push(...events);
+    return row;
+  }
+
+  async withdrawRefundRequest(
+    id: string,
+    update: {
+      releaseJournalId: string | null;
+      withdrawnAt: Date;
+    },
+    events: Parameters<PayosTopUpRepositoryPort['withdrawRefundRequest']>[2],
+  ): Promise<{ changed: boolean; request: TopUpRefundRow }> {
+    const row = this.refundRequests.get(id);
+    if (!row) {
+      throw new Error(`Refund request ${id} not found`);
+    }
+    if (row.status !== 'REQUESTED') {
+      return { changed: false, request: row };
+    }
+    row.status = 'WITHDRAWN';
+    row.withdrawnAt = update.withdrawnAt;
+    row.releaseJournalId = update.releaseJournalId;
+    row.updatedAt = update.withdrawnAt;
+    this.refundEvents.push(...events);
+    return { changed: true, request: row };
+  }
+
+  async findRefundRequestsByTopUpIds(
+    topUpIds: string[],
+  ): Promise<Map<string, UserTopUpRefundSummary>> {
+    const map = new Map<string, UserTopUpRefundSummary>();
+    for (const topUpId of topUpIds) {
+      const row = this.refundRequestsByTopUp.get(topUpId);
+      if (row) {
+        const last4 = row.counterAccountNumber
+          ? row.counterAccountNumber.length >= 4
+            ? row.counterAccountNumber.slice(-4)
+            : row.counterAccountNumber
+          : null;
+        map.set(topUpId, {
+          id: row.id,
+          status: row.status,
+          eligibility: row.eligibility,
+          ineligibleReason: row.ineligibleReason,
+          reason: row.reason,
+          points: row.points,
+          amountVnd: row.amountVnd,
+          destination: {
+            bankId: row.counterAccountBankId,
+            bankName: row.counterAccountBankName,
+            holderName: row.counterAccountName,
+            last4,
+            verified: row.destinationVerified,
+          },
+          submittedAt: row.createdAt,
+          withdrawnAt: row.withdrawnAt,
+        });
+      }
+    }
+    return map;
+  }
+
+  async findCreditJournal(
+    journalId: string,
+  ): Promise<{ id: string; idempotencyKey: string; createdAt: Date } | null> {
+    return this.creditJournals.get(journalId) ?? null;
+  }
+
+  async findCreditJournalKeysByIds(
+    journalIds: string[],
+  ): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    for (const id of journalIds) {
+      const j = this.creditJournals.get(id);
+      if (j) map.set(id, j.idempotencyKey);
+    }
+    return map;
+  }
+
+  async getUserEmail(userId: string): Promise<string | null> {
+    return this.userEmails.get(userId) ?? null;
   }
 }

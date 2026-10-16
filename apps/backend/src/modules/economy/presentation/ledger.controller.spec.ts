@@ -103,7 +103,7 @@ describe('LedgerController', () => {
     expect(res.data?.balance.total).toBe(150);
     expect(res.data?.transactions).toHaveLength(1);
     expect(res.data?.transactions[0].description).toBe('Survey reward');
-    expect(res.data?.accounts).toHaveLength(5);
+    expect(res.data?.accounts).toHaveLength(6);
     expect(res.error).toBeNull();
   });
 

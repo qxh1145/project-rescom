@@ -160,7 +160,13 @@ export class RewardsQuoteService {
       throw new RedemptionRejectionException(
         'INSUFFICIENT_POINTS',
         'Insufficient points balance',
-        { required: price.points, available: balance.available },
+        {
+          required: price.points,
+          available: balance.available,
+          ...(balance.refundHold && balance.refundHold > 0
+            ? { refundHoldPoints: balance.refundHold }
+            : {}),
+        },
       );
     }
 

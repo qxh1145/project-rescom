@@ -159,8 +159,8 @@ development_status:
   13-6-live-payos-probe-in-production: done  # Part A reviewed 2026-10-16; Part B executed 2026-10-16: live probe orderCode 1000000001 credited via webhook, live fixtures recorded, FR-77 unverified-destination (Owner decision); Part B code review 2026-10-16: 10 patches + PII redaction; gates 13.10 unblocked
   13-7-wallet-top-up-screens: done
   13-8-admin-top-up-console: done  # created 2026-10-15; 13.5 merged (30fb28c), recheck contract verified 2026-10-16; Figma B1 re-read; D1-D3 Owner-confirmed; code review 2026-10-16: 13 patches applied, checks green; visual check + Figma restyle done 2026-10-16 (uncommitted)
-  13-9-amount-mismatch-resolution: done  # code review 2026-10-16: 4 patches applied, AC3 amended; created 2026-10-16; branch feat/13-9 from d8da885; Figma 188:1260 + B3 189:2145/189:2296 re-read; D3-D5 + closed-link scope Owner-confirmed
-  13-10-refund-request-refund-hold-withdrawal: backlog
+  13-9-amount-mismatch-resolution: done  # code review 2026-10-16: 4 patches applied, AC3 amended; re-review 2026-10-16: 5 edge patches applied; created 2026-10-16; branch feat/13-9 from d8da885; Figma 188:1260 + B3 189:2145/189:2296 re-read; D3-D5 + closed-link scope Owner-confirmed
+  13-10-refund-request-refund-hold-withdrawal: done  # code review 2026-10-16: 7 patches applied; re-review 2026-10-16: 7 patches applied, 1 pre-existing defer; created 2026-10-16; branch feat/13-10 from 4c2e792; backend + labels only; D1+D6 Owner-confirmed, full STK Admin-only; implemented & verified 2026-10-16
   13-11-refund-screens: backlog
   13-12-admin-refund-resolution: backlog
   13-13-manual-top-up-retirement-production-enable: backlog

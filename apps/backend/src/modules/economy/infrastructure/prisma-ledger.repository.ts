@@ -578,4 +578,24 @@ export class PrismaLedgerRepository implements LedgerRepositoryPort {
       entries,
     });
   }
+
+  async hasSpendSince(userId: string, since: Date): Promise<boolean> {
+    const client = currentClient(this.prisma);
+    const rows = await client.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*)::bigint AS count
+      FROM ledger_entries debit
+      JOIN ledger_accounts user_acc ON user_acc.id = debit.account_id
+      JOIN ledger_journals j ON j.id = debit.journal_id
+      JOIN ledger_entries credit ON credit.journal_id = debit.journal_id AND credit.id <> debit.id
+      JOIN ledger_accounts dest_acc ON dest_acc.id = credit.account_id
+      WHERE user_acc.user_id = ${userId}::uuid
+        AND user_acc.account_class = 'USER_AVAILABLE'
+        AND debit.amount < 0
+        AND dest_acc.account_class IN ('ESCROW', 'SYSTEM_SINK')
+        AND credit.amount > 0
+        AND j.created_at >= ${since}
+      LIMIT 1
+    `;
+    return (rows[0]?.count ?? 0n) > 0n;
+  }
 }

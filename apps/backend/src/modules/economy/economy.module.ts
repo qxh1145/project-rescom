@@ -15,8 +15,11 @@ import { PrismaModule } from '../../common/database/prisma.module';
 import { PayosAvailability } from './application/payos-availability';
 import { PayosTopUpService } from './application/payos-top-up.service';
 import { TopUpNotificationHandler } from './application/top-up-notification.handler';
+import { TopUpRefundNotificationHandler } from './application/top-up-refund-notification.handler';
 import { TopUpAdminAlerts } from './application/top-up-admin-alerts';
 import { TopUpAdminAlertHandler } from './infrastructure/top-up-admin-alert.handler';
+import { TopUpRefundAdminNoticeHandler } from './infrastructure/top-up-refund-admin-notice.handler';
+import { TopUpRefundService } from './application/top-up-refund.service';
 import {
   EMAIL_SENDER_PORT,
   EmailSenderPort,
@@ -227,6 +230,56 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
       ],
     },
     {
+      provide: TopUpRefundService,
+      useFactory: (
+        repository: PayosTopUpRepositoryPort,
+        ledgerService: LedgerService,
+        unitOfWork: UnitOfWorkPort,
+        clock?: Clock,
+      ) =>
+        new TopUpRefundService({
+          repository,
+          ledgerService,
+          unitOfWork,
+          logger: new Logger(TopUpRefundService.name),
+          ...(clock ? { now: () => clock.now() } : {}),
+        }),
+      inject: [
+        PAYOS_TOP_UP_REPOSITORY_PORT,
+        LedgerService,
+        UNIT_OF_WORK_PORT,
+        { token: CLOCK, optional: true },
+      ],
+    },
+    {
+      provide: TopUpRefundNotificationHandler,
+      useFactory: (publisher: NotificationPublisherPort) =>
+        new TopUpRefundNotificationHandler(publisher),
+      inject: [NOTIFICATION_PUBLISHER_PORT],
+    },
+    {
+      provide: TopUpRefundAdminNoticeHandler,
+      useFactory: (
+        adminCapability: AdminCapabilityPort,
+        notifications: NotificationPublisherPort,
+        emailSender: EmailSenderPort,
+        env: EnvService,
+      ) =>
+        new TopUpRefundAdminNoticeHandler(
+          adminCapability,
+          notifications,
+          emailSender,
+          () => env.topUpRefundMailbox,
+          env.emailAppBaseUrl,
+        ),
+      inject: [
+        ADMIN_CAPABILITY_PORT,
+        NOTIFICATION_PUBLISHER_PORT,
+        EMAIL_SENDER_PORT,
+        EnvService,
+      ],
+    },
+    {
       // Epic 6 review P2: server-side dispute check for Pending releases.
       // Phase 1 has no dispute cases; Story 8.5 must bind a real query.
       provide: EXTERNAL_DISPUTE_HOLD_QUERY_PORT,
@@ -339,6 +392,7 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     STARTER_POINTS_DATA_PROVIDER,
     EXTERNAL_DISPUTE_HOLD_QUERY_PORT,
     TopUpAdminAlerts,
+    TopUpRefundService,
   ],
 })
 export class EconomyModule {}

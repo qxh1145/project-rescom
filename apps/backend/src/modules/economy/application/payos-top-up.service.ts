@@ -28,6 +28,10 @@ import {
   TOP_UP_AUDIT_EVENT_TYPES,
   TopUpRecheckAuditEventPayload,
   topUpExportAuditEventPayloadSchema,
+  topUpRefundDeadline,
+  TopUpRefundUnavailableReason,
+  UserTopUpRefundRequest,
+  TOP_UP_MISMATCH_JOURNAL_KEY_PREFIX,
 } from '@rescom/schemas';
 import { z } from 'zod';
 import { toCsv } from '../../../common/http/csv';
@@ -40,6 +44,7 @@ import {
   PayosTopUp,
   PayosTopUpRepositoryPort,
   TopUpStatusEvent,
+  UserTopUpRefundSummary,
 } from './ports/payos-top-up-repository.port';
 import {
   PaymentProviderPort,
@@ -868,8 +873,18 @@ export class PayosTopUpService {
   async getOwned(userId: string, id: string): Promise<PayosTopUpDto> {
     const row = await this.options.repository.findOwned(id, userId);
     if (!row) throw new TopUpRequestNotFoundException(id);
-    return this.dto(row);
+    const refundMap =
+      await this.options.repository.findRefundRequestsByTopUpIds([row.id]);
+    const creditJournal = row.journalId
+      ? await this.options.repository.findCreditJournal(row.journalId)
+      : null;
+    return this.dto(
+      row,
+      refundMap.get(row.id) ?? null,
+      creditJournal?.idempotencyKey ?? null,
+    );
   }
+
   async listOwned(
     userId: string,
     query: { limit: number; offset: number },
@@ -884,8 +899,23 @@ export class PayosTopUpService {
       userId,
       query,
     );
+    const refundMap =
+      await this.options.repository.findRefundRequestsByTopUpIds(
+        items.map((i) => i.id),
+      );
+    const journalIds = items
+      .map((i) => i.journalId)
+      .filter((id): id is string => Boolean(id));
+    const journalKeys =
+      await this.options.repository.findCreditJournalKeysByIds(journalIds);
     return {
-      items: items.map((row) => this.dto(row)),
+      items: items.map((row) =>
+        this.dto(
+          row,
+          refundMap.get(row.id) ?? null,
+          row.journalId ? (journalKeys.get(row.journalId) ?? null) : null,
+        ),
+      ),
       total,
       limit: query.limit,
       offset: query.offset,
@@ -893,7 +923,66 @@ export class PayosTopUpService {
     };
   }
 
-  private dto(row: PayosTopUp): PayosTopUpDto {
+  private dto(
+    row: PayosTopUp,
+    refundSummary: UserTopUpRefundSummary | null = null,
+    creditJournalKey: string | null = null,
+  ): PayosTopUpDto {
+    const now = this.now();
+    const isSuccessful = row.status === 'SUCCESSFUL';
+    const isPayos = row.channel !== 'MANUAL';
+    const refundDeadline =
+      isSuccessful && isPayos && row.paidAt
+        ? topUpRefundDeadline(row.paidAt).toISOString()
+        : null;
+
+    let canRequest = false;
+    let unavailableReason: TopUpRefundUnavailableReason | null = null;
+    let request: UserTopUpRefundRequest | null = null;
+
+    if (refundSummary) {
+      request = {
+        id: refundSummary.id,
+        status: refundSummary.status,
+        eligibility: refundSummary.eligibility,
+        ineligibleReason: refundSummary.ineligibleReason,
+        reason: refundSummary.reason,
+        points: refundSummary.points,
+        amountVnd: refundSummary.amountVnd,
+        destination: refundSummary.destination,
+        submittedAt: refundSummary.submittedAt.toISOString(),
+        withdrawnAt: refundSummary.withdrawnAt?.toISOString() ?? null,
+      };
+      canRequest = false;
+      unavailableReason =
+        refundSummary.status === 'WITHDRAWN'
+          ? 'WITHDRAWN'
+          : 'ALREADY_REQUESTED';
+    } else {
+      if (!isSuccessful) {
+        canRequest = false;
+        unavailableReason = 'NOT_SUCCESSFUL';
+      } else if (!isPayos) {
+        canRequest = false;
+        unavailableReason = 'LEGACY_MANUAL';
+      } else if (
+        creditJournalKey &&
+        creditJournalKey.startsWith(TOP_UP_MISMATCH_JOURNAL_KEY_PREFIX)
+      ) {
+        canRequest = false;
+        unavailableReason = 'MISMATCH_CREDITED';
+      } else if (!row.paidAt) {
+        canRequest = false;
+        unavailableReason = 'NOT_SUCCESSFUL';
+      } else if (now >= topUpRefundDeadline(row.paidAt)) {
+        canRequest = false;
+        unavailableReason = 'DEADLINE_PASSED';
+      } else {
+        canRequest = true;
+        unavailableReason = null;
+      }
+    }
+
     return {
       id: row.id,
       orderCode: row.orderCode,
@@ -905,6 +994,12 @@ export class PayosTopUpService {
       cancelledAt: row.cancelledAt?.toISOString() ?? null,
       paidAt: row.paidAt?.toISOString() ?? null,
       createdAt: row.createdAt.toISOString(),
+      refundDeadline,
+      refund: {
+        canRequest,
+        unavailableReason,
+        request,
+      },
     };
   }
 }

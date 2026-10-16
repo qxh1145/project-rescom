@@ -146,6 +146,10 @@ import {
   TopUpReferenceConflictException,
   TopUpAdminCapabilityRequiredException,
   TopUpSelfReviewForbiddenException,
+  TopUpRefundNotAllowedException,
+  TopUpRefundAlreadyRequestedException,
+  TopUpRefundNotFoundException,
+  RefundAlreadyResolvedException,
 } from '../../modules/economy/application/exceptions/economy.exceptions';
 import { NotificationNotFoundException } from '../../modules/notifications/application/exceptions/notification.exceptions';
 import {
@@ -570,8 +574,27 @@ export class HttpExceptionFilter implements ExceptionFilter {
         details = {
           availableBalance: exception.availableBalance,
           requiredAmount: exception.requiredAmount,
+          ...(exception.refundHoldPoints && exception.refundHoldPoints > 0
+            ? { refundHoldPoints: exception.refundHoldPoints }
+            : {}),
         };
       }
+    } else if (exception instanceof TopUpRefundNotAllowedException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = { reason: exception.reason };
+    } else if (
+      exception instanceof TopUpRefundAlreadyRequestedException ||
+      exception instanceof RefundAlreadyResolvedException
+    ) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof TopUpRefundNotFoundException) {
+      status = HttpStatus.NOT_FOUND;
+      code = exception.code;
+      message = exception.message;
     } else if (exception instanceof PaymentProviderSignatureError) {
       status = HttpStatus.UNAUTHORIZED;
       code = 'PAYOS_WEBHOOK_SIGNATURE_INVALID';

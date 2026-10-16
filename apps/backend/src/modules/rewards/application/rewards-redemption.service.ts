@@ -109,6 +109,9 @@ export class RewardsRedemptionService {
         failureDetails = {
           required: quote.pricePoints,
           available: freshBalance.available,
+          ...(freshBalance.refundHold && freshBalance.refundHold > 0
+            ? { refundHoldPoints: freshBalance.refundHold }
+            : {}),
         };
       }
 

@@ -6,6 +6,7 @@ export const ledgerAccountClassSchema = z.enum([
   "FROZEN",
   "ESCROW",
   "INTEGRITY_HOLD",
+  "REFUND_HOLD",
   "SYSTEM_ISSUANCE",
   "SYSTEM_SINK",
   "SYSTEM_CLEARING",
@@ -14,7 +15,7 @@ export const ledgerAccountClassSchema = z.enum([
 export type LedgerAccountClass = z.infer<typeof ledgerAccountClassSchema>;
 
 export const NON_OVERDRAFTABLE_ACCOUNT_CLASSES: readonly LedgerAccountClass[] =
-  ["USER_AVAILABLE", "PENDING", "FROZEN", "ESCROW", "INTEGRITY_HOLD"] as const;
+  ["USER_AVAILABLE", "PENDING", "FROZEN", "ESCROW", "INTEGRITY_HOLD", "REFUND_HOLD"] as const;
 
 export const SYSTEM_ACCOUNT_CLASSES: readonly LedgerAccountClass[] = [
   "SYSTEM_ISSUANCE",

@@ -33,6 +33,8 @@ export const NOTIFICATION_TYPES = [
   'TOPUP_CANCELLED',
   'TOPUP_AMOUNT_MISMATCH',
   'TOPUP_REFUNDED',
+  'TOPUP_REFUND_REQUESTED',
+  'TOPUP_REFUND_WITHDRAWN',
 ] as const;
 
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);

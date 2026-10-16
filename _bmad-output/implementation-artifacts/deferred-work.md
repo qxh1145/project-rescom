@@ -477,3 +477,7 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 ## Deferred from: code review of 13-9-amount-mismatch-resolution (2026-10-16)
 
 - `listActionRequired` caps mismatches and uncredited alerts at 100 each (`TOP_UP_ACTION_REQUIRED_MAX`) while `countActionRequired` is uncapped, so the "Cần xử lý" badge can exceed the listed rows with no overflow indicator; mismatch rows with null `paidAt` sort last under `paidAt asc` and are truncated first. Known `ponytail:` ceiling; add paging/`truncated` flag when volume nears 100.
+
+## Deferred from: code review of 13-10-refund-request-refund-hold-withdrawal (2026-10-16)
+
+- `test/rewards-flash.prisma.e2e-spec.ts:144` lifecycle settle test fails (`settleRun.settled` received 0) on clean HEAD `4c2e792` too, so it predates 13.10; likely `findDueForSettle`/`isSettleDue` vs test fast-forward or shared financial test DB state. Investigate in an Epic 12 follow-up.

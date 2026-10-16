@@ -27,8 +27,9 @@ const PREFIX = "rescom:mockdb:";
  * 11: Admin code-issue queue and resolution fields (Story 12.12).
  * 12: PayOS top-up and refundHold support (Story 13.7).
  * 13: PayOS amount-mismatch resolution fields (Story 13.9).
+ * 14: PayOS refundDeadline and refund summary fields (Story 13.10).
  */
-const SCHEMA_VERSION = 13;
+const SCHEMA_VERSION = 14;
 
 interface Persisted<T> {
   version: number;

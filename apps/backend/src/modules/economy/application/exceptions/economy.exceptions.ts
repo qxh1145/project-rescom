@@ -27,6 +27,7 @@ export class InsufficientEscrowBalanceException extends InsufficientBalanceExcep
     public readonly availableBalance: number,
     public readonly requiredAmount: number,
     message?: string,
+    public readonly refundHoldPoints?: number,
   ) {
     super(
       message ??
@@ -311,5 +312,45 @@ export class TopUpMismatchNothingToCreditException extends Error {
   readonly code = 'TOPUP_MISMATCH_NOTHING_TO_CREDIT';
   constructor() {
     super('Paid amount is below one Point.');
+  }
+}
+
+export class TopUpRefundNotAllowedException extends Error {
+  readonly code = 'TOPUP_REFUND_NOT_ALLOWED';
+  readonly status = 409;
+  constructor(public readonly reason: string) {
+    super(`Top-up refund not allowed: ${reason}`);
+    this.name = 'TopUpRefundNotAllowedException';
+  }
+}
+
+export class TopUpRefundAlreadyRequestedException extends Error {
+  readonly code = 'TOPUP_REFUND_ALREADY_REQUESTED';
+  readonly status = 409;
+  constructor() {
+    super('Top-up refund already requested.');
+    this.name = 'TopUpRefundAlreadyRequestedException';
+  }
+}
+
+export class TopUpRefundNotFoundException extends Error {
+  readonly code = 'TOPUP_REFUND_NOT_FOUND';
+  readonly status = 404;
+  constructor(message?: string) {
+    super(
+      message
+        ? `Top-up refund request not found: ${message}`
+        : 'Top-up refund request not found.',
+    );
+    this.name = 'TopUpRefundNotFoundException';
+  }
+}
+
+export class RefundAlreadyResolvedException extends Error {
+  readonly code = 'REFUND_ALREADY_RESOLVED';
+  readonly status = 409;
+  constructor() {
+    super('Refund already resolved.');
+    this.name = 'RefundAlreadyResolvedException';
   }
 }

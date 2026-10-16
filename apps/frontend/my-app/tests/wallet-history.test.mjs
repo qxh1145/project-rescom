@@ -231,6 +231,28 @@ test("wallet history: direction follows the caller's own entries", async (t) => 
     assert.equal(row.title, "Thưởng khảo sát");
   });
 
+  await t.test("refund hold and withdrawal (Story 13.10): titles, direction out of / back into Khả dụng", () => {
+    const hold = uuid();
+    const withdraw = uuid();
+    const rows = history.toHistoryRows(
+      [
+        entry(hold, "USER_AVAILABLE", -120, "topup-refund-hold:r-1"),
+        entry(hold, "REFUND_HOLD", 120, "topup-refund-hold:r-1"),
+        entry(withdraw, "USER_AVAILABLE", 120, "topup-refund-withdraw:r-1"),
+        entry(withdraw, "REFUND_HOLD", -120, "topup-refund-withdraw:r-1"),
+      ],
+      NOW,
+    );
+    assert.equal(rows.length, 2);
+    assert.deepEqual(
+      rows.map((row) => [row.kind, row.title, row.amount, row.bucket, row.direction]),
+      [
+        ["TOP_UP_REFUND_HOLD", "Giữ chờ hoàn tiền", -120, "REFUND_HOLD", "out"],
+        ["TOP_UP_REFUND_RELEASE", "Hoàn lại từ giữ chờ hoàn tiền", 120, "USER_AVAILABLE", "in"],
+      ],
+    );
+  });
+
   await t.test("dispute refund: taken from the respondent, returned to the publisher", () => {
     const [respondent] = history.toHistoryRows(
       [entry(uuid(), "INTEGRITY_HOLD", -18, "dispute-resolution:case-1:refund")],

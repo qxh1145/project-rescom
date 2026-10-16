@@ -2,7 +2,13 @@ import { isApiError } from "../api/api-error.ts";
 
 export function payosAdminErrorMessage(error: unknown): string {
   // Name check: @rescom/schemas may carry its own zod copy, so instanceof is unreliable.
-  if (error instanceof Error && error.name === "ZodError") return "Khoảng ngày không hợp lệ (tối đa 366 ngày).";
+  if (error instanceof Error && error.name === "ZodError") {
+    const issues = (error as { issues?: Array<{ message?: string; path?: Array<string | number> }> }).issues;
+    if (Array.isArray(issues) && issues.some(i => i.message?.includes("366") || i.path?.includes("from") || i.path?.includes("to"))) {
+      return "Khoảng ngày không hợp lệ (tối đa 366 ngày).";
+    }
+    return "Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.";
+  }
   if (!isApiError(error)) return "Không thể xử lý yêu cầu. Thử lại sau.";
   if (error.kind === "network") return "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.";
   if (error.code === "TOPUP_ADMIN_CAPABILITY_REQUIRED") return "Bạn không có quyền xử lý giao dịch này.";
@@ -17,7 +23,13 @@ export function payosAdminErrorMessage(error: unknown): string {
       const maxRows = (error.details as { maxRows?: number } | undefined)?.maxRows ?? 10000;
       return `Quá ${maxRows} giao dịch — thu hẹp khoảng ngày.`;
     }
-    case "VALIDATION_ERROR": return "Khoảng ngày không hợp lệ (tối đa 366 ngày).";
+    case "VALIDATION_ERROR": {
+      const details = error.details as { issues?: Array<{ message?: string; path?: Array<string | number> }> } | undefined;
+      if (details?.issues?.some(i => i.message?.includes("366") || i.path?.includes("from") || i.path?.includes("to"))) {
+        return "Khoảng ngày không hợp lệ (tối đa 366 ngày).";
+      }
+      return "Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.";
+    }
     default: return "Không thể xử lý yêu cầu. Thử lại sau.";
   }
 }

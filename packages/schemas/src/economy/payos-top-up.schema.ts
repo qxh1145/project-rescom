@@ -34,6 +34,11 @@ export const payosCheckoutSchema = z.object({
     ),
 });
 export type PayosCheckoutInput = z.infer<typeof payosCheckoutSchema>;
+import {
+  topUpRefundUnavailableReasonSchema,
+  userTopUpRefundRequestSchema,
+} from "./top-up-refund.schema";
+
 export const payosTopUpStatusSchema = z.enum([
   "PROCESSING",
   "SUCCESSFUL",
@@ -55,6 +60,12 @@ export const payosTopUpSchema = z.object({
   cancelledAt: z.string().datetime().nullable(),
   paidAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
+  refundDeadline: z.string().datetime().nullable(),
+  refund: z.object({
+    canRequest: z.boolean(),
+    unavailableReason: topUpRefundUnavailableReasonSchema.nullable(),
+    request: userTopUpRefundRequestSchema.nullable(),
+  }),
 });
 export type PayosTopUpDto = z.infer<typeof payosTopUpSchema>;
 export const payosCheckoutResultSchema = z.object({
