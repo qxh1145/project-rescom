@@ -127,7 +127,7 @@ export const topUpHandlers: RequestHandler[] = [
     }
 
     const created = createMockPayosTopUp(user, parsed.data.amountVnd);
-    return ok({ topUp: created, checkoutUrl: created.checkoutUrl }, 201);
+    return ok({ topUp: toUserTopUpDto(created), checkoutUrl: created.checkoutUrl }, 201);
   }),
 
   // GET /economy/top-ups/payos (list)
@@ -149,7 +149,7 @@ export const topUpHandlers: RequestHandler[] = [
     const all = payosTopUpsOf(user);
     const items = all.slice(offset, offset + limit);
     return ok({
-      items,
+      items: items.map(toUserTopUpDto),
       total: all.length,
       limit,
       offset,
@@ -170,7 +170,7 @@ export const topUpHandlers: RequestHandler[] = [
       return fail(404, "TOPUP_NOT_FOUND", "Top-up not found.");
     }
 
-    return ok(item);
+    return ok(toUserTopUpDto(item));
   }),
 
   // POST /economy/top-ups/payos/:id/cancel
@@ -196,7 +196,24 @@ export const topUpHandlers: RequestHandler[] = [
       });
     }
 
-    return ok(cancelled);
+    return ok(toUserTopUpDto(cancelled));
   }),
 ];
+
+function toUserTopUpDto(item: ReturnType<typeof createMockPayosTopUp>) {
+  const isSuccessful = item.status === "SUCCESSFUL";
+  const deadline =
+    isSuccessful && item.paidAt
+      ? new Date(Date.parse(item.paidAt) + 24 * 3600 * 1000).toISOString()
+      : null;
+  return {
+    ...item,
+    refundDeadline: item.refundDeadline ?? deadline,
+    refund: item.refund ?? {
+      canRequest: isSuccessful,
+      unavailableReason: isSuccessful ? null : ("NOT_SUCCESSFUL" as const),
+      request: null,
+    },
+  };
+}
 

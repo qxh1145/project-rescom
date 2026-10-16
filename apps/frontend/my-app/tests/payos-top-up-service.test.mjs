@@ -18,6 +18,12 @@ const samplePayos = {
   cancelledAt: null,
   paidAt: null,
   createdAt: "2026-10-15T14:55:00.000Z",
+  refundDeadline: null,
+  refund: {
+    canRequest: false,
+    unavailableReason: "NOT_SUCCESSFUL",
+    request: null,
+  },
 };
 
 function jsonResponse(status, body) {

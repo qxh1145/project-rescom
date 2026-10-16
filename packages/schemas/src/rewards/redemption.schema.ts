@@ -17,7 +17,7 @@ export const accountNotEligibleReasonSchema = z.enum(["ACCOUNT_NOT_ACTIVATED", "
 export const redemptionErrorSchema = z.discriminatedUnion("code", [
   z.object({ code: z.literal("SOLD_OUT"), message: z.string(), details: z.object({ voucherId: id, regularStockRemaining: count }) }),
   z.object({ code: z.literal("PRICE_CHANGED"), message: z.string(), details: z.object({ voucherId: id, price: voucherPriceSchema }) }),
-  z.object({ code: z.literal("INSUFFICIENT_POINTS"), message: z.string(), details: z.object({ required: z.number().int().positive(), available: count }).refine(v => v.available < v.required) }),
+  z.object({ code: z.literal("INSUFFICIENT_POINTS"), message: z.string(), details: z.object({ required: z.number().int().positive(), available: count, refundHoldPoints: z.number().int().positive().optional() }).refine(v => v.available < v.required) }),
   z.object({ code: z.literal("VOUCHER_UNAVAILABLE"), message: z.string(), details: z.object({ voucherId: id, status: z.enum(["PAUSED", "HIDDEN", "ARCHIVED", "EXPIRED"]) }) }),
   z.object({ code: z.literal("ACCOUNT_NOT_ELIGIBLE"), message: z.string(), details: z.object({ reason: accountNotEligibleReasonSchema }) }),
 ]);

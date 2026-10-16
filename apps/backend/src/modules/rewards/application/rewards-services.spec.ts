@@ -359,9 +359,13 @@ describe('Rewards application services', () => {
         },
       };
 
-      const state = { balance: 1000 };
+      const state = { balance: 1000, refundHold: 0 };
       const wallet: WalletBalancePort = {
-        getBalance: async () => ({ available: state.balance, pending: 0 }),
+        getBalance: async () => ({
+          available: state.balance,
+          pending: 0,
+          refundHold: state.refundHold,
+        }),
       };
 
       const accountStanding: AccountStandingPort = {
@@ -566,6 +570,50 @@ describe('Rewards application services', () => {
         f.redemptionService.findByKey(adminId, 'idem-key-1'),
       ).rejects.toMatchObject({ code: 'INSUFFICIENT_POINTS' });
       expect(f.redemptions.redemptions.size).toBe(1);
+    });
+
+    it('AC8: INSUFFICIENT_POINTS details carry refundHoldPoints only when a hold exists (quote + redemption)', async () => {
+      const f = redemptionFixture();
+      const quote = await f.quoteService.createQuote(adminId, { voucherId });
+      f.state.balance = 10;
+
+      // Quote: no hold -> key absent; with hold -> present.
+      let err: any = await f.quoteService
+        .createQuote(adminId, { voucherId })
+        .catch((e) => e);
+      expect(err.details).toEqual({ required: 40, available: 10 });
+      f.state.refundHold = 30;
+      err = await f.quoteService
+        .createQuote(adminId, { voucherId })
+        .catch((e) => e);
+      expect(err.details).toEqual({
+        required: 40,
+        available: 10,
+        refundHoldPoints: 30,
+      });
+
+      // Redemption: no hold -> absent; with hold -> present.
+      f.state.refundHold = 0;
+      err = await f.redemptionService
+        .redeem(adminId, { quoteId: quote.quoteId }, 'idem-nohold')
+        .catch((e) => e);
+      expect(err.details).toEqual({ required: 40, available: 10 });
+      f.state.refundHold = 30;
+      const quote2 = await f.quoteService
+        .createQuote(adminId, { voucherId })
+        .catch((e) => e);
+      expect(quote2.details.refundHoldPoints).toBe(30);
+      f.state.balance = 1000;
+      const quote3 = await f.quoteService.createQuote(adminId, { voucherId });
+      f.state.balance = 10;
+      err = await f.redemptionService
+        .redeem(adminId, { quoteId: quote3.quoteId }, 'idem-hold')
+        .catch((e) => e);
+      expect(err.details).toEqual({
+        required: 40,
+        available: 10,
+        refundHoldPoints: 30,
+      });
     });
 
     it('findByKey throws REDEMPTION_NOT_FOUND for an unknown key', async () => {

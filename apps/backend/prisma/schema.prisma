@@ -189,6 +189,8 @@ enum NotificationType {
   TOPUP_CANCELLED
   TOPUP_AMOUNT_MISMATCH
   TOPUP_REFUNDED
+  TOPUP_REFUND_REQUESTED
+  TOPUP_REFUND_WITHDRAWN
 }
 
 /// Story IR.4b B5: one email delivery attempt per notification. Mirrors
@@ -236,6 +238,30 @@ enum TopUpChannel {
   PAYOS
 }
 
+enum TopUpRefundStatus {
+  REQUESTED
+  WITHDRAWN
+  REFUNDED
+  REJECTED
+}
+
+enum TopUpRefundEligibility {
+  ELIGIBLE
+  NOT_ELIGIBLE
+}
+
+enum TopUpRefundIneligibleReason {
+  SPENT_SINCE_TOP_UP
+  INSUFFICIENT_AVAILABLE
+}
+
+enum TopUpRefundReason {
+  WRONG_AMOUNT
+  WRONG_ACCOUNT
+  NO_LONGER_NEEDED
+  OTHER
+}
+
 /// Story 8.1: outcome of an Admin survey moderation decision.
 enum SurveyModerationOutcome {
   APPROVED
@@ -264,6 +290,7 @@ enum LedgerAccountClass {
   FROZEN
   ESCROW
   INTEGRITY_HOLD
+  REFUND_HOLD
   SYSTEM_ISSUANCE
   SYSTEM_SINK
   SYSTEM_CLEARING
@@ -323,6 +350,7 @@ model User {
   responses                     Response[]
   notifications                 Notification[]
   topUpRequests                 TopUpRequest[]
+  topUpRefundRequests           TopUpRefundRequest[]
   ledgerAccounts                LedgerAccount[]
   moderationDecisions           SurveyModerationDecision[] @relation("ModerationDecisionAdmin")
   surveyFeedback                SurveyFeedback[]
@@ -607,6 +635,10 @@ model LedgerJournal {
   // a reversed journal is immutable financial authority and can never be removed.
   reversedJournal LedgerJournal? @relation("JournalReversal", fields: [reversesJournalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   reversal        LedgerJournal? @relation("JournalReversal")
+
+  topUpRefundsAsCredit TopUpRefundRequest[] @relation("TopUpRefundCreditJournal")
+  topUpRefundAsHold    TopUpRefundRequest?  @relation("TopUpRefundHoldJournal")
+  topUpRefundAsRelease TopUpRefundRequest?  @relation("TopUpRefundReleaseJournal")
 
   /// Plan 4.3 `GET /admin/ledger/journals`: keyset `before=<createdAt>:<id>`.
   @@index([createdAt, id])
@@ -1047,12 +1079,50 @@ model TopUpRequest {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id])
+  user          User                @relation(fields: [userId], references: [id])
+  refundRequest TopUpRefundRequest?
 
   @@index([status, createdAt])
   @@index([userId, createdAt])
   @@index([channel, status, createdAt])
   @@map("top_up_requests")
+}
+
+model TopUpRefundRequest {
+  id                     String                       @id @default(uuid()) @db.Uuid
+  topUpId                String                       @unique @map("top_up_id") @db.Uuid
+  userId                 String                       @map("user_id") @db.Uuid
+  topUpJournalId         String                       @map("top_up_journal_id") @db.Uuid
+  holdJournalId          String?                      @unique @map("hold_journal_id") @db.Uuid
+  releaseJournalId       String?                      @unique @map("release_journal_id") @db.Uuid
+  status                 TopUpRefundStatus
+  eligibility            TopUpRefundEligibility
+  ineligibleReason       TopUpRefundIneligibleReason? @map("ineligible_reason")
+  reason                 TopUpRefundReason
+  note                   String                       @db.VarChar(300)
+  points                 Int
+  amountVnd              Int                          @map("amount_vnd")
+  counterAccountBankId   String?                      @map("counter_account_bank_id")
+  counterAccountBankName String?                      @map("counter_account_bank_name")
+  counterAccountName     String?                      @map("counter_account_name")
+  counterAccountNumber   String?                      @map("counter_account_number")
+  destinationVerified    Boolean                      @map("destination_verified")
+  withdrawnAt            DateTime?                    @map("withdrawn_at")
+  resolvedAt             DateTime?                    @map("resolved_at")
+  correlationId          String?                      @map("correlation_id") @db.Uuid
+  createdAt              DateTime                     @default(now()) @map("created_at")
+  updatedAt              DateTime                     @updatedAt @map("updated_at")
+
+  topUp TopUpRequest @relation(fields: [topUpId], references: [id], onDelete: Restrict)
+  user  User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  topUpJournal   LedgerJournal  @relation("TopUpRefundCreditJournal", fields: [topUpJournalId], references: [id], onDelete: Restrict)
+  holdJournal    LedgerJournal? @relation("TopUpRefundHoldJournal", fields: [holdJournalId], references: [id], onDelete: Restrict)
+  releaseJournal LedgerJournal? @relation("TopUpRefundReleaseJournal", fields: [releaseJournalId], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@map("top_up_refund_requests")
 }
 
 /// Story 8.1 (FR-20, FR-53): one Admin moderation decision per submitted

@@ -31,6 +31,8 @@ export type HistoryKind =
   | "TOP_UP"
   | "TOP_UP_PAYOS"
   | "TOP_UP_MISMATCH"
+  | "TOP_UP_REFUND_HOLD"
+  | "TOP_UP_REFUND_RELEASE"
   | "VOUCHER_REDEMPTION"
   | "SURVEY_ESCROW"
   | "ESCROW_REFUND"
@@ -87,6 +89,8 @@ const KEY_PREFIXES: ReadonlyArray<readonly [string, HistoryKind]> = [
   ["topup-approval:", "TOP_UP"],
   ["topup-credit:", "TOP_UP_PAYOS"],
   ["topup-mismatch:", "TOP_UP_MISMATCH"],
+  ["topup-refund-hold:", "TOP_UP_REFUND_HOLD"],
+  ["topup-refund-withdraw:", "TOP_UP_REFUND_RELEASE"],
   ["redemption:", "VOUCHER_REDEMPTION"],
   ["publish:", "SURVEY_ESCROW"],
   ["reopen-escrow:", "SURVEY_ESCROW"],
@@ -108,8 +112,10 @@ const ZERO_NET_DIRECTION: Partial<Record<HistoryKind, HistoryDirection>> = {
   REWARD_RELEASE: "in",
   DISPUTE_RESOLUTION: "in",
   ESCROW_REFUND: "in",
+  TOP_UP_REFUND_RELEASE: "in",
   SURVEY_ESCROW: "out",
   STARTER_EXPIRY: "out",
+  TOP_UP_REFUND_HOLD: "out",
   // Chờ duyệt → Đang giữ: the points are still the user's, nothing received or spent.
   DISPUTE_HOLD: "neutral",
 };
@@ -125,6 +131,8 @@ const TITLES: Record<HistoryKind, string> = {
   TOP_UP: "Nạp điểm",
   TOP_UP_PAYOS: "Nạp Điểm qua PayOS",
   TOP_UP_MISMATCH: "Nạp Điểm (đã điều chỉnh theo số thực nhận)",
+  TOP_UP_REFUND_HOLD: "Giữ chờ hoàn tiền",
+  TOP_UP_REFUND_RELEASE: "Hoàn lại từ giữ chờ hoàn tiền",
   VOUCHER_REDEMPTION: "Đổi voucher",
   SURVEY_ESCROW: "Ký quỹ khảo sát",
   ESCROW_REFUND: "Hoàn ký quỹ",
@@ -186,6 +194,10 @@ function notesOf(kind: HistoryKind, entry: WalletTransaction, payout: boolean): 
       return { note: "Thanh toán qua PayOS", shortNote: "PayOS" };
     case "TOP_UP_MISMATCH":
       return { note: "Điều chỉnh thanh toán sai số tiền", shortNote: "Điều chỉnh" };
+    case "TOP_UP_REFUND_HOLD":
+      return { note: "Khả dụng → Giữ chờ hoàn tiền", shortNote: "Giữ chờ hoàn tiền" };
+    case "TOP_UP_REFUND_RELEASE":
+      return { note: "Giữ chờ hoàn tiền → Khả dụng", shortNote: "Hoàn lại Khả dụng" };
     case "VOUCHER_REDEMPTION": {
       const note = titleFromDescription(entry.description) ?? "Voucher";
       return { note, shortNote: note };

@@ -161,6 +161,12 @@ export interface MockPayosTopUp {
   amountPaidVnd?: number | null;
   mismatchResolution?: "CREDIT" | "MANUAL_REFUND";
   createdAt: string;
+  refundDeadline?: string | null;
+  refund?: {
+    canRequest: boolean;
+    unavailableReason: "NOT_SUCCESSFUL" | "LEGACY_MANUAL" | "DEADLINE_PASSED" | "MISMATCH_CREDITED" | "ALREADY_REQUESTED" | "WITHDRAWN" | null;
+    request: null;
+  };
 }
 
 export const payosTopUps = createCollection<Record<string, MockPayosTopUp[]>>("payos-top-ups", () => ({}));

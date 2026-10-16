@@ -14,7 +14,7 @@ describe('NotificationType parity (Story 9.6 AC1.1)', () => {
   });
 
   it('appends notification types without reordering', () => {
-    expect(NOTIFICATION_TYPES.slice(-8)).toEqual([
+    expect(NOTIFICATION_TYPES.slice(-10)).toEqual([
       'TOPUP_REJECTED',
       'ACCOUNT_LOCKED',
       'ACCOUNT_UNLOCKED',
@@ -23,6 +23,8 @@ describe('NotificationType parity (Story 9.6 AC1.1)', () => {
       'TOPUP_CANCELLED',
       'TOPUP_AMOUNT_MISMATCH',
       'TOPUP_REFUNDED',
+      'TOPUP_REFUND_REQUESTED',
+      'TOPUP_REFUND_WITHDRAWN',
     ]);
   });
 });

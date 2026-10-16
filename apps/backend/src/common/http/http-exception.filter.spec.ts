@@ -22,6 +22,11 @@ import {
   TopUpReferenceConflictException,
   TopUpRequestNotFoundException,
   TopUpSelfReviewForbiddenException,
+  TopUpRefundNotAllowedException,
+  TopUpRefundAlreadyRequestedException,
+  TopUpRefundNotFoundException,
+  RefundAlreadyResolvedException,
+  InsufficientEscrowBalanceException,
 } from '../../modules/economy/application/exceptions/economy.exceptions';
 import {
   FormNotInModerationQueueException,
@@ -213,6 +218,26 @@ describe('HttpExceptionFilter (Unit Tests)', () => {
       HttpStatus.CONFLICT,
       'TOPUP_REFERENCE_CONFLICT',
     ],
+    [
+      new TopUpRefundNotAllowedException('DEADLINE_PASSED'),
+      HttpStatus.CONFLICT,
+      'TOPUP_REFUND_NOT_ALLOWED',
+    ],
+    [
+      new TopUpRefundAlreadyRequestedException(),
+      HttpStatus.CONFLICT,
+      'TOPUP_REFUND_ALREADY_REQUESTED',
+    ],
+    [
+      new TopUpRefundNotFoundException(),
+      HttpStatus.NOT_FOUND,
+      'TOPUP_REFUND_NOT_FOUND',
+    ],
+    [
+      new RefundAlreadyResolvedException(),
+      HttpStatus.CONFLICT,
+      'REFUND_ALREADY_RESOLVED',
+    ],
   ])(
     'maps Story 6.6 top-up exception %# to its HTTP status and code',
     (exception, expectedStatus, expectedCode) => {
@@ -227,6 +252,33 @@ describe('HttpExceptionFilter (Unit Tests)', () => {
       expect(mockJson.mock.calls[0][0].error.code).toBe(expectedCode);
     },
   );
+
+  it('maps InsufficientEscrowBalanceException with optional refundHoldPoints details', () => {
+    const mockJson1 = jest.fn();
+    const mockStatus1 = jest.fn().mockReturnValue({ json: mockJson1 });
+    filter.catch(
+      new InsufficientEscrowBalanceException(100, 150),
+      createMockHost({ status: mockStatus1, headersSent: false }),
+    );
+    expect(mockStatus1).toHaveBeenCalledWith(HttpStatus.CONFLICT);
+    expect(mockJson1.mock.calls[0][0].error.details).toEqual({
+      availableBalance: 100,
+      requiredAmount: 150,
+    });
+
+    const mockJson2 = jest.fn();
+    const mockStatus2 = jest.fn().mockReturnValue({ json: mockJson2 });
+    filter.catch(
+      new InsufficientEscrowBalanceException(100, 150, undefined, 50),
+      createMockHost({ status: mockStatus2, headersSent: false }),
+    );
+    expect(mockStatus2).toHaveBeenCalledWith(HttpStatus.CONFLICT);
+    expect(mockJson2.mock.calls[0][0].error.details).toEqual({
+      availableBalance: 100,
+      requiredAmount: 150,
+      refundHoldPoints: 50,
+    });
+  });
 
   it.each([
     [

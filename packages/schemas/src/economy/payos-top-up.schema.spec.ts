@@ -55,6 +55,12 @@ describe("payOS top-up list schemas", () => {
       cancelledAt: null,
       paidAt: null,
       createdAt: "2026-10-15T11:55:00.000Z",
+      refundDeadline: null,
+      refund: {
+        canRequest: false,
+        unavailableReason: "NOT_SUCCESSFUL",
+        request: null,
+      },
     };
     const page = { items: [item], total: 1, limit: 20, offset: 0, hasMore: false };
     expect(payosTopUpListSchema.safeParse(page).success).toBe(true);

@@ -24,10 +24,14 @@ test("uncredited banner and refund note rules", () => {
   assert.equal(noteState("  ").valid, false);
   assert.equal(noteState("a".repeat(501)).valid, false);
   assert.equal(resolveTopUpMismatchSchema.safeParse({ action: "MANUAL_REFUND", expectedAmountPaidVnd: 500 }).success, false);
+  const bannerNullPaidAt = uncreditedBanner([{ orderCode: 456, paidAt: null }], new Date("2026-10-16T09:45:00.000Z"));
+  assert.match(bannerNullPaidAt.lines[0], /#456 · PayOS đã nhận thanh toán/);
 });
 test("action DTO rejects full account numbers; error and replay messages", () => {
   assert.equal(adminTopUpActionRequiredSchema.safeParse({ uncredited: [], mismatches: [] }).success, true);
   assert.equal(adminTopUpActionRequiredSchema.safeParse({ uncredited: [], mismatches: [], counterAccountNumber: "secret" }).success, false);
   assert.match(resolveToast({ status: "SUCCESSFUL", pointsCredited: 245, replayed: false }).body, /245/);
   assert.match(payosAdminErrorMessage(new ApiError({ kind: "http", status: 409, code: "TOPUP_MISMATCH_AMOUNT_CHANGED", message: "changed" })), /Đã tải lại/);
+  const mismatchZodError = resolveTopUpMismatchSchema.safeParse({ action: "MANUAL_REFUND", expectedAmountPaidVnd: 500 }).error;
+  assert.match(payosAdminErrorMessage(mismatchZodError), /Dữ liệu không hợp lệ/);
 });

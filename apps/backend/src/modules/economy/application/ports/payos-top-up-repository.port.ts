@@ -1,9 +1,80 @@
-import { AdminPayosUncredited, PayosTopUpDto } from '@rescom/schemas';
+import {
+  AdminPayosUncredited,
+  PayosTopUpDto,
+  TopUpRefundEligibility,
+  TopUpRefundIneligibleReason,
+  TopUpRefundReason,
+  TopUpRefundStatus,
+} from '@rescom/schemas';
 import { ProviderPaymentFacts } from './payment-provider.port';
 
 export const PAYOS_TOP_UP_REPOSITORY_PORT = Symbol(
   'PAYOS_TOP_UP_REPOSITORY_PORT',
 );
+
+export interface TopUpRefundRow {
+  id: string;
+  topUpId: string;
+  userId: string;
+  topUpJournalId: string;
+  holdJournalId: string | null;
+  releaseJournalId: string | null;
+  status: TopUpRefundStatus;
+  eligibility: TopUpRefundEligibility;
+  ineligibleReason: TopUpRefundIneligibleReason | null;
+  reason: TopUpRefundReason;
+  note: string;
+  points: number;
+  amountVnd: number;
+  counterAccountBankId: string | null;
+  counterAccountBankName: string | null;
+  counterAccountName: string | null;
+  counterAccountNumber: string | null;
+  destinationVerified: boolean;
+  withdrawnAt: Date | null;
+  resolvedAt: Date | null;
+  correlationId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TopUpRowForRefund {
+  id: string;
+  userId: string;
+  channel: 'PAYOS' | 'MANUAL';
+  orderCode: number | null;
+  amountVnd: number;
+  points: number;
+  status: PayosTopUp['status'] | 'PENDING' | 'APPROVED' | 'REJECTED';
+  paidAt: Date | null;
+  journalId: string | null;
+  pointsCredited: number | null;
+  amountPaidVnd: number | null;
+  counterAccountBankId: string | null;
+  counterAccountBankName: string | null;
+  counterAccountName: string | null;
+  counterAccountNumber: string | null;
+  createdAt: Date;
+}
+
+export interface UserTopUpRefundSummary {
+  id: string;
+  status: TopUpRefundStatus;
+  eligibility: TopUpRefundEligibility;
+  ineligibleReason: TopUpRefundIneligibleReason | null;
+  reason: TopUpRefundReason;
+  points: number;
+  amountVnd: number;
+  destination: {
+    bankId: string | null;
+    bankName: string | null;
+    holderName: string | null;
+    last4: string | null;
+    verified: boolean;
+  };
+  submittedAt: Date;
+  withdrawnAt: Date | null;
+}
 
 export interface PayosTopUp {
   id: string;
@@ -205,4 +276,66 @@ export interface PayosTopUpRepositoryPort {
   ): Promise<{ changed: boolean }>;
   enqueueAdminAlert(event: TopUpAdminAlertEvent): Promise<{ created: boolean }>;
   recordAdminAudit(event: TopUpAdminAuditEvent): Promise<void>;
+
+  // Story 13.10: Refund Request, Refund Hold & Withdrawal
+  lockTopUpForRefund(id: string): Promise<TopUpRowForRefund | null>;
+  lockRefundRequestByTopUp(topUpId: string): Promise<TopUpRefundRow | null>;
+  createRefundRequest(
+    data: {
+      id: string;
+      topUpId: string;
+      userId: string;
+      topUpJournalId: string;
+      holdJournalId: string | null;
+      status: TopUpRefundStatus;
+      eligibility: TopUpRefundEligibility;
+      ineligibleReason: TopUpRefundIneligibleReason | null;
+      reason: TopUpRefundReason;
+      note: string;
+      points: number;
+      amountVnd: number;
+      counterAccountBankId: string | null;
+      counterAccountBankName: string | null;
+      counterAccountName: string | null;
+      counterAccountNumber: string | null;
+      destinationVerified: boolean;
+      correlationId: string | null;
+      createdAt: Date;
+    },
+    events: Array<{
+      id: string;
+      idempotencyKey: string;
+      eventType: string;
+      producer: string;
+      aggregateType: string;
+      aggregateId: string;
+      aggregateVersion: number;
+      payload: Record<string, unknown>;
+    }>,
+  ): Promise<TopUpRefundRow>;
+  withdrawRefundRequest(
+    id: string,
+    update: {
+      releaseJournalId: string | null;
+      withdrawnAt: Date;
+    },
+    events: Array<{
+      id: string;
+      idempotencyKey: string;
+      eventType: string;
+      producer: string;
+      aggregateType: string;
+      aggregateId: string;
+      aggregateVersion: number;
+      payload: Record<string, unknown>;
+    }>,
+  ): Promise<{ changed: boolean; request: TopUpRefundRow }>;
+  findRefundRequestsByTopUpIds(
+    topUpIds: string[],
+  ): Promise<Map<string, UserTopUpRefundSummary>>;
+  findCreditJournal(
+    journalId: string,
+  ): Promise<{ id: string; idempotencyKey: string; createdAt: Date } | null>;
+  findCreditJournalKeysByIds(journalIds: string[]): Promise<Map<string, string>>;
+  getUserEmail(userId: string): Promise<string | null>;
 }

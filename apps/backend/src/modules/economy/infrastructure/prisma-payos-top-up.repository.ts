@@ -13,8 +13,72 @@ import {
   PayosTopUpRepositoryPort,
   TopUpAdminAlertEvent,
   TopUpAdminAuditEvent,
+  TopUpRefundRow,
+  TopUpRowForRefund,
   TopUpStatusEvent,
+  UserTopUpRefundSummary,
 } from '../application/ports/payos-top-up-repository.port';
+import { TopUpRefundAlreadyRequestedException } from '../application/exceptions/economy.exceptions';
+
+function maskLast4(accountNumber: string | null): string | null {
+  if (!accountNumber) return null;
+  return accountNumber.length >= 4 ? accountNumber.slice(-4) : accountNumber;
+}
+
+function toRefundRow(
+  row: Prisma.TopUpRefundRequestGetPayload<object>,
+): TopUpRefundRow {
+  return {
+    id: row.id,
+    topUpId: row.topUpId,
+    userId: row.userId,
+    topUpJournalId: row.topUpJournalId,
+    holdJournalId: row.holdJournalId,
+    releaseJournalId: row.releaseJournalId,
+    status: row.status as TopUpRefundRow['status'],
+    eligibility: row.eligibility as TopUpRefundRow['eligibility'],
+    ineligibleReason:
+      row.ineligibleReason as TopUpRefundRow['ineligibleReason'],
+    reason: row.reason as TopUpRefundRow['reason'],
+    note: row.note,
+    points: row.points,
+    amountVnd: row.amountVnd,
+    counterAccountBankId: row.counterAccountBankId,
+    counterAccountBankName: row.counterAccountBankName,
+    counterAccountName: row.counterAccountName,
+    counterAccountNumber: row.counterAccountNumber,
+    destinationVerified: row.destinationVerified,
+    withdrawnAt: row.withdrawnAt,
+    resolvedAt: row.resolvedAt,
+    correlationId: row.correlationId,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function toUserRefundSummary(
+  row: Prisma.TopUpRefundRequestGetPayload<object>,
+): UserTopUpRefundSummary {
+  return {
+    id: row.id,
+    status: row.status as UserTopUpRefundSummary['status'],
+    eligibility: row.eligibility as UserTopUpRefundSummary['eligibility'],
+    ineligibleReason:
+      row.ineligibleReason as UserTopUpRefundSummary['ineligibleReason'],
+    reason: row.reason as UserTopUpRefundSummary['reason'],
+    points: row.points,
+    amountVnd: row.amountVnd,
+    destination: {
+      bankId: row.counterAccountBankId,
+      bankName: row.counterAccountBankName,
+      holderName: row.counterAccountName,
+      last4: maskLast4(row.counterAccountNumber),
+      verified: row.destinationVerified,
+    },
+    submittedAt: row.createdAt,
+    withdrawnAt: row.withdrawnAt,
+  };
+}
 
 function toTopUp(row: TopUpRequest): PayosTopUp {
   if (
@@ -221,7 +285,10 @@ export class PrismaPayosTopUpRepository implements PayosTopUpRepositoryPort {
         .flatMap((alert) => {
           const row = byId.get(alert.aggregateId);
           if (!row) return [];
-          const payload = alert.payload as Record<string, unknown>;
+          const payload =
+            alert.payload && typeof alert.payload === 'object'
+              ? (alert.payload as Record<string, unknown>)
+              : {};
           return [
             {
               topUpId: row.id,
@@ -773,6 +840,194 @@ export class PrismaPayosTopUpRepository implements PayosTopUpRepositoryPort {
           payload: event.payload as Prisma.InputJsonValue,
         },
       });
+    });
+  }
+
+  async lockTopUpForRefund(id: string): Promise<TopUpRowForRefund | null> {
+    return runInTransaction(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM top_up_requests WHERE id = ${id}::uuid FOR UPDATE`;
+      const row = await tx.topUpRequest.findUnique({
+        where: { id },
+      });
+      if (!row) return null;
+      return {
+        id: row.id,
+        userId: row.userId,
+        channel: row.channel,
+        orderCode: row.orderCode,
+        amountVnd: row.amountVnd,
+        points: row.amount,
+        status: row.status as TopUpRowForRefund['status'],
+        paidAt: row.paidAt,
+        journalId: row.journalId,
+        pointsCredited: row.pointsCredited,
+        amountPaidVnd: row.amountPaidVnd,
+        counterAccountBankId: row.counterAccountBankId,
+        counterAccountBankName: row.counterAccountBankName,
+        counterAccountName: row.counterAccountName,
+        counterAccountNumber: row.counterAccountNumber,
+        createdAt: row.createdAt,
+      };
+    });
+  }
+
+  async lockRefundRequestByTopUp(
+    topUpId: string,
+  ): Promise<TopUpRefundRow | null> {
+    return runInTransaction(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM top_up_refund_requests WHERE top_up_id = ${topUpId}::uuid FOR UPDATE`;
+      const row = await tx.topUpRefundRequest.findUnique({
+        where: { topUpId },
+      });
+      return row ? toRefundRow(row) : null;
+    });
+  }
+
+  async createRefundRequest(
+    data: Parameters<PayosTopUpRepositoryPort['createRefundRequest']>[0],
+    events: Parameters<PayosTopUpRepositoryPort['createRefundRequest']>[1],
+  ): Promise<TopUpRefundRow> {
+    return runInTransaction(this.prisma, async (tx) => {
+      try {
+        const row = await tx.topUpRefundRequest.create({
+          data: {
+            id: data.id,
+            topUpId: data.topUpId,
+            userId: data.userId,
+            topUpJournalId: data.topUpJournalId,
+            holdJournalId: data.holdJournalId,
+            status: data.status,
+            eligibility: data.eligibility,
+            ineligibleReason: data.ineligibleReason,
+            reason: data.reason,
+            note: data.note,
+            points: data.points,
+            amountVnd: data.amountVnd,
+            counterAccountBankId: data.counterAccountBankId,
+            counterAccountBankName: data.counterAccountBankName,
+            counterAccountName: data.counterAccountName,
+            counterAccountNumber: data.counterAccountNumber,
+            destinationVerified: data.destinationVerified,
+            correlationId: data.correlationId,
+            createdAt: data.createdAt,
+          },
+        });
+        if (events.length > 0) {
+          await tx.outboxEvent.createMany({
+            data: events.map((event) => ({
+              id: event.id,
+              idempotencyKey: event.idempotencyKey,
+              eventType: event.eventType,
+              schemaVersion: 1,
+              producer: event.producer,
+              aggregateType: event.aggregateType,
+              aggregateId: event.aggregateId,
+              aggregateVersion: event.aggregateVersion,
+              status: 'PENDING',
+              payload: event.payload as Prisma.InputJsonValue,
+            })),
+          });
+        }
+        return toRefundRow(row);
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          throw new TopUpRefundAlreadyRequestedException();
+        }
+        throw error;
+      }
+    });
+  }
+
+  async withdrawRefundRequest(
+    id: string,
+    update: {
+      releaseJournalId: string | null;
+      withdrawnAt: Date;
+    },
+    events: Parameters<PayosTopUpRepositoryPort['withdrawRefundRequest']>[2],
+  ): Promise<{ changed: boolean; request: TopUpRefundRow }> {
+    return runInTransaction(this.prisma, async (tx) => {
+      const result = await tx.topUpRefundRequest.updateMany({
+        where: { id, status: 'REQUESTED' },
+        data: {
+          status: 'WITHDRAWN',
+          withdrawnAt: update.withdrawnAt,
+          releaseJournalId: update.releaseJournalId,
+        },
+      });
+      const changed = result.count > 0;
+      if (changed && events.length > 0) {
+        await tx.outboxEvent.createMany({
+          data: events.map((event) => ({
+            id: event.id,
+            idempotencyKey: event.idempotencyKey,
+            eventType: event.eventType,
+            schemaVersion: 1,
+            producer: event.producer,
+            aggregateType: event.aggregateType,
+            aggregateId: event.aggregateId,
+            aggregateVersion: event.aggregateVersion,
+            status: 'PENDING',
+            payload: event.payload as Prisma.InputJsonValue,
+          })),
+        });
+      }
+      const updated = await tx.topUpRefundRequest.findUniqueOrThrow({
+        where: { id },
+      });
+      return { changed, request: toRefundRow(updated) };
+    });
+  }
+
+  async findRefundRequestsByTopUpIds(
+    topUpIds: string[],
+  ): Promise<Map<string, UserTopUpRefundSummary>> {
+    const map = new Map<string, UserTopUpRefundSummary>();
+    if (topUpIds.length === 0) return map;
+    const rows = await this.prisma.topUpRefundRequest.findMany({
+      where: { topUpId: { in: topUpIds } },
+    });
+    for (const row of rows) {
+      map.set(row.topUpId, toUserRefundSummary(row));
+    }
+    return map;
+  }
+
+  async findCreditJournal(
+    journalId: string,
+  ): Promise<{ id: string; idempotencyKey: string; createdAt: Date } | null> {
+    return runInTransaction(this.prisma, async (tx) => {
+      const journal = await tx.ledgerJournal.findUnique({
+        where: { id: journalId },
+        select: { id: true, idempotencyKey: true, createdAt: true },
+      });
+      return journal;
+    });
+  }
+
+  async findCreditJournalKeysByIds(
+    journalIds: string[],
+  ): Promise<Map<string, string>> {
+    if (journalIds.length === 0) return new Map();
+    return runInTransaction(this.prisma, async (tx) => {
+      const rows = await tx.ledgerJournal.findMany({
+        where: { id: { in: journalIds } },
+        select: { id: true, idempotencyKey: true },
+      });
+      return new Map(rows.map((r) => [r.id, r.idempotencyKey]));
+    });
+  }
+
+  async getUserEmail(userId: string): Promise<string | null> {
+    return runInTransaction(this.prisma, async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { email: true },
+      });
+      return user?.email ?? null;
     });
   }
 }

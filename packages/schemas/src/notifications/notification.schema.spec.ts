@@ -55,6 +55,8 @@ describe('Notification contracts (Story 9.6, FR-57)', () => {
         'TOPUP_CANCELLED',
         'TOPUP_AMOUNT_MISMATCH',
         'TOPUP_REFUNDED',
+        'TOPUP_REFUND_REQUESTED',
+        'TOPUP_REFUND_WITHDRAWN',
       ]);
     });
 

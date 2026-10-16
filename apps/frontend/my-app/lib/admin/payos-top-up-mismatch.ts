@@ -12,7 +12,7 @@ export function mismatchSla(row: Pick<AdminPayosMismatch, "resolveDueAt">, now =
 }
 export function uncreditedBanner(items: AdminPayosUncredited[], now = new Date()) {
   return { title: `${items.length} giao dịch đã thanh toán nhưng chưa cộng Điểm sau 30 phút`,
-    lines: items.map(item => `#${item.orderCode} · PayOS báo thanh toán ${formatTime(item.paidAt)}, đã ${item.paidAt ? Math.max(0, Math.floor((now.getTime() - Date.parse(item.paidAt)) / 60000)) : "?"} phút. Kiểm tra webhook trước khi cộng thủ công.`) };
+    lines: items.map(item => `#${item.orderCode} · ${item.paidAt ? `PayOS báo thanh toán ${formatTime(item.paidAt)}, đã ${Math.max(0, Math.floor((now.getTime() - Date.parse(item.paidAt)) / 60000))} phút` : "PayOS đã nhận thanh toán"}. Kiểm tra webhook trước khi cộng thủ công.`) };
 }
 export function noteState(note: string) { const trimmed = note.trim(); return { valid: trimmed.length >= 1 && trimmed.length <= TOP_UP_MISMATCH_NOTE_MAX, value: trimmed }; }
 export function resolveToast(result: ResolveTopUpMismatchResult) {

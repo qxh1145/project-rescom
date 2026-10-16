@@ -130,6 +130,12 @@ export interface LedgerRepositoryPort {
     limit?: number,
     offset?: number,
   ): Promise<UserLedgerTransactionRecord[]>;
+
+  /**
+   * Story 13.10: Checks if a user has any spend journal posted at or after `since`.
+   * Evaluated by entries (debit USER_AVAILABLE into ESCROW or SYSTEM_SINK).
+   */
+  hasSpendSince(userId: string, since: Date): Promise<boolean>;
 }
 
 export interface UserLedgerTransactionRecord {
