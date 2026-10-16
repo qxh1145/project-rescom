@@ -88,6 +88,21 @@ describe('TopUpNotificationHandler', () => {
         expect.objectContaining({ type, dedupeKey: status }),
       );
     }
+
+    await handler.handle({
+      ...event,
+      idempotencyKey: 'topup-expire:x',
+      payload: { ...(event.payload as object), status: 'EXPIRED' },
+    });
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'TOPUP_CANCELLED',
+        dedupeKey: 'topup-expire:x',
+        message:
+          'Yêu cầu nạp 10.000 VNĐ đã hết hạn thanh toán. Nếu bạn đã thanh toán, Điểm vẫn sẽ được cộng.',
+      }),
+    );
+
     await expect(
       handler.handle({ ...event, payload: {} }),
     ).rejects.toBeInstanceOf(OutboxPayloadInvalidError);

@@ -15,6 +15,12 @@ import { PrismaModule } from '../../common/database/prisma.module';
 import { PayosAvailability } from './application/payos-availability';
 import { PayosTopUpService } from './application/payos-top-up.service';
 import { TopUpNotificationHandler } from './application/top-up-notification.handler';
+import { TopUpAdminAlerts } from './application/top-up-admin-alerts';
+import { TopUpAdminAlertHandler } from './infrastructure/top-up-admin-alert.handler';
+import {
+  EMAIL_SENDER_PORT,
+  EmailSenderPort,
+} from '../notifications/application/ports/email-sender.port';
 import {
   PAYOS_TOP_UP_REPOSITORY_PORT,
   PayosTopUpRepositoryPort,
@@ -187,6 +193,36 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
       inject: [NOTIFICATION_PUBLISHER_PORT],
     },
     {
+      provide: TopUpAdminAlerts,
+      useFactory: (repository: PayosTopUpRepositoryPort, clock?: Clock) =>
+        new TopUpAdminAlerts(
+          repository,
+          clock ? () => clock.now() : () => new Date(),
+        ),
+      inject: [PAYOS_TOP_UP_REPOSITORY_PORT, { token: CLOCK, optional: true }],
+    },
+    {
+      provide: TopUpAdminAlertHandler,
+      useFactory: (
+        adminCapability: AdminCapabilityPort,
+        notifications: NotificationPublisherPort,
+        emailSender: EmailSenderPort,
+        env: EnvService,
+      ) =>
+        new TopUpAdminAlertHandler(
+          adminCapability,
+          notifications,
+          emailSender,
+          () => env.topUpRefundMailbox,
+        ),
+      inject: [
+        ADMIN_CAPABILITY_PORT,
+        NOTIFICATION_PUBLISHER_PORT,
+        EMAIL_SENDER_PORT,
+        EnvService,
+      ],
+    },
+    {
       // Epic 6 review P2: server-side dispute check for Pending releases.
       // Phase 1 has no dispute cases; Story 8.5 must bind a real query.
       provide: EXTERNAL_DISPUTE_HOLD_QUERY_PORT,
@@ -298,6 +334,7 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     LEDGER_REPOSITORY_PORT,
     STARTER_POINTS_DATA_PROVIDER,
     EXTERNAL_DISPUTE_HOLD_QUERY_PORT,
+    TopUpAdminAlerts,
   ],
 })
 export class EconomyModule {}

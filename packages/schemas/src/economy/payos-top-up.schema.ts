@@ -12,6 +12,7 @@ export const PAYOS_TOP_UP_EXPIRY_MS = 5 * 60_000;
 export const TOP_UP_STATUS_CHANGED_EVENT_TYPE = "ECONOMY_TOPUP_STATUS_CHANGED";
 export const topUpCancelKey = (id: string): string => `topup-cancel:${id}`;
 export const topUpCreditKey = (id: string): string => `topup-credit:${id}`;
+export const topUpExpireKey = (id: string): string => `topup-expire:${id}`;
 export const topUpMismatchNoticeKey = (id: string, amountPaidVnd: number): string =>
   `topup-mismatch-notice:${id}:${amountPaidVnd}`;
 
@@ -96,8 +97,44 @@ export const topUpStatusChangedEventSchema = z.object({
   orderCode: z.number().int(),
   amountVnd: z.number().int(),
   points: z.number().int(),
-  status: z.enum(["CANCELLED", "SUCCESSFUL", "AMOUNT_MISMATCH"]),
+  status: z.enum(["CANCELLED", "SUCCESSFUL", "AMOUNT_MISMATCH", "EXPIRED"]),
   amountPaidVnd: z.number().int().nonnegative().optional(),
   occurredAt: z.string().datetime(),
 });
+export type TopUpStatusChangedEvent = z.infer<typeof topUpStatusChangedEventSchema>;
+
+export const TOP_UP_ADMIN_ALERT_EVENT_TYPE = "ECONOMY_TOPUP_ADMIN_ALERT";
+
+export const topUpAdminAlertConditionSchema = z.enum([
+  "UNCREDITED_AFTER_PAYMENT",
+  "MISMATCH_SLA_BREACHED",
+  "PAID_ON_CLOSED_LINK",
+  "PROVIDER_FAILURE",
+]);
+export type TopUpAdminAlertCondition = z.infer<typeof topUpAdminAlertConditionSchema>;
+
+export const topUpAdminAlertEventSchema = z.object({
+  schemaVersion: z.literal(1),
+  condition: topUpAdminAlertConditionSchema,
+  topUpId: z.string().uuid().optional(),
+  orderCode: z.number().int().optional(),
+  amountVnd: z.number().int().optional(),
+  amountPaidVnd: z.number().int().optional(),
+  occurredAt: z.string().datetime(),
+});
+export type TopUpAdminAlertEvent = z.infer<typeof topUpAdminAlertEventSchema>;
+
+export const topUpAlertKey = (
+  condition: TopUpAdminAlertCondition,
+  subject: string,
+): string => `topup-alert:${condition}:${subject}`;
+
+export const payosRecheckResultSchema = z.object({
+  topUpId: z.string().uuid(),
+  result: z.enum(["CREDITED", "STILL_UNPAID", "MISMATCH"]),
+  status: payosTopUpStatusSchema,
+  amountPaidVnd: z.number().int().nonnegative().nullable(),
+});
+export type PayosRecheckResultDto = z.infer<typeof payosRecheckResultSchema>;
+export type PayosRecheckResult = PayosRecheckResultDto;
 

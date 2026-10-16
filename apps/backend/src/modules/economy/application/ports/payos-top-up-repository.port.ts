@@ -4,6 +4,7 @@ import { ProviderPaymentFacts } from './payment-provider.port';
 export const PAYOS_TOP_UP_REPOSITORY_PORT = Symbol(
   'PAYOS_TOP_UP_REPOSITORY_PORT',
 );
+
 export interface PayosTopUp {
   id: string;
   userId: string;
@@ -26,6 +27,7 @@ export interface PayosTopUp {
   counterAccountNumber: string | null;
   createdAt: Date;
 }
+
 export interface TopUpStatusEvent {
   id: string;
   idempotencyKey: string;
@@ -41,14 +43,45 @@ export interface TopUpStatusEvent {
     orderCode: number;
     amountVnd: number;
     points: number;
-    status: 'CANCELLED' | 'SUCCESSFUL' | 'AMOUNT_MISMATCH';
+    status: 'CANCELLED' | 'SUCCESSFUL' | 'AMOUNT_MISMATCH' | 'EXPIRED';
     amountPaidVnd?: number;
     occurredAt: string;
   };
 }
+
+export interface TopUpAdminAlertEvent {
+  id: string;
+  idempotencyKey: string;
+  eventType: string;
+  producer: string;
+  aggregateType: string;
+  aggregateId: string;
+  aggregateVersion: number;
+  payload: Record<string, unknown>;
+}
+
+export interface TopUpAdminAuditEvent {
+  id: string;
+  idempotencyKey: string;
+  eventType: string;
+  producer: string;
+  aggregateType: string;
+  aggregateId: string;
+  aggregateVersion: number;
+  correlationId?: string | null;
+  payload: Record<string, unknown>;
+}
+
 export type CreateProcessingResult =
   | { outcome: 'CREATED' | 'ALREADY_PROCESSING'; topUp: PayosTopUp }
   | { outcome: 'RATE_LIMITED'; retryAfterSeconds: number };
+
+export interface ListReconcileCandidatesParams {
+  now: Date;
+  after?: string;
+  limit: number;
+}
+
 export interface PayosTopUpRepositoryPort {
   createProcessing(
     input: Pick<
@@ -89,5 +122,18 @@ export interface PayosTopUpRepositoryPort {
     options: { limit: number; offset: number },
   ): Promise<{ items: PayosTopUp[]; total: number }>;
   countManualPending(): Promise<number>;
+
+  // Task 3 additions
+  listReconcileCandidates(
+    params: ListReconcileCandidatesParams,
+  ): Promise<PayosTopUp[]>;
+  findPayosById(id: string): Promise<PayosTopUp | null>;
+  markExpired(
+    id: string,
+    now: Date,
+    event: TopUpStatusEvent,
+  ): Promise<{ changed: boolean }>;
+  enqueueAdminAlert(event: TopUpAdminAlertEvent): Promise<{ created: boolean }>;
+  recordAdminAudit(event: TopUpAdminAuditEvent): Promise<void>;
 }
 

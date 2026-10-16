@@ -1,16 +1,22 @@
 import { ProviderPaymentFacts } from '../application/ports/payment-provider.port';
 import {
   CreateProcessingResult,
+  ListReconcileCandidatesParams,
   PayosTopUp,
   PayosTopUpRepositoryPort,
+  TopUpAdminAlertEvent,
+  TopUpAdminAuditEvent,
   TopUpStatusEvent,
 } from '../application/ports/payos-top-up-repository.port';
 
 export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
   readonly rows = new Map<string, PayosTopUp>();
   readonly events: TopUpStatusEvent[] = [];
+  readonly alertEvents: TopUpAdminAlertEvent[] = [];
+  readonly auditEvents: TopUpAdminAuditEvent[] = [];
   manualPending = 0;
   private nextCode = 1_000_000_000;
+
   async createProcessing(
     input: Pick<
       PayosTopUp,
@@ -62,6 +68,7 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
     this.rows.set(row.id, row);
     return { outcome: 'CREATED', topUp: row };
   }
+
   async attachPaymentLink(
     id: string,
     link: { paymentLinkId: string; checkoutUrl: string },
@@ -70,6 +77,7 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
     if (!row.paymentLinkId) Object.assign(row, link);
     return row;
   }
+
   async markCancelled(
     id: string,
     cancelledAt: Date,
@@ -82,22 +90,28 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
     if (event) this.events.push(event);
     return { changed: true, topUp: row };
   }
+
   async findByOrderCode(orderCode: number): Promise<PayosTopUp | null> {
     return (
       [...this.rows.values()].find((row) => row.orderCode === orderCode) ?? null
     );
   }
+
   async lockForUpdate(id: string): Promise<PayosTopUp | null> {
     return this.rows.get(id) ?? null;
   }
+
   private storeFacts(
     row: PayosTopUp,
     facts: ProviderPaymentFacts,
     verifiedAt: Date,
+    preservePaidAt = false,
   ): void {
     row.amountPaidVnd = facts.amountPaidVnd;
     row.providerReference = facts.providerReference;
-    row.paidAt = facts.paidAt ?? verifiedAt;
+    if (!preservePaidAt || !row.paidAt) {
+      row.paidAt = facts.paidAt ?? verifiedAt;
+    }
     for (const key of [
       'counterAccountBankId',
       'counterAccountBankName',
@@ -106,6 +120,7 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
     ] as const)
       row[key] ??= facts[key];
   }
+
   async markSuccessful(
     id: string,
     data: {
@@ -131,6 +146,7 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
     this.events.push(event);
     return { changed: true };
   }
+
   async markAmountMismatch(
     id: string,
     data: {
@@ -140,13 +156,29 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
     event: TopUpStatusEvent,
   ): Promise<{ changed: boolean }> {
     const row = this.rows.get(id);
-    if (!row || !['PROCESSING', 'CANCELLED', 'EXPIRED'].includes(row.status))
-      return { changed: false };
-    row.status = 'AMOUNT_MISMATCH';
-    this.storeFacts(row, data.facts, data.verifiedAt);
-    this.events.push(event);
-    return { changed: true };
+    if (!row) return { changed: false };
+
+    // Standard initial mismatch CAS from PROCESSING/CANCELLED/EXPIRED
+    if (['PROCESSING', 'CANCELLED', 'EXPIRED'].includes(row.status)) {
+      row.status = 'AMOUNT_MISMATCH';
+      this.storeFacts(row, data.facts, data.verifiedAt);
+      this.events.push(event);
+      return { changed: true };
+    }
+
+    // C3: AMOUNT_MISMATCH with a different amountPaidVnd -> refresh facts, keep paidAt
+    if (
+      row.status === 'AMOUNT_MISMATCH' &&
+      row.amountPaidVnd !== data.facts.amountPaidVnd
+    ) {
+      this.storeFacts(row, data.facts, data.verifiedAt, true);
+      this.events.push(event);
+      return { changed: true };
+    }
+
+    return { changed: false };
   }
+
   async findOwned(id: string, userId: string): Promise<PayosTopUp | null> {
     const row = this.rows.get(id);
     return row?.userId === userId ? row : null;
@@ -168,6 +200,63 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
   }
   async countManualPending(): Promise<number> {
     return this.manualPending;
+  }
+
+  async listReconcileCandidates(
+    params: ListReconcileCandidatesParams,
+  ): Promise<PayosTopUp[]> {
+    const dayAgo = params.now.getTime() - 24 * 60 * 60 * 1000;
+    const candidates = [...this.rows.values()]
+      .filter((row) => {
+        if (params.after && row.id <= params.after) return false;
+        if (row.status === 'PROCESSING' || row.status === 'AMOUNT_MISMATCH') {
+          return true;
+        }
+        if (row.status === 'CANCELLED' && row.cancelledAt) {
+          return row.cancelledAt.getTime() >= dayAgo;
+        }
+        if (row.status === 'EXPIRED' && row.expiresAt) {
+          return row.expiresAt.getTime() >= dayAgo;
+        }
+        return false;
+      })
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .slice(0, params.limit);
+    return candidates;
+  }
+
+  async findPayosById(id: string): Promise<PayosTopUp | null> {
+    return this.rows.get(id) ?? null;
+  }
+
+  async markExpired(
+    id: string,
+    now: Date,
+    event: TopUpStatusEvent,
+  ): Promise<{ changed: boolean }> {
+    const row = this.rows.get(id);
+    if (!row || row.status !== 'PROCESSING') return { changed: false };
+    row.status = 'EXPIRED';
+    // Do not set cancelledAt for expiration
+    this.events.push(event);
+    return { changed: true };
+  }
+
+  async enqueueAdminAlert(
+    event: TopUpAdminAlertEvent,
+  ): Promise<{ created: boolean }> {
+    const duplicate = this.alertEvents.some(
+      (e) => e.idempotencyKey === event.idempotencyKey,
+    );
+    if (duplicate) {
+      return { created: false };
+    }
+    this.alertEvents.push(event);
+    return { created: true };
+  }
+
+  async recordAdminAudit(event: TopUpAdminAuditEvent): Promise<void> {
+    this.auditEvents.push(event);
   }
 }
 

@@ -481,3 +481,173 @@ describe('PayosTopUpService', () => {
   });
 });
 
+describe('PayosTopUpService reconcile and recheck', () => {
+  const adminId = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+  const farFuture = new Date('2099-01-01T00:00:00.000Z');
+  function setup() {
+    const repository = new InMemoryPayosTopUpRepository();
+    const provider = new FakePaymentProvider(PAYOS_TEST_CHECKSUM_KEY);
+    const service = new PayosTopUpService({
+      repository,
+      provider,
+      unitOfWork: new PassThroughUnitOfWork(),
+      ledgerService: new LedgerService(new InMemoryLedgerRepository()),
+      appBaseUrl: 'http://localhost',
+      limit: 5,
+      windowSeconds: 600,
+      logger: { warn: jest.fn(), log: jest.fn() },
+    });
+    return { repository, provider, service };
+  }
+  function link(orderCode: number, extra: Record<string, unknown> = {}) {
+    return buildPaymentLink({
+      orderCode,
+      id: String(orderCode),
+      ...extra,
+    });
+  }
+
+  it('expireTopUp only expires PROCESSING rows past expiresAt, once, with EXPIRED event', async () => {
+    const { repository, service } = setup();
+    const { topUp } = await service.checkout(userId, { amountVnd: 20_000 });
+    expect(
+      await service.expireTopUp(topUp.id, new Date('2000-01-01T00:00:00Z')),
+    ).toEqual({ outcome: 'IGNORED' });
+    expect(await service.expireTopUp(topUp.id, farFuture)).toEqual({
+      outcome: 'APPLIED',
+    });
+    expect(repository.rows.get(topUp.id)?.status).toBe('EXPIRED');
+    expect(repository.events.at(-1)?.payload.status).toBe('EXPIRED');
+    expect(await service.expireTopUp(topUp.id, farFuture)).toEqual({
+      outcome: 'IGNORED',
+    });
+  });
+
+  it('closeFromProvider maps CANCELLED/EXPIRED, skips expiry check, ignores non-PROCESSING', async () => {
+    const { repository, service } = setup();
+    const a = (await service.checkout(userId, { amountVnd: 20_000 })).topUp;
+    expect(
+      await service.closeFromProvider(
+        a.id,
+        'EXPIRED',
+        new Date('2000-01-01T00:00:00Z'),
+      ),
+    ).toEqual({ outcome: 'APPLIED' });
+    expect(repository.rows.get(a.id)?.status).toBe('EXPIRED');
+    expect(
+      await service.closeFromProvider(a.id, 'CANCELLED', farFuture),
+    ).toEqual({ outcome: 'IGNORED' });
+
+    const b = (await service.checkout(userId, { amountVnd: 20_000 })).topUp;
+    expect(
+      await service.closeFromProvider(b.id, 'CANCELLED', farFuture),
+    ).toEqual({ outcome: 'APPLIED' });
+    expect(repository.rows.get(b.id)?.status).toBe('CANCELLED');
+  });
+
+  it('applySnapshot returns the snapshot effect with its outcome', async () => {
+    const { provider, service } = setup();
+    const { topUp } = await service.checkout(userId, { amountVnd: 20_000 });
+    provider.setPayment(
+      topUp.orderCode,
+      link(topUp.orderCode, { status: 'PENDING', amountPaid: 0 }),
+    );
+    const pending = await provider.getPayment(topUp.orderCode, 20_000);
+    expect(await service.applySnapshot(topUp.id, pending)).toEqual({
+      outcome: 'IGNORED',
+      effect: 'NO_CHANGE',
+    });
+    provider.setPayment(topUp.orderCode, link(topUp.orderCode));
+    const paid = await provider.getPayment(topUp.orderCode, 20_000);
+    expect(await service.applySnapshot(topUp.id, paid)).toEqual({
+      outcome: 'APPLIED',
+      effect: 'CREDIT',
+    });
+  });
+
+  it('recheck derives CREDITED / STILL_UNPAID / MISMATCH and audits each', async () => {
+    const { repository, provider, service } = setup();
+    const cases = [
+      { status: 'PENDING', amountPaid: 0, result: 'STILL_UNPAID' },
+      { status: 'UNDERPAID', amountPaid: 10_000, result: 'MISMATCH' },
+      { status: 'PAID', amountPaid: 20_000, result: 'CREDITED' },
+    ];
+    for (const c of cases) {
+      const { topUp } = await service.checkout(userId, { amountVnd: 20_000 });
+      provider.setPayment(
+        topUp.orderCode,
+        link(topUp.orderCode, { status: c.status, amountPaid: c.amountPaid }),
+      );
+      const res = await service.recheck({ topUpId: topUp.id, adminId });
+      expect(res.result).toBe(c.result);
+      expect(repository.auditEvents.at(-1)?.payload).toMatchObject({
+        result: c.result,
+        statusBefore: 'PROCESSING',
+        statusAfter: res.status,
+      });
+      await service.cancel(userId, topUp.id).catch(() => undefined);
+    }
+  });
+
+  it('recheck audits PROVIDER_UNAVAILABLE and rethrows', async () => {
+    const { repository, provider, service } = setup();
+    const { topUp } = await service.checkout(userId, { amountVnd: 20_000 });
+    provider.failNext('getPayment');
+    await expect(
+      service.recheck({ topUpId: topUp.id, adminId }),
+    ).rejects.toBeInstanceOf(PaymentProviderUnavailableError);
+    expect(repository.auditEvents.at(-1)?.payload.result).toBe(
+      'PROVIDER_UNAVAILABLE',
+    );
+  });
+
+  it('recheck audits FAILED on orderCode mismatch and throws a non-503 error', async () => {
+    const { repository, provider, service } = setup();
+    const { topUp } = await service.checkout(userId, { amountVnd: 20_000 });
+    jest.spyOn(provider, 'getPayment').mockResolvedValue({
+      orderCode: topUp.orderCode + 1,
+      effect: 'NO_CHANGE',
+    } as never);
+    const err = await service
+      .recheck({ topUpId: topUp.id, adminId })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(PaymentProviderUnavailableError);
+    expect(repository.auditEvents.at(-1)?.payload).toMatchObject({
+      result: 'FAILED',
+      statusAfter: 'PROCESSING',
+    });
+  });
+
+  it('recheck audits FAILED when applySnapshot throws, then rethrows', async () => {
+    const { repository, provider, service } = setup();
+    const { topUp } = await service.checkout(userId, { amountVnd: 20_000 });
+    provider.setPayment(topUp.orderCode, link(topUp.orderCode));
+    jest.spyOn(service, 'applySnapshot').mockRejectedValue(new Error('boom'));
+    await expect(
+      service.recheck({ topUpId: topUp.id, adminId }),
+    ).rejects.toThrow('boom');
+    expect(repository.auditEvents.at(-1)?.payload).toMatchObject({
+      result: 'FAILED',
+      statusBefore: 'PROCESSING',
+      statusAfter: 'PROCESSING',
+    });
+  });
+
+  it('recheck stores correlationId only when it is a UUID', async () => {
+    const { repository, provider, service } = setup();
+    const { topUp } = await service.checkout(userId, { amountVnd: 20_000 });
+    provider.setPayment(
+      topUp.orderCode,
+      link(topUp.orderCode, { status: 'PENDING', amountPaid: 0 }),
+    );
+    await service.recheck({ topUpId: topUp.id, adminId, correlationId: 'abc' });
+    expect(repository.auditEvents.at(-1)?.payload.correlationId).toBeNull();
+    await service.recheck({
+      topUpId: topUp.id,
+      adminId,
+      correlationId: adminId,
+    });
+    expect(repository.auditEvents.at(-1)?.payload.correlationId).toBe(adminId);
+  });
+});

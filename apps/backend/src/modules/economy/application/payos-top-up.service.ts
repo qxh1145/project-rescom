@@ -7,8 +7,13 @@ import {
   TOP_UP_STATUS_CHANGED_EVENT_TYPE,
   topUpCancelKey,
   topUpCreditKey,
+  topUpExpireKey,
   topUpMismatchNoticeKey,
+  PayosRecheckResult,
+  TOP_UP_AUDIT_EVENT_TYPES,
+  TopUpRecheckAuditEventPayload,
 } from '@rescom/schemas';
+import { z } from 'zod';
 import { UnitOfWorkPort } from '../../../common/database/unit-of-work.port';
 import { LedgerService } from './ledger.service';
 import {
@@ -19,6 +24,7 @@ import {
 import {
   PaymentProviderPort,
   PaymentProviderUnavailableError,
+  ProviderPaymentEffect,
   ProviderPaymentSnapshot,
 } from './ports/payment-provider.port';
 import {
@@ -211,25 +217,33 @@ export class PayosTopUpService {
       });
       return { outcome: 'IGNORED' };
     }
-    return this.applySnapshot(row.id, snapshot);
+    const res = await this.applySnapshot(row.id, snapshot);
+    return { outcome: res.outcome };
   }
   async applySnapshot(
     topUpId: string,
     snapshot: ProviderPaymentSnapshot,
-  ): Promise<{ outcome: 'IGNORED' | 'APPLIED' }> {
-    if (snapshot.effect === 'CREDIT')
-      return this.creditTopUp(topUpId, snapshot);
-    if (snapshot.effect === 'AMOUNT_MISMATCH')
-      return this.recordMismatch(topUpId, snapshot);
-    if (snapshot.effect === 'NO_CHANGE')
+  ): Promise<{
+    outcome: 'IGNORED' | 'APPLIED';
+    effect: ProviderPaymentEffect;
+  }> {
+    let outcome: 'IGNORED' | 'APPLIED' = 'IGNORED';
+    if (snapshot.effect === 'CREDIT') {
+      const res = await this.creditTopUp(topUpId, snapshot);
+      outcome = res.outcome;
+    } else if (snapshot.effect === 'AMOUNT_MISMATCH') {
+      const res = await this.recordMismatch(topUpId, snapshot);
+      outcome = res.outcome;
+    } else if (snapshot.effect === 'NO_CHANGE') {
       this.options.logger.log('payOS payment not yet paid', {
         orderCode: snapshot.orderCode,
         providerStatus: snapshot.providerStatus,
       });
+    }
     if (
       (snapshot.effect === 'CANCELLED' || snapshot.effect === 'EXPIRED') &&
       snapshot.facts.amountPaidVnd > 0
-    )
+    ) {
       this.options.logger.warn(
         'payOS reports paid amount on a cancelled/expired link',
         {
@@ -237,7 +251,8 @@ export class PayosTopUpService {
           providerStatus: snapshot.providerStatus,
         },
       );
-    return { outcome: 'IGNORED' };
+    }
+    return { outcome, effect: snapshot.effect };
   }
   private event(
     row: PayosTopUp,
@@ -323,7 +338,9 @@ export class PayosTopUpService {
         const row = await this.options.repository.lockForUpdate(topUpId);
         if (
           !row ||
-          !['PROCESSING', 'CANCELLED', 'EXPIRED'].includes(row.status) ||
+          !['PROCESSING', 'CANCELLED', 'EXPIRED', 'AMOUNT_MISMATCH'].includes(
+            row.status,
+          ) ||
           row.orderCode !== snapshot.orderCode
         )
           return { outcome: 'IGNORED' as const };
@@ -348,6 +365,188 @@ export class PayosTopUpService {
         };
       },
     );
+  }
+  async expireTopUp(
+    topUpId: string,
+    now: Date,
+    options?: { skipExpiryCheck?: boolean },
+  ): Promise<{ outcome: 'IGNORED' | 'APPLIED' }> {
+    return this.options.unitOfWork.run(topUpExpireKey(topUpId), async () => {
+      const row = await this.options.repository.lockForUpdate(topUpId);
+      if (!row || row.status !== 'PROCESSING') {
+        return { outcome: 'IGNORED' as const };
+      }
+      if (!options?.skipExpiryCheck && row.expiresAt > now) {
+        return { outcome: 'IGNORED' as const };
+      }
+      const event: TopUpStatusEvent = {
+        id: this.id(),
+        idempotencyKey: topUpExpireKey(topUpId),
+        eventType: TOP_UP_STATUS_CHANGED_EVENT_TYPE,
+        producer: 'economy-service',
+        aggregateType: 'TopUpRequest',
+        aggregateId: row.id,
+        aggregateVersion: 2,
+        payload: {
+          schemaVersion: 1,
+          topUpId: row.id,
+          userId: row.userId,
+          orderCode: row.orderCode,
+          amountVnd: row.amountVnd,
+          points: row.points,
+          status: 'EXPIRED',
+          occurredAt: now.toISOString(),
+        },
+      };
+      const result = await this.options.repository.markExpired(
+        topUpId,
+        now,
+        event,
+      );
+      return {
+        outcome: result.changed ? ('APPLIED' as const) : ('IGNORED' as const),
+      };
+    });
+  }
+  async closeFromProvider(
+    topUpId: string,
+    effect: 'CANCELLED' | 'EXPIRED',
+    now: Date,
+  ): Promise<{ outcome: 'IGNORED' | 'APPLIED' }> {
+    if (effect === 'EXPIRED') {
+      return this.expireTopUp(topUpId, now, { skipExpiryCheck: true });
+    }
+    if (effect === 'CANCELLED') {
+      return this.options.unitOfWork.run(topUpCancelKey(topUpId), async () => {
+        const row = await this.options.repository.lockForUpdate(topUpId);
+        if (!row || row.status !== 'PROCESSING') {
+          return { outcome: 'IGNORED' as const };
+        }
+        const event: TopUpStatusEvent = {
+          id: this.id(),
+          idempotencyKey: topUpCancelKey(topUpId),
+          eventType: TOP_UP_STATUS_CHANGED_EVENT_TYPE,
+          producer: 'economy-service',
+          aggregateType: 'TopUpRequest',
+          aggregateId: row.id,
+          aggregateVersion: 2,
+          payload: {
+            schemaVersion: 1,
+            topUpId: row.id,
+            userId: row.userId,
+            orderCode: row.orderCode,
+            amountVnd: row.amountVnd,
+            points: row.points,
+            status: 'CANCELLED',
+            occurredAt: now.toISOString(),
+          },
+        };
+        const result = await this.options.repository.markCancelled(
+          topUpId,
+          now,
+          event,
+        );
+        return {
+          outcome: result.changed ? ('APPLIED' as const) : ('IGNORED' as const),
+        };
+      });
+    }
+    return { outcome: 'IGNORED' };
+  }
+  async recheck(params: {
+    topUpId: string;
+    adminId: string;
+    correlationId?: string;
+  }): Promise<PayosRecheckResult> {
+    const row = await this.options.repository.findPayosById(params.topUpId);
+    if (!row) throw new TopUpRequestNotFoundException(params.topUpId);
+
+    // Capability is verified by RolesGuard at the controller; CreditTopUp moves money without admin identity.
+    const auditKey = `admin-audit:topup-recheck:${row.id}:${this.id()}`;
+    const now = this.now();
+    const statusBefore = row.status;
+    const correlationId = z.string().uuid().safeParse(params.correlationId)
+      .success
+      ? (params.correlationId as string)
+      : null;
+    const audit = (
+      result: TopUpRecheckAuditEventPayload['result'],
+      statusAfter: string,
+      at: Date,
+    ) =>
+      this.options.repository.recordAdminAudit({
+        id: this.id(),
+        idempotencyKey: auditKey,
+        eventType: TOP_UP_AUDIT_EVENT_TYPES.RECHECKED,
+        producer: 'economy-service',
+        aggregateType: 'TopUpRequest',
+        aggregateId: row.id,
+        aggregateVersion: 1,
+        payload: {
+          schemaVersion: 1,
+          action: 'TOPUP_RECHECKED',
+          auditCategory: 'MODERATION_ADMIN_ACTION',
+          topUpId: row.id,
+          adminId: params.adminId,
+          orderCode: row.orderCode,
+          result,
+          statusBefore,
+          statusAfter,
+          correlationId,
+          occurredAt: at.toISOString(),
+        },
+      });
+    let snapshot: ProviderPaymentSnapshot;
+    try {
+      snapshot = await this.options.provider.getPayment(
+        row.orderCode,
+        row.amountVnd,
+      );
+    } catch (error) {
+      if (error instanceof PaymentProviderUnavailableError) {
+        await audit('PROVIDER_UNAVAILABLE', statusBefore, now);
+      }
+      throw error;
+    }
+
+    if (snapshot.orderCode !== row.orderCode) {
+      this.options.logger.warn('payOS recheck orderCode mismatch', {
+        expected: row.orderCode,
+        received: snapshot.orderCode,
+      });
+      await audit('FAILED', statusBefore, now);
+      throw new Error('payOS recheck orderCode mismatch');
+    }
+
+    try {
+      await this.applySnapshot(row.id, snapshot);
+    } catch (error) {
+      await audit('FAILED', statusBefore, now);
+      throw error;
+    }
+
+    const reRead = await this.options.repository.findPayosById(row.id);
+    const finalRow = reRead ?? row;
+    let result: 'CREDITED' | 'STILL_UNPAID' | 'MISMATCH';
+    if (finalRow.status === 'SUCCESSFUL') {
+      result = 'CREDITED';
+    } else if (
+      finalRow.status === 'AMOUNT_MISMATCH' ||
+      finalRow.status === 'MANUAL_REFUNDED'
+    ) {
+      result = 'MISMATCH';
+    } else {
+      result = 'STILL_UNPAID';
+    }
+
+    await audit(result, finalRow.status, this.now());
+
+    return {
+      topUpId: finalRow.id,
+      result,
+      status: finalRow.status,
+      amountPaidVnd: finalRow.amountPaidVnd,
+    };
   }
   async getOwned(userId: string, id: string): Promise<PayosTopUpDto> {
     const row = await this.options.repository.findOwned(id, userId);

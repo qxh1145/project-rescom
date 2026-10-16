@@ -5,8 +5,11 @@ import { PrismaService } from '../../../common/database/prisma.service';
 import { runInTransaction } from '../../../common/database/prisma-unit-of-work';
 import {
   CreateProcessingResult,
+  ListReconcileCandidatesParams,
   PayosTopUp,
   PayosTopUpRepositoryPort,
+  TopUpAdminAlertEvent,
+  TopUpAdminAuditEvent,
   TopUpStatusEvent,
 } from '../application/ports/payos-top-up-repository.port';
 
@@ -40,9 +43,11 @@ function toTopUp(row: TopUpRequest): PayosTopUp {
     createdAt: row.createdAt,
   };
 }
+
 @Injectable()
 export class PrismaPayosTopUpRepository implements PayosTopUpRepositoryPort {
   constructor(private readonly prisma: PrismaService) {}
+
   async createProcessing(
     input: Pick<
       PayosTopUp,
@@ -126,6 +131,7 @@ export class PrismaPayosTopUpRepository implements PayosTopUpRepositoryPort {
       throw error;
     }
   }
+
   async attachPaymentLink(
     id: string,
     link: { paymentLinkId: string; checkoutUrl: string },
@@ -138,6 +144,7 @@ export class PrismaPayosTopUpRepository implements PayosTopUpRepositoryPort {
       await this.prisma.topUpRequest.findUniqueOrThrow({ where: { id } }),
     );
   }
+
   async markCancelled(
     id: string,
     cancelledAt: Date,
@@ -174,12 +181,14 @@ export class PrismaPayosTopUpRepository implements PayosTopUpRepositoryPort {
       };
     });
   }
+
   async findByOrderCode(orderCode: number): Promise<PayosTopUp | null> {
     const row = await this.prisma.topUpRequest.findFirst({
       where: { orderCode, channel: 'PAYOS' },
     });
     return row ? toTopUp(row) : null;
   }
+
   async lockForUpdate(id: string): Promise<PayosTopUp | null> {
     return runInTransaction(this.prisma, async (tx) => {
       await tx.$queryRaw`SELECT id FROM top_up_requests WHERE id = ${id}::uuid AND channel = 'PAYOS' FOR UPDATE`;
@@ -189,6 +198,7 @@ export class PrismaPayosTopUpRepository implements PayosTopUpRepositoryPort {
       return row ? toTopUp(row) : null;
     });
   }
+
   private async transition(
     id: string,
     statuses: TopUpStatus[],
@@ -251,6 +261,7 @@ export class PrismaPayosTopUpRepository implements PayosTopUpRepositoryPort {
       return { changed };
     });
   }
+
   markSuccessful(
     id: string,
     data: {
@@ -269,19 +280,85 @@ export class PrismaPayosTopUpRepository implements PayosTopUpRepositoryPort {
       event,
     );
   }
-  markAmountMismatch(
+
+  async markAmountMismatch(
     id: string,
     data: { facts: ProviderPaymentFacts; verifiedAt: Date },
     event: TopUpStatusEvent,
   ): Promise<{ changed: boolean }> {
-    return this.transition(
-      id,
-      ['PROCESSING', 'CANCELLED', 'EXPIRED'],
-      'AMOUNT_MISMATCH',
-      data,
-      event,
-    );
+    return runInTransaction(this.prisma, async (tx) => {
+      // 1. Initial transition branch: from PROCESSING, CANCELLED, or EXPIRED
+      const initialTransition = await this.transition(
+        id,
+        ['PROCESSING', 'CANCELLED', 'EXPIRED'],
+        'AMOUNT_MISMATCH',
+        data,
+        event,
+      );
+      if (initialTransition.changed) {
+        return { changed: true };
+      }
+
+      // 2. C3 refresh branch: already AMOUNT_MISMATCH, but amountPaidVnd changed
+      const row = await tx.topUpRequest.findFirst({
+        where: {
+          id,
+          channel: 'PAYOS',
+          status: 'AMOUNT_MISMATCH',
+          amountPaidVnd: { not: data.facts.amountPaidVnd },
+        },
+      });
+      if (!row) {
+        return { changed: false };
+      }
+
+      const facts = data.facts;
+      const changed =
+        (
+          await tx.topUpRequest.updateMany({
+            where: {
+              id,
+              channel: 'PAYOS',
+              status: 'AMOUNT_MISMATCH',
+              amountPaidVnd: { not: facts.amountPaidVnd },
+            },
+            data: {
+              amountPaidVnd: facts.amountPaidVnd,
+              providerReference: facts.providerReference,
+              // Keep paidAt unchanged on refresh
+              counterAccountBankId:
+                row.counterAccountBankId ?? facts.counterAccountBankId,
+              counterAccountBankName:
+                row.counterAccountBankName ?? facts.counterAccountBankName,
+              counterAccountName:
+                row.counterAccountName ?? facts.counterAccountName,
+              counterAccountNumber:
+                row.counterAccountNumber ?? facts.counterAccountNumber,
+            },
+          })
+        ).count === 1;
+
+      if (changed) {
+        await tx.outboxEvent.create({
+          data: {
+            id: event.id,
+            idempotencyKey: event.idempotencyKey,
+            eventType: event.eventType,
+            schemaVersion: 1,
+            producer: event.producer,
+            aggregateType: event.aggregateType,
+            aggregateId: event.aggregateId,
+            aggregateVersion: event.aggregateVersion,
+            status: 'PENDING',
+            payload: event.payload as Prisma.InputJsonValue,
+          },
+        });
+      }
+
+      return { changed };
+    });
   }
+
   async findOwned(id: string, userId: string): Promise<PayosTopUp | null> {
     const row = await this.prisma.topUpRequest.findFirst({
       where: { id, userId, channel: 'PAYOS' },
@@ -313,6 +390,113 @@ export class PrismaPayosTopUpRepository implements PayosTopUpRepositoryPort {
   countManualPending(): Promise<number> {
     return this.prisma.topUpRequest.count({
       where: { channel: 'MANUAL', status: 'PENDING' },
+    });
+  }
+
+  async listReconcileCandidates(
+    params: ListReconcileCandidatesParams,
+  ): Promise<PayosTopUp[]> {
+    const dayAgo = new Date(params.now.getTime() - 24 * 60 * 60 * 1000);
+    const rows = await this.prisma.topUpRequest.findMany({
+      where: {
+        channel: 'PAYOS',
+        ...(params.after ? { id: { gt: params.after } } : {}),
+        OR: [
+          { status: 'PROCESSING' },
+          { status: 'AMOUNT_MISMATCH' },
+          { status: 'CANCELLED', cancelledAt: { gte: dayAgo } },
+          { status: 'EXPIRED', expiresAt: { gte: dayAgo } },
+        ],
+      },
+      orderBy: { id: 'asc' },
+      take: params.limit,
+    });
+    return rows.map(toTopUp);
+  }
+
+  async findPayosById(id: string): Promise<PayosTopUp | null> {
+    const row = await this.prisma.topUpRequest.findFirst({
+      where: { id, channel: 'PAYOS' },
+    });
+    return row ? toTopUp(row) : null;
+  }
+
+  async markExpired(
+    id: string,
+    now: Date,
+    event: TopUpStatusEvent,
+  ): Promise<{ changed: boolean }> {
+    return runInTransaction(this.prisma, async (tx) => {
+      const changed =
+        (
+          await tx.topUpRequest.updateMany({
+            where: { id, channel: 'PAYOS', status: 'PROCESSING' },
+            data: { status: 'EXPIRED' },
+          })
+        ).count === 1;
+
+      if (changed) {
+        await tx.outboxEvent.create({
+          data: {
+            id: event.id,
+            idempotencyKey: event.idempotencyKey,
+            eventType: event.eventType,
+            schemaVersion: 1,
+            producer: event.producer,
+            aggregateType: event.aggregateType,
+            aggregateId: event.aggregateId,
+            aggregateVersion: event.aggregateVersion,
+            status: 'PENDING',
+            payload: event.payload as Prisma.InputJsonValue,
+          },
+        });
+      }
+
+      return { changed };
+    });
+  }
+
+  async enqueueAdminAlert(
+    event: TopUpAdminAlertEvent,
+  ): Promise<{ created: boolean }> {
+    return runInTransaction(this.prisma, async (tx) => {
+      const result = await tx.outboxEvent.createMany({
+        data: [
+          {
+            id: event.id,
+            idempotencyKey: event.idempotencyKey,
+            eventType: event.eventType,
+            schemaVersion: 1,
+            producer: event.producer,
+            aggregateType: event.aggregateType,
+            aggregateId: event.aggregateId,
+            aggregateVersion: event.aggregateVersion,
+            status: 'PENDING',
+            payload: event.payload as Prisma.InputJsonValue,
+          },
+        ],
+        skipDuplicates: true,
+      });
+      return { created: result.count === 1 };
+    });
+  }
+
+  async recordAdminAudit(event: TopUpAdminAuditEvent): Promise<void> {
+    await runInTransaction(this.prisma, async (tx) => {
+      await tx.outboxEvent.create({
+        data: {
+          id: event.id,
+          idempotencyKey: event.idempotencyKey,
+          eventType: event.eventType,
+          schemaVersion: 1,
+          producer: event.producer,
+          aggregateType: event.aggregateType,
+          aggregateId: event.aggregateId,
+          aggregateVersion: event.aggregateVersion,
+          status: 'PENDING',
+          payload: event.payload as Prisma.InputJsonValue,
+        },
+      });
     });
   }
 }

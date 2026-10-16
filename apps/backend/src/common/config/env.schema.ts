@@ -209,6 +209,7 @@ export const envSchema = z
     PAYOS_CLIENT_ID: z.string().trim().min(1).optional(),
     PAYOS_API_KEY: z.string().trim().min(1).optional(),
     PAYOS_CHECKSUM_KEY: z.string().trim().min(1).optional(),
+    TOPUP_REFUND_MAILBOX: z.string().trim().email().optional(),
     REWARDS_ACCOUNTING_DECISION_REF: z.string().trim().min(1).optional(),
     SCHEDULER_TICK_SECONDS: z.coerce.number().int().min(1).max(300).default(15),
     OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(50).default(8),
@@ -382,6 +383,14 @@ export const envSchema = z
             message: `${key} is required when payOS credentials or PAYOS_ENABLED are set`,
           });
         }
+      }
+      if (!data.TOPUP_REFUND_MAILBOX) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['TOPUP_REFUND_MAILBOX'],
+          message:
+            'TOPUP_REFUND_MAILBOX is required when payOS credentials or PAYOS_ENABLED are set',
+        });
       }
     }
 

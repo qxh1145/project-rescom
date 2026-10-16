@@ -35,7 +35,9 @@ export class TopUpNotificationHandler implements OutboxHandler {
         ? `Nạp ${formatted} VNĐ thành công: ${points} Điểm đã được cộng vào số dư Khả dụng.`
         : status === 'AMOUNT_MISMATCH'
           ? `Giao dịch nạp ${formatted} VNĐ (mã ${orderCode}) nhận ${(amountPaidVnd ?? 0).toLocaleString('vi-VN')} VNĐ, khác số tiền yêu cầu. Chưa có Điểm nào được cộng; Admin sẽ xem xét trong 3 ngày làm việc.`
-          : `Giao dịch nạp ${formatted} VNĐ (mã ${orderCode}) đã được huỷ. Không có Điểm nào thay đổi.`;
+          : status === 'EXPIRED'
+            ? `Yêu cầu nạp ${formatted} VNĐ đã hết hạn thanh toán. Nếu bạn đã thanh toán, Điểm vẫn sẽ được cộng.`
+            : `Giao dịch nạp ${formatted} VNĐ (mã ${orderCode}) đã được huỷ. Không có Điểm nào thay đổi.`;
     await this.notifications.publish({
       userId,
       type,
