@@ -176,6 +176,7 @@ export const TOP_UP_AUDIT_EVENT_TYPES = {
   APPROVED: "AdminTopUpApproved",
   REJECTED: "AdminTopUpRejected",
   RECHECKED: "AdminTopUpRechecked",
+  MISMATCH_RESOLVED: "AdminTopUpMismatchResolved",
   EXPORTED: "AdminTopUpExported",
 } as const;
 
@@ -215,6 +216,7 @@ export const topUpRecheckAuditEventPayloadSchema = z.object({
     "CREDITED",
     "STILL_UNPAID",
     "MISMATCH",
+    "REFUNDED",
     "PROVIDER_UNAVAILABLE",
     "FAILED",
   ]),
@@ -329,3 +331,14 @@ export const topUpExportAuditEventPayloadSchema = z.object({
   rowCount: z.number().int().nonnegative(), correlationId: z.string().uuid().nullable(),
   occurredAt: z.string().datetime(),
 }).strict();
+
+export const topUpMismatchAuditEventPayloadSchema = z.object({
+  schemaVersion: z.literal(1), action: z.literal("TOPUP_MISMATCH_RESOLVED"),
+  auditCategory: z.literal("MODERATION_ADMIN_ACTION"),
+  topUpId: z.string().uuid(), adminId: z.string().uuid(),
+  resolution: z.enum(["CREDIT", "MANUAL_REFUND"]),
+  amountVnd: z.number().int(), amountPaidVnd: z.number().int(),
+  pointsCredited: z.number().int().nullable(), noteLength: z.number().int().nullable(),
+  correlationId: z.string().uuid().nullable(), occurredAt: z.string().datetime(),
+}).strict();
+export type TopUpMismatchAuditEventPayload = z.infer<typeof topUpMismatchAuditEventPayloadSchema>;

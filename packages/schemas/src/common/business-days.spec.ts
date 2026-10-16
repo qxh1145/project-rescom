@@ -1,4 +1,4 @@
-import { addBusinessDays } from './business-days';
+import { addBusinessDays, businessDaysUntil } from './business-days';
 
 describe('addBusinessDays (UTC+7 business days)', () => {
   it('Mon 10:00 + 3 = Thu 10:00', () => {
@@ -43,5 +43,15 @@ describe('addBusinessDays (UTC+7 business days)', () => {
 
   it('rejects negative days', () => {
     expect(() => addBusinessDays(new Date(), -1)).toThrow('days must be a non-negative integer');
+  });
+});
+
+describe('businessDaysUntil', () => {
+  it('counts Fri 17:00 to Wed 17:00 as 3', () => {
+    expect(businessDaysUntil(new Date('2026-10-16T10:00:00Z'), new Date('2026-10-21T10:00:00Z'))).toBe(3);
+  });
+  it('rolls weekend start forward and returns zero when overdue', () => {
+    expect(businessDaysUntil(new Date('2026-10-17T08:00:00Z'), new Date('2026-10-19T10:00:00Z'))).toBe(1);
+    expect(businessDaysUntil(new Date('2026-10-19T10:00:00Z'), new Date('2026-10-17T08:00:00Z'))).toBe(0);
   });
 });

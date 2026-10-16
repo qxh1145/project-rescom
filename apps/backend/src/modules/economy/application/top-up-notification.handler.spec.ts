@@ -48,6 +48,55 @@ describe('TopUpNotificationHandler', () => {
     ).toBe(2);
     expect(repository.outboxEvents).toHaveLength(1);
   });
+  it('sends mismatch credit and refund messages without exposing resolution note', async () => {
+    const publish = jest.fn();
+    const handler = new TopUpNotificationHandler({
+      publish,
+    } as unknown as NotificationPublisherPort);
+    const payload = {
+      schemaVersion: 1,
+      topUpId: '2fb40564-05e2-4496-a043-bb3036001ad1',
+      userId: '2fb40564-05e2-4496-a043-bb3036001ad1',
+      orderCode: 1000000000,
+      amountVnd: 100000,
+      points: 490,
+      amountPaidVnd: 98100,
+      status: 'SUCCESSFUL',
+      resolution: 'ADMIN_CREDIT',
+      remainderVnd: 100,
+      occurredAt: '2026-10-15T00:00:00.000Z',
+    };
+    await handler.handle({
+      eventType: handler.eventType,
+      idempotencyKey: 'topup-mismatch:x',
+      payload,
+    } as OutboxEnvelope);
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'TOPUP_SUCCESS',
+        message: expect.stringContaining(
+          '100 VNĐ lẻ dưới 200 VNĐ không được quy đổi',
+        ),
+      }),
+    );
+    await handler.handle({
+      eventType: handler.eventType,
+      idempotencyKey: 'topup-mismatch:y',
+      payload: {
+        ...payload,
+        status: 'MANUAL_REFUNDED',
+        points: 0,
+        resolution: 'ADMIN_REFUND',
+      },
+    } as OutboxEnvelope);
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'TOPUP_REFUNDED',
+        message: expect.stringContaining('98.100 VNĐ'),
+      }),
+    );
+  });
+
   it('publishes cancellation using event dedupe key; rejects invalid payload', async () => {
     const publish = jest.fn();
     const handler = new TopUpNotificationHandler({
@@ -75,9 +124,24 @@ describe('TopUpNotificationHandler', () => {
         message: expect.stringContaining('10.000 VNĐ'),
       }),
     );
-    for (const [status, type] of [
-      ['SUCCESSFUL', 'TOPUP_SUCCESS'],
-      ['AMOUNT_MISMATCH', 'TOPUP_AMOUNT_MISMATCH'],
+    expect(publish).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        message:
+          'Giao dịch nạp 10.000 VNĐ (mã 1000000000) đã được huỷ. Không có Điểm nào thay đổi.',
+      }),
+    );
+    // Pre-13.9 copy stays byte-identical.
+    for (const [status, type, message] of [
+      [
+        'SUCCESSFUL',
+        'TOPUP_SUCCESS',
+        'Nạp 10.000 VNĐ thành công: 50 Điểm đã được cộng vào số dư Khả dụng.',
+      ],
+      [
+        'AMOUNT_MISMATCH',
+        'TOPUP_AMOUNT_MISMATCH',
+        'Giao dịch nạp 10.000 VNĐ (mã 1000000000) nhận 5.000 VNĐ, khác số tiền yêu cầu. Chưa có Điểm nào được cộng; Admin sẽ xem xét trong 3 ngày làm việc.',
+      ],
     ] as const) {
       await handler.handle({
         ...event,
@@ -85,7 +149,7 @@ describe('TopUpNotificationHandler', () => {
         payload: { ...(event.payload as object), status, amountPaidVnd: 5000 },
       });
       expect(publish).toHaveBeenCalledWith(
-        expect.objectContaining({ type, dedupeKey: status }),
+        expect.objectContaining({ type, dedupeKey: status, message }),
       );
     }
 

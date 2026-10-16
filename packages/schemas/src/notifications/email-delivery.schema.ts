@@ -9,6 +9,7 @@ import type { NotificationType } from './notification.schema';
 export const EMAIL_NOTIFICATION_TYPES = [
   'TOPUP_SUCCESS',
   'TOPUP_REJECTED',
+  'TOPUP_REFUNDED',
   'ACCOUNT_LOCKED',
   'ACCOUNT_UNLOCKED',
 ] as const satisfies readonly NotificationType[];

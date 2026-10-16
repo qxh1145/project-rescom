@@ -158,6 +158,8 @@ export interface MockPayosTopUp {
   expiresAt: string;
   cancelledAt: string | null;
   paidAt: string | null;
+  amountPaidVnd?: number | null;
+  mismatchResolution?: "CREDIT" | "MANUAL_REFUND";
   createdAt: string;
 }
 

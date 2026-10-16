@@ -21,6 +21,7 @@ export function recheckToast(result: PayosRecheckResultDto) {
   switch (result.result) {
     case "CREDITED": return { tone: "success" as const, title: "Đã cộng Điểm", body: "payOS xác nhận đã thanh toán, Điểm đã vào ví người dùng." };
     case "STILL_UNPAID": return { tone: "info" as const, title: "Chưa ghi nhận thanh toán", body: "payOS chưa nhận được tiền cho giao dịch này." };
+    case "REFUNDED": return { tone: "info" as const, title: "Đã hoàn tiền", body: "Giao dịch đã được ghi nhận hoàn tiền thủ công." };
     case "MISMATCH": return { tone: "warning" as const, title: "Sai số tiền", body: "Số tiền thực nhận khác yêu cầu — cần xử lý." };
   }
 }

@@ -15,6 +15,7 @@ export interface TopUpAdminAlertDetails {
   orderCode?: number;
   amountVnd?: number;
   amountPaidVnd?: number;
+  paidAt?: string;
 }
 
 export class TopUpAdminAlerts {
@@ -40,6 +41,7 @@ export class TopUpAdminAlerts {
       orderCode: details?.orderCode,
       amountVnd: details?.amountVnd,
       amountPaidVnd: details?.amountPaidVnd,
+      paidAt: details?.paidAt,
       occurredAt,
     });
 

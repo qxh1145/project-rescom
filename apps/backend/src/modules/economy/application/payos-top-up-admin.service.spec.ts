@@ -62,7 +62,11 @@ describe('PayOS admin console', () => {
       expect.objectContaining({ emailContains: '9999999999' }),
     );
     expect(spy.mock.lastCall?.[0]).not.toHaveProperty('orderCode');
-    expect(await service.tabCounts()).toEqual({ payos: 1, manual: 2 });
+    expect(await service.tabCounts()).toEqual({
+      payos: 1,
+      manual: 2,
+      actionRequired: 0,
+    });
   });
   it('audits before returning CSV; audit failure returns no CSV', async () => {
     const { repository, service } = setup();

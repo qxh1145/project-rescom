@@ -21,6 +21,9 @@ import {
   RejectTopUpRequestInput,
   listTopUpRequestsQuerySchema,
   rejectTopUpRequestSchema,
+  ResolveTopUpMismatch,
+  resolveTopUpMismatchSchema,
+  adminTopUpActionRequiredSchema,
 } from '@rescom/schemas';
 import { Response } from 'express';
 import { SessionAuthGuard } from '../../auth/presentation/guards/session-auth.guard';
@@ -79,6 +82,16 @@ export class AdminTopUpController {
   ) {
     return createSuccessEnvelope(
       await this.payosTopUpService.listForAdmin(query),
+    );
+  }
+
+  @Get('action-required')
+  @Header('Cache-Control', 'no-store')
+  async actionRequired() {
+    return createSuccessEnvelope(
+      adminTopUpActionRequiredSchema.parse(
+        await this.payosTopUpService.listActionRequired(),
+      ),
     );
   }
 
@@ -151,6 +164,30 @@ export class AdminTopUpController {
       correlationId,
     });
     return createSuccessEnvelope(result);
+  }
+
+  @Post(':id/resolve-mismatch')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(CsrfGuard, JsonOnlyGuard)
+  async resolveMismatch(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(
+      new ZodValidationPipe(
+        resolveTopUpMismatchSchema,
+        'VALIDATION_ERROR',
+        'body',
+      ),
+    )
+    body: ResolveTopUpMismatch,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    return createSuccessEnvelope(
+      await this.payosTopUpService.resolveMismatch(id, body, {
+        adminId: admin.id,
+        correlationId,
+      }),
+    );
   }
 
   @Post(':id/recheck')

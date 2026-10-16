@@ -25,6 +25,7 @@ export const NOTIFICATION_PRESENTATION: Record<NotificationType, NotificationPre
   // Figma "Khiếu nại được chấp nhận" (62:2132): points returned to the survey's escrow.
   ESCROW_RELEASED: { icon: "flag", tone: "teal", href: "/forms" },
   TOPUP_CANCELLED: { icon: "bank", tone: "amber", href: "/wallet" },
+  TOPUP_REFUNDED: { icon: "refund", tone: "teal", href: "/wallet" },
   TOPUP_AMOUNT_MISMATCH: { icon: "bank", tone: "amber", href: "/wallet" },
   TOPUP_SUCCESS: { icon: "bank", tone: "green", href: "/wallet" },
   REWARD_EARNED: { icon: "star-circle", tone: "green", href: "/wallet" },
@@ -92,6 +93,7 @@ export const NOTIFICATION_TITLES: Record<NotificationType, string> = {
   SURVEY_REJECTED: "Khảo sát bị từ chối",
   ESCROW_RELEASED: "Điểm đã trả về ký quỹ",
   TOPUP_CANCELLED: "Giao dịch nạp Điểm đã huỷ",
+  TOPUP_REFUNDED: "Đã hoàn tiền nạp Điểm",
   TOPUP_AMOUNT_MISMATCH: "Nạp Điểm cần kiểm tra",
   TOPUP_SUCCESS: "Nạp điểm thành công",
   REWARD_EARNED: "Bạn vừa nhận điểm thưởng",

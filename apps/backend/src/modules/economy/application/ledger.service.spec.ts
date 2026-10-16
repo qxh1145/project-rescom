@@ -84,6 +84,22 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
     service = new LedgerService(repo);
   });
 
+  it('does not reverse mismatch credit journals', async () => {
+    const journal = await service.creditMismatchTopUp({
+      topUpId: 'a1ce7584-0bd5-4da8-8398-e0a5f1520ecd',
+      userId: user1Id,
+      points: 245,
+      orderCode: 1000000000,
+      amountPaidVnd: 49_000,
+    });
+    expect(journal.idempotencyKey).toBe(
+      'topup-mismatch:a1ce7584-0bd5-4da8-8398-e0a5f1520ecd',
+    );
+    await expect(
+      service.reverseJournal({ targetJournalId: journal.id }),
+    ).rejects.toThrow('Top-up credit journals cannot be reversed');
+  });
+
   it('credits PayOS once, rejects amount conflict and prevents reversal', async () => {
     const params = {
       topUpId: 'a1ce7584-0bd5-4da8-8398-e0a5f1520ecd',

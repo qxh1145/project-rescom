@@ -167,8 +167,10 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
         env: EnvService,
         unitOfWork: UnitOfWorkPort,
         ledgerService: LedgerService,
+        adminCapability: AdminCapabilityPort,
       ) =>
         new PayosTopUpService({
+          adminCapability,
           unitOfWork,
           ledgerService,
           repository,
@@ -184,6 +186,7 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
         EnvService,
         UNIT_OF_WORK_PORT,
         LedgerService,
+        ADMIN_CAPABILITY_PORT,
       ],
     },
     {

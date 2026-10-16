@@ -188,6 +188,7 @@ enum NotificationType {
   CODE_ISSUE_RESOLVED
   TOPUP_CANCELLED
   TOPUP_AMOUNT_MISMATCH
+  TOPUP_REFUNDED
 }
 
 /// Story IR.4b B5: one email delivery attempt per notification. Mirrors
@@ -1032,13 +1033,15 @@ model TopUpRequest {
   counterAccountName     String?      @map("counter_account_name")
   counterAccountNumber   String?      @map("counter_account_number")
   status                 TopUpStatus  @default(PENDING)
-  /// Reviewing Admin (actor) of the approval or rejection.
+  /// Reviewing Admin (actor) of approval, rejection, or mismatch resolution.
   adminId                String?      @map("admin_id") @db.Uuid
   /// Ledger journal posted by the approval.
   journalId              String?      @unique @map("journal_id") @db.Uuid
   rejectionReason        String?      @map("rejection_reason")
-  /// Correlation id of the review command.
+  resolutionNote         String?      @map("resolution_note") @db.VarChar(500)
+  /// Correlation id of approval, rejection, or mismatch resolution.
   correlationId          String?      @map("correlation_id") @db.Uuid
+  /// Time of approval, rejection, or mismatch resolution.
   reviewedAt             DateTime?    @map("reviewed_at")
 
   createdAt DateTime @default(now()) @map("created_at")

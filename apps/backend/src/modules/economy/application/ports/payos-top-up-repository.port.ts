@@ -1,4 +1,4 @@
-import { PayosTopUpDto } from '@rescom/schemas';
+import { AdminPayosUncredited, PayosTopUpDto } from '@rescom/schemas';
 import { ProviderPaymentFacts } from './payment-provider.port';
 
 export const PAYOS_TOP_UP_REPOSITORY_PORT = Symbol(
@@ -26,6 +26,8 @@ export interface PayosTopUp {
   counterAccountName: string | null;
   counterAccountNumber: string | null;
   createdAt: Date;
+  channel?: 'PAYOS' | 'MANUAL';
+  resolutionNote?: string | null;
 }
 
 export interface TopUpStatusEvent {
@@ -43,7 +45,14 @@ export interface TopUpStatusEvent {
     orderCode: number;
     amountVnd: number;
     points: number;
-    status: 'CANCELLED' | 'SUCCESSFUL' | 'AMOUNT_MISMATCH' | 'EXPIRED';
+    status:
+      | 'CANCELLED'
+      | 'SUCCESSFUL'
+      | 'AMOUNT_MISMATCH'
+      | 'EXPIRED'
+      | 'MANUAL_REFUNDED';
+    resolution?: 'ADMIN_CREDIT' | 'ADMIN_REFUND';
+    remainderVnd?: number;
     amountPaidVnd?: number;
     occurredAt: string;
   };
@@ -107,7 +116,33 @@ export interface AdminPayosListParams {
   offset: number;
 }
 
+export type AdminMismatchRow = AdminPayosRow &
+  Pick<PayosTopUp, 'providerReference' | 'counterAccountBankName'> & {
+    counterAccountLast4: string | null;
+  };
+
 export interface PayosTopUpRepositoryPort {
+  listActionRequired(params: { limit: number }): Promise<{
+    mismatches: AdminMismatchRow[];
+    uncredited: AdminPayosUncredited[];
+  }>;
+  countActionRequired(): Promise<number>;
+  isMismatchJournal(journalId: string, key: string): Promise<boolean>;
+  resolveMismatch(
+    id: string,
+    data: {
+      status: 'SUCCESSFUL' | 'MANUAL_REFUNDED';
+      expectedAmountPaidVnd: number;
+      journalId?: string;
+      pointsCredited?: number;
+      adminId: string;
+      note: string | null;
+      correlationId: string | null;
+      resolvedAt: Date;
+    },
+    statusEvent: TopUpStatusEvent,
+    auditEvent: TopUpAdminAuditEvent,
+  ): Promise<{ changed: boolean }>;
   listForAdmin(
     params: AdminPayosListParams,
   ): Promise<{ items: AdminPayosRow[]; total: number }>;

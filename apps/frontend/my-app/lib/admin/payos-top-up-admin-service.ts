@@ -1,5 +1,5 @@
 import { adminPayosTopUpListSchema, adminTopUpTabCountsSchema, payosRecheckResultSchema,
-  listAdminPayosTopUpsQuerySchema, exportAdminPayosTopUpsSchema } from "@rescom/schemas";
+  listAdminPayosTopUpsQuerySchema, exportAdminPayosTopUpsSchema, adminTopUpActionRequiredSchema, resolveTopUpMismatchSchema, resolveTopUpMismatchResultSchema, type ResolveTopUpMismatch } from "@rescom/schemas";
 import { apiRequest } from "../api/client.ts";
 
 export function listAdminPayosTopUps(query: Record<string, unknown>, signal?: AbortSignal) {
@@ -16,4 +16,11 @@ export function recheckPayosTopUp(id: string) {
 export function exportPayosTopUps(range: { from: string; to: string }) {
   return apiRequest<{ blob: Blob; fileName: string | null }>("/admin/top-ups/payos/export",
     { method: "POST", body: exportAdminPayosTopUpsSchema.parse(range), as: "blob" });
+}
+
+export function getAdminTopUpActionRequired(signal?: AbortSignal) {
+  return apiRequest("/admin/top-ups/action-required", { schema: adminTopUpActionRequiredSchema, signal });
+}
+export function resolveTopUpMismatch(id: string, body: ResolveTopUpMismatch) {
+  return apiRequest(`/admin/top-ups/${encodeURIComponent(id)}/resolve-mismatch`, { method: "POST", body: resolveTopUpMismatchSchema.parse(body), schema: resolveTopUpMismatchResultSchema });
 }

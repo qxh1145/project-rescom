@@ -1,7 +1,7 @@
 import { http, HttpResponse, type RequestHandler } from "msw";
-import { exportAdminPayosTopUpsSchema, listAdminPayosTopUpsQuerySchema, PAYOS_TOP_UP_EXPORT_MAX_ROWS } from "@rescom/schemas";
+import { exportAdminPayosTopUpsSchema, listAdminPayosTopUpsQuerySchema, PAYOS_TOP_UP_EXPORT_MAX_ROWS, resolveTopUpMismatchSchema } from "@rescom/schemas";
 import { apiUrl } from "@/lib/api/config";
-import { adminPayosRows, topUpTabCounts } from "../data/admin-payos-top-ups";
+import { adminActionRequired, adminPayosRows, topUpTabCounts } from "../data/admin-payos-top-ups";
 import { payosTopUps } from "../data/top-up";
 import { findMockUserByEmail } from "../db/session";
 import { creditPayosTopUp } from "../data/economy";
@@ -28,6 +28,7 @@ export const adminPayosTopUpHandlers: RequestHandler[] = [
     const items = rows.slice(offset, offset + limit);
     return ok({ items, total: rows.length, limit, offset, hasMore: offset + items.length < rows.length });
   }),
+  http.get(apiUrl("/admin/top-ups/action-required"), async () => { const denied = await guard(); return denied ?? ok(adminActionRequired()); }),
   http.get(apiUrl("/admin/top-ups/tab-counts"), async () => { const denied = await guard(); return denied ?? ok(topUpTabCounts()); }),
   http.post(apiUrl("/admin/top-ups/:id/recheck"), async ({ request, params }) => {
     const denied = await guard(); if (denied) return denied;
@@ -36,13 +37,32 @@ export const adminPayosTopUpHandlers: RequestHandler[] = [
     if (!row) return fail(404, "TOPUP_NOT_FOUND", "Top-up not found");
     if (getActiveScenario() === "payos-provider-error") return fail(503, "TOPUP_PROVIDER_UNAVAILABLE", "Provider unavailable");
     const paid = row.orderCode === 800_000;
-    const result = row.status === "AMOUNT_MISMATCH" ? "MISMATCH" : row.status === "SUCCESSFUL" || paid ? "CREDITED" : "STILL_UNPAID";
+    const result = row.status === "MANUAL_REFUNDED" ? "REFUNDED" : row.status === "AMOUNT_MISMATCH" ? "MISMATCH" : row.status === "SUCCESSFUL" || paid ? "CREDITED" : "STILL_UNPAID";
     if (paid && row.status !== "SUCCESSFUL") {
       payosTopUps.update(data => { const stored = data[row.userId]?.find(item => item.id === row.id); if (stored) { stored.status = "SUCCESSFUL"; stored.paidAt = new Date().toISOString(); } });
       const user = row.userEmail ? findMockUserByEmail(row.userEmail) : null;
       if (user) creditPayosTopUp(user, { points: row.points, orderCode: row.orderCode });
     }
     return ok({ topUpId: row.id, result, status: paid ? "SUCCESSFUL" : row.status, amountPaidVnd: paid ? row.amountVnd : row.amountPaidVnd });
+  }),
+  http.post(apiUrl("/admin/top-ups/:id/resolve-mismatch"), async ({ request, params }) => {
+    const denied = await guard(); if (denied) return denied;
+    const csrf = missingCsrf(request); if (csrf) return csrf;
+    const body = resolveTopUpMismatchSchema.safeParse(await request.json().catch(() => null));
+    if (!body.success) return fail(400, "VALIDATION_ERROR", "Invalid resolution");
+    const row = adminPayosRows().find(item => item.id === params.id);
+    if (!row) return fail(404, "TOPUP_NOT_FOUND", "Top-up not found");
+    const { action, expectedAmountPaidVnd } = body.data;
+    const storedRow = payosTopUps.get()[row.userId]?.find(item => item.id === row.id);
+    if (storedRow?.mismatchResolution === action)
+      return ok({ topUpId: row.id, status: row.status, pointsCredited: row.status === "SUCCESSFUL" ? row.pointsCredited : null, replayed: true });
+    if (row.status !== "AMOUNT_MISMATCH") return fail(409, "TOPUP_MISMATCH_ALREADY_RESOLVED", "Already resolved");
+    if (row.amountPaidVnd !== expectedAmountPaidVnd) return fail(409, "TOPUP_MISMATCH_AMOUNT_CHANGED", "Amount changed", { details: { amountPaidVnd: row.amountPaidVnd } });
+    const points = Math.floor(expectedAmountPaidVnd / 200);
+    if (action === "CREDIT" && points < 1) return fail(409, "TOPUP_MISMATCH_NOTHING_TO_CREDIT", "Nothing to credit");
+    payosTopUps.update(data => { const stored = data[row.userId]?.find(item => item.id === row.id); if (stored) { stored.status = action === "CREDIT" ? "SUCCESSFUL" : "MANUAL_REFUNDED"; stored.mismatchResolution = action; } });
+    if (action === "CREDIT") { const user = row.userEmail ? findMockUserByEmail(row.userEmail) : null; if (user) creditPayosTopUp(user, { points, orderCode: row.orderCode }); }
+    return ok({ topUpId: row.id, status: action === "CREDIT" ? "SUCCESSFUL" : "MANUAL_REFUNDED", pointsCredited: action === "CREDIT" ? points : null, replayed: false });
   }),
   http.post(apiUrl("/admin/top-ups/payos/export"), async ({ request }) => {
     const denied = await guard(); if (denied) return denied;
