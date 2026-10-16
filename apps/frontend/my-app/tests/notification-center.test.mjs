@@ -92,9 +92,11 @@ test("Figma 14d: presentation per type", () => {
   assert.equal(NOTIFICATION_TITLES.TOPUP_SUCCESS, "Nạp điểm thành công");
   assert.equal(NOTIFICATION_TITLES.TOPUP_CANCELLED, "Giao dịch nạp Điểm đã huỷ");
   assert.equal(NOTIFICATION_TITLES.TOPUP_REJECTED, "Yêu cầu nạp điểm bị từ chối");
-  // Refund request types (Story 13.10).
+  // Refund request types (Story 13.9 & 13.10 & 13.11).
+  assert.deepEqual(notificationPresentation("TOPUP_REFUNDED"), { icon: "refund", tone: "teal", href: "/wallet" });
   assert.deepEqual(notificationPresentation("TOPUP_REFUND_REQUESTED"), { icon: "refund", tone: "amber", href: "/wallet" });
   assert.deepEqual(notificationPresentation("TOPUP_REFUND_WITHDRAWN"), { icon: "refund", tone: "neutral", href: "/wallet" });
+  assert.equal(NOTIFICATION_TITLES.TOPUP_REFUNDED, "Đã hoàn tiền nạp Điểm");
   assert.equal(NOTIFICATION_TITLES.TOPUP_REFUND_REQUESTED, "Yêu cầu hoàn tiền");
   assert.equal(NOTIFICATION_TITLES.TOPUP_REFUND_WITHDRAWN, "Đã rút yêu cầu hoàn tiền");
   // Unknown types (and prototype keys) render neutrally and link nowhere.

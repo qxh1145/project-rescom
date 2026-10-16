@@ -23,6 +23,40 @@ test("C1 / C3: every publish refusal code has Vietnamese copy", () => {
   }
 });
 
+test("publishErrorMessage adds refundHoldPoints sentence when present (Story 13.11, AC 10)", () => {
+  const baseErr = new ApiError({
+    kind: "http",
+    message: "Insufficient",
+    status: 409,
+    code: "INSUFFICIENT_ESCROW_BALANCE",
+  });
+  const baseMsg = messages.publishErrorMessage(baseErr);
+  assert.match(baseMsg, /Số điểm khả dụng không đủ/);
+
+  // With refundHoldPoints: 250
+  const withHoldErr = new ApiError({
+    kind: "http",
+    message: "Insufficient",
+    status: 409,
+    code: "INSUFFICIENT_ESCROW_BALANCE",
+    details: { refundHoldPoints: 250 },
+  });
+  const withHoldMsg = messages.publishErrorMessage(withHoldErr);
+  assert.equal(withHoldMsg, `${baseMsg} 250 Điểm đang giữ chờ hoàn tiền.`);
+
+  // With absent, 0, negative, or string -> identical to baseMsg
+  for (const invalid of [{}, { refundHoldPoints: 0 }, { refundHoldPoints: -10 }, { refundHoldPoints: "250" }]) {
+    const err = new ApiError({
+      kind: "http",
+      message: "Insufficient",
+      status: 409,
+      code: "INSUFFICIENT_ESCROW_BALANCE",
+      details: invalid,
+    });
+    assert.equal(messages.publishErrorMessage(err), baseMsg);
+  }
+});
+
 test("C5: AI conversation load outcomes", () => {
   assert.deepEqual(messages.aiConversationLoadOutcome(http("AI_CONVERSATION_NOT_FOUND", 404)), { kind: "empty" });
   // A missing AI route is "AI chưa sẵn sàng", never "Không tìm thấy khảo sát".

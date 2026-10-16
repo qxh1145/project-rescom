@@ -179,6 +179,7 @@ describe('TopUpRefundService & Handlers', () => {
         bankName: 'MB Bank',
         holderName: 'NGUYEN VAN A',
         last4: '6789',
+        accountNumber: '0123456789',
         verified: true,
       });
 
@@ -636,6 +637,14 @@ describe('TopUpRefundService & Handlers', () => {
         canRequest: true,
         unavailableReason: null,
         request: null,
+        destination: {
+          bankId: '970422',
+          bankName: 'MB Bank',
+          holderName: 'NGUYEN VAN A',
+          last4: '6789',
+          accountNumber: '0123456789',
+          verified: true,
+        },
       });
 
       // Submit refund

@@ -52,7 +52,7 @@ export function effectiveStatus(voucher: VoucherInventory, flashes: FlashInvento
 export interface RedemptionError { code: string; details: Record<string, unknown> }
 
 /** Mock-rules decision (Task 5): checks in AD-24 order, returns null on success. Pure. */
-export function decideRedemption(voucher: VoucherInventory, flashes: FlashInventory[], quote: RedemptionQuote, available: number, now: number): RedemptionError | null {
+export function decideRedemption(voucher: VoucherInventory, flashes: FlashInventory[], quote: RedemptionQuote, available: number, now: number, refundHold?: number): RedemptionError | null {
   const status = effectiveStatus(voucher, flashes, now);
   if (status !== "AVAILABLE") {
     if (status === "SOLD_OUT") return { code: "SOLD_OUT", details: { voucherId: voucher.id, regularStockRemaining: voucher.stockRemaining } };
@@ -63,16 +63,33 @@ export function decideRedemption(voucher: VoucherInventory, flashes: FlashInvent
     return { code: "PRICE_CHANGED", details: { voucherId: voucher.id, price } };
   if ((flash ? flash.item.sold >= flash.item.quota : voucher.stockRemaining <= 0) || voucher.codesAvailable === 0)
     return { code: "SOLD_OUT", details: { voucherId: voucher.id, regularStockRemaining: voucher.stockRemaining } };
-  if (available < price.points) return { code: "INSUFFICIENT_POINTS", details: { required: price.points, available } };
+  if (available < price.points) {
+    return {
+      code: "INSUFFICIENT_POINTS",
+      details: {
+        required: price.points,
+        available,
+        ...(refundHold && refundHold > 0 ? { refundHoldPoints: refundHold } : {}),
+      },
+    };
+  }
   return null;
 }
 
 /** Forced scenario: build real-state details for a given error code (Task 7.2). Pure. */
-export function forcedError(code: string, voucher: VoucherInventory, flashes: FlashInventory[], available: number, now: number): RedemptionError {
+export function forcedError(code: string, voucher: VoucherInventory, flashes: FlashInventory[], available: number, now: number, refundHold?: number): RedemptionError {
   const { price } = effectiveVoucherPrice(voucher, flashes, now);
   switch (code) {
     // Forced on an affordable voucher: simulate another transaction spending the difference.
-    case "INSUFFICIENT_POINTS": return { code, details: { required: price.points, available: Math.min(available, price.points - 1) } };
+    case "INSUFFICIENT_POINTS":
+      return {
+        code,
+        details: {
+          required: price.points,
+          available: Math.min(available, price.points - 1),
+          ...(refundHold && refundHold > 0 ? { refundHoldPoints: refundHold } : {}),
+        },
+      };
     case "PRICE_CHANGED": return { code, details: { voucherId: voucher.id, price: { ...price, priceVersion: price.priceVersion + 1 } } };
     case "VOUCHER_UNAVAILABLE": return { code, details: { voucherId: voucher.id, status: "PAUSED" } };
     case "ACCOUNT_NOT_ELIGIBLE": return { code, details: { reason: "ACCOUNT_LOCKED" } };

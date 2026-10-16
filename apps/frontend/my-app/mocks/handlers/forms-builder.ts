@@ -15,7 +15,7 @@ import {
   updateFormDraftSchema,
 } from "@rescom/schemas";
 import { apiUrl } from "@/lib/api/config";
-import { reserveSurveyEscrow } from "../data/economy";
+import { reserveSurveyEscrow, walletOf } from "../data/economy";
 import { ensureFormActivity } from "../data/form-activity";
 import {
   createFormDraft,
@@ -142,8 +142,13 @@ function reservePublishEscrow(user: MockSessionUser, draft: MockFormDraft, amoun
     return null;
   } catch (error) {
     if (error instanceof Error && error.message === "INSUFFICIENT_AVAILABLE") {
+      const wallet = walletOf(user);
+      const refundHold = wallet.refundHold ?? 0;
       return fail(409, "INSUFFICIENT_ESCROW_BALANCE", "Insufficient points for the survey escrow.", {
-        details: { requiredAmount: amount },
+        details: {
+          requiredAmount: amount,
+          ...(refundHold > 0 ? { refundHoldPoints: refundHold } : {}),
+        },
       });
     }
     throw error;

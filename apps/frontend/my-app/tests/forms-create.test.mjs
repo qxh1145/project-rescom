@@ -275,6 +275,23 @@ test("Google Forms wizard · request and storage", async (t) => {
       /từ 10 đến 20/,
     );
     assert.match(messages.createSurveyErrorMessage(new ApiError({ kind: "network", message: "x" })), /kết nối/);
+
+    const baseEscrowErr = http("INSUFFICIENT_ESCROW_BALANCE", 409);
+    const baseEscrowMsg = messages.createSurveyErrorMessage(baseEscrowErr);
+    assert.match(baseEscrowMsg, /Số dư không đủ/);
+
+    const withHoldErr = http("INSUFFICIENT_ESCROW_BALANCE", 409, { refundHoldPoints: 250 });
+    assert.equal(
+      messages.createSurveyErrorMessage(withHoldErr),
+      `${baseEscrowMsg} 250 Điểm đang giữ chờ hoàn tiền.`,
+    );
+
+    for (const invalid of [{}, { refundHoldPoints: 0 }, { refundHoldPoints: -10 }, { refundHoldPoints: "250" }]) {
+      assert.equal(
+        messages.createSurveyErrorMessage(http("INSUFFICIENT_ESCROW_BALANCE", 409, invalid)),
+        baseEscrowMsg,
+      );
+    }
   });
 });
 

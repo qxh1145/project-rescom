@@ -59,6 +59,8 @@ export const MOCK_SCENARIOS = [
   "payos-provider-error",
   // Wallet with refundHold > 0 (Story 13.7, UX six-card grid).
   "refund-hold",
+  // PayOS top-up refund forced not-eligible (Story 13.11).
+  "refund-not-eligible",
   // Plan 5.6: another device signed in, so every session request answers 401 AUTH_SESSION_REPLACED (15e).
   "session-replaced",
 ] as const;

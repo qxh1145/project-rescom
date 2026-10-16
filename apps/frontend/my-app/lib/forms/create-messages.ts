@@ -1,5 +1,6 @@
 import { EXTERNAL_SURVEY_URL_MAX_LENGTH, MAX_EXPECTED_COMPLETIONS } from "@rescom/schemas";
 import { isApiError } from "../api/api-error.ts";
+import { refundHoldPointsFrom, refundHoldSentence } from "../wallet/refund-hold.ts";
 
 /**
  * Vietnamese copy of the Google Forms creation wizard (Figma 9a–9d). Error
@@ -52,8 +53,11 @@ export function createSurveyErrorMessage(error: unknown): string {
     case "SURVEY_DURATION_EXCEEDS_RESERVATION":
       return "Khảo sát dài hơn 30 phút chưa được hỗ trợ. Chọn thời gian làm ngắn hơn.";
     case "INSUFFICIENT_BALANCE":
-    case "INSUFFICIENT_ESCROW_BALANCE":
-      return "Số dư không đủ để khoá ký quỹ cho khảo sát này.";
+    case "INSUFFICIENT_ESCROW_BALANCE": {
+      const hold = refundHoldPointsFrom(error.details);
+      const base = "Số dư không đủ để khoá ký quỹ cho khảo sát này.";
+      return hold > 0 ? `${base} ${refundHoldSentence(hold)}` : base;
+    }
     case "FORM_DEADLINE_INVALID":
       return "Hạn thu thập đã quá gần hoặc quá xa. Chọn lại “Hạn thu thập” rồi gửi lại.";
     case "VALIDATION_ERROR":

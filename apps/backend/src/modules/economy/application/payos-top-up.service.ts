@@ -31,6 +31,7 @@ import {
   topUpRefundDeadline,
   TopUpRefundUnavailableReason,
   UserTopUpRefundRequest,
+  UserTopUpRefundDestinationView,
   TOP_UP_MISMATCH_JOURNAL_KEY_PREFIX,
 } from '@rescom/schemas';
 import { z } from 'zod';
@@ -983,6 +984,31 @@ export class PayosTopUpService {
       }
     }
 
+    const allFourNull =
+      row.counterAccountBankId == null &&
+      row.counterAccountBankName == null &&
+      row.counterAccountName == null &&
+      row.counterAccountNumber == null;
+
+    const destination: UserTopUpRefundDestinationView | null =
+      isSuccessful && isPayos && !allFourNull
+        ? {
+            bankId: row.counterAccountBankId,
+            bankName: row.counterAccountBankName,
+            holderName: row.counterAccountName,
+            last4: row.counterAccountNumber
+              ? row.counterAccountNumber.length >= 4
+                ? row.counterAccountNumber.slice(-4)
+                : row.counterAccountNumber
+              : null,
+            accountNumber: row.counterAccountNumber,
+            verified:
+              row.counterAccountBankId != null &&
+              row.counterAccountNumber != null &&
+              row.counterAccountName != null,
+          }
+        : null;
+
     return {
       id: row.id,
       orderCode: row.orderCode,
@@ -999,6 +1025,7 @@ export class PayosTopUpService {
         canRequest,
         unavailableReason,
         request,
+        destination,
       },
     };
   }

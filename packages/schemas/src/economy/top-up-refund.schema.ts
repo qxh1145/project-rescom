@@ -62,6 +62,14 @@ export const userTopUpRefundDestinationSchema = z
   .strict();
 export type UserTopUpRefundDestination = z.infer<typeof userTopUpRefundDestinationSchema>;
 
+export const userTopUpRefundDestinationViewSchema = userTopUpRefundDestinationSchema
+  .extend({
+    // Optional so an FE deployed before the BE (Story 13.11) still parses; missing = null.
+    accountNumber: z.string().nullable().optional(),
+  })
+  .strict();
+export type UserTopUpRefundDestinationView = z.infer<typeof userTopUpRefundDestinationViewSchema>;
+
 export const userTopUpRefundRequestSchema = z
   .object({
     id: z.string().uuid(),
@@ -71,9 +79,13 @@ export const userTopUpRefundRequestSchema = z
     reason: topUpRefundReasonSchema,
     points: z.number().int().positive(),
     amountVnd: z.number().int().positive(),
-    destination: userTopUpRefundDestinationSchema,
+    destination: userTopUpRefundDestinationViewSchema,
     submittedAt: z.string().datetime(),
     withdrawnAt: z.string().datetime().nullable(),
+    resolvedAt: z.string().datetime().nullable().optional(),
+    rejectionReason: z.string().max(500).nullable().optional(),
+    bankTransferReference: z.string().max(100).nullable().optional(),
+    bankTransferredAt: z.string().datetime().nullable().optional(),
   })
   .strict();
 export type UserTopUpRefundRequest = z.infer<typeof userTopUpRefundRequestSchema>;

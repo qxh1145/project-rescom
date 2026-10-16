@@ -386,6 +386,7 @@ export class TopUpRefundService {
         bankName: row.counterAccountBankName,
         holderName: row.counterAccountName,
         last4,
+        accountNumber: row.counterAccountNumber,
         verified: row.destinationVerified,
       },
       submittedAt: row.createdAt.toISOString(),

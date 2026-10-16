@@ -42,7 +42,23 @@ export interface HistoryTopUp {
  * - APPROVED: "Thành công" (green, check)
  * - REJECTED: "Từ chối" (danger, x)
  */
-export function topUpChip(status: string, channel: TopUpChannel): TopUpChipInfo {
+export function topUpChip(
+  status: string,
+  channel: TopUpChannel,
+  refundStatus?: string | null,
+): TopUpChipInfo {
+  if (channel === "PAYOS" && refundStatus) {
+    switch (refundStatus) {
+      case "REQUESTED":
+        return { label: "Đang yêu cầu hoàn tiền", icon: "refund", tone: "teal" };
+      case "REFUNDED":
+        return { label: "Đã hoàn tiền", icon: "refund", tone: "teal" };
+      case "REJECTED":
+        return { label: "Từ chối hoàn tiền", icon: "x-circle", tone: "danger" };
+      // WITHDRAWN -> falls through to top-up status
+    }
+  }
+
   if (channel === "MANUAL") {
     switch (status) {
       case "PENDING":
@@ -100,7 +116,7 @@ export function mapPayosToHistory(item: PayosTopUpDto): HistoryTopUp {
     amountVnd: item.amountVnd,
     points: item.points,
     createdAt: item.createdAt,
-    chip: topUpChip(item.status, "PAYOS"),
+    chip: topUpChip(item.status, "PAYOS", item.refund?.request?.status),
     expiresAt: item.expiresAt,
     status: item.status,
   };

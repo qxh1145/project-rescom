@@ -22,6 +22,7 @@ const samplePayos = {
   refund: {
     canRequest: false,
     unavailableReason: "NOT_SUCCESSFUL",
+    destination: null,
     request: null,
   },
 };
@@ -156,5 +157,165 @@ test("payos-top-up service API calls and error mappings", async (t) => {
     const res = await service.listPayosTopUps({ limit: 10, offset: 0 });
     assert.deepEqual(res, listData);
     assert.equal(calls[0].url, "/api/economy/top-ups/payos?limit=10&offset=0");
+  });
+
+  await t.test("requestPayosRefund sends POST with CSRF and validates response", async () => {
+    const refundResult = {
+      request: {
+        id: "44444444-4444-4444-8444-444444444444",
+        status: "REQUESTED",
+        eligibility: "ELIGIBLE",
+        ineligibleReason: null,
+        reason: "WRONG_AMOUNT",
+        points: 250,
+        amountVnd: 50000,
+        destination: {
+          bankId: "970436",
+          bankName: "Vietcombank",
+          holderName: "TRAN THI A",
+          accountNumber: "0123456789",
+          last4: "6789",
+          verified: true,
+        },
+        submittedAt: "2026-10-16T10:00:00.000Z",
+        withdrawnAt: null,
+      },
+      replayed: false,
+    };
+
+    installFetch(() => jsonResponse(200, { data: refundResult }));
+
+    const res = await service.requestPayosRefund(TOP_UP_ID, {
+      reason: "WRONG_AMOUNT",
+      note: "Chuyển nhầm số tiền",
+    });
+
+    assert.deepEqual(res, refundResult);
+    const call = calls.find((c) =>
+      c.url.endsWith(`/economy/top-ups/payos/${TOP_UP_ID}/refund-request`),
+    );
+    assert.ok(call);
+    assert.equal(call.init.method, "POST");
+    assert.equal(
+      call.init.body,
+      JSON.stringify({ reason: "WRONG_AMOUNT", note: "Chuyển nhầm số tiền" }),
+    );
+    assert.equal(call.init.headers["X-CSRF-Token"], "csrf-token");
+  });
+
+  await t.test("withdrawPayosRefund sends POST with CSRF and validates response", async () => {
+    const withdrawResult = {
+      request: {
+        id: "44444444-4444-4444-8444-444444444444",
+        status: "WITHDRAWN",
+        eligibility: "ELIGIBLE",
+        ineligibleReason: null,
+        reason: "WRONG_AMOUNT",
+        points: 250,
+        amountVnd: 50000,
+        destination: {
+          bankId: "970436",
+          bankName: "Vietcombank",
+          holderName: "TRAN THI A",
+          accountNumber: "0123456789",
+          last4: "6789",
+          verified: true,
+        },
+        submittedAt: "2026-10-16T10:00:00.000Z",
+        withdrawnAt: "2026-10-16T10:10:00.000Z",
+      },
+      replayed: false,
+    };
+
+    installFetch(() => jsonResponse(200, { data: withdrawResult }));
+
+    const res = await service.withdrawPayosRefund(TOP_UP_ID);
+    assert.deepEqual(res, withdrawResult);
+
+    const call = calls.find((c) =>
+      c.url.endsWith(`/economy/top-ups/payos/${TOP_UP_ID}/refund-request/withdraw`),
+    );
+    assert.ok(call);
+    assert.equal(call.init.method, "POST");
+    assert.equal(call.init.body, "{}");
+    assert.equal(call.init.headers["X-CSRF-Token"], "csrf-token");
+  });
+
+  await t.test("payosRefundErrorMessage handles each AC 7 error code", () => {
+    // 409 REFUND_ALREADY_RESOLVED
+    const resolvedErr = new ApiError({
+      status: 409,
+      code: "REFUND_ALREADY_RESOLVED",
+      message: "Resolved",
+    });
+    const parsedResolved = messages.payosRefundErrorMessage(resolvedErr);
+    assert.equal(parsedResolved.message, "Yêu cầu đã được xử lý");
+    assert.equal(parsedResolved.reload, true);
+
+    // 409 TOPUP_REFUND_ALREADY_REQUESTED
+    const alreadyErr = new ApiError({
+      status: 409,
+      code: "TOPUP_REFUND_ALREADY_REQUESTED",
+      message: "Already requested",
+    });
+    const parsedAlready = messages.payosRefundErrorMessage(alreadyErr);
+    assert.equal(parsedAlready.message, "Giao dịch này đã có yêu cầu hoàn tiền.");
+    assert.equal(parsedAlready.reload, true);
+
+    // 409 TOPUP_REFUND_NOT_ALLOWED per reason
+    for (const reason of [
+      "DEADLINE_PASSED",
+      "LEGACY_MANUAL",
+      "NOT_SUCCESSFUL",
+      "MISMATCH_CREDITED",
+      "WITHDRAWN",
+    ]) {
+      const err = new ApiError({
+        status: 409,
+        code: "TOPUP_REFUND_NOT_ALLOWED",
+        message: "Not allowed",
+        details: { reason },
+      });
+      const parsed = messages.payosRefundErrorMessage(err);
+      assert.ok(parsed.message.length > 0);
+      assert.equal(parsed.reload, true);
+    }
+
+    // 404 TOPUP_NOT_FOUND and TOPUP_REFUND_NOT_FOUND
+    const notFound1 = new ApiError({ status: 404, code: "TOPUP_NOT_FOUND", message: "Not found" });
+    assert.equal(messages.payosRefundErrorMessage(notFound1).reload, true);
+    const notFound2 = new ApiError({ status: 404, code: "TOPUP_REFUND_NOT_FOUND", message: "Not found" });
+    assert.equal(messages.payosRefundErrorMessage(notFound2).reload, true);
+    // An unknown 404 (e.g. missing route) is a generic error, not "not found" + reload.
+    const unknown404 = new ApiError({ status: 404, code: "NOT_FOUND", message: "Cannot POST /x" });
+    const parsedUnknown404 = messages.payosRefundErrorMessage(unknown404);
+    assert.equal(parsedUnknown404.reload, false);
+    assert.equal(parsedUnknown404.message, "Không thể thực hiện yêu cầu hoàn tiền. Vui lòng thử lại.");
+
+    // 400 VALIDATION_ERROR with field errors
+    const valErr = new ApiError({
+      status: 400,
+      code: "VALIDATION_ERROR",
+      message: "Validation failed",
+      details: [
+        { path: ["reason"], message: "Reason error" },
+        { path: ["note"], message: "Note error" },
+      ],
+    });
+    const parsedVal = messages.payosRefundErrorMessage(valErr);
+    assert.equal(parsedVal.reload, false);
+    assert.equal(parsedVal.fieldErrors?.reason, "Reason error");
+    assert.equal(parsedVal.fieldErrors?.note, "Note error");
+
+    // Network error
+    const netErr = new ApiError({
+      status: 0,
+      code: "NETWORK_ERROR",
+      message: "Network error",
+      kind: "network",
+    });
+    const parsedNet = messages.payosRefundErrorMessage(netErr);
+    assert.equal(parsedNet.reload, false);
+    assert.match(parsedNet.message, /Không kết nối được máy chủ/);
   });
 });

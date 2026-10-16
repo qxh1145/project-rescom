@@ -583,6 +583,109 @@ describe('PayosTopUpService', () => {
     });
     expect(otherList.total).toBe(1);
   });
+
+  it('builds refund.destination (null counter account, probe shape -> verified:false, full -> verified:true)', async () => {
+    const repository = new InMemoryPayosTopUpRepository();
+    const provider = new FakePaymentProvider('test');
+    const service = new PayosTopUpService({
+      repository,
+      provider,
+      unitOfWork: new PassThroughUnitOfWork(),
+      ledgerService: new LedgerService(new InMemoryLedgerRepository()),
+      appBaseUrl: 'http://localhost',
+      limit: 10,
+      windowSeconds: 600,
+      logger: { warn: jest.fn(), log: jest.fn() },
+    });
+
+    const now = new Date();
+
+    // 1. All counterAccount fields null
+    const rowNull = {
+      id: '11111111-1111-4111-8111-111111111111',
+      userId,
+      orderCode: 1001,
+      amountVnd: 10000,
+      points: 50,
+      status: 'SUCCESSFUL' as const,
+      checkoutUrl: null,
+      paymentLinkId: 'link_1',
+      expiresAt: new Date(now.getTime() + 600_000),
+      cancelledAt: null,
+      paidAt: now,
+      journalId: null,
+      pointsCredited: 50,
+      amountPaidVnd: 10000,
+      providerReference: 'ref_1',
+      counterAccountBankId: null,
+      counterAccountBankName: null,
+      counterAccountName: null,
+      counterAccountNumber: null,
+      createdAt: now,
+      channel: 'PAYOS' as const,
+    };
+    repository.rows.set(rowNull.id, rowNull);
+
+    const dtoNull = await service.getOwned(userId, rowNull.id);
+    expect(dtoNull.refund.destination).toBeNull();
+
+    // 2. Probe shape: bankId + number present, but holderName null -> verified: false
+    const rowProbe = {
+      ...rowNull,
+      id: '22222222-2222-4222-8222-222222222222',
+      orderCode: 1002,
+      counterAccountBankId: '970422',
+      counterAccountNumber: '0123456789',
+      counterAccountName: null,
+      counterAccountBankName: null,
+    };
+    repository.rows.set(rowProbe.id, rowProbe);
+
+    const dtoProbe = await service.getOwned(userId, rowProbe.id);
+    expect(dtoProbe.refund.destination).toEqual({
+      bankId: '970422',
+      bankName: null,
+      holderName: null,
+      last4: '6789',
+      accountNumber: '0123456789',
+      verified: false,
+    });
+
+    // 3. Full shape -> verified: true
+    const rowFull = {
+      ...rowNull,
+      id: '33333333-3333-4333-8333-333333333333',
+      orderCode: 1003,
+      counterAccountBankId: '970422',
+      counterAccountBankName: 'MB Bank',
+      counterAccountName: 'NGUYEN VAN A',
+      counterAccountNumber: '0123456789',
+    };
+    repository.rows.set(rowFull.id, rowFull);
+
+    const dtoFull = await service.getOwned(userId, rowFull.id);
+    expect(dtoFull.refund.destination).toEqual({
+      bankId: '970422',
+      bankName: 'MB Bank',
+      holderName: 'NGUYEN VAN A',
+      last4: '6789',
+      accountNumber: '0123456789',
+      verified: true,
+    });
+
+    // 4. Non-successful status -> refund.destination is null
+    const rowProcessing = {
+      ...rowFull,
+      id: '44444444-4444-4444-8444-444444444444',
+      orderCode: 1004,
+      status: 'PROCESSING' as const,
+      paidAt: null,
+    };
+    repository.rows.set(rowProcessing.id, rowProcessing);
+
+    const dtoProcessing = await service.getOwned(userId, rowProcessing.id);
+    expect(dtoProcessing.refund.destination).toBeNull();
+  });
 });
 
 describe('PayosTopUpService reconcile and recheck', () => {

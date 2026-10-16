@@ -1,5 +1,6 @@
 import type { SurveyFeedbackIssueTag } from "@rescom/schemas";
 import { isApiError } from "../api/api-error.ts";
+import { refundHoldPointsFrom, refundHoldSentence } from "../wallet/refund-hold.ts";
 import type { DisputeReason } from "./dispute-service.ts";
 import type { ReopenRefusal } from "./manage-status.ts";
 
@@ -88,7 +89,12 @@ export function formActionErrorMessage(error: unknown, fallback: string): string
       ? reopenRefusalMessage(reason)
       : ACTION_MESSAGES.FORM_NOT_REOPENABLE;
   }
-  return (error.code && ACTION_MESSAGES[error.code]) || fallback;
+  const base = (error.code && ACTION_MESSAGES[error.code]) || fallback;
+  if (error.code === "INSUFFICIENT_BALANCE" || error.code === "INSUFFICIENT_ESCROW_BALANCE") {
+    const hold = refundHoldPointsFrom(error.details);
+    if (hold > 0) return `${base} ${refundHoldSentence(hold)}`;
+  }
+  return base;
 }
 
 /** "Sửa & gửi lại" of an in-Rescom survey: creating or filling the copy failed. */
