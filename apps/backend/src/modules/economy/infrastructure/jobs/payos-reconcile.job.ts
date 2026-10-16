@@ -5,7 +5,11 @@ import {
   ScheduledJob,
   assertNotAllFailed,
 } from '../../../../common/scheduler/scheduled-job';
-import { TopUpAdminAlertCondition, addBusinessDays } from '@rescom/schemas';
+import {
+  TopUpAdminAlertCondition,
+  TOP_UP_MISMATCH_SLA_BUSINESS_DAYS,
+  addBusinessDays,
+} from '@rescom/schemas';
 import {
   PaymentProviderPort,
   PaymentProviderUnavailableError,
@@ -164,7 +168,11 @@ export class PayosReconcileJob implements ScheduledJob {
               if (
                 row.status === 'AMOUNT_MISMATCH' &&
                 row.paidAt &&
-                ctx.now.getTime() >= addBusinessDays(row.paidAt, 3).getTime()
+                ctx.now.getTime() >=
+                  addBusinessDays(
+                    row.paidAt,
+                    TOP_UP_MISMATCH_SLA_BUSINESS_DAYS,
+                  ).getTime()
               ) {
                 await this.raiseAlert(
                   ctx,
@@ -267,6 +275,7 @@ export class PayosReconcileJob implements ScheduledJob {
                     snapshot.facts.amountPaidVnd ??
                     row.amountPaidVnd ??
                     undefined,
+                  paidAt: paidInstant.toISOString(),
                 },
               );
             }
@@ -291,7 +300,11 @@ export class PayosReconcileJob implements ScheduledJob {
             const paidInstant = row.paidAt ?? snapshot.facts.paidAt;
             if (
               paidInstant &&
-              ctx.now.getTime() >= addBusinessDays(paidInstant, 3).getTime()
+              ctx.now.getTime() >=
+                addBusinessDays(
+                  paidInstant,
+                  TOP_UP_MISMATCH_SLA_BUSINESS_DAYS,
+                ).getTime()
             ) {
               await this.raiseAlert(
                 ctx,
@@ -306,6 +319,7 @@ export class PayosReconcileJob implements ScheduledJob {
                     snapshot.facts.amountPaidVnd ??
                     row.amountPaidVnd ??
                     undefined,
+                  paidAt: paidInstant.toISOString(),
                 },
               );
             }

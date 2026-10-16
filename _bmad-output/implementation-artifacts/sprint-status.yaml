@@ -1,5 +1,5 @@
 # generated: 2026-08-16 17:09:30
-# last_updated: 2026-10-15
+# last_updated: 2026-10-16
 # project: project-rescom
 # project_key: NOKEY
 # tracking_system: file-system
@@ -159,7 +159,7 @@ development_status:
   13-6-live-payos-probe-in-production: backlog
   13-7-wallet-top-up-screens: done
   13-8-admin-top-up-console: done  # created 2026-10-15; 13.5 merged (30fb28c), recheck contract verified 2026-10-16; Figma B1 re-read; D1-D3 Owner-confirmed; code review 2026-10-16: 13 patches applied, checks green; visual check + Figma restyle done 2026-10-16 (uncommitted)
-  13-9-amount-mismatch-resolution: backlog
+  13-9-amount-mismatch-resolution: done  # code review 2026-10-16: 4 patches applied, AC3 amended; created 2026-10-16; branch feat/13-9 from d8da885; Figma 188:1260 + B3 189:2145/189:2296 re-read; D3-D5 + closed-link scope Owner-confirmed
   13-10-refund-request-refund-hold-withdrawal: backlog
   13-11-refund-screens: backlog
   13-12-admin-refund-resolution: backlog

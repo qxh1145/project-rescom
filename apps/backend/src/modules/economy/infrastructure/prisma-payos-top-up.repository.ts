@@ -4,6 +4,7 @@ import { ProviderPaymentFacts } from '../application/ports/payment-provider.port
 import { PrismaService } from '../../../common/database/prisma.service';
 import { runInTransaction } from '../../../common/database/prisma-unit-of-work';
 import {
+  AdminMismatchRow,
   AdminPayosListParams,
   AdminPayosRow,
   CreateProcessingResult,
@@ -25,6 +26,7 @@ function toTopUp(row: TopUpRequest): PayosTopUp {
   return {
     id: row.id,
     userId: row.userId,
+    channel: 'PAYOS',
     orderCode: row.orderCode,
     amountVnd: row.amountVnd,
     points: row.amount,
@@ -156,6 +158,170 @@ export class PrismaPayosTopUpRepository implements PayosTopUpRepositoryPort {
       payos: groups.find((row) => row.channel === 'PAYOS')?._count._all ?? 0,
       manual: groups.find((row) => row.channel === 'MANUAL')?._count._all ?? 0,
     };
+  }
+
+  async listActionRequired({ limit }: { limit: number }): Promise<{
+    mismatches: AdminMismatchRow[];
+    uncredited: import('@rescom/schemas').AdminPayosUncredited[];
+  }> {
+    const rows = await this.prisma.topUpRequest.findMany({
+      where: { channel: 'PAYOS', status: 'AMOUNT_MISMATCH' },
+      select: {
+        ...this.adminSelect,
+        providerReference: true,
+        counterAccountBankName: true,
+        counterAccountNumber: true,
+      },
+      orderBy: [{ paidAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+    // Filter live status before LIMIT; historical closed alerts cannot hide newer open alerts.
+    const alerts = await this.prisma.$queryRaw<
+      Array<{
+        aggregateId: string;
+        payload: Prisma.JsonValue;
+        createdAt: Date;
+      }>
+    >`
+      SELECT a.aggregate_id AS "aggregateId", a.payload, a.created_at AS "createdAt"
+      FROM outbox_events a
+      JOIN top_up_requests t ON t.id::text = a.aggregate_id
+      WHERE a.event_type = 'ECONOMY_TOPUP_ADMIN_ALERT'
+        AND a.idempotency_key LIKE 'topup-alert:UNCREDITED_AFTER_PAYMENT:%'
+        AND t.channel = 'PAYOS'
+        AND t.status NOT IN ('SUCCESSFUL', 'MANUAL_REFUNDED', 'AMOUNT_MISMATCH')
+      ORDER BY a.created_at ASC, a.id ASC
+      LIMIT ${limit}
+    `;
+    // Outbox aggregate IDs come from alert writers; filter to UUIDs before querying uuid-typed IDs.
+    const ids = alerts
+      .map((alert) => alert.aggregateId)
+      .filter((id) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          id,
+        ),
+      );
+    const active = await this.prisma.topUpRequest.findMany({
+      where: {
+        id: { in: ids },
+        channel: 'PAYOS',
+        status: { notIn: ['SUCCESSFUL', 'MANUAL_REFUNDED', 'AMOUNT_MISMATCH'] },
+      },
+      select: { ...this.adminSelect },
+    });
+    const byId = new Map(active.map((row) => [row.id, this.adminRow(row)]));
+    return {
+      mismatches: rows.map((row) => ({
+        ...this.adminRow(row),
+        providerReference: row.providerReference,
+        counterAccountBankName: row.counterAccountBankName,
+        counterAccountLast4: row.counterAccountNumber?.slice(-4) ?? null,
+      })),
+      uncredited: alerts
+        .flatMap((alert) => {
+          const row = byId.get(alert.aggregateId);
+          if (!row) return [];
+          const payload = alert.payload as Record<string, unknown>;
+          return [
+            {
+              topUpId: row.id,
+              orderCode: row.orderCode,
+              userId: row.userId,
+              userEmail: row.userEmail,
+              amountVnd: row.amountVnd,
+              amountPaidVnd:
+                typeof payload.amountPaidVnd === 'number'
+                  ? payload.amountPaidVnd
+                  : row.amountPaidVnd,
+              status: row.status,
+              paidAt:
+                typeof payload.paidAt === 'string'
+                  ? payload.paidAt
+                  : (row.paidAt?.toISOString() ?? null),
+              alertedAt: alert.createdAt.toISOString(),
+            },
+          ];
+        })
+        .slice(0, limit),
+    };
+  }
+
+  async isMismatchJournal(journalId: string, key: string): Promise<boolean> {
+    return !!(await this.prisma.ledgerJournal.findFirst({
+      where: { id: journalId, idempotencyKey: key },
+      select: { id: true },
+    }));
+  }
+
+  async countActionRequired(): Promise<number> {
+    const [mismatches, rows] = await Promise.all([
+      this.prisma.topUpRequest.count({
+        where: { channel: 'PAYOS', status: 'AMOUNT_MISMATCH' },
+      }),
+      this.prisma.$queryRaw<Array<{ count: bigint }>>`
+        SELECT COUNT(*)::bigint AS count
+        FROM outbox_events a
+        JOIN top_up_requests t ON t.id::text = a.aggregate_id
+        WHERE a.event_type = 'ECONOMY_TOPUP_ADMIN_ALERT'
+          AND a.idempotency_key LIKE 'topup-alert:UNCREDITED_AFTER_PAYMENT:%'
+          AND t.channel = 'PAYOS'
+          AND t.status NOT IN ('SUCCESSFUL', 'MANUAL_REFUNDED', 'AMOUNT_MISMATCH')
+      `,
+    ]);
+    const uncredited = Number(rows[0]?.count ?? 0);
+    return mismatches + uncredited;
+  }
+
+  async resolveMismatch(
+    id: string,
+    data: {
+      status: 'SUCCESSFUL' | 'MANUAL_REFUNDED';
+      expectedAmountPaidVnd: number;
+      journalId?: string;
+      pointsCredited?: number;
+      adminId: string;
+      note: string | null;
+      correlationId: string | null;
+      resolvedAt: Date;
+    },
+    statusEvent: TopUpStatusEvent,
+    auditEvent: TopUpAdminAuditEvent,
+  ): Promise<{ changed: boolean }> {
+    return runInTransaction(this.prisma, async (tx) => {
+      const result = await tx.topUpRequest.updateMany({
+        where: {
+          id,
+          channel: 'PAYOS',
+          status: 'AMOUNT_MISMATCH',
+          amountPaidVnd: data.expectedAmountPaidVnd,
+        },
+        data: {
+          status: data.status,
+          journalId: data.journalId,
+          pointsCredited: data.pointsCredited,
+          adminId: data.adminId,
+          reviewedAt: data.resolvedAt,
+          correlationId: data.correlationId,
+          resolutionNote: data.note,
+        },
+      });
+      if (!result.count) return { changed: false };
+      await tx.outboxEvent.createMany({
+        data: [statusEvent, auditEvent].map((event) => ({
+          id: event.id,
+          idempotencyKey: event.idempotencyKey,
+          eventType: event.eventType,
+          schemaVersion: 1,
+          producer: event.producer,
+          aggregateType: event.aggregateType,
+          aggregateId: event.aggregateId,
+          aggregateVersion: event.aggregateVersion,
+          status: 'PENDING' as const,
+          payload: event.payload as Prisma.InputJsonValue,
+        })),
+      });
+      return { changed: true };
+    });
   }
 
   async createProcessing(

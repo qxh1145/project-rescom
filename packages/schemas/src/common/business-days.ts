@@ -55,3 +55,11 @@ export function addBusinessDays(start: Date, days: number): Date {
   const finalLocalMs = currentMidnightUtc + timeOfDayMs;
   return new Date(finalLocalMs - VN_OFFSET_MS);
 }
+
+/** Smallest count of business-day increments from now reaching due (0 if overdue). */
+export function businessDaysUntil(now: Date, due: Date): number {
+  if (now >= due) return 0;
+  let days = 0;
+  while (addBusinessDays(now, days) < due) days++;
+  return days;
+}

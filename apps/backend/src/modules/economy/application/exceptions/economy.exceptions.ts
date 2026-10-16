@@ -294,3 +294,22 @@ export class TopUpExportTooLargeException extends Error {
     super(`Top-up export exceeds ${maxRows} rows.`);
   }
 }
+
+export class TopUpMismatchAlreadyResolvedException extends Error {
+  readonly code = 'TOPUP_MISMATCH_ALREADY_RESOLVED';
+  constructor(public readonly status: string) {
+    super('Top-up mismatch already resolved.');
+  }
+}
+export class TopUpMismatchAmountChangedException extends Error {
+  readonly code = 'TOPUP_MISMATCH_AMOUNT_CHANGED';
+  constructor(public readonly amountPaidVnd: number | null) {
+    super('Paid amount changed.');
+  }
+}
+export class TopUpMismatchNothingToCreditException extends Error {
+  readonly code = 'TOPUP_MISMATCH_NOTHING_TO_CREDIT';
+  constructor() {
+    super('Paid amount is below one Point.');
+  }
+}

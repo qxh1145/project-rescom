@@ -16,6 +16,14 @@ import {
   topUpCreditKey,
   topUpExpireKey,
   topUpMismatchNoticeKey,
+  topUpMismatchKey,
+  payosTransferContent,
+  addBusinessDays,
+  TOP_UP_MISMATCH_SLA_BUSINESS_DAYS,
+  TOP_UP_ACTION_REQUIRED_MAX,
+  ResolveTopUpMismatch,
+  resolveTopUpMismatchSchema,
+  topUpMismatchAuditEventPayloadSchema,
   PayosRecheckResult,
   TOP_UP_AUDIT_EVENT_TYPES,
   TopUpRecheckAuditEventPayload,
@@ -25,8 +33,10 @@ import { z } from 'zod';
 import { toCsv } from '../../../common/http/csv';
 import { UnitOfWorkPort } from '../../../common/database/unit-of-work.port';
 import { LedgerService } from './ledger.service';
+import { AdminCapabilityPort } from './ports/admin-capability.port';
 import {
   AdminPayosRow,
+  AdminMismatchRow,
   PayosTopUp,
   PayosTopUpRepositoryPort,
   TopUpStatusEvent,
@@ -45,6 +55,11 @@ import {
   PayosTopUpNotCancellableException,
   TopUpRequestNotFoundException,
   TopUpExportTooLargeException,
+  TopUpAdminCapabilityRequiredException,
+  TopUpSelfReviewForbiddenException,
+  TopUpMismatchAlreadyResolvedException,
+  TopUpMismatchAmountChangedException,
+  TopUpMismatchNothingToCreditException,
 } from './exceptions/economy.exceptions';
 
 export class PayosTopUpService {
@@ -54,6 +69,7 @@ export class PayosTopUpService {
       provider: PaymentProviderPort;
       unitOfWork: UnitOfWorkPort;
       ledgerService: LedgerService;
+      adminCapability?: AdminCapabilityPort;
       appBaseUrl: string;
       limit: number;
       windowSeconds: number;
@@ -109,8 +125,170 @@ export class PayosTopUpService {
     };
   }
 
+  async listActionRequired() {
+    const rows = await this.options.repository.listActionRequired({
+      limit: TOP_UP_ACTION_REQUIRED_MAX,
+    });
+    const baseRow = (row: AdminMismatchRow): AdminPayosRow => {
+      const {
+        providerReference: _reference,
+        counterAccountBankName: _bank,
+        counterAccountLast4: _last4,
+        ...base
+      } = row;
+      return base;
+    };
+    return {
+      uncredited: rows.uncredited,
+      mismatches: rows.mismatches
+        .map((row) => {
+          if (!row.paidAt)
+            this.options.logger.warn(
+              'Mismatch missing paidAt; using createdAt',
+              { topUpId: row.id },
+            );
+          return {
+            ...this.adminDto(baseRow(row)),
+            resolveDueAt: addBusinessDays(
+              row.paidAt ?? row.createdAt,
+              TOP_UP_MISMATCH_SLA_BUSINESS_DAYS,
+            ).toISOString(),
+            providerReference: row.providerReference,
+            transferContent: payosTransferContent(row.orderCode),
+            counterAccountBankName: row.counterAccountBankName,
+            counterAccountLast4: row.counterAccountLast4,
+          };
+        })
+        .sort((a, b) => a.resolveDueAt.localeCompare(b.resolveDueAt)),
+    };
+  }
+
   async tabCounts() {
-    return this.options.repository.countByChannel();
+    const [counts, actionRequired] = await Promise.all([
+      this.options.repository.countByChannel(),
+      this.options.repository.countActionRequired(),
+    ]);
+    return { ...counts, actionRequired };
+  }
+
+  async resolveMismatch(
+    topUpId: string,
+    rawInput: ResolveTopUpMismatch,
+    context: { adminId: string; correlationId?: string },
+  ) {
+    const input = resolveTopUpMismatchSchema.parse(rawInput);
+    const key = topUpMismatchKey(topUpId);
+    return this.options.unitOfWork.run(key, async () => {
+      const row = await this.options.repository.lockForUpdate(topUpId);
+      if (!row || row.channel === 'MANUAL')
+        throw new TopUpRequestNotFoundException(topUpId);
+      const capability =
+        await this.options.adminCapability?.findCurrentCapability(
+          context.adminId,
+        );
+      if (
+        !capability ||
+        capability.role !== 'ADMIN' ||
+        capability.status !== 'ACTIVE'
+      )
+        throw new TopUpAdminCapabilityRequiredException();
+      if (row.userId === context.adminId)
+        throw new TopUpSelfReviewForbiddenException();
+      if (
+        (row.status === 'MANUAL_REFUNDED' &&
+          input.action === 'MANUAL_REFUND') ||
+        (row.status === 'SUCCESSFUL' &&
+          input.action === 'CREDIT' &&
+          row.journalId &&
+          (await this.options.repository.isMismatchJournal(row.journalId, key)))
+      ) {
+        return {
+          topUpId,
+          status: row.status as 'SUCCESSFUL' | 'MANUAL_REFUNDED',
+          pointsCredited: row.pointsCredited,
+          replayed: true,
+        };
+      }
+      if (row.status !== 'AMOUNT_MISMATCH')
+        throw new TopUpMismatchAlreadyResolvedException(row.status);
+      if (row.amountPaidVnd !== input.expectedAmountPaidVnd)
+        throw new TopUpMismatchAmountChangedException(row.amountPaidVnd);
+      const points =
+        input.action === 'CREDIT'
+          ? Math.floor(row.amountPaidVnd / POINT_VND_RATE)
+          : 0;
+      if (input.action === 'CREDIT' && points < 1)
+        throw new TopUpMismatchNothingToCreditException();
+      const at = this.now();
+      const status =
+        input.action === 'CREDIT' ? 'SUCCESSFUL' : 'MANUAL_REFUNDED';
+      const journal =
+        input.action === 'CREDIT'
+          ? await this.options.ledgerService.creditMismatchTopUp({
+              topUpId,
+              userId: row.userId,
+              points,
+              orderCode: row.orderCode,
+              amountPaidVnd: row.amountPaidVnd,
+            })
+          : null;
+      const correlationId = z.string().uuid().safeParse(context.correlationId)
+        .success
+        ? context.correlationId!
+        : null;
+      const statusEvent = this.event(row, status, key, at, row.amountPaidVnd);
+      statusEvent.payload.points = points;
+      statusEvent.payload.resolution =
+        input.action === 'CREDIT' ? 'ADMIN_CREDIT' : 'ADMIN_REFUND';
+      statusEvent.payload.remainderVnd = row.amountPaidVnd % POINT_VND_RATE;
+      const auditEvent = {
+        id: this.id(),
+        idempotencyKey: `admin-audit:topup-mismatch:${topUpId}`,
+        eventType: TOP_UP_AUDIT_EVENT_TYPES.MISMATCH_RESOLVED,
+        producer: 'economy-service',
+        aggregateType: 'TopUpRequest',
+        aggregateId: topUpId,
+        aggregateVersion: 1,
+        payload: topUpMismatchAuditEventPayloadSchema.parse({
+          schemaVersion: 1,
+          action: 'TOPUP_MISMATCH_RESOLVED',
+          auditCategory: 'MODERATION_ADMIN_ACTION',
+          topUpId,
+          adminId: context.adminId,
+          resolution: input.action,
+          amountVnd: row.amountVnd,
+          amountPaidVnd: row.amountPaidVnd,
+          pointsCredited: journal ? points : null,
+          noteLength:
+            input.action === 'MANUAL_REFUND' ? input.note.length : null,
+          correlationId,
+          occurredAt: at.toISOString(),
+        }),
+      };
+      const { changed } = await this.options.repository.resolveMismatch(
+        topUpId,
+        {
+          status,
+          expectedAmountPaidVnd: row.amountPaidVnd,
+          journalId: journal?.id,
+          pointsCredited: journal ? points : undefined,
+          adminId: context.adminId,
+          note: input.action === 'MANUAL_REFUND' ? input.note : null,
+          correlationId,
+          resolvedAt: at,
+        },
+        statusEvent,
+        auditEvent,
+      );
+      if (!changed)
+        throw new Error('Locked mismatch row failed conditional transition');
+      return {
+        topUpId,
+        status,
+        pointsCredited: journal ? points : null,
+        replayed: false,
+      };
+    });
   }
 
   async exportForAdmin(
@@ -385,7 +563,7 @@ export class PayosTopUpService {
   }
   private event(
     row: PayosTopUp,
-    status: 'SUCCESSFUL' | 'AMOUNT_MISMATCH',
+    status: 'SUCCESSFUL' | 'AMOUNT_MISMATCH' | 'MANUAL_REFUNDED',
     key: string,
     at: Date,
     amountPaidVnd?: number,
@@ -656,13 +834,12 @@ export class PayosTopUpService {
 
     const reRead = await this.options.repository.findPayosById(row.id);
     const finalRow = reRead ?? row;
-    let result: 'CREDITED' | 'STILL_UNPAID' | 'MISMATCH';
+    let result: 'CREDITED' | 'STILL_UNPAID' | 'MISMATCH' | 'REFUNDED';
     if (finalRow.status === 'SUCCESSFUL') {
       result = 'CREDITED';
-    } else if (
-      finalRow.status === 'AMOUNT_MISMATCH' ||
-      finalRow.status === 'MANUAL_REFUNDED'
-    ) {
+    } else if (finalRow.status === 'MANUAL_REFUNDED') {
+      result = 'REFUNDED';
+    } else if (finalRow.status === 'AMOUNT_MISMATCH') {
       result = 'MISMATCH';
     } else {
       result = 'STILL_UNPAID';

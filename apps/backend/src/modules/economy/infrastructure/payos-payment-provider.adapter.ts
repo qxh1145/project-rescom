@@ -1,3 +1,4 @@
+import { payosTransferContent } from '@rescom/schemas';
 import { APIError, PayOS } from '@payos/node';
 import type { EnvService } from '../../../common/config/env.service';
 import {
@@ -53,7 +54,7 @@ export class PayosPaymentProvider implements PaymentProviderPort {
         {
           orderCode: input.orderCode,
           amount: input.amountVnd,
-          description: `RC${String(input.orderCode).slice(-7)}`,
+          description: payosTransferContent(input.orderCode),
           returnUrl: input.returnUrl,
           cancelUrl: input.cancelUrl,
           expiredAt: Math.floor(input.expiresAt.getTime() / 1000),

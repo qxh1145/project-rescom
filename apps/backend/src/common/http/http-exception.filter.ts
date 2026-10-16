@@ -132,6 +132,9 @@ import {
   PendingRewardNotMaturedException,
   PendingRewardForbiddenException,
   TopUpExportTooLargeException,
+  TopUpMismatchAlreadyResolvedException,
+  TopUpMismatchAmountChangedException,
+  TopUpMismatchNothingToCreditException,
   PayosTopUpAlreadyProcessingException,
   PayosCheckoutRateLimitedException,
   PayosCheckoutUnavailableException,
@@ -600,6 +603,20 @@ export class HttpExceptionFilter implements ExceptionFilter {
       code = exception.code;
       message = exception.message;
       details = { currentStatus: exception.currentStatus };
+    } else if (exception instanceof TopUpMismatchAlreadyResolvedException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = { status: exception.status };
+    } else if (exception instanceof TopUpMismatchAmountChangedException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = { amountPaidVnd: exception.amountPaidVnd };
+    } else if (exception instanceof TopUpMismatchNothingToCreditException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
     } else if (exception instanceof TopUpExportTooLargeException) {
       status = HttpStatus.BAD_REQUEST;
       code = exception.code;

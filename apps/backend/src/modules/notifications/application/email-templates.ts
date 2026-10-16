@@ -88,6 +88,16 @@ export function renderNotificationEmail(
 ): RenderedEmail {
   const walletUrl = `${context.appBaseUrl}/wallet`;
   switch (type) {
+    case 'TOPUP_REFUNDED':
+      return render({
+        subject: 'Rescom: Giao dịch nạp điểm đã được hoàn tiền',
+        heading: 'Giao dịch nạp điểm đã được hoàn tiền',
+        paragraphs: [
+          'Giao dịch nạp điểm của bạn đã được hoàn tiền thủ công. Không có Điểm nào được cộng.',
+          'Bạn có thể xem chi tiết giao dịch trong Ví Rescom.',
+        ],
+        link: { label: 'Mở Ví Rescom', url: walletUrl },
+      });
     case 'TOPUP_SUCCESS':
       return render({
         subject: 'Rescom: Nạp điểm thành công',

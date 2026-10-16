@@ -20,10 +20,11 @@ describe('Email delivery contracts (Story IR.4b part B)', () => {
     type: 'TOPUP_REJECTED',
   };
 
-  it('lists exactly the four critical types, all of them notification types (B2)', () => {
+  it('lists critical email types, all of them notification types (B2)', () => {
     expect([...EMAIL_NOTIFICATION_TYPES]).toEqual([
       'TOPUP_SUCCESS',
       'TOPUP_REJECTED',
+      'TOPUP_REFUNDED',
       'ACCOUNT_LOCKED',
       'ACCOUNT_UNLOCKED',
     ]);

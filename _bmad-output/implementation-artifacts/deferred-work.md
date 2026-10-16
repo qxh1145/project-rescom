@@ -473,3 +473,7 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 ## Deferred from: code review of 13-8-admin-top-up-console (2026-10-16)
 
 - Manual top-up queue segmented control (Chờ duyệt / Đã duyệt / Đã từ chối) overflows a 390 px viewport by 7 px inside the review card (pre-existing `TopUpReviewScreen` UI, unchanged by 13.8; retired in 13.13).
+
+## Deferred from: code review of 13-9-amount-mismatch-resolution (2026-10-16)
+
+- `listActionRequired` caps mismatches and uncredited alerts at 100 each (`TOP_UP_ACTION_REQUIRED_MAX`) while `countActionRequired` is uncapped, so the "Cần xử lý" badge can exceed the listed rows with no overflow indicator; mismatch rows with null `paidAt` sort last under `paidAt asc` and are truncated first. Known `ponytail:` ceiling; add paging/`truncated` flag when volume nears 100.

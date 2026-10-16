@@ -1,5 +1,6 @@
 import { ProviderPaymentFacts } from '../application/ports/payment-provider.port';
 import {
+  AdminMismatchRow,
   AdminPayosListParams,
   AdminPayosRow,
   CreateProcessingResult,
@@ -20,6 +21,7 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
   manualCount = 0;
   readonly userEmails = new Map<string, string>();
   private nextCode = 1_000_000_000;
+  private readonly mismatchJournals = new Map<string, string>();
 
   private adminRow(row: PayosTopUp): AdminPayosRow {
     return {
@@ -90,6 +92,111 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
 
   async countByChannel(): Promise<{ payos: number; manual: number }> {
     return { payos: this.rows.size, manual: this.manualCount };
+  }
+
+  async listActionRequired({ limit }: { limit: number }): Promise<{
+    mismatches: AdminMismatchRow[];
+    uncredited: import('@rescom/schemas').AdminPayosUncredited[];
+  }> {
+    const mismatches = [...this.rows.values()]
+      .filter((row) => row.status === 'AMOUNT_MISMATCH')
+      .sort(
+        (a, b) =>
+          (a.paidAt ?? a.createdAt).getTime() -
+          (b.paidAt ?? b.createdAt).getTime(),
+      )
+      .slice(0, limit)
+      .map((row) => ({
+        ...this.adminRow(row),
+        providerReference: row.providerReference,
+        counterAccountBankName: row.counterAccountBankName,
+        counterAccountLast4: row.counterAccountNumber?.slice(-4) ?? null,
+      }));
+    const uncredited = this.alertEvents
+      .filter((event) =>
+        event.idempotencyKey.startsWith(
+          'topup-alert:UNCREDITED_AFTER_PAYMENT:',
+        ),
+      )
+      .flatMap((event) => {
+        const row = this.rows.get(event.aggregateId);
+        if (
+          !row ||
+          ['SUCCESSFUL', 'MANUAL_REFUNDED', 'AMOUNT_MISMATCH'].includes(
+            row.status,
+          )
+        )
+          return [];
+        const payload = event.payload;
+        return [
+          {
+            topUpId: row.id,
+            orderCode: row.orderCode,
+            userId: row.userId,
+            userEmail: this.userEmails.get(row.userId) ?? null,
+            amountVnd: row.amountVnd,
+            amountPaidVnd:
+              typeof payload.amountPaidVnd === 'number'
+                ? payload.amountPaidVnd
+                : row.amountPaidVnd,
+            status: row.status,
+            paidAt:
+              typeof payload.paidAt === 'string'
+                ? payload.paidAt
+                : (row.paidAt?.toISOString() ?? null),
+            alertedAt:
+              typeof payload.occurredAt === 'string'
+                ? payload.occurredAt
+                : row.createdAt.toISOString(),
+          },
+        ];
+      })
+      .slice(0, limit);
+    return { mismatches, uncredited };
+  }
+
+  async isMismatchJournal(journalId: string, key: string): Promise<boolean> {
+    return this.mismatchJournals.get(journalId) === key;
+  }
+
+  async countActionRequired(): Promise<number> {
+    const result = await this.listActionRequired({
+      limit: Number.MAX_SAFE_INTEGER,
+    });
+    return result.mismatches.length + result.uncredited.length;
+  }
+
+  async resolveMismatch(
+    id: string,
+    data: {
+      status: 'SUCCESSFUL' | 'MANUAL_REFUNDED';
+      expectedAmountPaidVnd: number;
+      journalId?: string;
+      pointsCredited?: number;
+      adminId: string;
+      note: string | null;
+      correlationId: string | null;
+      resolvedAt: Date;
+    },
+    statusEvent: TopUpStatusEvent,
+    auditEvent: TopUpAdminAuditEvent,
+  ): Promise<{ changed: boolean }> {
+    const row = this.rows.get(id);
+    if (
+      !row ||
+      row.status !== 'AMOUNT_MISMATCH' ||
+      row.amountPaidVnd !== data.expectedAmountPaidVnd
+    )
+      return { changed: false };
+    row.status = data.status;
+    row.journalId = data.journalId ?? null;
+    if (data.journalId)
+      this.mismatchJournals.set(data.journalId, statusEvent.idempotencyKey);
+    row.pointsCredited = data.pointsCredited ?? null;
+    row.resolutionNote = data.note;
+    this.events.push(statusEvent);
+    this.auditEvents.push(auditEvent);
+    return { changed: true };
   }
 
   async createProcessing(
