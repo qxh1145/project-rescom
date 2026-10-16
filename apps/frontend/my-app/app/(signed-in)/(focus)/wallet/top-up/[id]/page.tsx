@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { TransferScreen } from "../components/TransferScreen";
+import { TopUpRouter } from "../components/TopUpRouter";
 
 export const metadata: Metadata = {
-  title: "Chuyển khoản nạp điểm | Rescom",
+  title: "Nạp điểm | Rescom",
 };
 
-/** `/wallet/top-up/:id` — Figma 14b "chuyển khoản" (62:3623 desktop, 62:3873 mobile). */
+/** `/wallet/top-up/:id` — resolves PayOS or legacy MANUAL top-up */
 export default function TopUpTransferPage() {
-  return <TransferScreen />;
+  return <TopUpRouter />;
 }

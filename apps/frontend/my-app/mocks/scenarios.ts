@@ -53,6 +53,11 @@ export const MOCK_SCENARIOS = [
   "rewards-resolve-not-supported",
   // Rewards admin: force expired-ticket conflict without changing state.
   "rewards-resolve-ticket-expired",
+  // PayOS top-up (Story 13.7): availability false (manual mode) / never auto-pay a PROCESSING top-up.
+  "payos-manual",
+  "payos-pending",
+  // Wallet with refundHold > 0 (Story 13.7, UX six-card grid).
+  "refund-hold",
   // Plan 5.6: another device signed in, so every session request answers 401 AUTH_SESSION_REPLACED (15e).
   "session-replaced",
 ] as const;

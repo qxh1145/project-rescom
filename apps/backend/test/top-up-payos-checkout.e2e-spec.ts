@@ -188,6 +188,25 @@ describe('PayOS checkout (HTTP)', () => {
       .expect((response) =>
         expect(response.body.data.status).toBe('CANCELLED'),
       );
-    await checkout(app, actor, 10_000).expect(201);
+    const second = await checkout(app, actor, 10_000).expect(201);
+
+    // List top-ups
+    await request(app.getHttpServer())
+      .get('/economy/top-ups/payos')
+      .expect(401);
+
+    const listRes = await request(app.getHttpServer())
+      .get('/economy/top-ups/payos?limit=10&offset=0')
+      .set('Cookie', actor.cookie)
+      .expect(200);
+    expect(listRes.body.data.total).toBe(2);
+    expect(listRes.body.data.items[0].id).toBe(second.body.data.topUp.id);
+
+    const otherListRes = await request(app.getHttpServer())
+      .get('/economy/top-ups/payos')
+      .set('Cookie', other.cookie)
+      .expect(200);
+    expect(otherListRes.body.data.total).toBe(0);
   });
 });
+

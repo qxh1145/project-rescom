@@ -22,6 +22,7 @@ export type MockTransactionKind =
   | "SURVEY_PAYOUT"
   | "REWARD_RELEASE" // "Điểm chờ duyệt đã mở" · Chờ duyệt → Khả dụng (`release-pending:` journal)
   | "TOP_UP" // "Nạp điểm"
+  | "TOP_UP_PAYOS" // "Nạp Điểm qua PayOS" · `topup-credit:` journal
   | "VOUCHER_REDEMPTION" // "Đổi voucher" · Khả dụng −N
   | "VOUCHER_REFUND" // Voucher redemption reversal · Khả dụng +N
   | "SURVEY_ESCROW" // "Ký quỹ khảo sát" (publisher spend)
@@ -67,6 +68,7 @@ export interface MockWalletBalances {
   escrow: number;
   frozen: number;
   integrityHold: number;
+  refundHold: number;
 }
 
 /** One user's wallet + history (newest row first), mutated in place. */
@@ -245,6 +247,7 @@ function entriesOf(row: MockTransaction, postedAsPending: boolean): Array<[Ledge
     case "SURVEY_PAYOUT":
       return [["ESCROW", -amount]];
     case "TOP_UP":
+    case "TOP_UP_PAYOS":
       return [["USER_AVAILABLE", amount]];
     case "VOUCHER_REDEMPTION":
       return [["USER_AVAILABLE", -amount]];
@@ -308,6 +311,11 @@ function journalOf(userId: string, row: MockTransaction, postedAsPending: boolea
       return {
         key: `topup-approval:${row.id}`,
         description: `Manual top-up approval: ${row.note} (${Math.abs(row.amount)} points)`,
+      };
+    case "TOP_UP_PAYOS":
+      return {
+        key: `topup-credit:${row.id}`,
+        description: `PayOS top-up credit: ${row.note} (${Math.abs(row.amount)} points)`,
       };
     case "SURVEY_ESCROW":
       return { key: `publish:${row.id}`, description: `Escrow lock for survey publish: ${row.note}` };

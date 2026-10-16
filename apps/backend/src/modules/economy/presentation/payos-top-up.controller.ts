@@ -6,9 +6,16 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
-import { PayosCheckoutInput, payosCheckoutSchema } from '@rescom/schemas';
+import {
+  ParsedListPayosTopUpsQuery,
+  PayosCheckoutInput,
+  listPayosTopUpsQuerySchema,
+  payosCheckoutSchema,
+} from '@rescom/schemas';
+
 import { SessionAuthGuard } from '../../auth/presentation/guards/session-auth.guard';
 import { CsrfGuard } from '../../auth/presentation/guards/csrf.guard';
 import { CurrentUser } from '../../auth/presentation/decorators';
@@ -42,6 +49,14 @@ export class PayosTopUpController {
     @Body(new ZodValidationPipe(payosCheckoutSchema)) body: PayosCheckoutInput,
   ) {
     return createSuccessEnvelope(await this.service.checkout(user.id, body));
+  }
+  @Get()
+  async list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(listPayosTopUpsQuerySchema))
+    query: ParsedListPayosTopUpsQuery,
+  ) {
+    return createSuccessEnvelope(await this.service.listOwned(user.id, query));
   }
   @Get(':id')
   async get(

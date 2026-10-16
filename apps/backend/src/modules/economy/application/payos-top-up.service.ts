@@ -553,6 +553,29 @@ export class PayosTopUpService {
     if (!row) throw new TopUpRequestNotFoundException(id);
     return this.dto(row);
   }
+  async listOwned(
+    userId: string,
+    query: { limit: number; offset: number },
+  ): Promise<{
+    items: PayosTopUpDto[];
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  }> {
+    const { items, total } = await this.options.repository.listByUser(
+      userId,
+      query,
+    );
+    return {
+      items: items.map((row) => this.dto(row)),
+      total,
+      limit: query.limit,
+      offset: query.offset,
+      hasMore: query.offset + items.length < total,
+    };
+  }
+
   private dto(row: PayosTopUp): PayosTopUpDto {
     return {
       id: row.id,

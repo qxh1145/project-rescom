@@ -8,6 +8,7 @@ export const walletBalanceSchema = z
     escrow: z.number().int().nonnegative(),
     frozen: z.number().int().nonnegative(),
     integrityHold: z.number().int().nonnegative(),
+    refundHold: z.number().int().nonnegative().default(0),
     total: z.number().int().nonnegative(),
   })
   .refine(
