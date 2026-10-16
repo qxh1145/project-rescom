@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: "2026-08-16 17:09:30"
-last_updated: 2026-10-15
+last_updated: 2026-10-16
 project: "project-rescom"
 project_key: "NOKEY"
 tracking_system: "file-system"
@@ -155,7 +155,7 @@ development_status:
   13-2-payment-provider-port-payos-adapter: done  # created 2026-10-15; port+adapter+fake+config only, no caller
   13-3-top-up-checkout-user-cancel-enable-guard: done  # created 2026-10-15; code review 2026-10-15 (3 patches applied); checkout+cancel+enable guard+pre-deploy script; first ECONOMY_TOPUP_STATUS_CHANGED producer
   13-4-payment-webhook-automatic-credit: done  # created 2026-10-15; refreshed vs 13.3 (merged PR #38 a269ea4); webhook+GET-verified CreditTopUp+mismatch+late payment
-  13-5-reconciliation-job-alerts-admin-recheck: backlog
+  13-5-reconciliation-job-alerts-admin-recheck: done  # created 2026-10-15; code review 2026-10-16 (14 patches applied, D1=C1 expiry, D2=FAILED audit); job+expiry+mismatch refresh+alerts (Outbox-deduped)+TOPUP_REFUND_MAILBOX+business-day helper+admin recheck; Sentry=tagged log until 11.4
   13-6-live-payos-probe-in-production: backlog
   13-7-wallet-top-up-screens: ready-for-dev  # created 2026-10-15; FE + 2 contract adds (PayOS history list, wallet refundHold default 0); needs 13.3 merged; expired notification waits on 13.5
   13-8-admin-top-up-console: backlog
