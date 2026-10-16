@@ -70,6 +70,7 @@ export interface UserTopUpRefundSummary {
     bankName: string | null;
     holderName: string | null;
     last4: string | null;
+    accountNumber: string | null;
     verified: boolean;
   };
   submittedAt: Date;

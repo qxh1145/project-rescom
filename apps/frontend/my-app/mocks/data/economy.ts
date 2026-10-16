@@ -29,7 +29,8 @@ function seedWallet(user: MockSessionUser): MockWallet {
   return user.profileComplete && user.email === "minh.le@fpt.edu.vn"
     ? // Figma pages 21–27 supersede page 7’s 112 available.
       // Escrow 140 = the two running publisher surveys in Figma 10 (100 + 40); available is after those locks.
-      { available: 186, pending: 18, escrow: 140, frozen: 0, integrityHold: 0, refundHold: 0 }
+      // Refund hold 50 = eligible REQUESTED top-up seed (Story 13.11).
+      { available: 186, pending: 18, escrow: 140, frozen: 0, integrityHold: 0, refundHold: 50 }
     : { available: 0, pending: 0, escrow: 0, frozen: 100, integrityHold: 0, refundHold: 0 };
 }
 
@@ -382,3 +383,66 @@ export function settleHeldSurveyReward(
 export function mockEscrowTotal(): number {
   return Object.values(wallets.get()).reduce((sum, wallet) => sum + wallet.escrow, 0);
 }
+
+/**
+ * Story 13.11 (Task 6): moves points available → refundHold and adds
+ * `topup-refund-hold:<topUpId>` mock transaction.
+ */
+export function holdTopUpRefund(
+  user: MockSessionUser,
+  input: { points: number; topUpId: string; orderCode: number },
+): MockTransaction {
+  transactionsOf(user);
+  updateWallet(user, (wallet) => {
+    wallet.available -= input.points;
+    wallet.refundHold = (wallet.refundHold ?? 0) + input.points;
+  });
+  const full: MockTransaction = {
+    id: `topup-refund-hold:${input.topUpId}`,
+    kind: "TOP_UP_REFUND_HOLD",
+    amount: -input.points,
+    status: "HELD",
+    note: `#${input.orderCode}`,
+    surveyId: null,
+    attemptId: null,
+    createdAt: nowIso(),
+    releasesAt: null,
+  };
+  transactions.update((all) => {
+    all[user.id].unshift(full);
+  });
+  return full;
+}
+
+/**
+ * Story 13.11 (Task 6): moves points refundHold → available and adds
+ * `topup-refund-withdraw:<topUpId>` mock transaction.
+ */
+export function withdrawTopUpRefund(
+  user: MockSessionUser,
+  input: { points: number; topUpId: string; orderCode: number },
+): MockTransaction {
+  transactionsOf(user);
+  updateWallet(user, (wallet) => {
+    // Release only what is actually held, so the mock never mints Điểm.
+    const released = Math.min(wallet.refundHold ?? 0, input.points);
+    wallet.refundHold = (wallet.refundHold ?? 0) - released;
+    wallet.available += released;
+  });
+  const full: MockTransaction = {
+    id: `topup-refund-withdraw:${input.topUpId}`,
+    kind: "TOP_UP_REFUND_RELEASE",
+    amount: input.points,
+    status: "AVAILABLE",
+    note: `#${input.orderCode}`,
+    surveyId: null,
+    attemptId: null,
+    createdAt: nowIso(),
+    releasesAt: null,
+  };
+  transactions.update((all) => {
+    all[user.id].unshift(full);
+  });
+  return full;
+}
+

@@ -239,14 +239,20 @@ export function flashSalesAt(now = Date.now()) {
         state: flashItemState(f, item, now) }; }) })) };
 }
 
-export function createVoucherQuote(userId: string, voucherId: string, viewer: { available: number; pending?: number }, now = Date.now()): QuoteDecision {
+export function createVoucherQuote(userId: string, voucherId: string, viewer: { available: number; pending?: number; refundHold?: number }, now = Date.now()): QuoteDecision {
   const catalog = rewardsCatalog.get();
   const v = catalog.vouchers.find((row) => row.id === voucherId && row.isVisible && row.state !== "ARCHIVED");
   if (!v) return { ok: false, status: 404, code: "VOUCHER_NOT_FOUND", details: {} };
   const { price, flash } = effectiveVoucherPrice(v, catalog.flashes, now);
   const status = effectiveStatus(v, catalog.flashes, now);
   if (status !== "AVAILABLE") return failure(status === "SOLD_OUT" ? "SOLD_OUT" : "VOUCHER_UNAVAILABLE", status === "SOLD_OUT" ? { voucherId, regularStockRemaining: 0 } : { voucherId, status });
-  if (viewer.available < price.points) return failure("INSUFFICIENT_POINTS", { required: price.points, available: viewer.available });
+  if (viewer.available < price.points) {
+    return failure("INSUFFICIENT_POINTS", {
+      required: price.points,
+      available: viewer.available,
+      ...(viewer.refundHold && viewer.refundHold > 0 ? { refundHoldPoints: viewer.refundHold } : {}),
+    });
+  }
   const quote: RedemptionQuote = { quoteId: mockId(), voucherId, userId, price, flashSaleItemId: flash?.item.id ?? null,
     expiresAt: iso(Math.min(now + 300000, flash ? Date.parse(flash.flash.endsAt) : Infinity)), flashEndsAt: flash?.flash.endsAt ?? null,
     balance: { available: viewer.available, after: viewer.available - price.points }, serverTime: iso(now) };
@@ -264,7 +270,7 @@ export function redemptionByKey(userId: string, key: string): Decision | null {
   return { ...body, replayed: true };
 }
 
-export function redeemVoucherQuote(userId: string, quoteId: string, viewer: { available: number; pending?: number }, now = Date.now(), key?: string, forcedCode?: string): Decision {
+export function redeemVoucherQuote(userId: string, quoteId: string, viewer: { available: number; pending?: number; refundHold?: number }, now = Date.now(), key?: string, forcedCode?: string): Decision {
   // Idempotency: reuse helpers from idempotency.ts (Task 5.3)
   const recordKey = key ? idempotencyRecordKey(userId, key) : null;
   if (recordKey) {
@@ -285,8 +291,8 @@ export function redeemVoucherQuote(userId: string, quoteId: string, viewer: { av
 
   // Task 7.2: forced error uses real details from current state
   const error = forcedCode
-    ? forcedError(forcedCode, v, catalog.flashes, viewer.available, now)
-    : decideRedemption(v, catalog.flashes, quote, viewer.available, now);
+    ? forcedError(forcedCode, v, catalog.flashes, viewer.available, now, viewer.refundHold)
+    : decideRedemption(v, catalog.flashes, quote, viewer.available, now, viewer.refundHold);
 
   if (error) {
     // Task 5.6: failure changes only history + idempotency record, not catalog/wallet

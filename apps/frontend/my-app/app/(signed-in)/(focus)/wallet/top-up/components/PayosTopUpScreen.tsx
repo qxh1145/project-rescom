@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { PayosTopUpDto, WalletBalanceDto } from "@rescom/schemas";
+import type { PayosTopUpDto, UserTopUpRefundRequest, WalletBalanceDto } from "@rescom/schemas";
 import { Mascot } from "@/components/brand/Mascot";
 import { Button, buttonClassName } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
@@ -20,15 +20,22 @@ import { isApiMockingEnabled } from "@/lib/api/config";
 import { useSession } from "@/lib/session/SessionProvider";
 import { usePayosPolling } from "@/lib/wallet/use-payos-polling";
 import { MANUAL_REFUNDED_COPY, topUpChip } from "@/lib/wallet/top-up-history";
+import {
+  refundSectionView,
+  refundTimelineSteps,
+} from "@/lib/wallet/top-up-refund";
 import { TopUpStatusChip } from "@/components/wallet/TopUpStatusChip";
 import { TopUpFrame } from "./TopUpFrame";
+import { RefundSection } from "./RefundSection";
+import { RefundResult } from "./RefundResult";
 
 interface PayosTopUpScreenProps {
   initialTopUp: PayosTopUpDto;
 }
 
 export function PayosTopUpScreen({ initialTopUp }: PayosTopUpScreenProps) {
-  const { refresh: refreshSession } = useSession();
+  const { user, refresh: refreshSession } = useSession();
+  const sessionEmail = user?.email ?? null;
   const { topUp: currentTopUp, state: pollState, recheck } = usePayosPolling(
     initialTopUp.id,
     initialTopUp,
@@ -40,6 +47,9 @@ export function PayosTopUpScreen({ initialTopUp }: PayosTopUpScreenProps) {
   const timedOut =
     topUp.status === "PROCESSING" && (pollState === "timed-out" || !shouldPoll(topUp));
 
+  // Local refund submission result view (A6)
+  const [refundResult, setRefundResult] = useState<UserTopUpRefundRequest | null>(null);
+
   // AC8: show the new balance on the SUCCESSFUL view.
   const [newBalance, setNewBalance] = useState<WalletBalanceDto | null>(null);
   useEffect(() => {
@@ -50,8 +60,11 @@ export function PayosTopUpScreen({ initialTopUp }: PayosTopUpScreenProps) {
       .catch(() => undefined);
     return () => controller.abort();
   }, [topUp.status]);
-  const chip = topUpChip(topUp.status, "PAYOS");
-  const timeline = payosTimeline(topUp);
+  const chip = topUpChip(topUp.status, "PAYOS", topUp.refund?.request?.status);
+  const timeline = [
+    ...payosTimeline(topUp),
+    ...(topUp.refund?.request ? refundTimelineSteps(topUp.refund.request) : []),
+  ];
 
   // Countdown timer for PROCESSING
   const [secondsLeft, setSecondsLeft] = useState<number>(() => {
@@ -103,28 +116,13 @@ export function PayosTopUpScreen({ initialTopUp }: PayosTopUpScreenProps) {
   const seconds = secondsLeft % 60;
   const countdownFormatted = `${minutes}:${seconds.toString().padStart(2, "0")}`;
 
-  return (
-    <>
-      <TopUpFrame
-        mobileTitle="Chi tiết nạp điểm"
-        exitHref="/wallet"
-        width={720}
-        desktopHeader={
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 id="top-up-dialog-title" className="text-[22px] font-extrabold text-ink">
-                Giao dịch PayOS #{topUp.orderCode}
-              </h1>
-              <p className="mt-1 text-body-sm text-ink-muted">
-                Tạo lúc {new Date(topUp.createdAt).toLocaleString("vi-VN")}
-              </p>
-            </div>
-            <TopUpStatusChip chip={chip} />
-          </div>
-        }
-      >
-        <div className="flex flex-col gap-6 lg:mt-4">
-          {/* Header Status Card */}
+  const refundView = refundSectionView(topUp);
+  const hasRefundSection = refundView.kind !== "hidden";
+  const frameWidth = refundResult ? 720 : hasRefundSection ? 1080 : 720;
+
+  const mainDetails = (
+    <div className="flex flex-col gap-6">
+      {/* Header Status Card */}
           <div className="flex flex-col items-center justify-center rounded-2xl border border-line bg-surface p-6 text-center shadow-xs">
             {topUp.status === "PROCESSING" && (
               <>
@@ -358,6 +356,63 @@ export function PayosTopUpScreen({ initialTopUp }: PayosTopUpScreenProps) {
             </div>
           </div>
         </div>
+  );
+
+  return (
+    <>
+      <TopUpFrame
+        mobileTitle="Chi tiết nạp điểm"
+        exitHref="/wallet"
+        width={frameWidth}
+        desktopHeader={
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 id="top-up-dialog-title" className="text-[22px] font-extrabold text-ink">
+                Giao dịch PayOS #{topUp.orderCode}
+              </h1>
+              <p className="mt-1 text-body-sm text-ink-muted">
+                Tạo lúc {new Date(topUp.createdAt).toLocaleString("vi-VN")}
+              </p>
+            </div>
+            <TopUpStatusChip chip={chip} />
+          </div>
+        }
+      >
+        {refundResult ? (
+          <RefundResult
+            request={refundResult}
+            orderCode={topUp.orderCode}
+            availableBalance={newBalance?.available ?? null}
+            onViewTransaction={() => setRefundResult(null)}
+          />
+        ) : hasRefundSection ? (
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_384px] gap-6 lg:mt-4">
+            {mainDetails}
+            <div className="flex flex-col">
+              <RefundSection
+                topUp={topUp}
+                sessionEmail={sessionEmail}
+                onRefundSubmitted={(req) => {
+                  recheck();
+                  refreshSession();
+                  setRefundResult(req);
+                  // Drop the pre-hold balance so A6 never shows a stale "Khả dụng còn".
+                  setNewBalance(null);
+                  getWalletBalance().then(setNewBalance).catch(() => undefined);
+                }}
+                onRefundWithdrawn={() => {
+                  recheck();
+                  refreshSession();
+                }}
+                recheck={recheck}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-6 lg:mt-4">
+            {mainDetails}
+          </div>
+        )}
       </TopUpFrame>
 
       {/* Cancel Dialog */}

@@ -73,6 +73,7 @@ function toUserRefundSummary(
       bankName: row.counterAccountBankName,
       holderName: row.counterAccountName,
       last4: maskLast4(row.counterAccountNumber),
+      accountNumber: row.counterAccountNumber,
       verified: row.destinationVerified,
     },
     submittedAt: row.createdAt,

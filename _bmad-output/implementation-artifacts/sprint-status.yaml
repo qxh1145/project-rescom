@@ -1,5 +1,5 @@
 # generated: 2026-08-16 17:09:30
-# last_updated: 2026-10-16
+# last_updated: 2026-10-17
 # project: project-rescom
 # project_key: NOKEY
 # tracking_system: file-system
@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: "2026-08-16 17:09:30"
-last_updated: 2026-10-16
+last_updated: 2026-10-17
 project: "project-rescom"
 project_key: "NOKEY"
 tracking_system: "file-system"
@@ -161,7 +161,7 @@ development_status:
   13-8-admin-top-up-console: done  # created 2026-10-15; 13.5 merged (30fb28c), recheck contract verified 2026-10-16; Figma B1 re-read; D1-D3 Owner-confirmed; code review 2026-10-16: 13 patches applied, checks green; visual check + Figma restyle done 2026-10-16 (uncommitted)
   13-9-amount-mismatch-resolution: done  # code review 2026-10-16: 4 patches applied, AC3 amended; re-review 2026-10-16: 5 edge patches applied; created 2026-10-16; branch feat/13-9 from d8da885; Figma 188:1260 + B3 189:2145/189:2296 re-read; D3-D5 + closed-link scope Owner-confirmed
   13-10-refund-request-refund-hold-withdrawal: done  # code review 2026-10-16: 7 patches applied; re-review 2026-10-16: 7 patches applied, 1 pre-existing defer; created 2026-10-16; branch feat/13-10 from 4c2e792; backend + labels only; D1+D6 Owner-confirmed, full STK Admin-only; implemented & verified 2026-10-16
-  13-11-refund-screens: backlog
+  13-11-refund-screens: done  # code review 2026-10-17: 16 patches applied (D1 schema .optional(), D2 TransferScreen reverted); created 2026-10-16; branch feat/13-11 from edbac15; Figma A4–A8 re-read (fix pass landed, unverified frames 196:3461/3588); FE + optional DTO fields + Task 1b BE read change (full account number to owner, refund.destination); Owner confirmed D1, D2/D7, D6
   13-12-admin-refund-resolution: backlog
   13-13-manual-top-up-retirement-production-enable: backlog
   epic-13-retrospective: optional

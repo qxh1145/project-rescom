@@ -52,6 +52,16 @@ test('error views include safe copy and one next action', () => {
   const insufficient = redeemErrorView({ code: 'INSUFFICIENT_POINTS', message: '', details: { required: 150, available: 120 } }, ctx);
   assert.match(insufficient.body, /66/); assert.deepEqual(insufficient.rows.map(r => r.value), ['150 điểm', '120 điểm', '30 điểm']);
   assert.doesNotMatch(redeemErrorView({ code: 'INSUFFICIENT_POINTS', message: '', details: { required: 150, available: 120 } }, { ...ctx, availableBefore: 120 }).body, /Một giao dịch/);
+  // Story 13.11 AC 10: refundHoldPoints row + sentence
+  const withHold = redeemErrorView({ code: 'INSUFFICIENT_POINTS', message: '', details: { required: 150, available: 120, refundHoldPoints: 250 } }, ctx);
+  assert.deepEqual(withHold.rows.map(r => r.value), ['150 điểm', '120 điểm', '250 điểm', '30 điểm']);
+  assert.equal(withHold.rows[2].label, 'Đang giữ chờ hoàn tiền');
+  assert.match(withHold.body, /250 Điểm đang giữ chờ hoàn tiền/);
+  for (const invalid of [0, -10, "250"]) {
+    const invalidView = redeemErrorView({ code: 'INSUFFICIENT_POINTS', message: '', details: { required: 150, available: 120, refundHoldPoints: invalid } }, ctx);
+    assert.deepEqual(invalidView.rows, insufficient.rows);
+    assert.equal(invalidView.body, insufficient.body);
+  }
   const sold = { code: 'SOLD_OUT', message: '', details: { voucherId: voucher.id, regularStockRemaining: 1 } };
   assert.equal(redeemErrorView(sold, ctx).primary.target, 'close'); assert.equal(redeemErrorView(sold, ctx).title, 'Vừa hết suất Flash Sale'); assert.equal(redeemErrorView(sold, { ...ctx, priceSource: 'BASE' }).title, 'Voucher vừa hết hàng');
   assert.equal(redeemErrorView({ ...sold, details: { ...sold.details, regularStockRemaining: 0 } }, ctx).primary.target, 'rewardsCategory');

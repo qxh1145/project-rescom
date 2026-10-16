@@ -59,7 +59,13 @@ export class PayosTopUpController {
   @Get()
   async list(
     @CurrentUser() user: AuthenticatedUser,
-    @Query(new ZodValidationPipe(listPayosTopUpsQuerySchema))
+    @Query(
+      new ZodValidationPipe(
+        listPayosTopUpsQuerySchema,
+        'VALIDATION_ERROR',
+        'query',
+      ),
+    )
     query: ParsedListPayosTopUpsQuery,
   ) {
     return createSuccessEnvelope(await this.service.listOwned(user.id, query));

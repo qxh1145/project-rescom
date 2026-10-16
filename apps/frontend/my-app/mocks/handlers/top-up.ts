@@ -5,6 +5,11 @@ import {
   listPayosTopUpsQuerySchema,
   listTopUpRequestsQuerySchema,
   payosCheckoutSchema,
+  submitTopUpRefundSchema,
+  type PayosTopUpDto,
+  type TopUpRefundUnavailableReason,
+  type UserTopUpRefundDestinationView,
+  type UserTopUpRefundRequest,
 } from "@rescom/schemas";
 import { apiUrl } from "@/lib/api/config";
 import {
@@ -13,11 +18,15 @@ import {
   createTopUp,
   findMockPayosTopUp,
   mockPayosRetryAfter,
+  payosTopUps,
   payosTopUpsOf,
   toTopUpDto,
   topUpsOf,
+  type MockPayosTopUp,
 } from "../data/top-up";
+import { holdTopUpRefund, walletOf, withdrawTopUpRefund } from "../data/economy";
 import { getMockSessionUser } from "../db/session";
+import { mockId, nowIso } from "../db/store";
 import { fail, missingCsrf, ok, unauthorized } from "../envelope";
 import { applyScenario, getActiveScenario } from "../scenarios";
 
@@ -198,21 +207,258 @@ export const topUpHandlers: RequestHandler[] = [
 
     return ok(toUserTopUpDto(cancelled));
   }),
+
+  // POST /economy/top-ups/payos/:id/refund-request
+  http.post(apiUrl("/economy/top-ups/payos/:id/refund-request"), async ({ params, request }) => {
+    const forced = await applyScenario("top-up");
+    if (forced) return forced;
+    const user = await getMockSessionUser();
+    if (!user) return unauthorized();
+    const csrf = missingCsrf(request);
+    if (csrf) return csrf;
+
+    const body = await readJson(request);
+    const parsed = submitTopUpRefundSchema.safeParse(body);
+    if (!parsed.success) {
+      return fail(400, "VALIDATION_ERROR", "Validation failed.", {
+        details: parsed.error.issues,
+      });
+    }
+
+    const id = String(params.id);
+    payosTopUpsOf(user);
+    const item = findMockPayosTopUp(id, user.id);
+    if (!item) {
+      return fail(404, "TOPUP_NOT_FOUND", "Top-up not found.");
+    }
+
+    // Refusal precedence per 13.10 AC 6
+    if (item.status !== "SUCCESSFUL") {
+      return fail(409, "TOPUP_REFUND_NOT_ALLOWED", "Top-up cannot be refunded.", {
+        details: { reason: "NOT_SUCCESSFUL" },
+      });
+    }
+    if (item.mismatchResolution === "CREDIT") {
+      return fail(409, "TOPUP_REFUND_NOT_ALLOWED", "Top-up cannot be refunded.", {
+        details: { reason: "MISMATCH_CREDITED" },
+      });
+    }
+    if (item.refund?.request?.status === "WITHDRAWN") {
+      return fail(409, "TOPUP_REFUND_NOT_ALLOWED", "Top-up cannot be refunded.", {
+        details: { reason: "WITHDRAWN" },
+      });
+    }
+    if (item.refund?.request) {
+      return fail(409, "TOPUP_REFUND_ALREADY_REQUESTED", "Top-up refund has already been requested.");
+    }
+
+    const deadline = item.refundDeadline ?? (item.paidAt ? new Date(Date.parse(item.paidAt) + 24 * 3600 * 1000).toISOString() : null);
+    if (deadline && Date.now() >= Date.parse(deadline)) {
+      return fail(409, "TOPUP_REFUND_NOT_ALLOWED", "Top-up cannot be refunded.", {
+        details: { reason: "DEADLINE_PASSED" },
+      });
+    }
+
+    // Eligibility check
+    const forcedNotEligible = getActiveScenario() === "refund-not-eligible";
+    const wallet = walletOf(user);
+    let eligibility: "ELIGIBLE" | "NOT_ELIGIBLE" = "ELIGIBLE";
+    let ineligibleReason: "SPENT_SINCE_TOP_UP" | "INSUFFICIENT_AVAILABLE" | null = null;
+
+    if (forcedNotEligible) {
+      eligibility = "NOT_ELIGIBLE";
+      ineligibleReason = "SPENT_SINCE_TOP_UP";
+    } else if (wallet.available < item.points) {
+      eligibility = "NOT_ELIGIBLE";
+      ineligibleReason = "INSUFFICIENT_AVAILABLE";
+    }
+
+    if (eligibility === "ELIGIBLE") {
+      holdTopUpRefund(user, {
+        points: item.points,
+        topUpId: item.id,
+        orderCode: item.orderCode,
+      });
+    }
+
+    const destination: UserTopUpRefundDestinationView = item.counterAccount
+      ? {
+          bankId: item.counterAccount.bankId,
+          bankName: item.counterAccount.bankName,
+          holderName: item.counterAccount.holderName,
+          accountNumber: item.counterAccount.accountNumber,
+          last4: item.counterAccount.accountNumber ? item.counterAccount.accountNumber.slice(-4) : null,
+          verified: Boolean(
+            item.counterAccount.bankId &&
+            item.counterAccount.accountNumber &&
+            item.counterAccount.holderName,
+          ),
+        }
+      : item.refund?.destination ?? {
+          bankId: "970436",
+          bankName: "Vietcombank",
+          holderName: "TRAN THI A",
+          accountNumber: "0123456789",
+          last4: "6789",
+          verified: true,
+        };
+
+    const reqDto: UserTopUpRefundRequest = {
+      id: mockId(),
+      status: "REQUESTED",
+      eligibility,
+      ineligibleReason,
+      reason: parsed.data.reason,
+      points: item.points,
+      amountVnd: item.amountVnd,
+      destination,
+      submittedAt: nowIso(),
+      withdrawnAt: null,
+    };
+
+    payosTopUps.update((all) => {
+      const list = all[user.id] ?? [];
+      const target = list.find((it) => it.id === id);
+      if (target) {
+        target.refund = {
+          canRequest: false,
+          unavailableReason: "ALREADY_REQUESTED",
+          destination,
+          request: reqDto,
+        };
+      }
+    });
+
+    return ok({ request: reqDto, replayed: false });
+  }),
+
+  // POST /economy/top-ups/payos/:id/refund-request/withdraw
+  http.post(apiUrl("/economy/top-ups/payos/:id/refund-request/withdraw"), async ({ params, request }) => {
+    const forced = await applyScenario("top-up");
+    if (forced) return forced;
+    const user = await getMockSessionUser();
+    if (!user) return unauthorized();
+    const csrf = missingCsrf(request);
+    if (csrf) return csrf;
+
+    const id = String(params.id);
+    payosTopUpsOf(user);
+    const item = findMockPayosTopUp(id, user.id);
+    if (!item || !item.refund?.request) {
+      return fail(404, "TOPUP_REFUND_NOT_FOUND", "Refund request not found.");
+    }
+
+    const currentReq = item.refund.request;
+    if (currentReq.status === "REFUNDED" || currentReq.status === "REJECTED") {
+      return fail(409, "REFUND_ALREADY_RESOLVED", "Refund request is already resolved.");
+    }
+
+    if (currentReq.status === "WITHDRAWN") {
+      return ok({ request: currentReq, replayed: true });
+    }
+
+    if (currentReq.eligibility === "ELIGIBLE") {
+      withdrawTopUpRefund(user, {
+        points: item.points,
+        topUpId: item.id,
+        orderCode: item.orderCode,
+      });
+    }
+
+    const withdrawnReq: UserTopUpRefundRequest = {
+      ...currentReq,
+      status: "WITHDRAWN",
+      withdrawnAt: nowIso(),
+    };
+
+    payosTopUps.update((all) => {
+      const list = all[user.id] ?? [];
+      const target = list.find((it) => it.id === id);
+      if (target) {
+        target.refund = {
+          canRequest: false,
+          unavailableReason: "WITHDRAWN",
+          destination: target.refund?.destination ?? currentReq.destination,
+          request: withdrawnReq,
+        };
+      }
+    });
+
+    return ok({ request: withdrawnReq, replayed: false });
+  }),
 ];
 
-function toUserTopUpDto(item: ReturnType<typeof createMockPayosTopUp>) {
+function toUserTopUpDto(item: MockPayosTopUp): PayosTopUpDto {
   const isSuccessful = item.status === "SUCCESSFUL";
   const deadline =
     isSuccessful && item.paidAt
       ? new Date(Date.parse(item.paidAt) + 24 * 3600 * 1000).toISOString()
       : null;
+  const refundDeadline = item.refundDeadline ?? deadline;
+
+  let destination: UserTopUpRefundDestinationView | null = null;
+  if (item.counterAccount) {
+    const verified = Boolean(
+      item.counterAccount.bankId &&
+      item.counterAccount.accountNumber &&
+      item.counterAccount.holderName,
+    );
+    destination = {
+      bankId: item.counterAccount.bankId,
+      bankName: item.counterAccount.bankName,
+      holderName: item.counterAccount.holderName,
+      accountNumber: item.counterAccount.accountNumber,
+      last4: item.counterAccount.accountNumber ? item.counterAccount.accountNumber.slice(-4) : null,
+      verified,
+    };
+  } else if (item.refund?.destination) {
+    destination = item.refund.destination;
+  } else if (isSuccessful) {
+    destination = {
+      bankId: "970436",
+      bankName: "Vietcombank",
+      holderName: "TRAN THI A",
+      accountNumber: "0123456789",
+      last4: "6789",
+      verified: true,
+    };
+  }
+
+  const now = Date.now();
+  let canRequest = false;
+  let unavailableReason: TopUpRefundUnavailableReason | null = null;
+
+  if (!isSuccessful) {
+    canRequest = false;
+    unavailableReason = "NOT_SUCCESSFUL";
+  } else if (item.mismatchResolution === "CREDIT") {
+    canRequest = false;
+    unavailableReason = "MISMATCH_CREDITED";
+  } else if (item.refund?.request?.status === "WITHDRAWN") {
+    canRequest = false;
+    unavailableReason = "WITHDRAWN";
+  } else if (item.refund?.request) {
+    canRequest = false;
+    unavailableReason = "ALREADY_REQUESTED";
+  } else if (refundDeadline && now >= Date.parse(refundDeadline)) {
+    canRequest = false;
+    unavailableReason = "DEADLINE_PASSED";
+  } else {
+    canRequest = true;
+    unavailableReason = null;
+  }
+
   return {
     ...item,
-    refundDeadline: item.refundDeadline ?? deadline,
-    refund: item.refund ?? {
-      canRequest: isSuccessful,
-      unavailableReason: isSuccessful ? null : ("NOT_SUCCESSFUL" as const),
-      request: null,
+    refundDeadline,
+    refund: {
+      canRequest: item.refund?.canRequest ?? canRequest,
+      unavailableReason:
+        item.refund?.unavailableReason !== undefined
+          ? item.refund.unavailableReason
+          : unavailableReason,
+      destination,
+      request: item.refund?.request ?? null,
     },
   };
 }

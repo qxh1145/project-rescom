@@ -45,8 +45,8 @@ const userOfRequest = async () => {
   return user;
 };
 const viewerOf = (user: NonNullable<Awaited<ReturnType<typeof userOfRequest>>>) => {
-  const { available, pending } = walletOf(user);
-  return { available, pending };
+  const { available, pending, refundHold } = walletOf(user);
+  return { available, pending, refundHold };
 };
 
 function respond(outcome: { ok: true; result: unknown } | { ok: false; status: number; code: string; details?: unknown }, successStatus: number) {

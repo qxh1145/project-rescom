@@ -277,8 +277,20 @@ describe('Top-Up Refund (HTTP e2e)', () => {
         .expect(404);
     });
 
-    it('never leaks counterAccountNumber in read API or refund response', async () => {
+    it('returns stored accountNumber to owner in GET/list/submit/withdraw responses and 404 for other user', async () => {
       const topUp = await seedSuccessfulTopUp(actor.id, 100);
+
+      // 0. GET before submit carries refund.destination with stored accountNumber
+      const getBeforeRes = await request(app.getHttpServer())
+        .get(`/economy/top-ups/payos/${topUp.id}`)
+        .set('Cookie', actor.cookie)
+        .expect(200);
+
+      const beforeDto = getBeforeRes.body.data;
+      expect(beforeDto.refund.destination).not.toBeNull();
+      expect(beforeDto.refund.destination.accountNumber).toBe('0123456789');
+      expect(beforeDto.refund.destination.last4).toBe('6789');
+      expect(beforeDto.refund.destination.verified).toBe(true);
 
       // 1. Submit refund
       const submitRes = await request(app.getHttpServer())
@@ -291,10 +303,10 @@ describe('Top-Up Refund (HTTP e2e)', () => {
 
       const refundData = submitRes.body.data.request;
       expect(refundData.destination.last4).toBe('6789');
+      expect(refundData.destination.accountNumber).toBe('0123456789');
       expect(
         (refundData.destination as any).counterAccountNumber,
       ).toBeUndefined();
-      expect((refundData.destination as any).accountNumber).toBeUndefined();
 
       // 2. GET /economy/top-ups/payos/:id
       const getRes = await request(app.getHttpServer())
@@ -307,11 +319,31 @@ describe('Top-Up Refund (HTTP e2e)', () => {
       expect(topUpDto.refundDeadline).not.toBeNull();
       expect(topUpDto.refund.request).not.toBeNull();
       expect(topUpDto.refund.request.destination.last4).toBe('6789');
+      expect(topUpDto.refund.request.destination.accountNumber).toBe('0123456789');
       expect(
         (topUpDto.refund.request.destination as any).counterAccountNumber,
       ).toBeUndefined();
 
-      // 3. Withdraw refund
+      // 3. List top-ups
+      const listRes = await request(app.getHttpServer())
+        .get('/economy/top-ups/payos')
+        .set('Cookie', actor.cookie)
+        .expect(200);
+      const listItem = listRes.body.data.items.find(
+        (i: any) => i.id === topUp.id,
+      );
+      expect(listItem.refund.destination.accountNumber).toBe('0123456789');
+      expect(listItem.refund.request.destination.accountNumber).toBe(
+        '0123456789',
+      );
+
+      // 4. Other user gets 404
+      await request(app.getHttpServer())
+        .get(`/economy/top-ups/payos/${topUp.id}`)
+        .set('Cookie', other.cookie)
+        .expect(404);
+
+      // 5. Withdraw refund
       const withdrawRes = await request(app.getHttpServer())
         .post(`/economy/top-ups/payos/${topUp.id}/refund-request/withdraw`)
         .set('Cookie', actor.cookie)
@@ -322,6 +354,9 @@ describe('Top-Up Refund (HTTP e2e)', () => {
 
       expect(withdrawRes.body.data.replayed).toBe(false);
       expect(withdrawRes.body.data.request.status).toBe('WITHDRAWN');
+      expect(withdrawRes.body.data.request.destination.accountNumber).toBe(
+        '0123456789',
+      );
     });
   });
 });

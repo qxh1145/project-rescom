@@ -1,5 +1,6 @@
 import { MAX_PUBLISHABLE_DURATION_MINUTES, SURVEY_DURATION_EXCEEDS_RESERVATION_CODE } from "@rescom/schemas";
 import { isApiError } from "../api/api-error.ts";
+import { refundHoldPointsFrom, refundHoldSentence } from "../wallet/refund-hold.ts";
 
 /** Vietnamese copy for Form Builder errors (codes: `form.exceptions.ts`, economy, ASSUMED AI routes). */
 
@@ -52,7 +53,12 @@ const PUBLISH_MESSAGES: Record<string, string> = {
 export function publishErrorMessage(error: unknown): string {
   if (!isApiError(error)) return "Chưa gửi duyệt được. Vui lòng thử lại.";
   if (error.kind === "network") return NETWORK;
-  return (error.code && PUBLISH_MESSAGES[error.code]) || "Chưa gửi duyệt được. Vui lòng thử lại.";
+  const base = (error.code && PUBLISH_MESSAGES[error.code]) || "Chưa gửi duyệt được. Vui lòng thử lại.";
+  if (error.code === "INSUFFICIENT_BALANCE" || error.code === "INSUFFICIENT_ESCROW_BALANCE") {
+    const hold = refundHoldPointsFrom(error.details);
+    if (hold > 0) return `${base} ${refundHoldSentence(hold)}`;
+  }
+  return base;
 }
 
 export function aiErrorMessage(error: unknown): string {

@@ -20,6 +20,8 @@ import {
   TOP_UP_REFUND_RESOLVE_KEY_PREFIX,
   TOP_UP_REFUND_WINDOW_MS,
   TOP_UP_REFUND_WITHDRAW_KEY_PREFIX,
+  userTopUpRefundDestinationSchema,
+  userTopUpRefundDestinationViewSchema,
   userTopUpRefundRequestSchema,
 } from './top-up-refund.schema';
 import { topUpCreditKey, topUpMismatchKey } from './payos-top-up.schema';
@@ -118,16 +120,57 @@ describe('Top-Up Refund Contracts (Story 13.10)', () => {
         holderName: 'NGUYEN VAN A',
         last4: '1234',
         verified: true,
+        accountNumber: '0123456789',
       },
       submittedAt: nowIso,
       withdrawnAt: null,
     };
 
-    it('parses valid user refund request summary', () => {
+    it('parses valid user refund request summary with 13.10 shape (no resolution fields)', () => {
       expect(userTopUpRefundRequestSchema.parse(validRequest)).toEqual(validRequest);
     });
 
-    it('never accepts full account number (strict object rejects unknown properties)', () => {
+    it('parses user refund request summary with optional resolution fields (Story 13.11)', () => {
+      const withResolution = {
+        ...validRequest,
+        status: 'REFUNDED' as const,
+        resolvedAt: nowIso,
+        rejectionReason: null,
+        bankTransferReference: 'FT123456789',
+        bankTransferredAt: nowIso,
+      };
+      expect(userTopUpRefundRequestSchema.parse(withResolution)).toEqual(withResolution);
+    });
+
+    it('validates userTopUpRefundDestinationViewSchema with optional accountNumber (string or null)', () => {
+      const validWithAcc = {
+        bankId: '970422',
+        bankName: 'MBBank',
+        holderName: 'NGUYEN VAN A',
+        last4: '1234',
+        verified: true,
+        accountNumber: '0123456789',
+      };
+      expect(userTopUpRefundDestinationViewSchema.parse(validWithAcc)).toEqual(validWithAcc);
+
+      const validWithNullAcc = {
+        ...validWithAcc,
+        accountNumber: null,
+      };
+      expect(userTopUpRefundDestinationViewSchema.parse(validWithNullAcc)).toEqual(validWithNullAcc);
+
+      // Optional for FE-before-BE rollout compatibility (13.11 review).
+      const { accountNumber: _omit, ...withoutAcc } = validWithAcc;
+      expect(userTopUpRefundDestinationViewSchema.safeParse(withoutAcc).success).toBe(true);
+      expect(
+        userTopUpRefundDestinationViewSchema.safeParse({
+          ...validWithAcc,
+          accountNumber: 123,
+        }).success,
+      ).toBe(false);
+    });
+
+    it('never accepts unknown properties (strict)', () => {
       expect(
         userTopUpRefundRequestSchema.safeParse({
           ...validRequest,
@@ -138,10 +181,7 @@ describe('Top-Up Refund Contracts (Story 13.10)', () => {
       expect(
         userTopUpRefundRequestSchema.safeParse({
           ...validRequest,
-          destination: {
-            ...validRequest.destination,
-            accountNumber: '0123456789',
-          },
+          extraUnknownKey: true,
         }).success,
       ).toBe(false);
     });

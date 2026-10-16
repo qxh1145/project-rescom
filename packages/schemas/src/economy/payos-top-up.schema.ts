@@ -36,6 +36,7 @@ export const payosCheckoutSchema = z.object({
 export type PayosCheckoutInput = z.infer<typeof payosCheckoutSchema>;
 import {
   topUpRefundUnavailableReasonSchema,
+  userTopUpRefundDestinationViewSchema,
   userTopUpRefundRequestSchema,
 } from "./top-up-refund.schema";
 
@@ -65,6 +66,8 @@ export const payosTopUpSchema = z.object({
     canRequest: z.boolean(),
     unavailableReason: topUpRefundUnavailableReasonSchema.nullable(),
     request: userTopUpRefundRequestSchema.nullable(),
+    // Optional so an FE deployed before the BE (Story 13.11) still parses; missing = null.
+    destination: userTopUpRefundDestinationViewSchema.nullable().optional(),
   }),
 });
 export type PayosTopUpDto = z.infer<typeof payosTopUpSchema>;

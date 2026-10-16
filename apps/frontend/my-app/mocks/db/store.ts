@@ -28,8 +28,9 @@ const PREFIX = "rescom:mockdb:";
  * 12: PayOS top-up and refundHold support (Story 13.7).
  * 13: PayOS amount-mismatch resolution fields (Story 13.9).
  * 14: PayOS refundDeadline and refund summary fields (Story 13.10).
+ * 15: PayOS destination unmasking, refund destination views, and full refund resolution fields (Story 13.11).
  */
-const SCHEMA_VERSION = 14;
+const SCHEMA_VERSION = 15;
 
 interface Persisted<T> {
   version: number;
