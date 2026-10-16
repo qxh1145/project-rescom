@@ -176,6 +176,7 @@ export const TOP_UP_AUDIT_EVENT_TYPES = {
   APPROVED: "AdminTopUpApproved",
   REJECTED: "AdminTopUpRejected",
   RECHECKED: "AdminTopUpRechecked",
+  EXPORTED: "AdminTopUpExported",
 } as const;
 
 /**
@@ -320,3 +321,11 @@ export function buildVietQrPayload(input: VietQrPayloadInput): string {
 
   return `${body}${crc16CcittFalse(body)}`;
 }
+
+export const topUpExportAuditEventPayloadSchema = z.object({
+  schemaVersion: z.literal(1), action: z.literal('TOPUP_EXPORTED'),
+  auditCategory: z.literal('MODERATION_ADMIN_ACTION'), exportId: z.string().uuid(),
+  adminId: z.string().uuid(), from: z.string(), to: z.string(),
+  rowCount: z.number().int().nonnegative(), correlationId: z.string().uuid().nullable(),
+  occurredAt: z.string().datetime(),
+}).strict();

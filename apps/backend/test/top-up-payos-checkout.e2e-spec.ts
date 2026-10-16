@@ -209,4 +209,3 @@ describe('PayOS checkout (HTTP)', () => {
     expect(otherListRes.body.data.total).toBe(0);
   });
 });
-

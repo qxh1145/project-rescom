@@ -15,7 +15,7 @@ import { TopUpReviewPanel } from "./TopUpReviewPanel";
  * Figma 11b "Duyệt nạp điểm" (63:369): requests table (605px) + "Đối chiếu
  * yêu cầu" panel (470px). ASSUMED below lg: the panel stacks under the table.
  */
-export function TopUpReviewScreen() {
+export function TopUpReviewScreen({ onChanged, embedded = false }: { onChanged?: () => void; embedded?: boolean } = {}) {
   const review = useTopUpReview();
   // The dialog keeps the request it was opened for, even if the list reloads under it.
   const [rejecting, setRejecting] = useState<AdminTopUp | null>(null);
@@ -28,8 +28,8 @@ export function TopUpReviewScreen() {
     review.clearFailure();
   }
 
-  return (
-    <AdminPage title="Duyệt nạp điểm" meta="Đối chiếu với sao kê ngân hàng trước khi cộng điểm">
+  const body = (
+    <>
       <div className="flex flex-col gap-4">
         {review.notice ? <Alert tone="info">{review.notice}</Alert> : null}
         {review.error ? (
@@ -43,7 +43,7 @@ export function TopUpReviewScreen() {
           </div>
         ) : null}
         <div
-          className="grid gap-5 lg:grid-cols-[minmax(0,605fr)_minmax(0,470fr)] lg:items-start"
+          className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,605fr)_minmax(0,470fr)] lg:items-start"
           aria-busy={review.loading || review.refreshing || undefined}
         >
           <TopUpQueueTable
@@ -64,7 +64,7 @@ export function TopUpReviewScreen() {
               onCheck={review.toggleCheck}
               busy={review.busy}
               error={failure?.action === "approve" ? failure.message : null}
-              onApprove={() => void review.review("approve", selected)}
+              onApprove={() => void review.review("approve", selected).then(done => { if (done) onChanged?.(); })}
               onReject={() => {
                 review.clearFailure();
                 setRejecting(selected);
@@ -81,11 +81,12 @@ export function TopUpReviewScreen() {
           onClose={closeReject}
           onConfirm={async (reason) => {
             const done = await review.review("reject", rejecting, reason);
-            if (done) setRejecting(null);
+            if (done) { setRejecting(null); onChanged?.(); }
             return done;
           }}
         />
       ) : null}
-    </AdminPage>
+    </>
   );
+  return embedded ? body : <AdminPage title="Duyệt nạp điểm" meta="Đối chiếu với sao kê ngân hàng trước khi cộng điểm">{body}</AdminPage>;
 }

@@ -116,8 +116,8 @@ test('error view actions, unknown codes and pagination edges', () => {
 });
 test('code-issue screens never import mocks or read code values', () => {
  const base = path.join(root, 'app/(signed-in)/(admin)/admin/code-issues');
- const files = ['page.tsx', 'hooks/use-admin-code-issues.ts', ...['CodeIssuesScreen', 'CodeIssueDrawer', 'ResolveCodeIssueDialog', 'CodeIssueToasts'].map(name => `components/${name}.tsx`)];
- for (const file of [...files.map(file => path.join(base, file)), path.join(root, 'lib/admin/rewards-code-issues-view.ts')]) {
+ const files = ['page.tsx', 'hooks/use-admin-code-issues.ts', ...['CodeIssuesScreen', 'CodeIssueDrawer', 'ResolveCodeIssueDialog'].map(name => `components/${name}.tsx`)];
+ for (const file of [...files.map(file => path.join(base, file)), path.join(root, 'lib/admin/rewards-code-issues-view.ts'), path.join(root, 'components/ui/Toasts.tsx')]) {
   const source = readFileSync(file, 'utf8');
   assert.doesNotMatch(source, /from ["'][^"']*mocks\//, file);
   assert.doesNotMatch(source, /replacementCode|\b(issue|item|row)\.code\b/, file);

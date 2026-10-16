@@ -287,3 +287,10 @@ export class PayosTopUpNotCancellableException extends Error {
     super('Top-up cannot be cancelled.');
   }
 }
+
+export class TopUpExportTooLargeException extends Error {
+  readonly code = 'TOPUP_EXPORT_TOO_LARGE';
+  constructor(public readonly maxRows: number) {
+    super(`Top-up export exceeds ${maxRows} rows.`);
+  }
+}

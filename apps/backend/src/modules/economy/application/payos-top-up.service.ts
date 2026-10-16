@@ -1,6 +1,13 @@
 import { randomUUID } from 'crypto';
 import {
   PAYOS_TOP_UP_EXPIRY_MS,
+  PAYOS_TOP_UP_EXPORT_MAX_ROWS,
+  adminPayosTopUpSchema,
+  listAdminPayosTopUpsQuerySchema,
+  exportAdminPayosTopUpsSchema,
+  ListAdminPayosTopUpsQuery,
+  ExportAdminPayosTopUps,
+  vietnamStartOfDay,
   POINT_VND_RATE,
   PayosTopUpDto,
   payosCheckoutSchema,
@@ -12,11 +19,14 @@ import {
   PayosRecheckResult,
   TOP_UP_AUDIT_EVENT_TYPES,
   TopUpRecheckAuditEventPayload,
+  topUpExportAuditEventPayloadSchema,
 } from '@rescom/schemas';
 import { z } from 'zod';
+import { toCsv } from '../../../common/http/csv';
 import { UnitOfWorkPort } from '../../../common/database/unit-of-work.port';
 import { LedgerService } from './ledger.service';
 import {
+  AdminPayosRow,
   PayosTopUp,
   PayosTopUpRepositoryPort,
   TopUpStatusEvent,
@@ -34,6 +44,7 @@ import {
   PayosTopUpAlreadyProcessingException,
   PayosTopUpNotCancellableException,
   TopUpRequestNotFoundException,
+  TopUpExportTooLargeException,
 } from './exceptions/economy.exceptions';
 
 export class PayosTopUpService {
@@ -57,6 +68,124 @@ export class PayosTopUpService {
   private id(): string {
     return this.options.generateId?.() ?? randomUUID();
   }
+  private dateStart(key: string): Date {
+    return vietnamStartOfDay(new Date(`${key}T12:00:00+07:00`));
+  }
+
+  private adminDto(row: AdminPayosRow) {
+    return adminPayosTopUpSchema.parse({
+      ...row,
+      createdAt: row.createdAt.toISOString(),
+      paidAt: row.paidAt?.toISOString() ?? null,
+      expiresAt: row.expiresAt.toISOString(),
+      cancelledAt: row.cancelledAt?.toISOString() ?? null,
+    });
+  }
+
+  async listForAdmin(query: ListAdminPayosTopUpsQuery) {
+    const parsed = listAdminPayosTopUpsQuerySchema.parse(query);
+    const q = parsed.q;
+    const { items, total } = await this.options.repository.listForAdmin({
+      limit: parsed.limit,
+      offset: parsed.offset,
+      status: parsed.status,
+      fromUtc: parsed.from ? this.dateStart(parsed.from) : undefined,
+      toUtcExclusive: parsed.to
+        ? new Date(this.dateStart(parsed.to).getTime() + 86_400_000)
+        : undefined,
+      // orderCode is a Postgres Int; larger digit strings fall through to email search.
+      ...(q && /^\d{1,10}$/.test(q) && Number(q) <= 2_147_483_647
+        ? { orderCode: Number(q) }
+        : q
+          ? { emailContains: q }
+          : {}),
+    });
+    return {
+      items: items.map((row) => this.adminDto(row)),
+      total,
+      limit: parsed.limit,
+      offset: parsed.offset,
+      hasMore: parsed.offset + items.length < total,
+    };
+  }
+
+  async tabCounts() {
+    return this.options.repository.countByChannel();
+  }
+
+  async exportForAdmin(
+    input: ExportAdminPayosTopUps & { adminId: string; correlationId?: string },
+  ): Promise<string> {
+    const { from, to } = exportAdminPayosTopUpsSchema.parse({
+      from: input.from,
+      to: input.to,
+    });
+    const rows = await this.options.repository.listForExport({
+      fromUtc: this.dateStart(from),
+      toUtcExclusive: new Date(this.dateStart(to).getTime() + 86_400_000),
+      limit: PAYOS_TOP_UP_EXPORT_MAX_ROWS + 1,
+    });
+    if (rows.length > PAYOS_TOP_UP_EXPORT_MAX_ROWS) {
+      throw new TopUpExportTooLargeException(PAYOS_TOP_UP_EXPORT_MAX_ROWS);
+    }
+    const exportId = this.id();
+    const correlationId = z.string().uuid().safeParse(input.correlationId)
+      .success
+      ? input.correlationId!
+      : null;
+    await this.options.repository.recordAdminAudit({
+      id: exportId,
+      idempotencyKey: `admin-audit:topup-export:${exportId}`,
+      eventType: TOP_UP_AUDIT_EVENT_TYPES.EXPORTED,
+      producer: 'economy-service',
+      aggregateType: 'TopUpExport',
+      aggregateId: exportId,
+      aggregateVersion: 1,
+      payload: topUpExportAuditEventPayloadSchema.parse({
+        schemaVersion: 1,
+        action: 'TOPUP_EXPORTED',
+        auditCategory: 'MODERATION_ADMIN_ACTION',
+        exportId,
+        adminId: input.adminId,
+        from,
+        to,
+        rowCount: rows.length,
+        correlationId,
+        occurredAt: this.now().toISOString(),
+      }),
+    });
+    const vnTime = (date: Date | null) =>
+      date
+        ? new Date(date.getTime() + 7 * 3_600_000)
+            .toISOString()
+            .replace('Z', '+07:00')
+        : null;
+    return toCsv(
+      [
+        'orderCode',
+        'userEmail',
+        'amountVnd',
+        'amountPaidVnd',
+        'points',
+        'pointsCredited',
+        'status',
+        'createdAt',
+        'paidAt',
+      ],
+      rows.map((row) => [
+        row.orderCode,
+        row.userEmail,
+        row.amountVnd,
+        row.amountPaidVnd,
+        row.points,
+        row.pointsCredited,
+        row.status,
+        vnTime(row.createdAt),
+        vnTime(row.paidAt),
+      ]),
+    );
+  }
+
   async checkout(
     userId: string,
     input: unknown,

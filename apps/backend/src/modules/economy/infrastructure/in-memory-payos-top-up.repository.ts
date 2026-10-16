@@ -1,5 +1,7 @@
 import { ProviderPaymentFacts } from '../application/ports/payment-provider.port';
 import {
+  AdminPayosListParams,
+  AdminPayosRow,
   CreateProcessingResult,
   ListReconcileCandidatesParams,
   PayosTopUp,
@@ -15,7 +17,80 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
   readonly alertEvents: TopUpAdminAlertEvent[] = [];
   readonly auditEvents: TopUpAdminAuditEvent[] = [];
   manualPending = 0;
+  manualCount = 0;
+  readonly userEmails = new Map<string, string>();
   private nextCode = 1_000_000_000;
+
+  private adminRow(row: PayosTopUp): AdminPayosRow {
+    return {
+      id: row.id,
+      userId: row.userId,
+      orderCode: row.orderCode,
+      amountVnd: row.amountVnd,
+      points: row.points,
+      pointsCredited: row.pointsCredited,
+      amountPaidVnd: row.amountPaidVnd,
+      status: row.status,
+      createdAt: row.createdAt,
+      paidAt: row.paidAt,
+      expiresAt: row.expiresAt,
+      cancelledAt: row.cancelledAt,
+      userEmail: this.userEmails.get(row.userId) ?? null,
+    };
+  }
+
+  async listForAdmin(
+    params: AdminPayosListParams,
+  ): Promise<{ items: AdminPayosRow[]; total: number }> {
+    const rows = [...this.rows.values()]
+      .filter(
+        (row) =>
+          (!params.status || row.status === params.status) &&
+          (!params.fromUtc || row.createdAt >= params.fromUtc) &&
+          (!params.toUtcExclusive || row.createdAt < params.toUtcExclusive) &&
+          (params.orderCode === undefined ||
+            row.orderCode === params.orderCode) &&
+          (!params.emailContains ||
+            (this.userEmails.get(row.userId) ?? '')
+              .toLowerCase()
+              .includes(params.emailContains.toLowerCase())),
+      )
+      .sort(
+        (a, b) =>
+          b.createdAt.getTime() - a.createdAt.getTime() ||
+          b.id.localeCompare(a.id),
+      );
+    return {
+      items: rows
+        .slice(params.offset, params.offset + params.limit)
+        .map((row) => this.adminRow(row)),
+      total: rows.length,
+    };
+  }
+
+  async listForExport(params: {
+    fromUtc: Date;
+    toUtcExclusive: Date;
+    limit: number;
+  }): Promise<AdminPayosRow[]> {
+    return [...this.rows.values()]
+      .filter(
+        (row) =>
+          row.createdAt >= params.fromUtc &&
+          row.createdAt < params.toUtcExclusive,
+      )
+      .sort(
+        (a, b) =>
+          a.createdAt.getTime() - b.createdAt.getTime() ||
+          a.id.localeCompare(b.id),
+      )
+      .slice(0, params.limit)
+      .map((row) => this.adminRow(row));
+  }
+
+  async countByChannel(): Promise<{ payos: number; manual: number }> {
+    return { payos: this.rows.size, manual: this.manualCount };
+  }
 
   async createProcessing(
     input: Pick<
@@ -195,7 +270,10 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
         return b.id.localeCompare(a.id);
       });
     const total = userRows.length;
-    const items = userRows.slice(options.offset, options.offset + options.limit);
+    const items = userRows.slice(
+      options.offset,
+      options.offset + options.limit,
+    );
     return { items, total };
   }
   async countManualPending(): Promise<number> {
@@ -259,4 +337,3 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
     this.auditEvents.push(event);
   }
 }
-

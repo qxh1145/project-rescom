@@ -71,7 +71,7 @@ function AdminSidebar({ counts }: { counts: AdminQueueCounts | undefined }) {
           ADMIN
         </span>
       </div>
-      <nav aria-label="Điều hướng quản trị" className="flex gap-1 overflow-x-auto px-4 pt-6 pb-4 lg:flex-col">
+      <nav aria-label="Điều hướng quản trị" className="relative flex gap-1 overflow-x-auto px-4 pt-6 pb-4 lg:flex-col">
         {ADMIN_NAV.map((item) => {
           const active = isAdminNavActive(item, pathname);
           const count = item.queue ? counts?.[item.queue] : undefined;

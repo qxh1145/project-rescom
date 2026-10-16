@@ -4,6 +4,8 @@ import { ProviderPaymentFacts } from '../application/ports/payment-provider.port
 import { PrismaService } from '../../../common/database/prisma.service';
 import { runInTransaction } from '../../../common/database/prisma-unit-of-work';
 import {
+  AdminPayosListParams,
+  AdminPayosRow,
   CreateProcessingResult,
   ListReconcileCandidatesParams,
   PayosTopUp,
@@ -47,6 +49,114 @@ function toTopUp(row: TopUpRequest): PayosTopUp {
 @Injectable()
 export class PrismaPayosTopUpRepository implements PayosTopUpRepositoryPort {
   constructor(private readonly prisma: PrismaService) {}
+
+  private readonly adminSelect = {
+    id: true,
+    userId: true,
+    orderCode: true,
+    amountVnd: true,
+    amount: true,
+    pointsCredited: true,
+    amountPaidVnd: true,
+    status: true,
+    createdAt: true,
+    paidAt: true,
+    expiresAt: true,
+    cancelledAt: true,
+    user: { select: { email: true } },
+  } as const;
+
+  private adminRow(row: {
+    id: string;
+    userId: string;
+    orderCode: number | null;
+    amountVnd: number;
+    amount: number;
+    pointsCredited: number | null;
+    amountPaidVnd: number | null;
+    status: TopUpStatus;
+    createdAt: Date;
+    paidAt: Date | null;
+    expiresAt: Date | null;
+    cancelledAt: Date | null;
+    user: { email: string };
+  }): AdminPayosRow {
+    if (row.orderCode === null || row.expiresAt === null)
+      throw new Error('Expected payOS top-up');
+    return {
+      id: row.id,
+      userId: row.userId,
+      orderCode: row.orderCode,
+      amountVnd: row.amountVnd,
+      points: row.amount,
+      pointsCredited: row.pointsCredited,
+      amountPaidVnd: row.amountPaidVnd,
+      status: row.status as AdminPayosRow['status'],
+      createdAt: row.createdAt,
+      paidAt: row.paidAt,
+      expiresAt: row.expiresAt,
+      cancelledAt: row.cancelledAt,
+      userEmail: row.user?.email ?? null,
+    };
+  }
+
+  async listForAdmin(
+    params: AdminPayosListParams,
+  ): Promise<{ items: AdminPayosRow[]; total: number }> {
+    const where: Prisma.TopUpRequestWhereInput = {
+      channel: 'PAYOS',
+      status: params.status,
+      orderCode: params.orderCode,
+      createdAt: { gte: params.fromUtc, lt: params.toUtcExclusive },
+      // ponytail: email contains scans users; add trigram index if admin search slows.
+      ...(params.emailContains
+        ? {
+            user: {
+              email: { contains: params.emailContains, mode: 'insensitive' },
+            },
+          }
+        : {}),
+    };
+    const [rows, total] = await Promise.all([
+      this.prisma.topUpRequest.findMany({
+        where,
+        select: this.adminSelect,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: params.limit,
+        skip: params.offset,
+      }),
+      this.prisma.topUpRequest.count({ where }),
+    ]);
+    return { items: rows.map((row) => this.adminRow(row)), total };
+  }
+
+  async listForExport(params: {
+    fromUtc: Date;
+    toUtcExclusive: Date;
+    limit: number;
+  }): Promise<AdminPayosRow[]> {
+    const rows = await this.prisma.topUpRequest.findMany({
+      where: {
+        channel: 'PAYOS',
+        createdAt: { gte: params.fromUtc, lt: params.toUtcExclusive },
+      },
+      select: this.adminSelect,
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: params.limit,
+    });
+    return rows.map((row) => this.adminRow(row));
+  }
+
+  async countByChannel(): Promise<{ payos: number; manual: number }> {
+    const groups = await this.prisma.topUpRequest.groupBy({
+      by: ['channel'],
+      _count: { _all: true },
+    });
+    return {
+      payos: groups.find((row) => row.channel === 'PAYOS')?._count._all ?? 0,
+      manual: groups.find((row) => row.channel === 'MANUAL')?._count._all ?? 0,
+    };
+  }
 
   async createProcessing(
     input: Pick<
@@ -500,4 +610,3 @@ export class PrismaPayosTopUpRepository implements PayosTopUpRepositoryPort {
     });
   }
 }
-

@@ -8,6 +8,7 @@ import { adminModerationHandlers } from "./admin-moderation";
 import { adminOverviewHandlers } from "./admin-overview";
 import { adminQualityHandlers } from "./admin-quality";
 import { adminTopUpHandlers } from "./admin-top-ups";
+import { adminPayosTopUpHandlers } from "./admin-payos-top-ups";
 import { adminTransactionHandlers } from "./admin-transactions";
 import { adminUserHandlers } from "./admin-users";
 import { authHandlers } from "./auth";
@@ -39,6 +40,7 @@ export const handlers = [
   ...adminOverviewHandlers,
   ...adminModerationHandlers,
   ...adminTopUpHandlers,
+  ...adminPayosTopUpHandlers,
   ...adminDisputeHandlers,
   ...adminQualityHandlers,
   ...adminUserHandlers,

@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  Header,
+  Res,
   Headers,
   HttpCode,
   HttpStatus,
@@ -12,10 +14,15 @@ import {
 } from '@nestjs/common';
 import {
   ListTopUpRequestsQuery,
+  ListAdminPayosTopUpsQuery,
+  ExportAdminPayosTopUps,
+  listAdminPayosTopUpsQuerySchema,
+  exportAdminPayosTopUpsSchema,
   RejectTopUpRequestInput,
   listTopUpRequestsQuerySchema,
   rejectTopUpRequestSchema,
 } from '@rescom/schemas';
+import { Response } from 'express';
 import { SessionAuthGuard } from '../../auth/presentation/guards/session-auth.guard';
 import { RolesGuard } from '../../auth/presentation/guards/roles.guard';
 import { CsrfGuard } from '../../auth/presentation/guards/csrf.guard';
@@ -56,6 +63,59 @@ export class AdminTopUpController {
   ) {
     const result = await this.topUpService.listForReview(query);
     return createSuccessEnvelope(result);
+  }
+
+  @Get('payos')
+  @Header('Cache-Control', 'no-store')
+  async listPayos(
+    @Query(
+      new ZodValidationPipe(
+        listAdminPayosTopUpsQuerySchema,
+        'VALIDATION_ERROR',
+        'query',
+      ),
+    )
+    query: ListAdminPayosTopUpsQuery,
+  ) {
+    return createSuccessEnvelope(
+      await this.payosTopUpService.listForAdmin(query),
+    );
+  }
+
+  @Get('tab-counts')
+  @Header('Cache-Control', 'no-store')
+  async tabCounts() {
+    return createSuccessEnvelope(await this.payosTopUpService.tabCounts());
+  }
+
+  @Post('payos/export')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(CsrfGuard, JsonOnlyGuard)
+  async exportPayos(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Body(
+      new ZodValidationPipe(
+        exportAdminPayosTopUpsSchema,
+        'VALIDATION_ERROR',
+        'body',
+      ),
+    )
+    body: ExportAdminPayosTopUps,
+    @Headers('x-correlation-id') correlationId: string | undefined,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const csv = await this.payosTopUpService.exportForAdmin({
+      ...body,
+      adminId: admin.id,
+      correlationId,
+    });
+    response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="rescom-payos-topups-${body.from}-${body.to}.csv"`,
+    );
+    response.setHeader('Cache-Control', 'no-store');
+    return csv;
   }
 
   @Post(':id/approve')
