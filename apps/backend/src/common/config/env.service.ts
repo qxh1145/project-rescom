@@ -85,6 +85,10 @@ export class EnvService {
     return this.config.PAYOS_ENABLED;
   }
 
+  get payosWebhookCapture(): boolean {
+    return this.config.PAYOS_WEBHOOK_CAPTURE;
+  }
+
   get payosCredentials(): {
     clientId: string;
     apiKey: string;

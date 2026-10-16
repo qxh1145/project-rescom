@@ -1,5 +1,6 @@
 import {
   PaymentProviderUnavailableError,
+  type ConfirmedWebhook,
   type CreatePaymentInput,
   type CreatedPayment,
   type PaymentProviderPort,
@@ -13,6 +14,7 @@ import {
 } from './payos-mapping';
 
 export class FakePaymentProvider implements PaymentProviderPort {
+  readonly confirmCalls: string[] = [];
   readonly createCalls: CreatePaymentInput[] = [];
   readonly cancelCalls: { orderCode: number; reason?: string }[] = [];
   private readonly payments = new Map<number, PaymentLinkLike>();
@@ -29,6 +31,17 @@ export class FakePaymentProvider implements PaymentProviderPort {
       this.failing = null;
       throw new PaymentProviderUnavailableError();
     }
+  }
+  async confirmWebhook(webhookUrl: string): Promise<ConfirmedWebhook> {
+    this.check('confirmWebhook');
+    this.confirmCalls.push(webhookUrl);
+    return { webhookUrl, accountName: 'TEST', accountNumberLast4: '6789' };
+  }
+  async getPaymentRecord(orderCode: number): Promise<unknown> {
+    this.check('getPaymentRecord');
+    const link = this.payments.get(orderCode);
+    if (!link) throw new PaymentProviderUnavailableError();
+    return link;
   }
   async createPayment(input: CreatePaymentInput): Promise<CreatedPayment> {
     this.check('createPayment');

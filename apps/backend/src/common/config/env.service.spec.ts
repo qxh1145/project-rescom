@@ -22,6 +22,16 @@ describe('EnvService', () => {
     SMTP_PASSWORD: 'smtp-password',
   };
 
+  it('defaults webhook capture off and accepts explicit true', () => {
+    expect(new EnvService(validBaseEnv).payosWebhookCapture).toBe(false);
+    expect(
+      new EnvService({
+        ...validBaseEnv,
+        PAYOS_WEBHOOK_CAPTURE: 'true',
+      }).payosWebhookCapture,
+    ).toBe(true);
+  });
+
   it('should initialize successfully with valid configuration', () => {
     const service = new EnvService(validBaseEnv);
     expect(service.port).toBe(4000);

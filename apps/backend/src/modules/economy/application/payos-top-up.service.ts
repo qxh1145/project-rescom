@@ -61,6 +61,7 @@ import {
   TopUpMismatchAmountChangedException,
   TopUpMismatchNothingToCreditException,
 } from './exceptions/economy.exceptions';
+import { redactPayosPayload } from './payos-redact';
 
 export class PayosTopUpService {
   constructor(
@@ -74,6 +75,7 @@ export class PayosTopUpService {
       limit: number;
       windowSeconds: number;
       logger: Pick<Console, 'warn' | 'log'>;
+      captureWebhooks?: boolean;
       now?: () => Date;
       generateId?: () => string;
     },
@@ -489,6 +491,10 @@ export class PayosTopUpService {
     rawBody: unknown,
   ): Promise<{ outcome: 'IGNORED' | 'APPLIED' }> {
     const verified = await this.options.provider.verifyWebhook(rawBody);
+    if (this.options.captureWebhooks)
+      this.options.logger.log('payOS webhook capture', {
+        body: redactPayosPayload(rawBody),
+      });
     const row = await this.options.repository.findByOrderCode(
       verified.orderCode,
     );
@@ -525,6 +531,11 @@ export class PayosTopUpService {
       return { outcome: 'IGNORED' };
     }
     const res = await this.applySnapshot(row.id, snapshot);
+    if (res.outcome === 'APPLIED' && res.effect === 'CREDIT')
+      this.options.logger.log('payOS webhook credited', {
+        orderCode: row.orderCode,
+        topUpId: row.id,
+      });
     return { outcome: res.outcome };
   }
   async applySnapshot(

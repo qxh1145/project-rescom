@@ -17,7 +17,7 @@ import {
 
 const userId = '2fb40564-05e2-4496-a043-bb3036001ad1';
 describe('PayosTopUpService webhook', () => {
-  function setup() {
+  function setup(captureWebhooks = false) {
     const repository = new InMemoryPayosTopUpRepository();
     const provider = new FakePaymentProvider(PAYOS_TEST_CHECKSUM_KEY);
     const ledger = new LedgerService(new InMemoryLedgerRepository());
@@ -30,10 +30,111 @@ describe('PayosTopUpService webhook', () => {
       appBaseUrl: 'http://localhost',
       limit: 5,
       windowSeconds: 600,
+      captureWebhooks,
       logger,
     });
     return { repository, provider, ledger, service, logger };
   }
+
+  it('captures only verified webhook bodies when enabled and masks account fields', async () => {
+    const { service, logger } = setup(true);
+    const data = buildPayosWebhookData();
+    const body = signPayosWebhook(data);
+    await expect(
+      service.handleWebhook({ ...body, signature: 'bad' }),
+    ).rejects.toBeInstanceOf(PaymentProviderSignatureError);
+    expect(logger.log).not.toHaveBeenCalledWith(
+      'payOS webhook capture',
+      expect.anything(),
+    );
+
+    await expect(service.handleWebhook(body)).resolves.toEqual({
+      outcome: 'IGNORED',
+    });
+    expect(logger.log).toHaveBeenCalledWith('payOS webhook capture', {
+      body: {
+        ...body,
+        data: {
+          ...data,
+          accountNumber: '****6789',
+          counterAccountNumber: '****3456',
+          counterAccountName: 'T***',
+        },
+      },
+    });
+    expect(
+      logger.log.mock.calls.filter(
+        ([message]) => message === 'payOS webhook capture',
+      ),
+    ).toHaveLength(1);
+    expect(data.counterAccountNumber).toBe('123456');
+  });
+
+  it('logs only applied webhook credits, not ignored or mismatched payments', async () => {
+    const { service, provider, logger } = setup();
+    const { topUp } = await service.checkout(userId, { amountVnd: 20_000 });
+    const body = signPayosWebhook(
+      buildPayosWebhookData({
+        orderCode: topUp.orderCode,
+        paymentLinkId: String(topUp.orderCode),
+      }),
+    );
+    expect(
+      await service.handleWebhook(
+        signPayosWebhook(
+          buildPayosWebhookData({ orderCode: topUp.orderCode + 1 }),
+        ),
+      ),
+    ).toEqual({ outcome: 'IGNORED' });
+    provider.setPayment(
+      topUp.orderCode,
+      buildPaymentLink({
+        orderCode: topUp.orderCode,
+        id: String(topUp.orderCode),
+        amountPaid: 10_000,
+      }),
+    );
+    expect(await service.handleWebhook(body)).toEqual({ outcome: 'APPLIED' });
+    expect(logger.log).not.toHaveBeenCalledWith(
+      'payOS webhook capture',
+      expect.anything(),
+    );
+    expect(logger.log).not.toHaveBeenCalledWith(
+      'payOS webhook credited',
+      expect.anything(),
+    );
+  });
+
+  it('logs webhook credit once after successful application', async () => {
+    const { service, provider, logger } = setup();
+    const { topUp } = await service.checkout(userId, { amountVnd: 20_000 });
+    provider.setPayment(
+      topUp.orderCode,
+      buildPaymentLink({
+        orderCode: topUp.orderCode,
+        id: String(topUp.orderCode),
+      }),
+    );
+    const body = signPayosWebhook(
+      buildPayosWebhookData({
+        orderCode: topUp.orderCode,
+        paymentLinkId: String(topUp.orderCode),
+      }),
+    );
+    expect(await service.handleWebhook(body)).toEqual({ outcome: 'APPLIED' });
+    expect(await service.handleWebhook(body)).toEqual({ outcome: 'IGNORED' });
+    expect(
+      logger.log.mock.calls.filter(
+        ([message]) => message === 'payOS webhook credited',
+      ),
+    ).toEqual([
+      [
+        'payOS webhook credited',
+        { orderCode: topUp.orderCode, topUpId: topUp.id },
+      ],
+    ]);
+  });
+
   it('requires verified signature and server GET, credits exactly once, permits late payment', async () => {
     const { repository, provider, ledger, service } = setup();
     const { topUp } = await service.checkout(userId, { amountVnd: 20_000 });

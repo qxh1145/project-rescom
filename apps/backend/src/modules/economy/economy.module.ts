@@ -178,6 +178,7 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
           appBaseUrl: env.emailAppBaseUrl,
           limit: env.payosCheckoutLimit,
           windowSeconds: env.payosCheckoutWindowSeconds,
+          captureWebhooks: env.payosWebhookCapture,
           logger: new Logger(PayosTopUpService.name),
         }),
       inject: [
