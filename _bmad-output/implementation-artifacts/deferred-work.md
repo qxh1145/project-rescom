@@ -457,7 +457,7 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 
 ## Deferred from: code review of 13-2-payment-provider-port-payos-adapter.md (2026-10-15)
 
-- `paymentFacts` (payos-mapping.ts) takes the last `transactions[]` element as latest for `providerReference`/`paidAt`; verify payOS ordering against real captures in Story 13.6.
+- `paymentFacts` (payos-mapping.ts) takes the last `transactions[]` element as latest for `providerReference`/`paidAt`; verify payOS ordering against real captures. Still open after Story 13.6: the live GET capture (`payment-link-paid-live.json`) had one transaction, so ordering was not shown.
 - **Resolved by 13.3:** `createPaymentProvider` binds the live payOS client whenever credentials exist, regardless of `PAYOS_ENABLED`; only checkout is flag-gated; cancel, webhook, reconciliation, probe remain available.
 - **Resolved by 13.3:** `createPayment` timeout/connection errors are outcome-unknown (link may already exist) but surface as plain `PaymentProviderUnavailableError`; checkout marks row CANCELLED retaining orderCode, never retries create; 13.4/13.5 reconcile late payments by orderCode.
 - `mapPaymentLink` maps `CANCELLED`/`FAILED`/`EXPIRED` to `CANCELLED`/`EXPIRED` even when `amountPaid > 0` (kept per AD-25, decided by Quan 2026-10-15). Story 13.5 reconciliation must alert/route to refund mailbox when `facts.amountPaidVnd > 0` on these effects.
