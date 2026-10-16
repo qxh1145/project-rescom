@@ -1,0 +1,27 @@
+{
+  "_source": "production capture 2026-10-16 (Story 13.6), redacted (GET response, unsigned); bank memo and reference replaced with same-shape placeholders (public repo)",
+  "id": "dfd6e70664d94c809af2d5873c2735e7",
+  "orderCode": 1000000001,
+  "amount": 10000,
+  "amountPaid": 10000,
+  "amountRemaining": 0,
+  "status": "PAID",
+  "createdAt": "2026-10-16T20:02:04+07:00",
+  "transactions": [
+    {
+      "accountNumber": "****9870",
+      "amount": 10000,
+      "counterAccountBankId": "970422",
+      "counterAccountBankName": null,
+      "counterAccountName": null,
+      "counterAccountNumber": "****0614",
+      "description": "000000000000-CS000000000 RC0000001-CHUYEN TIEN-OQCH000XXXXX-MOMO000000000000MOMO",
+      "reference": "FT00000000000001",
+      "transactionDateTime": "2026-10-16T20:02:00+07:00",
+      "virtualAccountName": null,
+      "virtualAccountNumber": null
+    }
+  ],
+  "canceledAt": null,
+  "cancellationReason": null
+}

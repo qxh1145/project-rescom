@@ -60,7 +60,7 @@ curl -i -X POST https://app.rescom.io.vn/api/economy/top-ups/payos/webhook -H 'c
 **4. Probe.**
 
 ```bash
-$DC exec -e PROBE_USER_EMAIL=knightdragon184@gmail.com backend node dist/apps/backend/src/scripts/payos-probe.js
+$DC exec -e PROBE_USER_EMAIL=<owner-email> backend node dist/apps/backend/src/scripts/payos-probe.js
 ```
 
 **5. Log chứng cứ.**

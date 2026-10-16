@@ -146,22 +146,37 @@ describe('payOS offline contract', () => {
       PaymentProviderUnavailableError,
     );
   });
-  it.each(['webhook-paid', 'webhook-paid-null-counter-account'])(
+  const nullCounter = {
+    counterAccountBankId: null,
+    counterAccountBankName: null,
+    counterAccountName: null,
+    counterAccountNumber: null,
+  };
+  // Story 13.6 production capture: webhook sends bank name "", GET sends null;
+  // both map to null. Webhook time has no zone (+07:00), GET is ISO with zone.
+  const liveFacts = {
+    amountPaidVnd: 10000,
+    providerReference: 'FT00000000000001',
+    paidAt: new Date('2026-10-16T13:02:00Z'),
+    counterAccountBankId: '970422',
+    counterAccountBankName: null,
+    counterAccountName: null,
+    counterAccountNumber: '****0614',
+  };
+  it.each([
+    ['webhook-paid', 1234567890, {}],
+    ['webhook-paid-null-counter-account', 1234567890, nullCounter],
+    ['webhook-paid-live', 1000000001, liveFacts],
+  ])(
     'validates recorded %s with SDK and provider',
-    async (name) => {
+    async (name, orderCode, facts) => {
       const { _source, ...webhook } = fixture(name);
       await expect(client.webhooks.verify(webhook)).resolves.toMatchObject({
-        orderCode: 1234567890,
+        orderCode,
       });
       const verified = await provider.verifyWebhook(webhook);
-      expect(verified.orderCode).toBe(1234567890);
-      if (name.endsWith('null-counter-account'))
-        expect(verified.facts).toMatchObject({
-          counterAccountBankId: null,
-          counterAccountBankName: null,
-          counterAccountName: null,
-          counterAccountNumber: null,
-        });
+      expect(verified.orderCode).toBe(orderCode);
+      expect(verified.facts).toMatchObject(facts);
       const tampered = { ...webhook, data: { ...webhook.data, amount: 1 } };
       await expect(client.webhooks.verify(tampered)).rejects.toThrow();
       await expect(provider.verifyWebhook(tampered)).rejects.toBeInstanceOf(
@@ -170,19 +185,15 @@ describe('payOS offline contract', () => {
     },
   );
   it.each([
-    ['payment-link-paid', 'CREDIT'],
-    ['payment-link-underpaid', 'AMOUNT_MISMATCH'],
-    ['payment-link-cancelled', 'CANCELLED'],
-  ])('maps recorded %s to %s', (name, effect) => {
+    ['payment-link-paid', 20000, 'CREDIT', nullCounter],
+    ['payment-link-underpaid', 20000, 'AMOUNT_MISMATCH', nullCounter],
+    ['payment-link-cancelled', 20000, 'CANCELLED', nullCounter],
+    ['payment-link-paid-live', 10000, 'CREDIT', liveFacts],
+  ])('maps recorded %s to %s', (name, expectedAmountVnd, effect, facts) => {
     const { _source, ...link } = fixture(name);
-    expect(mapPaymentLink(link, 20000)).toMatchObject({
+    expect(mapPaymentLink(link, expectedAmountVnd)).toMatchObject({
       effect,
-      facts: {
-        counterAccountBankId: null,
-        counterAccountBankName: null,
-        counterAccountName: null,
-        counterAccountNumber: null,
-      },
+      facts,
     });
   });
 });

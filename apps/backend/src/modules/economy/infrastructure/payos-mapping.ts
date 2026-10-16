@@ -90,9 +90,11 @@ export function paymentFacts(
     ...Object.fromEntries(
       counterFields.map((field) => [
         field,
-        transactions.find((transaction) => transaction[field] != null)?.[
-          field
-        ] ?? null,
+        // Live webhook sends "" where GET sends null (Story 13.6 capture).
+        transactions.find(
+          (transaction) =>
+            transaction[field] != null && transaction[field] !== '',
+        )?.[field] ?? null,
       ]),
     ),
   } as ProviderPaymentFacts;
