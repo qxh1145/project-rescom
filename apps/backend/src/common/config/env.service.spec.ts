@@ -896,25 +896,36 @@ describe('EnvService', () => {
           }),
       ).toThrow(/PAYOS_CHECKOUT_WINDOW_SECONDS/);
       expect(blank.payosCredentials).toBeNull();
+      expect(blank.topUpRefundMailbox).toBeNull();
       expect(
         () => new EnvService({ ...validBaseEnv, PAYOS_CLIENT_ID: 'client' }),
       ).toThrow(/PAYOS_API_KEY.*PAYOS_CHECKSUM_KEY/);
       expect(
+        () => new EnvService({ ...validBaseEnv, PAYOS_CLIENT_ID: 'client' }),
+      ).toThrow(/TOPUP_REFUND_MAILBOX/);
+      expect(
         () => new EnvService({ ...validBaseEnv, PAYOS_ENABLED: 'true' }),
       ).toThrow(/PAYOS_CLIENT_ID.*PAYOS_API_KEY.*PAYOS_CHECKSUM_KEY/);
+      expect(
+        () => new EnvService({ ...validBaseEnv, PAYOS_ENABLED: 'true' }),
+      ).toThrow(/TOPUP_REFUND_MAILBOX/);
       const keys = {
         PAYOS_CLIENT_ID: 'client',
         PAYOS_API_KEY: 'api-key',
         PAYOS_CHECKSUM_KEY: 'checksum-key',
+        TOPUP_REFUND_MAILBOX: 'refunds@rescom.vn',
       };
-      expect(
-        new EnvService({ ...validBaseEnv, ...keys, PAYOS_ENABLED: 'true' })
-          .payosCredentials,
-      ).toEqual({
+      const configured = new EnvService({
+        ...validBaseEnv,
+        ...keys,
+        PAYOS_ENABLED: 'true',
+      });
+      expect(configured.payosCredentials).toEqual({
         clientId: 'client',
         apiKey: 'api-key',
         checksumKey: 'checksum-key',
       });
+      expect(configured.topUpRefundMailbox).toBe('refunds@rescom.vn');
       expect(
         () =>
           new EnvService({

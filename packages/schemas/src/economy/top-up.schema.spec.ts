@@ -14,11 +14,14 @@ import {
   pointsToVnd,
   rejectTopUpRequestSchema,
   topUpAdminAuditEventPayloadSchema,
+  topUpRecheckAuditEventPayloadSchema,
   topUpReferenceSchema,
   topUpRequestSchema,
   topUpReviewResultSchema,
   topUpStatusSchema,
+  TOP_UP_AUDIT_EVENT_TYPES,
 } from './top-up.schema';
+
 import { MAX_PAGINATION_OFFSET } from '../common/pagination.schema';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
@@ -325,5 +328,57 @@ describe('Top-up schemas (Story 6.6, FR-34/FR-35)', () => {
         }).success,
       ).toBe(false);
     });
+
+    it('validates recheck audit event payload and includes RECHECKED event type', () => {
+      expect(TOP_UP_AUDIT_EVENT_TYPES.RECHECKED).toBe('AdminTopUpRechecked');
+      expect(
+        topUpRecheckAuditEventPayloadSchema.safeParse({
+          schemaVersion: 1,
+          action: 'TOPUP_RECHECKED',
+          auditCategory: 'MODERATION_ADMIN_ACTION',
+          topUpId: TOP_UP_ID,
+          adminId: ADMIN_ID,
+          orderCode: 1234567890,
+          result: 'CREDITED',
+          statusBefore: 'PROCESSING',
+          statusAfter: 'SUCCESSFUL',
+          correlationId: CORRELATION_ID,
+          occurredAt: '2026-10-15T12:00:00.000Z',
+        }).success,
+      ).toBe(true);
+
+      expect(
+        topUpRecheckAuditEventPayloadSchema.safeParse({
+          schemaVersion: 1,
+          action: 'TOPUP_RECHECKED',
+          auditCategory: 'MODERATION_ADMIN_ACTION',
+          topUpId: TOP_UP_ID,
+          adminId: ADMIN_ID,
+          orderCode: 1234567890,
+          result: 'PROVIDER_UNAVAILABLE',
+          statusBefore: 'PROCESSING',
+          statusAfter: 'PROCESSING',
+          correlationId: null,
+          occurredAt: '2026-10-15T12:00:00.000Z',
+        }).success,
+      ).toBe(true);
+
+      expect(
+        topUpRecheckAuditEventPayloadSchema.safeParse({
+          schemaVersion: 1,
+          action: 'TOPUP_RECHECKED',
+          auditCategory: 'MODERATION_ADMIN_ACTION',
+          topUpId: TOP_UP_ID,
+          adminId: ADMIN_ID,
+          orderCode: 1234567890,
+          result: 'FAILED',
+          statusBefore: 'PROCESSING',
+          statusAfter: 'PROCESSING',
+          correlationId: null,
+          occurredAt: '2026-10-15T12:00:00.000Z',
+        }).success,
+      ).toBe(true);
+    });
   });
 });
+

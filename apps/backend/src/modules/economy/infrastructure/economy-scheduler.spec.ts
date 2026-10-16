@@ -1,8 +1,13 @@
 import { testJobContext } from '../../../common/scheduler/test-job-context';
-import { OutboxPayloadInvalidError } from '../../../common/scheduler/outbox/outbox-handler';
+import {
+  OutboxHandlerRegistry,
+  OutboxPayloadInvalidError,
+} from '../../../common/scheduler/outbox/outbox-handler';
+import { ScheduledJobRegistry } from '../../../common/scheduler/scheduled-job';
 import { PendingReleaseJob } from './jobs/pending-release.job';
 import { StarterExpiryJob } from './jobs/starter-expiry.job';
 import { InternalRewardRequestedHandler } from './outbox/internal-reward-requested.handler';
+import { EconomySchedulerRegistrar } from './economy-scheduler.registrar';
 
 const ids = {
   response: '11111111-1111-4111-8111-111111111111',
@@ -258,5 +263,51 @@ describe('StarterExpiryJob (Story IR.2b Task 7)', () => {
       hasMore: false,
     });
     expect(JSON.stringify(summary)).not.toContain('u1');
+  });
+});
+
+describe('EconomySchedulerRegistrar (Story 13.5 Task 5 & 6)', () => {
+  it('registers payos-reconcile, starter-expiry, pending-release and alert handler', () => {
+    const jobs = new ScheduledJobRegistry();
+    const handlers = new OutboxHandlerRegistry();
+    const rewards = {} as any;
+    const starterPoints = {} as any;
+    const topUpNotification = {
+      name: 'economy.top-up-notification',
+      eventType: 'ECONOMY_TOPUP_STATUS_CHANGED',
+    } as any;
+    const payosTopUpService = {} as any;
+    const payosRepository = {} as any;
+    const paymentProvider = {} as any;
+    const adminAlerts = {} as any;
+    const adminAlertHandler = {
+      name: 'economy.top-up-admin-alert',
+      eventType: 'ECONOMY_TOPUP_ADMIN_ALERT',
+    } as any;
+
+    const registrar = new EconomySchedulerRegistrar(
+      rewards,
+      starterPoints,
+      topUpNotification,
+      payosTopUpService,
+      payosRepository,
+      paymentProvider,
+      adminAlerts,
+      adminAlertHandler,
+      jobs,
+      handlers,
+    );
+
+    registrar.onModuleInit();
+
+    expect(jobs.get('payos-reconcile')).toBeDefined();
+    expect(jobs.get('pending-release')).toBeDefined();
+    expect(jobs.get('starter-expiry')).toBeDefined();
+    expect(handlers.handlersFor('ECONOMY_TOPUP_STATUS_CHANGED')).toContain(
+      topUpNotification,
+    );
+    expect(handlers.handlersFor('ECONOMY_TOPUP_ADMIN_ALERT')).toContain(
+      adminAlertHandler,
+    );
   });
 });

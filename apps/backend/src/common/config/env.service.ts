@@ -100,6 +100,10 @@ export class EnvService {
       : null;
   }
 
+  get topUpRefundMailbox(): string | null {
+    return this.config.TOPUP_REFUND_MAILBOX ?? null;
+  }
+
   get rewardsEnabled(): boolean {
     return this.config.REWARDS_ENABLED;
   }

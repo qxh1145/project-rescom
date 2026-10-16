@@ -89,3 +89,10 @@ export const VOUCHER_REMINDER_JOB = {
   leaseTtlMs: 5 * MINUTE_MS,
   batchSize: 200,
 } as const;
+
+export const PAYOS_RECONCILE_JOB = {
+  name: 'payos-reconcile',
+  intervalMs: MINUTE_MS,
+  leaseTtlMs: MINUTE_MS,
+  batchSize: 50,
+} as const;

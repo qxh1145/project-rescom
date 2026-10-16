@@ -26,6 +26,7 @@ import { ParseUUIDPipe } from '../../../common/http/parse-uuid.pipe';
 import { ZodValidationPipe } from '../../../common/http/zod-validation.pipe';
 import { createSuccessEnvelope } from '../../../common/http/response.envelope';
 import { TopUpService } from '../application/top-up.service';
+import { PayosTopUpService } from '../application/payos-top-up.service';
 
 /**
  * Admin review queue for manual top-ups (Story 6.6, FR-35). `RolesGuard`
@@ -36,7 +37,10 @@ import { TopUpService } from '../application/top-up.service';
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles('ADMIN')
 export class AdminTopUpController {
-  constructor(private readonly topUpService: TopUpService) {}
+  constructor(
+    private readonly topUpService: TopUpService,
+    private readonly payosTopUpService: PayosTopUpService,
+  ) {}
 
   /** Pending requests by default (oldest first) with user info and amount. */
   @Get()
@@ -84,6 +88,22 @@ export class AdminTopUpController {
       topUpId: id,
       adminId: admin.id,
       reason: body.reason,
+      correlationId,
+    });
+    return createSuccessEnvelope(result);
+  }
+
+  @Post(':id/recheck')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(CsrfGuard)
+  async recheck(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    const result = await this.payosTopUpService.recheck({
+      topUpId: id,
+      adminId: admin.id,
       correlationId,
     });
     return createSuccessEnvelope(result);

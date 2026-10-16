@@ -175,6 +175,7 @@ export type TopUpReviewResultDto = z.infer<typeof topUpReviewResultSchema>;
 export const TOP_UP_AUDIT_EVENT_TYPES = {
   APPROVED: "AdminTopUpApproved",
   REJECTED: "AdminTopUpRejected",
+  RECHECKED: "AdminTopUpRechecked",
 } as const;
 
 /**
@@ -201,6 +202,30 @@ export const topUpAdminAuditEventPayloadSchema = z.object({
 export type TopUpAdminAuditEventPayload = z.infer<
   typeof topUpAdminAuditEventPayloadSchema
 >;
+
+export const topUpRecheckAuditEventPayloadSchema = z.object({
+  schemaVersion: z.literal(1),
+  action: z.literal("TOPUP_RECHECKED"),
+  auditCategory: z.literal("MODERATION_ADMIN_ACTION"),
+  topUpId: z.string().uuid(),
+  adminId: z.string().uuid(),
+  orderCode: z.number().int(),
+  result: z.enum([
+    "CREDITED",
+    "STILL_UNPAID",
+    "MISMATCH",
+    "PROVIDER_UNAVAILABLE",
+    "FAILED",
+  ]),
+  statusBefore: z.string(),
+  statusAfter: z.string(),
+  correlationId: z.string().uuid().nullable(),
+  occurredAt: z.string().datetime(),
+});
+export type TopUpRecheckAuditEventPayload = z.infer<
+  typeof topUpRecheckAuditEventPayloadSchema
+>;
+
 
 /** Converts Points to the VND amount the user must transfer. */
 export function pointsToVnd(points: number): number {

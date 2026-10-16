@@ -5,6 +5,7 @@ import { PayosAvailability } from '../application/payos-availability';
 import { TopUpController } from './top-up.controller';
 import { AdminTopUpController } from './admin-top-up.controller';
 import { TopUpService } from '../application/top-up.service';
+import { PayosTopUpService } from '../application/payos-top-up.service';
 import { SessionAuthGuard } from '../../auth/presentation/guards/session-auth.guard';
 import { RolesGuard } from '../../auth/presentation/guards/roles.guard';
 import { CsrfGuard } from '../../auth/presentation/guards/csrf.guard';
@@ -52,6 +53,7 @@ describe('Story 6.6: top-up controllers', () => {
       controllers: [TopUpController, AdminTopUpController],
       providers: [
         { provide: TopUpService, useValue: service },
+        { provide: PayosTopUpService, useValue: { recheck: jest.fn() } },
         PayosAvailability,
       ],
     })
