@@ -23,7 +23,15 @@ function setup() {
   });
   const get = jest.fn();
   const cancel = jest.fn().mockResolvedValue({});
-  const client = { paymentRequests: { create, get, cancel } } as never;
+  const confirm = jest.fn().mockResolvedValue({
+    webhookUrl: 'https://example.test/webhook',
+    accountName: 'Merchant',
+    accountNumber: '12345678',
+  });
+  const client = {
+    paymentRequests: { create, get, cancel },
+    webhooks: { confirm },
+  } as never;
   return {
     provider: new PayosPaymentProvider(
       checksumKey,
@@ -34,9 +42,29 @@ function setup() {
     create,
     get,
     cancel,
+    confirm,
   };
 }
 describe('payOS provider', () => {
+  it('confirms webhook without exposing full account number', async () => {
+    const { provider, confirm } = setup();
+    await expect(
+      provider.confirmWebhook('https://example.test/webhook'),
+    ).resolves.toEqual({
+      webhookUrl: 'https://example.test/webhook',
+      accountName: 'Merchant',
+      accountNumberLast4: '5678',
+    });
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm).toHaveBeenCalledWith('https://example.test/webhook');
+  });
+  it('returns raw GET response', async () => {
+    const { provider, get } = setup();
+    const raw = buildPaymentLink();
+    get.mockResolvedValueOnce(raw);
+    await expect(provider.getPaymentRecord(1234567890)).resolves.toBe(raw);
+    expect(get).toHaveBeenCalledWith(1234567890);
+  });
   it.each([
     [1000000000, 'RC0000000'],
     [1234567890, 'RC4567890'],

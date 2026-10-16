@@ -1,8 +1,9 @@
 import { payosTransferContent } from '@rescom/schemas';
-import { APIError, PayOS } from '@payos/node';
+import { APIError, PayOS, WebhookError } from '@payos/node';
 import type { EnvService } from '../../../common/config/env.service';
 import {
   PaymentProviderUnavailableError,
+  type ConfirmedWebhook,
   type CreatePaymentInput,
   type CreatedPayment,
   type PaymentProviderPort,
@@ -47,6 +48,23 @@ export class PayosPaymentProvider implements PaymentProviderPort {
         );
       throw new PaymentProviderUnavailableError();
     }
+  }
+  async confirmWebhook(webhookUrl: string): Promise<ConfirmedWebhook> {
+    const result = await this.client.webhooks
+      .confirm(webhookUrl)
+      .catch((error: unknown) => {
+        if (error instanceof WebhookError)
+          throw new PaymentProviderUnavailableError(error.message);
+        return this.call(() => Promise.reject(error));
+      });
+    return {
+      webhookUrl: result.webhookUrl,
+      accountName: result.accountName,
+      accountNumberLast4: result.accountNumber.slice(-4),
+    };
+  }
+  getPaymentRecord(orderCode: number): Promise<unknown> {
+    return this.call(() => this.client.paymentRequests.get(orderCode));
   }
   async createPayment(input: CreatePaymentInput): Promise<CreatedPayment> {
     const result = await this.call(() =>

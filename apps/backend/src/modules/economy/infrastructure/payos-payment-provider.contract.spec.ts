@@ -1,6 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { APIError, ConnectionTimeoutError, PayOS } from '@payos/node';
+import {
+  APIError,
+  ConnectionTimeoutError,
+  PayOS,
+  WebhookError,
+} from '@payos/node';
 import { PAYOS_TEST_CHECKSUM_KEY } from '../../../../test/fixtures/payos-webhook.fixture';
 import {
   PaymentProviderSignatureError,
@@ -35,6 +40,59 @@ describe('payOS offline contract', () => {
     'test-key',
     client,
   );
+  it('preserves payOS webhook validation reason without leaking credentials', async () => {
+    const confirm = jest
+      .fn()
+      .mockRejectedValue(
+        new WebhookError('Webhook validation failed: unreachable'),
+      );
+    const mocked = new PayosPaymentProvider(
+      PAYOS_TEST_CHECKSUM_KEY,
+      'test-client',
+      'test-secret-api-key',
+      { webhooks: { confirm } } as never,
+    );
+    try {
+      await mocked.confirmWebhook('https://example.test/webhook');
+      throw new Error('Expected failure');
+    } catch (error) {
+      expect(error).toBeInstanceOf(PaymentProviderUnavailableError);
+      expect((error as Error).message).toBe(
+        'Webhook validation failed: unreachable',
+      );
+      expect(JSON.stringify(error)).not.toContain('test-secret-api-key');
+      expect(JSON.stringify(error)).not.toContain(PAYOS_TEST_CHECKSUM_KEY);
+    }
+  });
+  it('maps a non-WebhookError confirm failure through call()', async () => {
+    const confirm = jest
+      .fn()
+      .mockRejectedValueOnce(
+        APIError.generateError(
+          200,
+          { code: '231', desc: 'Rejected' },
+          undefined,
+          new Headers(),
+        ),
+      )
+      .mockRejectedValueOnce(new Error('socket hang up'));
+    const mocked = new PayosPaymentProvider(
+      PAYOS_TEST_CHECKSUM_KEY,
+      'test-client',
+      'test-key',
+      { webhooks: { confirm } } as never,
+    );
+    await expect(
+      mocked.confirmWebhook('https://example.test/webhook'),
+    ).rejects.toMatchObject({
+      name: PaymentProviderUnavailableError.name,
+      providerCode: '231',
+      providerDesc: 'Rejected',
+    });
+    await expect(
+      mocked.confirmWebhook('https://example.test/webhook'),
+    ).rejects.toBeInstanceOf(PaymentProviderUnavailableError);
+  });
   it('constructs offline SDK with zero retries and disabled logs', () => {
     const constructed = (
       new PayosPaymentProvider(

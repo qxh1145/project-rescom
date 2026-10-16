@@ -36,7 +36,14 @@ export interface VerifiedPaymentWebhook {
   amountVnd: number;
   facts: ProviderPaymentFacts;
 }
+export interface ConfirmedWebhook {
+  webhookUrl: string;
+  accountName: string;
+  accountNumberLast4: string;
+}
 export interface PaymentProviderPort {
+  confirmWebhook(webhookUrl: string): Promise<ConfirmedWebhook>;
+  getPaymentRecord(orderCode: number): Promise<unknown>;
   createPayment(input: CreatePaymentInput): Promise<CreatedPayment>;
   getPayment(
     orderCode: number,

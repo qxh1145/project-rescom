@@ -1,5 +1,6 @@
 import {
   PaymentProviderUnavailableError,
+  type ConfirmedWebhook,
   type CreatePaymentInput,
   type CreatedPayment,
   type PaymentProviderPort,
@@ -7,6 +8,16 @@ import {
   type VerifiedPaymentWebhook,
 } from '../application/ports/payment-provider.port';
 export class UnconfiguredPaymentProvider implements PaymentProviderPort {
+  confirmWebhook(_webhookUrl: string): Promise<ConfirmedWebhook> {
+    return Promise.reject(
+      new PaymentProviderUnavailableError('payOS is not configured'),
+    );
+  }
+  getPaymentRecord(_orderCode: number): Promise<unknown> {
+    return Promise.reject(
+      new PaymentProviderUnavailableError('payOS is not configured'),
+    );
+  }
   createPayment(_input: CreatePaymentInput): Promise<CreatedPayment> {
     return Promise.reject(
       new PaymentProviderUnavailableError('payOS is not configured'),

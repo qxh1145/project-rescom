@@ -216,9 +216,7 @@ describe('ResolveTopUpMismatch', () => {
       });
     const list = await service.listActionRequired();
     // Thu 15/10 + 3 business days = Tue 20/10; Fri 09/10 + 3 = Wed 14/10.
-    expect(
-      list.mismatches.map((row) => [row.id, row.resolveDueAt]),
-    ).toEqual([
+    expect(list.mismatches.map((row) => [row.id, row.resolveDueAt])).toEqual([
       [earlier.id, '2026-10-14T03:00:00.000Z'],
       [later.id, '2026-10-20T03:00:00.000Z'],
     ]);
@@ -243,9 +241,10 @@ describe('ResolveTopUpMismatch', () => {
         amountPaid: row.amountVnd,
       }),
     );
-    expect(
-      await service.recheck({ topUpId: row.id, adminId }),
-    ).toMatchObject({ result: 'REFUNDED', status: 'MANUAL_REFUNDED' });
+    expect(await service.recheck({ topUpId: row.id, adminId })).toMatchObject({
+      result: 'REFUNDED',
+      status: 'MANUAL_REFUNDED',
+    });
     expect(
       await ledgerRepo.findJournalByIdempotencyKey(`topup-credit:${row.id}`),
     ).toBeNull();

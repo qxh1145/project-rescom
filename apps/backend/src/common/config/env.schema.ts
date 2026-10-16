@@ -204,6 +204,7 @@ export const envSchema = z
     // Story 12.11, PRD OQ-24: Rewards stays off until accounting/tax decision is recorded.
     REWARDS_ENABLED: booleanEnv(false),
     PAYOS_ENABLED: booleanEnv(false),
+    PAYOS_WEBHOOK_CAPTURE: booleanEnv(false),
     PAYOS_CHECKOUT_LIMIT: z.coerce.number().int().min(1).default(5),
     PAYOS_CHECKOUT_WINDOW_SECONDS: z.coerce.number().int().min(60).default(600),
     PAYOS_CLIENT_ID: z.string().trim().min(1).optional(),

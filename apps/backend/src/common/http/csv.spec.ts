@@ -16,8 +16,6 @@ describe('toCsv', () => {
   });
 
   it('guards a leading line feed', () => {
-    expect(toCsv(['email'], [['\n=1+1']])).toBe(
-      '﻿"email"\r\n"\'\n=1+1"\r\n',
-    );
+    expect(toCsv(['email'], [['\n=1+1']])).toBe('﻿"email"\r\n"\'\n=1+1"\r\n');
   });
 });

@@ -20,7 +20,28 @@ describe('fake payment provider', () => {
     };
     await fake.createPayment(input);
     expect(fake.createCalls).toEqual([input]);
-    fake.setPayment(input.orderCode, buildPaymentLink());
+    const link = buildPaymentLink();
+    fake.setPayment(input.orderCode, link);
+    await expect(fake.getPaymentRecord(input.orderCode)).resolves.toBe(link);
+    await expect(
+      fake.confirmWebhook('https://example.test/webhook'),
+    ).resolves.toEqual({
+      webhookUrl: 'https://example.test/webhook',
+      accountName: 'TEST',
+      accountNumberLast4: '6789',
+    });
+    expect(fake.confirmCalls).toEqual(['https://example.test/webhook']);
+    fake.failNext('confirmWebhook');
+    await expect(
+      fake.confirmWebhook('https://example.test/webhook'),
+    ).rejects.toBeInstanceOf(PaymentProviderUnavailableError);
+    fake.failNext('getPaymentRecord');
+    await expect(fake.getPaymentRecord(input.orderCode)).rejects.toBeInstanceOf(
+      PaymentProviderUnavailableError,
+    );
+    await expect(fake.getPaymentRecord(999)).rejects.toBeInstanceOf(
+      PaymentProviderUnavailableError,
+    );
     expect((await fake.getPayment(input.orderCode, 20000)).effect).toBe(
       'CREDIT',
     );
@@ -42,6 +63,12 @@ describe('fake payment provider', () => {
   });
   it('never succeeds without credentials', async () => {
     const unavailable = new UnconfiguredPaymentProvider();
+    await expect(unavailable.confirmWebhook('url')).rejects.toThrow(
+      'payOS is not configured',
+    );
+    await expect(unavailable.getPaymentRecord(123)).rejects.toThrow(
+      'payOS is not configured',
+    );
     await expect(
       unavailable.getPayment(1234567890, 20000),
     ).rejects.toBeInstanceOf(PaymentProviderUnavailableError);
