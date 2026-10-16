@@ -10,7 +10,7 @@ import { isApiError } from "@/lib/api/api-error";
 import { CODE_ISSUE_ADMIN_REASON_LABELS, PRICE_SOURCE_LABELS, PAGE_SIZE, clampOffset, formatWait, openSlaView, pageCount, pageRangeText, reportStatusView, resolvedSlaView, successToast, tabLabel, ticketStatusView } from "@/lib/admin/rewards-code-issues-view";
 import { useAdminCodeIssues } from "../hooks/use-admin-code-issues";
 import { CodeIssueDrawer } from "./CodeIssueDrawer";
-import { CodeIssueToasts, type CodeIssueToast } from "./CodeIssueToasts";
+import { CodeIssueToasts, type CodeIssueToast } from "@/components/ui/Toasts";
 
 const FILTERS: AdminCodeIssueStatusFilter[] = ["OPEN", "RESOLVED", "ALL"];
 export function CodeIssuesScreen() {

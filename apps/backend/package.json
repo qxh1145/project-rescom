@@ -37,6 +37,7 @@
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/platform-express": "^10.4.15",
     "@nestjs/throttler": "^6.5.0",
+    "@payos/node": "2.0.5",
     "@prisma/client": "6.0.0",
     "@rescom/schemas": "*",
     "bcryptjs": "^2.4.3",

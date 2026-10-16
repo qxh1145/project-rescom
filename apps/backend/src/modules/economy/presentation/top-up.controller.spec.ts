@@ -1,8 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { ManualCheckoutEnabledGuard } from './payos-checkout-enabled.guard';
+import { PayosAvailability } from '../application/payos-availability';
 import { TopUpController } from './top-up.controller';
 import { AdminTopUpController } from './admin-top-up.controller';
 import { TopUpService } from '../application/top-up.service';
+import { PayosTopUpService } from '../application/payos-top-up.service';
 import { SessionAuthGuard } from '../../auth/presentation/guards/session-auth.guard';
 import { RolesGuard } from '../../auth/presentation/guards/roles.guard';
 import { CsrfGuard } from '../../auth/presentation/guards/csrf.guard';
@@ -48,7 +51,11 @@ describe('Story 6.6: top-up controllers', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TopUpController, AdminTopUpController],
-      providers: [{ provide: TopUpService, useValue: service }],
+      providers: [
+        { provide: TopUpService, useValue: service },
+        { provide: PayosTopUpService, useValue: { recheck: jest.fn() } },
+        PayosAvailability,
+      ],
     })
       .overrideGuard(SessionAuthGuard)
       .useValue({ canActivate: () => true })
@@ -104,7 +111,11 @@ describe('Story 6.6: top-up controllers', () => {
         TopUpController.prototype.create,
       );
       expect(classGuards).toEqual([SessionAuthGuard]);
-      expect(createGuards).toEqual([CsrfGuard, JsonOnlyGuard]);
+      expect(createGuards).toEqual([
+        ManualCheckoutEnabledGuard,
+        CsrfGuard,
+        JsonOnlyGuard,
+      ]);
     });
   });
 

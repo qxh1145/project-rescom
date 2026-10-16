@@ -29,6 +29,8 @@ export type HistoryKind =
   | "DISPUTE_HOLD"
   | "DISPUTE_RESOLUTION"
   | "TOP_UP"
+  | "TOP_UP_PAYOS"
+  | "TOP_UP_MISMATCH"
   | "VOUCHER_REDEMPTION"
   | "SURVEY_ESCROW"
   | "ESCROW_REFUND"
@@ -83,6 +85,8 @@ const KEY_PREFIXES: ReadonlyArray<readonly [string, HistoryKind]> = [
   ["external-dispute:", "DISPUTE_HOLD"],
   ["dispute-resolution:", "DISPUTE_RESOLUTION"],
   ["topup-approval:", "TOP_UP"],
+  ["topup-credit:", "TOP_UP_PAYOS"],
+  ["topup-mismatch:", "TOP_UP_MISMATCH"],
   ["redemption:", "VOUCHER_REDEMPTION"],
   ["publish:", "SURVEY_ESCROW"],
   ["reopen-escrow:", "SURVEY_ESCROW"],
@@ -119,6 +123,8 @@ const TITLES: Record<HistoryKind, string> = {
   DISPUTE_HOLD: "Giữ điểm khi khiếu nại",
   DISPUTE_RESOLUTION: "Kết quả khiếu nại",
   TOP_UP: "Nạp điểm",
+  TOP_UP_PAYOS: "Nạp Điểm qua PayOS",
+  TOP_UP_MISMATCH: "Nạp Điểm (đã điều chỉnh theo số thực nhận)",
   VOUCHER_REDEMPTION: "Đổi voucher",
   SURVEY_ESCROW: "Ký quỹ khảo sát",
   ESCROW_REFUND: "Hoàn ký quỹ",
@@ -176,6 +182,10 @@ function notesOf(kind: HistoryKind, entry: WalletTransaction, payout: boolean): 
       const note = reference ? `Chuyển khoản ${reference}` : "Chuyển khoản ngân hàng";
       return { note, shortNote: note };
     }
+    case "TOP_UP_PAYOS":
+      return { note: "Thanh toán qua PayOS", shortNote: "PayOS" };
+    case "TOP_UP_MISMATCH":
+      return { note: "Điều chỉnh thanh toán sai số tiền", shortNote: "Điều chỉnh" };
     case "VOUCHER_REDEMPTION": {
       const note = titleFromDescription(entry.description) ?? "Voucher";
       return { note, shortNote: note };
@@ -321,7 +331,12 @@ export function filterHistory(rows: readonly HistoryRow[], filter: HistoryFilter
     case "out":
       return rows.filter((row) => row.direction === "out");
     case "top-up":
-      return rows.filter((row) => row.kind === "TOP_UP");
+      return rows.filter(
+        (row) =>
+          row.kind === "TOP_UP" ||
+          row.kind === "TOP_UP_PAYOS" ||
+          row.kind === "TOP_UP_MISMATCH",
+      );
     default:
       return [...rows];
   }

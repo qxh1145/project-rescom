@@ -1,3 +1,7 @@
+import {
+  PaymentProviderSignatureError,
+  PaymentProviderUnavailableError,
+} from '../../modules/economy/application/ports/payment-provider.port';
 import { ArgumentsHost, HttpStatus } from '@nestjs/common';
 import { ThrottlerException } from '@nestjs/throttler';
 import { HttpExceptionFilter } from './http-exception.filter';
@@ -7,6 +11,10 @@ import {
   PendingCreditNotFoundException,
   PendingRewardForbiddenException,
   PendingRewardNotMaturedException,
+  PayosTopUpAlreadyProcessingException,
+  PayosCheckoutRateLimitedException,
+  PayosCheckoutUnavailableException,
+  PayosTopUpNotCancellableException,
   InvalidTopUpRequestException,
   TopUpAdminCapabilityRequiredException,
   TopUpAlreadyReviewedException,
@@ -92,6 +100,30 @@ describe('HttpExceptionFilter (Unit Tests)', () => {
     });
   });
 
+  it('maps provider signature failure to generic 401 and provider outage to generic 503', () => {
+    for (const [exception, expectedStatus, code] of [
+      [
+        new PaymentProviderSignatureError(),
+        HttpStatus.UNAUTHORIZED,
+        'PAYOS_WEBHOOK_SIGNATURE_INVALID',
+      ],
+      [
+        new PaymentProviderUnavailableError('SENSITIVE ACCOUNT', 'secret'),
+        HttpStatus.SERVICE_UNAVAILABLE,
+        'PAYMENT_PROVIDER_UNAVAILABLE',
+      ],
+    ] as const) {
+      const json = jest.fn();
+      const status = jest.fn().mockReturnValue({ json });
+      filter.catch(exception, createMockHost({ status, headersSent: false }));
+      expect(status).toHaveBeenCalledWith(expectedStatus);
+      expect(json.mock.calls[0][0].error.code).toBe(code);
+      expect(JSON.stringify(json.mock.calls[0][0])).not.toContain(
+        'SENSITIVE ACCOUNT',
+      );
+    }
+  });
+
   it('should do nothing if response.headersSent is true', () => {
     const mockJson = jest.fn();
     const mockStatus = jest.fn().mockReturnValue({ json: mockJson });
@@ -109,11 +141,44 @@ describe('HttpExceptionFilter (Unit Tests)', () => {
     expect(mockJson).not.toHaveBeenCalled();
   });
 
+  it('sets Retry-After on PayOS checkout rate limit', () => {
+    const json = jest.fn();
+    const setHeader = jest.fn();
+    const status = jest.fn().mockReturnValue({ json });
+    filter.catch(
+      new PayosCheckoutRateLimitedException(61),
+      createMockHost({ status, setHeader, headersSent: false }),
+    );
+    expect(status).toHaveBeenCalledWith(HttpStatus.TOO_MANY_REQUESTS);
+    expect(setHeader).toHaveBeenCalledWith('Retry-After', '61');
+    expect(json.mock.calls[0][0].error.details.retryAfterSeconds).toBe(61);
+  });
+
   it.each([
     [
       new InvalidTopUpRequestException(),
       HttpStatus.BAD_REQUEST,
       'TOPUP_INVALID_REQUEST',
+    ],
+    [
+      new PayosTopUpAlreadyProcessingException('id', null),
+      HttpStatus.CONFLICT,
+      'TOPUP_ALREADY_PROCESSING',
+    ],
+    [
+      new PayosCheckoutRateLimitedException(60),
+      HttpStatus.TOO_MANY_REQUESTS,
+      'TOPUP_CHECKOUT_RATE_LIMITED',
+    ],
+    [
+      new PayosCheckoutUnavailableException(),
+      HttpStatus.SERVICE_UNAVAILABLE,
+      'TOPUP_PROVIDER_UNAVAILABLE',
+    ],
+    [
+      new PayosTopUpNotCancellableException('SUCCESSFUL'),
+      HttpStatus.CONFLICT,
+      'TOPUP_NOT_CANCELLABLE',
     ],
     [
       new TopUpRequestNotFoundException('33333333-3333-4333-8333-333333333333'),

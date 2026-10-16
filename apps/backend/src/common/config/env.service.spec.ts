@@ -22,6 +22,16 @@ describe('EnvService', () => {
     SMTP_PASSWORD: 'smtp-password',
   };
 
+  it('defaults webhook capture off and accepts explicit true', () => {
+    expect(new EnvService(validBaseEnv).payosWebhookCapture).toBe(false);
+    expect(
+      new EnvService({
+        ...validBaseEnv,
+        PAYOS_WEBHOOK_CAPTURE: 'true',
+      }).payosWebhookCapture,
+    ).toBe(true);
+  });
+
   it('should initialize successfully with valid configuration', () => {
     const service = new EnvService(validBaseEnv);
     expect(service.port).toBe(4000);
@@ -873,6 +883,70 @@ describe('EnvService', () => {
           .emailDeliveryMode,
       ).toBe('smtp');
     });
+    it('validates payOS credentials and exposes only a complete set', () => {
+      const blank = new EnvService(validBaseEnv);
+      expect(blank.payosEnabled).toBe(false);
+      expect(blank.payosCheckoutLimit).toBe(5);
+      expect(blank.payosCheckoutWindowSeconds).toBe(600);
+      expect(
+        new EnvService({
+          ...validBaseEnv,
+          PAYOS_CHECKOUT_LIMIT: '3',
+          PAYOS_CHECKOUT_WINDOW_SECONDS: '120',
+        }).payosCheckoutLimit,
+      ).toBe(3);
+      expect(
+        () => new EnvService({ ...validBaseEnv, PAYOS_CHECKOUT_LIMIT: '0' }),
+      ).toThrow(/PAYOS_CHECKOUT_LIMIT/);
+      expect(
+        () =>
+          new EnvService({
+            ...validBaseEnv,
+            PAYOS_CHECKOUT_WINDOW_SECONDS: '59',
+          }),
+      ).toThrow(/PAYOS_CHECKOUT_WINDOW_SECONDS/);
+      expect(blank.payosCredentials).toBeNull();
+      expect(blank.topUpRefundMailbox).toBeNull();
+      expect(
+        () => new EnvService({ ...validBaseEnv, PAYOS_CLIENT_ID: 'client' }),
+      ).toThrow(/PAYOS_API_KEY.*PAYOS_CHECKSUM_KEY/);
+      expect(
+        () => new EnvService({ ...validBaseEnv, PAYOS_CLIENT_ID: 'client' }),
+      ).toThrow(/TOPUP_REFUND_MAILBOX/);
+      expect(
+        () => new EnvService({ ...validBaseEnv, PAYOS_ENABLED: 'true' }),
+      ).toThrow(/PAYOS_CLIENT_ID.*PAYOS_API_KEY.*PAYOS_CHECKSUM_KEY/);
+      expect(
+        () => new EnvService({ ...validBaseEnv, PAYOS_ENABLED: 'true' }),
+      ).toThrow(/TOPUP_REFUND_MAILBOX/);
+      const keys = {
+        PAYOS_CLIENT_ID: 'client',
+        PAYOS_API_KEY: 'api-key',
+        PAYOS_CHECKSUM_KEY: 'checksum-key',
+        TOPUP_REFUND_MAILBOX: 'refunds@rescom.vn',
+      };
+      const configured = new EnvService({
+        ...validBaseEnv,
+        ...keys,
+        PAYOS_ENABLED: 'true',
+      });
+      expect(configured.payosCredentials).toEqual({
+        clientId: 'client',
+        apiKey: 'api-key',
+        checksumKey: 'checksum-key',
+      });
+      expect(configured.topUpRefundMailbox).toBe('refunds@rescom.vn');
+      expect(
+        () =>
+          new EnvService({
+            ...productionBase,
+            ...productionEmailEnv,
+            ...keys,
+            PAYOS_API_KEY: 'CHANGE_ME_key',
+          }),
+      ).toThrow(/PAYOS_API_KEY is a placeholder value/);
+    });
+
     it('handles Story 12.11 REWARDS_ENABLED and production OQ-24 gate', () => {
       const defaultService = new EnvService(validBaseEnv);
       expect(defaultService.rewardsEnabled).toBe(false);

@@ -2,7 +2,7 @@
 title: RESCOM Solution Design and Developer Guide
 status: final
 created: 2026-08-08
-updated: 2026-09-26
+updated: 2026-10-15
 audience: developers and epic authors
 ---
 
@@ -290,7 +290,84 @@ Audit evidence follows the same ownership rule: Identity owns authentication/ses
 
 ### Cross-Context Money Orchestration
 
-The Spine workflow map is binding. Publish+Escrow, External completion+Pending credit, External dispute+hold, and Form close+refund use named Research/Participation/Moderation coordinators with owner-provided Economy commands under one shared PostgreSQL Unit of Work, so paired state commits or rolls back. Internal submission instead commits Response plus independent reward/assessment Outbox events; stable IDs make Economy and Integrity replay-safe. ENFORCED assessment terminal failure releases its hold fail-open and opens an incident. Manual top-up is coordinated by Economy with the actor/correlation in the financial transaction and a replayable Moderation audit event. No workflow performs uncoordinated dual writes.
+The Spine workflow map is binding. Publish+Escrow, External completion+Pending credit, External dispute+hold, and Form close+refund use named Research/Participation/Moderation coordinators with owner-provided Economy commands under one shared PostgreSQL Unit of Work, so paired state commits or rolls back. Internal submission instead commits Response plus independent reward/assessment Outbox events; stable IDs make Economy and Integrity replay-safe. ENFORCED assessment terminal failure releases its hold fail-open and opens an incident. Manual top-up (legacy, retired by FR-79) is coordinated by Economy with the actor/correlation in the financial transaction and a replayable Moderation audit event. PayOS top-ups and refunds are Economy-coordinated per AD-25/AD-26. No workflow performs uncoordinated dual writes.
+
+### PayOS Top-Up and Refund Flows (AD-25, AD-26)
+
+Spine AD-25 and AD-26 are binding. This section shows the flows a developer implements.
+
+**Checkout and payment confirmation.**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User (/wallet)
+    participant FE as Next.js (Vercel)
+    participant API as Economy API
+    participant DB as PostgreSQL
+    participant P as payOS
+    U->>FE: amount (VND)
+    FE->>API: POST checkout
+    API->>DB: validate FR-34 bounds; insert TopUpRequest PROCESSING (orderCode seq, expiresAt +5m)
+    Note over DB: partial unique index rejects a second PROCESSING row
+    API->>P: paymentRequests.create (maxRetries 0)
+    alt create fails
+        API->>DB: CAS PROCESSING to CANCELLED
+    else created
+        API->>DB: store paymentLinkId
+        API-->>FE: checkoutUrl
+        FE->>P: redirect, user scans QR
+    end
+    P->>FE: webhook POST app.rescom.io.vn/api/... (proxy.ts adds edge key)
+    FE->>API: forward
+    API->>API: verify HMAC; code and data.code = "00"; orderCode known
+    API->>P: GET payment-requests/{id} (authoritative amountPaid and status)
+    API->>DB: tx: lock row, status CAS, provider facts, journal SYSTEM_CLEARING to USER_AVAILABLE, Outbox notification
+    API-->>P: 200 (or 5xx; reconciliation recovers)
+    P->>FE: returnUrl (never proof); /wallet polls backend status
+```
+
+**Reconciliation job (every minute, AD-17 lease).** The job selects `PROCESSING`, unresolved `AMOUNT_MISMATCH`, and rows `EXPIRED` or `CANCELLED` within the last 24 hours. For each row it calls payOS `GET` and applies the AD-25 mapping table through the same `CreditTopUp` command as the webhook.
+
+- A `PROCESSING` row past `expiresAt` becomes `EXPIRED`, with a best-effort payOS cancel and a user notification.
+- The job raises an Admin alert when a payment is still uncredited 30 minutes after `paidAt`, and on repeated provider errors.
+
+**Refund request and resolution.**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant API as Economy API
+    participant DB as PostgreSQL
+    participant N as Notifications (Outbox)
+    actor A as Admin
+    U->>API: refund form (within 24h of paidAt)
+    API->>DB: lock TopUpRequest, then ledger accounts asc
+    API->>DB: eligibility: SUCCESSFUL, under 24h, Available >= pointsCredited, no spend journal after credit
+    alt eligible
+        API->>DB: journal USER_AVAILABLE to REFUND_HOLD; request ELIGIBLE
+    else not eligible
+        API->>DB: request NOT_ELIGIBLE with reason, no journal
+    end
+    API->>N: user notification + email to TOPUP_REFUND_MAILBOX (same tx)
+    A->>A: manual bank transfer (3 business-day SLA)
+    A->>API: resolve REFUNDED / REJECTED(reason)
+    API->>DB: REFUNDED: REFUND_HOLD to SYSTEM_CLEARING (topUpJournalId link); REJECTED with hold: REFUND_HOLD to USER_AVAILABLE
+    API->>N: user notification + admin-audit event
+```
+
+**Suggested story slices** (dependency order):
+
+1. Schema migration: `TopUpRequest` channel and provider fields, `pointsCredited`, `TopUpRefundRequest`, the `REFUND_HOLD` class, raw SQL for the sequence, partial index and checks.
+2. `PaymentProviderPort` and the `@payos/node` adapter with the status mapping. Contract tests use recorded payloads.
+3. Checkout, user cancel, and the `PAYOS_ENABLED` startup guard (FR-34, FR-79).
+4. Webhook endpoint and `CreditTopUp` (FR-35, NFR-31), including the HTTP matrix and concurrency tests (webhook against reconciliation).
+5. Reconciliation job and alerts (NFR-32).
+6. Wallet status projection and notifications (FR-76), with the frontend `/wallet` and admin views.
+7. Refund request, the Admin resolution and mismatch resolution, and the 3-business-day alert (FR-77, FR-78).
+
+**Testing without a sandbox.** Unit and integration tests run against a fake `PaymentProviderPort` and HMAC-signed fixture webhooks. Non-production environments keep `PAYOS_ENABLED=false` or use the fake adapter. Production smoke testing uses the 10,000 VND minimum, and each test payment is refunded through the FR-78 flow. OQ-27 must be answered before production enable.
 
 ## 13. Minimum Durable Contract Families
 

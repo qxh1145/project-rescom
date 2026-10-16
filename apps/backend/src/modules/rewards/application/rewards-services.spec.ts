@@ -101,6 +101,7 @@ function fixture() {
     getBalance: async () => ({ available: 45, pending: 3 }),
   };
   const adminCapability: AdminCapabilityPort = {
+    listActiveAdminIds: async () => [],
     findCurrentCapability: async (id) => ({
       userId: id,
       role: 'ADMIN',
@@ -1278,6 +1279,7 @@ describe('Rewards application services', () => {
         filterMatching: async () => [],
       };
       const adminCap: AdminCapabilityPort = {
+        listActiveAdminIds: async () => [],
         findCurrentCapability: async (userId) => ({
           userId,
           role: 'ADMIN',

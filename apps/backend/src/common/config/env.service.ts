@@ -73,6 +73,41 @@ export class EnvService {
     return this.config.SCHEDULER_ENABLED;
   }
 
+  get payosCheckoutLimit(): number {
+    return this.config.PAYOS_CHECKOUT_LIMIT;
+  }
+
+  get payosCheckoutWindowSeconds(): number {
+    return this.config.PAYOS_CHECKOUT_WINDOW_SECONDS;
+  }
+
+  get payosEnabled(): boolean {
+    return this.config.PAYOS_ENABLED;
+  }
+
+  get payosWebhookCapture(): boolean {
+    return this.config.PAYOS_WEBHOOK_CAPTURE;
+  }
+
+  get payosCredentials(): {
+    clientId: string;
+    apiKey: string;
+    checksumKey: string;
+  } | null {
+    const {
+      PAYOS_CLIENT_ID: clientId,
+      PAYOS_API_KEY: apiKey,
+      PAYOS_CHECKSUM_KEY: checksumKey,
+    } = this.config;
+    return clientId && apiKey && checksumKey
+      ? { clientId, apiKey, checksumKey }
+      : null;
+  }
+
+  get topUpRefundMailbox(): string | null {
+    return this.config.TOPUP_REFUND_MAILBOX ?? null;
+  }
+
   get rewardsEnabled(): boolean {
     return this.config.REWARDS_ENABLED;
   }

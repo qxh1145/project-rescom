@@ -454,3 +454,26 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 - Admin stats Flash table `sold` and `pointsSpent` use `flash_sale_items.sold`, which includes refunded flash redemptions; the KPIs exclude refunds. This matches the 12.6 mock definition. Revisit if Finance needs refund-net flash figures.
 - Production compose files do not pass `NEXT_PUBLIC_REWARDS_ENABLED` (or other `NEXT_PUBLIC_*`) as frontend build args. This only matters if the frontend is ever built through compose instead of Vercel.
 - At 390 px the Admin Rewards screens overflow horizontally. On `/admin/vouchers/new` and `/admin/vouchers/[id]/edit`, form inputs are clipped (441 px). On `/admin/flash-sales`, the "Kết thúc sớm" column overflows (418 px). On `/admin/voucher-stats`, the daily table is not in a scroll container (449 px). Found in the 12.11 Task 8.6 browser pass; the pages are fine at 1440 px. Fix when Admin mobile matters, using `min-w-0`/`w-full` on fields and `overflow-x-auto` wrappers.
+
+## Deferred from: code review of 13-2-payment-provider-port-payos-adapter.md (2026-10-15)
+
+- `paymentFacts` (payos-mapping.ts) takes the last `transactions[]` element as latest for `providerReference`/`paidAt`; verify payOS ordering against real captures in Story 13.6.
+- **Resolved by 13.3:** `createPaymentProvider` binds the live payOS client whenever credentials exist, regardless of `PAYOS_ENABLED`; only checkout is flag-gated; cancel, webhook, reconciliation, probe remain available.
+- **Resolved by 13.3:** `createPayment` timeout/connection errors are outcome-unknown (link may already exist) but surface as plain `PaymentProviderUnavailableError`; checkout marks row CANCELLED retaining orderCode, never retries create; 13.4/13.5 reconcile late payments by orderCode.
+- `mapPaymentLink` maps `CANCELLED`/`FAILED`/`EXPIRED` to `CANCELLED`/`EXPIRED` even when `amountPaid > 0` (kept per AD-25, decided by Quan 2026-10-15). Story 13.5 reconciliation must alert/route to refund mailbox when `facts.amountPaidVnd > 0` on these effects.
+
+## Deferred from: code review of 13-3-top-up-checkout-user-cancel-enable-guard (2026-10-15)
+
+- `PrismaPayosTopUpRepository.createProcessing` P2002 backstop matches `meta.target` with `/user_id|userId|one_processing_per_user/`. An unmatched Prisma error shape (index name or undefined target) would surface as 500 instead of ALREADY_PROCESSING. Rare because `pg_advisory_xact_lock` serialises per-user creates.
+
+## Deferred from: code review of 13-7-wallet-top-up-screens (2026-10-15)
+
+- `TOPUP_AMOUNT_MISMATCH` notification type does not exist in `NOTIFICATION_TYPES`; no FE mapping possible until backend adds it (13.5/13.8, Gap 3).
+
+## Deferred from: code review of 13-8-admin-top-up-console (2026-10-16)
+
+- Manual top-up queue segmented control (Chờ duyệt / Đã duyệt / Đã từ chối) overflows a 390 px viewport by 7 px inside the review card (pre-existing `TopUpReviewScreen` UI, unchanged by 13.8; retired in 13.13).
+
+## Deferred from: code review of 13-9-amount-mismatch-resolution (2026-10-16)
+
+- `listActionRequired` caps mismatches and uncredited alerts at 100 each (`TOP_UP_ACTION_REQUIRED_MAX`) while `countActionRequired` is uncapped, so the "Cần xử lý" badge can exceed the listed rows with no overflow indicator; mismatch rows with null `paidAt` sort last under `paidAt asc` and are truncated first. Known `ponytail:` ceiling; add paging/`truncated` flag when volume nears 100.

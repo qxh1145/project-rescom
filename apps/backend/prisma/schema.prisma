@@ -186,6 +186,9 @@ enum NotificationType {
   ACCOUNT_UNLOCKED
   VOUCHER_EXPIRING
   CODE_ISSUE_RESOLVED
+  TOPUP_CANCELLED
+  TOPUP_AMOUNT_MISMATCH
+  TOPUP_REFUNDED
 }
 
 /// Story IR.4b B5: one email delivery attempt per notification. Mirrors
@@ -220,6 +223,17 @@ enum TopUpStatus {
   PENDING
   APPROVED
   REJECTED
+  PROCESSING
+  SUCCESSFUL
+  CANCELLED
+  EXPIRED
+  AMOUNT_MISMATCH
+  MANUAL_REFUNDED
+}
+
+enum TopUpChannel {
+  MANUAL
+  PAYOS
 }
 
 /// Story 8.1: outcome of an Admin survey moderation decision.
@@ -990,25 +1004,45 @@ model EmailDelivery {
 /// Manual Point top-up request (Story 6.6, FR-34/FR-35). Economy owns it;
 /// `PENDING` is the "Pending Payment" state. Approval commits the status
 /// transition, the `topup-approval:{id}` Ledger journal and the admin-audit
-/// Outbox event in one transaction (AD-16).
+/// Outbox event in one transaction (AD-16). PAYOS uses order codes from
+/// `top_up_order_code_seq`; channel shape, channel-status (MANUAL: PENDING/
+/// APPROVED/REJECTED, PAYOS: the rest), PAYOS amount (`amount * 200 =
+/// amount_vnd`) CHECKs and one-PROCESSING-per-user partial unique index live
+/// in raw SQL (Prisma cannot express them).
 model TopUpRequest {
-  id                String      @id @default(uuid()) @db.Uuid
-  userId            String      @map("user_id") @db.Uuid
+  id                     String       @id @default(uuid()) @db.Uuid
+  userId                 String       @map("user_id") @db.Uuid
   /// Points to credit on approval.
-  amount            Int
+  amount                 Int
   /// VND the user must transfer (amount x 200).
-  amountVnd         Int         @map("amount_vnd")
+  amountVnd              Int          @map("amount_vnd")
   /// Unique bank-transfer syntax shown to the user (e.g. RESCOMK7Q2M9XA).
-  transferReference String      @unique @map("transfer_reference")
-  status            TopUpStatus @default(PENDING)
-  /// Reviewing Admin (actor) of the approval or rejection.
-  adminId           String?     @map("admin_id") @db.Uuid
+  transferReference      String?      @unique @map("transfer_reference")
+  channel                TopUpChannel @default(MANUAL)
+  orderCode              Int?         @unique @map("order_code")
+  paymentLinkId          String?      @unique @map("payment_link_id")
+  checkoutUrl            String?      @map("checkout_url")
+  expiresAt              DateTime?    @map("expires_at")
+  cancelledAt            DateTime?    @map("cancelled_at")
+  pointsCredited         Int?         @map("points_credited")
+  amountPaidVnd          Int?         @map("amount_paid_vnd")
+  providerReference      String?      @map("provider_reference")
+  paidAt                 DateTime?    @map("paid_at")
+  counterAccountBankId   String?      @map("counter_account_bank_id")
+  counterAccountBankName String?      @map("counter_account_bank_name")
+  counterAccountName     String?      @map("counter_account_name")
+  counterAccountNumber   String?      @map("counter_account_number")
+  status                 TopUpStatus  @default(PENDING)
+  /// Reviewing Admin (actor) of approval, rejection, or mismatch resolution.
+  adminId                String?      @map("admin_id") @db.Uuid
   /// Ledger journal posted by the approval.
-  journalId         String?     @unique @map("journal_id") @db.Uuid
-  rejectionReason   String?     @map("rejection_reason")
-  /// Correlation id of the review command.
-  correlationId     String?     @map("correlation_id") @db.Uuid
-  reviewedAt        DateTime?   @map("reviewed_at")
+  journalId              String?      @unique @map("journal_id") @db.Uuid
+  rejectionReason        String?      @map("rejection_reason")
+  resolutionNote         String?      @map("resolution_note") @db.VarChar(500)
+  /// Correlation id of approval, rejection, or mismatch resolution.
+  correlationId          String?      @map("correlation_id") @db.Uuid
+  /// Time of approval, rejection, or mismatch resolution.
+  reviewedAt             DateTime?    @map("reviewed_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1017,6 +1051,7 @@ model TopUpRequest {
 
   @@index([status, createdAt])
   @@index([userId, createdAt])
+  @@index([channel, status, createdAt])
   @@map("top_up_requests")
 }
 
@@ -1299,17 +1334,17 @@ model VoucherPriceVersion {
 }
 
 model VoucherCode {
-  id           String            @id @default(uuid()) @db.Uuid
-  voucherId    String            @map("voucher_id") @db.Uuid
-  code         String
-  redemptionId  String?            @unique @map("redemption_id") @db.Uuid
-  issueReportId String?            @unique @map("issue_report_id") @db.Uuid
-  createdAt     DateTime           @default(now()) @map("created_at")
-  voucher       Voucher            @relation(fields: [voucherId], references: [id], onDelete: Restrict)
-  redemption    Redemption?        @relation("IssuedCode", fields: [redemptionId], references: [id], onDelete: Restrict)
-  issueReport   CodeIssueReport?   @relation("ReplacedCode", fields: [issueReportId], references: [id], onDelete: Restrict)
-  redemptions   Redemption[]       @relation("RedeemedCode")
-  replacements  CodeIssueReport[]  @relation("ReplacementTargetCode")
+  id            String            @id @default(uuid()) @db.Uuid
+  voucherId     String            @map("voucher_id") @db.Uuid
+  code          String
+  redemptionId  String?           @unique @map("redemption_id") @db.Uuid
+  issueReportId String?           @unique @map("issue_report_id") @db.Uuid
+  createdAt     DateTime          @default(now()) @map("created_at")
+  voucher       Voucher           @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+  redemption    Redemption?       @relation("IssuedCode", fields: [redemptionId], references: [id], onDelete: Restrict)
+  issueReport   CodeIssueReport?  @relation("ReplacedCode", fields: [issueReportId], references: [id], onDelete: Restrict)
+  redemptions   Redemption[]      @relation("RedeemedCode")
+  replacements  CodeIssueReport[] @relation("ReplacementTargetCode")
 
   @@unique([voucherId, code])
   @@map("voucher_codes")
@@ -1376,33 +1411,33 @@ model RedemptionQuote {
 }
 
 model Redemption {
-  id              String             @id @default(uuid()) @db.Uuid
-  userId          String             @map("user_id") @db.Uuid
-  voucherId       String             @map("voucher_id") @db.Uuid
-  voucherCodeId   String?            @map("voucher_code_id") @db.Uuid
-  flashSaleItemId String?            @map("flash_sale_item_id") @db.Uuid
-  quoteId         String?            @map("quote_id") @db.Uuid
-  idempotencyKey  String             @map("idempotency_key")
+  id              String               @id @default(uuid()) @db.Uuid
+  userId          String               @map("user_id") @db.Uuid
+  voucherId       String               @map("voucher_id") @db.Uuid
+  voucherCodeId   String?              @map("voucher_code_id") @db.Uuid
+  flashSaleItemId String?              @map("flash_sale_item_id") @db.Uuid
+  quoteId         String?              @map("quote_id") @db.Uuid
+  idempotencyKey  String               @map("idempotency_key")
   status          RedemptionStatus
-  pricePoints     Int                @map("price_points")
-  priceSource     VoucherPriceSource @map("price_source")
-  priceVersion    Int                @map("price_version")
-  journalId       String?            @map("journal_id") @db.Uuid
-  balanceAfter    Int?               @map("balance_after")
-  failureCode     String?            @map("failure_code")
-  failureDetails  Json?              @map("failure_details")
-  reference       String             @unique
-  createdAt       DateTime           @default(now()) @map("created_at")
-  voucher         Voucher            @relation(fields: [voucherId], references: [id], onDelete: Restrict)
-  voucherCode     VoucherCode?       @relation("RedeemedCode", fields: [voucherCodeId], references: [id], onDelete: Restrict)
-  issuedCode      VoucherCode?       @relation("IssuedCode")
-  flashSaleItem   FlashSaleItem?     @relation(fields: [flashSaleItemId], references: [id], onDelete: Restrict)
-  quote           RedemptionQuote?   @relation(fields: [quoteId], references: [id], onDelete: Restrict)
-  flashItemClaim     FlashItemClaim?
-  usage              RedemptionUsage?
-  refund             RedemptionRefund?
-  reminders          RedemptionReminder[]
-  reports            CodeIssueReport[]
+  pricePoints     Int                  @map("price_points")
+  priceSource     VoucherPriceSource   @map("price_source")
+  priceVersion    Int                  @map("price_version")
+  journalId       String?              @map("journal_id") @db.Uuid
+  balanceAfter    Int?                 @map("balance_after")
+  failureCode     String?              @map("failure_code")
+  failureDetails  Json?                @map("failure_details")
+  reference       String               @unique
+  createdAt       DateTime             @default(now()) @map("created_at")
+  voucher         Voucher              @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+  voucherCode     VoucherCode?         @relation("RedeemedCode", fields: [voucherCodeId], references: [id], onDelete: Restrict)
+  issuedCode      VoucherCode?         @relation("IssuedCode")
+  flashSaleItem   FlashSaleItem?       @relation(fields: [flashSaleItemId], references: [id], onDelete: Restrict)
+  quote           RedemptionQuote?     @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+  flashItemClaim  FlashItemClaim?
+  usage           RedemptionUsage?
+  refund          RedemptionRefund?
+  reminders       RedemptionReminder[]
+  reports         CodeIssueReport[]
 
   @@unique([userId, idempotencyKey])
   @@index([voucherId, createdAt(sort: Desc)])

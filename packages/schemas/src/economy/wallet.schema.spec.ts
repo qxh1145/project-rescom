@@ -23,6 +23,27 @@ describe('Economy & Wallet Schemas (Story 6.2)', () => {
 
       const result = walletBalanceSchema.safeParse(balance);
       expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.refundHold).toBe(0);
+      }
+    });
+
+    it('accepts explicit refundHold', () => {
+      const balance = {
+        available: 500,
+        pending: 100,
+        escrow: 200,
+        frozen: 100,
+        integrityHold: 0,
+        refundHold: 50,
+        total: 900,
+      };
+
+      const result = walletBalanceSchema.safeParse(balance);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.refundHold).toBe(50);
+      }
     });
 
     it('rejects if a balance component is missing', () => {

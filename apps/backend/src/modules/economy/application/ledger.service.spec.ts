@@ -84,6 +84,44 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
     service = new LedgerService(repo);
   });
 
+  it('does not reverse mismatch credit journals', async () => {
+    const journal = await service.creditMismatchTopUp({
+      topUpId: 'a1ce7584-0bd5-4da8-8398-e0a5f1520ecd',
+      userId: user1Id,
+      points: 245,
+      orderCode: 1000000000,
+      amountPaidVnd: 49_000,
+    });
+    expect(journal.idempotencyKey).toBe(
+      'topup-mismatch:a1ce7584-0bd5-4da8-8398-e0a5f1520ecd',
+    );
+    await expect(
+      service.reverseJournal({ targetJournalId: journal.id }),
+    ).rejects.toThrow('Top-up credit journals cannot be reversed');
+  });
+
+  it('credits PayOS once, rejects amount conflict and prevents reversal', async () => {
+    const params = {
+      topUpId: 'a1ce7584-0bd5-4da8-8398-e0a5f1520ecd',
+      userId: user1Id,
+      points: 50,
+      orderCode: 1234567890,
+    };
+    const first = await service.creditPayosTopUp(params);
+    expect(first.idempotencyKey).toBe(`topup-credit:${params.topUpId}`);
+    expect((await service.creditPayosTopUp(params)).id).toBe(first.id);
+    expect(
+      (await repo.findAccountByUserAndClass(user1Id, 'USER_AVAILABLE'))
+        ?.balance,
+    ).toBe(50);
+    await expect(
+      service.creditPayosTopUp({ ...params, points: 51 }),
+    ).rejects.toBeInstanceOf(IdempotencyConflictException);
+    await expect(
+      service.reverseJournal({ targetJournalId: first.id }),
+    ).rejects.toThrow('Top-up credit journals cannot be reversed');
+  });
+
   describe('Account Management', () => {
     it('creates account with initial balance 0 if it does not exist', async () => {
       const account = await service.getOrCreateAccount(
@@ -712,6 +750,7 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
         escrow: 0,
         frozen: 0,
         integrityHold: 0,
+        refundHold: 0,
         total: 0,
       });
 

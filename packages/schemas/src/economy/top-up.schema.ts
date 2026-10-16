@@ -40,7 +40,7 @@ export function topUpRejectionKey(topUpId: string): string {
   return `topup-rejection:${topUpId}`;
 }
 
-/** Must stay identical to the Prisma `TopUpStatus` enum. `PENDING` is "Pending Payment". */
+/** Manual-channel statuses only; Prisma `TopUpStatus` also holds PayOS statuses (Story 13.1), exposed by the PayOS contract. */
 export const topUpStatusSchema = z.enum(["PENDING", "APPROVED", "REJECTED"]);
 export type TopUpStatus = z.infer<typeof topUpStatusSchema>;
 
@@ -175,6 +175,9 @@ export type TopUpReviewResultDto = z.infer<typeof topUpReviewResultSchema>;
 export const TOP_UP_AUDIT_EVENT_TYPES = {
   APPROVED: "AdminTopUpApproved",
   REJECTED: "AdminTopUpRejected",
+  RECHECKED: "AdminTopUpRechecked",
+  MISMATCH_RESOLVED: "AdminTopUpMismatchResolved",
+  EXPORTED: "AdminTopUpExported",
 } as const;
 
 /**
@@ -201,6 +204,31 @@ export const topUpAdminAuditEventPayloadSchema = z.object({
 export type TopUpAdminAuditEventPayload = z.infer<
   typeof topUpAdminAuditEventPayloadSchema
 >;
+
+export const topUpRecheckAuditEventPayloadSchema = z.object({
+  schemaVersion: z.literal(1),
+  action: z.literal("TOPUP_RECHECKED"),
+  auditCategory: z.literal("MODERATION_ADMIN_ACTION"),
+  topUpId: z.string().uuid(),
+  adminId: z.string().uuid(),
+  orderCode: z.number().int(),
+  result: z.enum([
+    "CREDITED",
+    "STILL_UNPAID",
+    "MISMATCH",
+    "REFUNDED",
+    "PROVIDER_UNAVAILABLE",
+    "FAILED",
+  ]),
+  statusBefore: z.string(),
+  statusAfter: z.string(),
+  correlationId: z.string().uuid().nullable(),
+  occurredAt: z.string().datetime(),
+});
+export type TopUpRecheckAuditEventPayload = z.infer<
+  typeof topUpRecheckAuditEventPayloadSchema
+>;
+
 
 /** Converts Points to the VND amount the user must transfer. */
 export function pointsToVnd(points: number): number {
@@ -295,3 +323,22 @@ export function buildVietQrPayload(input: VietQrPayloadInput): string {
 
   return `${body}${crc16CcittFalse(body)}`;
 }
+
+export const topUpExportAuditEventPayloadSchema = z.object({
+  schemaVersion: z.literal(1), action: z.literal('TOPUP_EXPORTED'),
+  auditCategory: z.literal('MODERATION_ADMIN_ACTION'), exportId: z.string().uuid(),
+  adminId: z.string().uuid(), from: z.string(), to: z.string(),
+  rowCount: z.number().int().nonnegative(), correlationId: z.string().uuid().nullable(),
+  occurredAt: z.string().datetime(),
+}).strict();
+
+export const topUpMismatchAuditEventPayloadSchema = z.object({
+  schemaVersion: z.literal(1), action: z.literal("TOPUP_MISMATCH_RESOLVED"),
+  auditCategory: z.literal("MODERATION_ADMIN_ACTION"),
+  topUpId: z.string().uuid(), adminId: z.string().uuid(),
+  resolution: z.enum(["CREDIT", "MANUAL_REFUND"]),
+  amountVnd: z.number().int(), amountPaidVnd: z.number().int(),
+  pointsCredited: z.number().int().nullable(), noteLength: z.number().int().nullable(),
+  correlationId: z.string().uuid().nullable(), occurredAt: z.string().datetime(),
+}).strict();
+export type TopUpMismatchAuditEventPayload = z.infer<typeof topUpMismatchAuditEventPayloadSchema>;

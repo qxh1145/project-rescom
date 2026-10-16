@@ -21,6 +21,7 @@ Trình duyệt ──HTTPS──> Caddy ──> Next.js (frontend, /api/* rewrit
 
 - Caddy tự xin và gia hạn chứng chỉ HTTPS (Let's Encrypt). Chỉ Caddy mở cổng 80/443.
 - Backend tự chạy `prisma migrate deploy` mỗi lần khởi động.
+- Trước khi deploy với `PAYOS_ENABLED=true`, chạy `deploy/check-manual-topups.js` trong backend container để xác nhận không còn top-up thủ công PENDING.
 - Frontend build pilot (IR.1): `NEXT_PUBLIC_API_MOCKING=disabled` (không có MSW, chỉ gọi backend thật) và
   `NEXT_PUBLIC_PILOT_BUILD=true` (ẩn các màn hình hoãn: độ tin cậy, khiếu nại, chất lượng khảo sát, xuất file,
   so sánh phiên bản, streak/hạng/xếp hạng, AI builder, form khách `/f/[id]`). Xuất file chạy hoàn toàn ở trình duyệt nên cờ
@@ -333,3 +334,7 @@ docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod up 
 
 - Kiểm tra: `GET /health/live` (process sống) và `GET /health/ready` (DB + ClamAV; trả 503 nếu một trong hai lỗi).
 - Tạo hạ tầng (Hostinger VPS, Postgres container + backup WAL lên Cloudflare R2, bucket R2, firewall chỉ nhận Cloudflare, Vercel, OAuth): Story 11.2 (tham khảo `_bmad-output/implementation-artifacts/11-2-cloud-infrastructure-checklist.md`). Môi trường staging được đề xuất sử dụng domain `staging-api.rescom.io.vn` / `staging-app.rescom.io.vn` với file env riêng biệt (`deploy/.env.staging`) chờ owner xác nhận. CI/CD, rollback: Story 11.3.
+
+## payOS production probe (Story 13.6)
+
+Owner thực hiện theo [checklist setup payOS](../docs/payos-production-setup.md); giữ `PAYOS_ENABLED=false` đến Story 13.13.

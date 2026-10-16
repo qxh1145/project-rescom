@@ -18,6 +18,9 @@ import {
   postJournalInputSchema,
   reverseJournalInputSchema,
   topUpApprovalKey,
+  topUpCreditKey,
+  topUpMismatchKey,
+  TOP_UP_MISMATCH_JOURNAL_KEY_PREFIX,
 } from '@rescom/schemas';
 import {
   LedgerRepositoryPort,
@@ -392,6 +395,7 @@ export class LedgerService {
       escrow,
       frozen,
       integrityHold,
+      refundHold: 0, // not part of total (13.7 decision); 13.10 adds REFUND_HOLD
       total,
     };
 
@@ -545,6 +549,17 @@ export class LedgerService {
     if (!targetJournal) {
       throw new JournalNotFoundException(
         `Target journal ${input.targetJournalId} for reversal was not found.`,
+      );
+    }
+
+    if (
+      targetJournal.idempotencyKey.startsWith('topup-credit:') ||
+      targetJournal.idempotencyKey.startsWith(
+        TOP_UP_MISMATCH_JOURNAL_KEY_PREFIX,
+      )
+    ) {
+      throw new InvalidLedgerOperationException(
+        'Top-up credit journals cannot be reversed; use the refund flow.',
       );
     }
 
@@ -2267,6 +2282,61 @@ export class LedgerService {
       entries: [
         { accountId: userFrozenAccount.id, amount: -pointsToVoid },
         { accountId: systemSinkAccount.id, amount: pointsToVoid },
+      ],
+    });
+  }
+
+  /**
+   * Credits a payOS-verified top-up (FR-35, AD-25), keyed by
+   * `topup-credit:${topUpId}` so concurrent deliveries post at most one journal.
+   */
+  async creditPayosTopUp(params: {
+    topUpId: string;
+    userId: string;
+    points: number;
+    orderCode: number;
+  }): Promise<LedgerJournalEntity> {
+    if (!Number.isInteger(params.points) || params.points <= 0)
+      throw new InvalidLedgerOperationException(
+        'Top-up amount must be a positive integer.',
+      );
+    const clearing = await this.getOrCreateAccount(null, 'SYSTEM_CLEARING');
+    const available = await this.getOrCreateAccount(
+      params.userId,
+      'USER_AVAILABLE',
+    );
+    return this.postJournal({
+      idempotencyKey: topUpCreditKey(params.topUpId),
+      description: `PayOS top-up credit: order ${params.orderCode} (${params.points} points)`,
+      entries: [
+        { accountId: clearing.id, amount: -params.points },
+        { accountId: available.id, amount: params.points },
+      ],
+    });
+  }
+
+  async creditMismatchTopUp(params: {
+    topUpId: string;
+    userId: string;
+    points: number;
+    orderCode: number;
+    amountPaidVnd: number;
+  }): Promise<LedgerJournalEntity> {
+    if (!Number.isInteger(params.points) || params.points <= 0)
+      throw new InvalidLedgerOperationException(
+        'Top-up amount must be a positive integer.',
+      );
+    const clearing = await this.getOrCreateAccount(null, 'SYSTEM_CLEARING');
+    const available = await this.getOrCreateAccount(
+      params.userId,
+      'USER_AVAILABLE',
+    );
+    return this.postJournal({
+      idempotencyKey: topUpMismatchKey(params.topUpId),
+      description: `PayOS mismatch credit: order ${params.orderCode} (${params.points} points from ${params.amountPaidVnd} VND)`,
+      entries: [
+        { accountId: clearing.id, amount: -params.points },
+        { accountId: available.id, amount: params.points },
       ],
     });
   }

@@ -23,6 +23,7 @@ describe('Story 6.6: PrismaTopUpRepository', () => {
     amountVnd: 20_000,
     transferReference: 'RESCOMABCDEFGH',
     status: 'PENDING',
+    channel: 'MANUAL',
     adminId: null,
     journalId: null,
     rejectionReason: null,
@@ -50,7 +51,7 @@ describe('Story 6.6: PrismaTopUpRepository', () => {
       topUpRequest: {
         count: jest.fn(),
         create: jest.fn(),
-        findUnique: jest.fn(),
+        findFirst: jest.fn(),
         findUniqueOrThrow: jest.fn(),
         updateMany: jest.fn(),
       },
@@ -59,7 +60,7 @@ describe('Story 6.6: PrismaTopUpRepository', () => {
     prisma = {
       $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)),
       topUpRequest: {
-        findUnique: jest.fn(),
+        findFirst: jest.fn(),
         findMany: jest.fn(),
         count: jest.fn(),
       },
@@ -90,7 +91,7 @@ describe('Story 6.6: PrismaTopUpRepository', () => {
       );
       expect(tx.$queryRaw.mock.calls[0][1]).toBe(`top-up:${userId}`);
       expect(tx.topUpRequest.count).toHaveBeenCalledWith({
-        where: { userId, status: 'PENDING' },
+        where: { userId, channel: 'MANUAL', status: 'PENDING' },
       });
       expect(tx.topUpRequest.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
@@ -132,12 +133,21 @@ describe('Story 6.6: PrismaTopUpRepository', () => {
     });
   });
 
+  it('rejects a PAYOS-shaped row from the manual entity', async () => {
+    prisma.topUpRequest.findFirst.mockResolvedValue(
+      row({ channel: 'PAYOS', transferReference: null }),
+    );
+    await expect(repo.findById(topUpId)).rejects.toThrow(
+      'Expected manual top-up row',
+    );
+  });
+
   it('locks the request row FOR UPDATE before reading it', async () => {
-    tx.topUpRequest.findUnique.mockResolvedValue(row());
+    tx.topUpRequest.findFirst.mockResolvedValue(row());
     const entity = await repo.findByIdForUpdate(topUpId);
 
     expect(sqlOf(tx.$queryRaw.mock.calls[0])).toMatch(
-      /FROM top_up_requests WHERE id = \?::uuid FOR UPDATE/,
+      /FROM top_up_requests WHERE id = \?::uuid AND channel = 'MANUAL' FOR UPDATE/,
     );
     expect(entity?.status).toBe('PENDING');
   });
@@ -192,7 +202,7 @@ describe('Story 6.6: PrismaTopUpRepository', () => {
 
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       expect(tx.topUpRequest.updateMany).toHaveBeenCalledWith({
-        where: { id: topUpId, status: 'PENDING' },
+        where: { id: topUpId, channel: 'MANUAL', status: 'PENDING' },
         data: expect.objectContaining({
           status: 'APPROVED',
           adminId,
@@ -240,7 +250,7 @@ describe('Story 6.6: PrismaTopUpRepository', () => {
 
     expect(prisma.topUpRequest.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { status: 'PENDING' },
+        where: { channel: 'MANUAL', status: 'PENDING' },
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         include: { user: { select: { email: true } } },
       }),
@@ -256,7 +266,7 @@ describe('Story 6.6: PrismaTopUpRepository', () => {
     await repo.listByUser(userId, { limit: 5, offset: 10 });
 
     expect(prisma.topUpRequest.findMany).toHaveBeenCalledWith({
-      where: { userId },
+      where: { channel: 'MANUAL', userId },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       skip: 10,
       take: 5,

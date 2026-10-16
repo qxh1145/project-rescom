@@ -203,6 +203,14 @@ export const envSchema = z
     SCHEDULER_ENABLED: booleanEnv(false),
     // Story 12.11, PRD OQ-24: Rewards stays off until accounting/tax decision is recorded.
     REWARDS_ENABLED: booleanEnv(false),
+    PAYOS_ENABLED: booleanEnv(false),
+    PAYOS_WEBHOOK_CAPTURE: booleanEnv(false),
+    PAYOS_CHECKOUT_LIMIT: z.coerce.number().int().min(1).default(5),
+    PAYOS_CHECKOUT_WINDOW_SECONDS: z.coerce.number().int().min(60).default(600),
+    PAYOS_CLIENT_ID: z.string().trim().min(1).optional(),
+    PAYOS_API_KEY: z.string().trim().min(1).optional(),
+    PAYOS_CHECKSUM_KEY: z.string().trim().min(1).optional(),
+    TOPUP_REFUND_MAILBOX: z.string().trim().email().optional(),
     REWARDS_ACCOUNTING_DECISION_REF: z.string().trim().min(1).optional(),
     SCHEDULER_TICK_SECONDS: z.coerce.number().int().min(1).max(300).default(15),
     OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(50).default(8),
@@ -362,6 +370,30 @@ export const envSchema = z
   })
   .superRefine((data, ctx) => {
     const isProduction = data.NODE_ENV === 'production';
+    const payosKeys = [
+      'PAYOS_CLIENT_ID',
+      'PAYOS_API_KEY',
+      'PAYOS_CHECKSUM_KEY',
+    ] as const;
+    if (data.PAYOS_ENABLED || payosKeys.some((key) => data[key])) {
+      for (const key of payosKeys) {
+        if (!data[key]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key} is required when payOS credentials or PAYOS_ENABLED are set`,
+          });
+        }
+      }
+      if (!data.TOPUP_REFUND_MAILBOX) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['TOPUP_REFUND_MAILBOX'],
+          message:
+            'TOPUP_REFUND_MAILBOX is required when payOS credentials or PAYOS_ENABLED are set',
+        });
+      }
+    }
 
     if (data.ABUSE_CONTROL_PROFILE === 'REDIS_SHARED') {
       ctx.addIssue({
@@ -487,6 +519,9 @@ export const envSchema = z
         ['STORAGE_SECRET_ACCESS_KEY', data.STORAGE_SECRET_ACCESS_KEY],
         ['SMTP_USERNAME', data.SMTP_USERNAME],
         ['SMTP_PASSWORD', data.SMTP_PASSWORD],
+        ['PAYOS_CLIENT_ID', data.PAYOS_CLIENT_ID],
+        ['PAYOS_API_KEY', data.PAYOS_API_KEY],
+        ['PAYOS_CHECKSUM_KEY', data.PAYOS_CHECKSUM_KEY],
       ];
       for (const [key, value] of placeholderSecrets) {
         if (isPlaceholderSecret(value)) {

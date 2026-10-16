@@ -259,3 +259,57 @@ export class TopUpSelfReviewForbiddenException extends Error {
     this.name = 'TopUpSelfReviewForbiddenException';
   }
 }
+
+export class PayosTopUpAlreadyProcessingException extends Error {
+  readonly code = 'TOPUP_ALREADY_PROCESSING';
+  constructor(
+    public readonly topUpId: string,
+    public readonly checkoutUrl: string | null,
+  ) {
+    super('A top-up is already processing.');
+  }
+}
+export class PayosCheckoutRateLimitedException extends Error {
+  readonly code = 'TOPUP_CHECKOUT_RATE_LIMITED';
+  constructor(public readonly retryAfterSeconds: number) {
+    super('Too many top-up checkouts.');
+  }
+}
+export class PayosCheckoutUnavailableException extends Error {
+  readonly code = 'TOPUP_PROVIDER_UNAVAILABLE';
+  constructor() {
+    super('Top-up checkout is temporarily unavailable. Please retry.');
+  }
+}
+export class PayosTopUpNotCancellableException extends Error {
+  readonly code = 'TOPUP_NOT_CANCELLABLE';
+  constructor(public readonly currentStatus: string) {
+    super('Top-up cannot be cancelled.');
+  }
+}
+
+export class TopUpExportTooLargeException extends Error {
+  readonly code = 'TOPUP_EXPORT_TOO_LARGE';
+  constructor(public readonly maxRows: number) {
+    super(`Top-up export exceeds ${maxRows} rows.`);
+  }
+}
+
+export class TopUpMismatchAlreadyResolvedException extends Error {
+  readonly code = 'TOPUP_MISMATCH_ALREADY_RESOLVED';
+  constructor(public readonly status: string) {
+    super('Top-up mismatch already resolved.');
+  }
+}
+export class TopUpMismatchAmountChangedException extends Error {
+  readonly code = 'TOPUP_MISMATCH_AMOUNT_CHANGED';
+  constructor(public readonly amountPaidVnd: number | null) {
+    super('Paid amount changed.');
+  }
+}
+export class TopUpMismatchNothingToCreditException extends Error {
+  readonly code = 'TOPUP_MISMATCH_NOTHING_TO_CREDIT';
+  constructor() {
+    super('Paid amount is below one Point.');
+  }
+}

@@ -25,8 +25,10 @@ const PREFIX = "rescom:mockdb:";
  * 9: Admin Flash Sale lifecycle fields (Story 12.6).
  * 10: Flash sell-out time, persisted stats seed time, seed stock net of Flash quota (Story 12.6 review).
  * 11: Admin code-issue queue and resolution fields (Story 12.12).
+ * 12: PayOS top-up and refundHold support (Story 13.7).
+ * 13: PayOS amount-mismatch resolution fields (Story 13.9).
  */
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 13;
 
 interface Persisted<T> {
   version: number;

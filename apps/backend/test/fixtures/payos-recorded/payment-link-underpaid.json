@@ -1,0 +1,27 @@
+{
+  "_source": "payOS API payment link documentation sample; normalized to @payos/node 2.0.5 PaymentLink; test-only values",
+  "id": "link-1234567890",
+  "orderCode": 1234567890,
+  "amount": 20000,
+  "amountPaid": 10000,
+  "amountRemaining": 10000,
+  "status": "UNDERPAID",
+  "createdAt": "2026-10-15T16:00:00Z",
+  "transactions": [
+    {
+      "reference": "FT123",
+      "amount": 20000,
+      "accountNumber": "123456789",
+      "description": "RC4567890",
+      "transactionDateTime": "2026-10-15 23:30:00",
+      "virtualAccountName": null,
+      "virtualAccountNumber": null,
+      "counterAccountBankId": null,
+      "counterAccountBankName": null,
+      "counterAccountName": null,
+      "counterAccountNumber": null
+    }
+  ],
+  "cancellationReason": null,
+  "canceledAt": null
+}

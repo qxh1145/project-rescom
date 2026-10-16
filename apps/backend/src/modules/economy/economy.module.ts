@@ -12,6 +12,28 @@ import { ACCOUNT_FUNDING_PORT } from '../rewards/application/ports/account-stand
 import { PrismaAccountFundingReader } from './infrastructure/prisma-account-funding.reader';
 import { PrismaWalletBalanceReader } from './infrastructure/prisma-wallet-balance.reader';
 import { PrismaModule } from '../../common/database/prisma.module';
+import { PayosAvailability } from './application/payos-availability';
+import { PayosTopUpService } from './application/payos-top-up.service';
+import { TopUpNotificationHandler } from './application/top-up-notification.handler';
+import { TopUpAdminAlerts } from './application/top-up-admin-alerts';
+import { TopUpAdminAlertHandler } from './infrastructure/top-up-admin-alert.handler';
+import {
+  EMAIL_SENDER_PORT,
+  EmailSenderPort,
+} from '../notifications/application/ports/email-sender.port';
+import {
+  PAYOS_TOP_UP_REPOSITORY_PORT,
+  PayosTopUpRepositoryPort,
+} from './application/ports/payos-top-up-repository.port';
+import { PaymentProviderPort } from './application/ports/payment-provider.port';
+import { PrismaPayosTopUpRepository } from './infrastructure/prisma-payos-top-up.repository';
+import { PayosEnableGuard } from './infrastructure/payos-enable-guard';
+import { PayosTopUpController } from './presentation/payos-top-up.controller';
+import { PayosWebhookController } from './presentation/payos-webhook.controller';
+import {
+  PayosCheckoutEnabledGuard,
+  ManualCheckoutEnabledGuard,
+} from './presentation/payos-checkout-enabled.guard';
 import { CLOCK, Clock } from '../../common/time/clock';
 import { EconomySchedulerRegistrar } from './infrastructure/economy-scheduler.registrar';
 import { AuthModule } from '../auth/auth.module';
@@ -38,6 +60,8 @@ import {
   UnitOfWorkPort,
 } from '../../common/database/unit-of-work.port';
 import { EnvService } from '../../common/config/env.service';
+import { PAYMENT_PROVIDER_PORT } from './application/ports/payment-provider.port';
+import { createPaymentProvider } from './infrastructure/payos-payment-provider.adapter';
 import {
   TOP_UP_REPOSITORY_PORT,
   TopUpRepositoryPort,
@@ -70,6 +94,8 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     LedgerController,
     StarterPointsController,
     TopUpController,
+    PayosTopUpController,
+    PayosWebhookController,
     AdminTopUpController,
   ],
   providers: [
@@ -125,6 +151,81 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     // Story IR.2b: pending-release + starter-expiry jobs and the
     // InternalRewardRequested Outbox handler.
     EconomySchedulerRegistrar,
+    { provide: PayosAvailability, useValue: new PayosAvailability() },
+    PayosEnableGuard,
+    PayosCheckoutEnabledGuard,
+    ManualCheckoutEnabledGuard,
+    {
+      provide: PAYOS_TOP_UP_REPOSITORY_PORT,
+      useClass: PrismaPayosTopUpRepository,
+    },
+    {
+      provide: PayosTopUpService,
+      useFactory: (
+        repository: PayosTopUpRepositoryPort,
+        provider: PaymentProviderPort,
+        env: EnvService,
+        unitOfWork: UnitOfWorkPort,
+        ledgerService: LedgerService,
+        adminCapability: AdminCapabilityPort,
+      ) =>
+        new PayosTopUpService({
+          adminCapability,
+          unitOfWork,
+          ledgerService,
+          repository,
+          provider,
+          appBaseUrl: env.emailAppBaseUrl,
+          limit: env.payosCheckoutLimit,
+          windowSeconds: env.payosCheckoutWindowSeconds,
+          captureWebhooks: env.payosWebhookCapture,
+          logger: new Logger(PayosTopUpService.name),
+        }),
+      inject: [
+        PAYOS_TOP_UP_REPOSITORY_PORT,
+        PAYMENT_PROVIDER_PORT,
+        EnvService,
+        UNIT_OF_WORK_PORT,
+        LedgerService,
+        ADMIN_CAPABILITY_PORT,
+      ],
+    },
+    {
+      provide: TopUpNotificationHandler,
+      useFactory: (publisher: NotificationPublisherPort) =>
+        new TopUpNotificationHandler(publisher),
+      inject: [NOTIFICATION_PUBLISHER_PORT],
+    },
+    {
+      provide: TopUpAdminAlerts,
+      useFactory: (repository: PayosTopUpRepositoryPort, clock?: Clock) =>
+        new TopUpAdminAlerts(
+          repository,
+          clock ? () => clock.now() : () => new Date(),
+        ),
+      inject: [PAYOS_TOP_UP_REPOSITORY_PORT, { token: CLOCK, optional: true }],
+    },
+    {
+      provide: TopUpAdminAlertHandler,
+      useFactory: (
+        adminCapability: AdminCapabilityPort,
+        notifications: NotificationPublisherPort,
+        emailSender: EmailSenderPort,
+        env: EnvService,
+      ) =>
+        new TopUpAdminAlertHandler(
+          adminCapability,
+          notifications,
+          emailSender,
+          () => env.topUpRefundMailbox,
+        ),
+      inject: [
+        ADMIN_CAPABILITY_PORT,
+        NOTIFICATION_PUBLISHER_PORT,
+        EMAIL_SENDER_PORT,
+        EnvService,
+      ],
+    },
     {
       // Epic 6 review P2: server-side dispute check for Pending releases.
       // Phase 1 has no dispute cases; Story 8.5 must bind a real query.
@@ -174,6 +275,11 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
         STARTER_POINTS_DATA_PROVIDER,
         { token: NOTIFICATION_PUBLISHER_PORT, optional: true },
       ],
+    },
+    {
+      provide: PAYMENT_PROVIDER_PORT,
+      useFactory: (env: EnvService) => createPaymentProvider(env),
+      inject: [EnvService],
     },
     {
       provide: TOP_UP_REPOSITORY_PORT,
@@ -232,6 +338,7 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     LEDGER_REPOSITORY_PORT,
     STARTER_POINTS_DATA_PROVIDER,
     EXTERNAL_DISPUTE_HOLD_QUERY_PORT,
+    TopUpAdminAlerts,
   ],
 })
 export class EconomyModule {}

@@ -1,4 +1,8 @@
 import {
+  PaymentProviderSignatureError,
+  PaymentProviderUnavailableError,
+} from '../../modules/economy/application/ports/payment-provider.port';
+import {
   ExceptionFilter,
   Catch,
   ArgumentsHost,
@@ -127,6 +131,14 @@ import {
   PendingCreditNotFoundException,
   PendingRewardNotMaturedException,
   PendingRewardForbiddenException,
+  TopUpExportTooLargeException,
+  TopUpMismatchAlreadyResolvedException,
+  TopUpMismatchAmountChangedException,
+  TopUpMismatchNothingToCreditException,
+  PayosTopUpAlreadyProcessingException,
+  PayosCheckoutRateLimitedException,
+  PayosCheckoutUnavailableException,
+  PayosTopUpNotCancellableException,
   InvalidTopUpRequestException,
   TopUpRequestNotFoundException,
   TopUpAlreadyReviewedException,
@@ -560,6 +572,56 @@ export class HttpExceptionFilter implements ExceptionFilter {
           requiredAmount: exception.requiredAmount,
         };
       }
+    } else if (exception instanceof PaymentProviderSignatureError) {
+      status = HttpStatus.UNAUTHORIZED;
+      code = 'PAYOS_WEBHOOK_SIGNATURE_INVALID';
+      message = 'Invalid payment webhook signature.';
+    } else if (exception instanceof PaymentProviderUnavailableError) {
+      status = HttpStatus.SERVICE_UNAVAILABLE;
+      code = 'PAYMENT_PROVIDER_UNAVAILABLE';
+      message = 'Payment provider unavailable.';
+    } else if (exception instanceof PayosTopUpAlreadyProcessingException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = {
+        topUpId: exception.topUpId,
+        checkoutUrl: exception.checkoutUrl,
+      };
+    } else if (exception instanceof PayosCheckoutRateLimitedException) {
+      status = HttpStatus.TOO_MANY_REQUESTS;
+      code = exception.code;
+      message = exception.message;
+      retryAfterSeconds = exception.retryAfterSeconds;
+      details = { retryAfterSeconds: exception.retryAfterSeconds };
+    } else if (exception instanceof PayosCheckoutUnavailableException) {
+      status = HttpStatus.SERVICE_UNAVAILABLE;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof PayosTopUpNotCancellableException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = { currentStatus: exception.currentStatus };
+    } else if (exception instanceof TopUpMismatchAlreadyResolvedException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = { status: exception.status };
+    } else if (exception instanceof TopUpMismatchAmountChangedException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+      details = { amountPaidVnd: exception.amountPaidVnd };
+    } else if (exception instanceof TopUpMismatchNothingToCreditException) {
+      status = HttpStatus.CONFLICT;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof TopUpExportTooLargeException) {
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+      details = { maxRows: exception.maxRows };
     } else if (exception instanceof InvalidTopUpRequestException) {
       status = HttpStatus.BAD_REQUEST;
       code = exception.code;

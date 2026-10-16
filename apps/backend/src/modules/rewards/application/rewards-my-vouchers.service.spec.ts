@@ -141,6 +141,7 @@ describe('Story 12.10: Application Services (My Vouchers, Admin Code Issues, Rem
     };
 
     adminCapMock = {
+      listActiveAdminIds: async () => [],
       findCurrentCapability: async (uid) =>
         uid === adminId
           ? { userId: adminId, role: 'ADMIN', status: 'ACTIVE' }

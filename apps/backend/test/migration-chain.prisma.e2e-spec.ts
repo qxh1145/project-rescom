@@ -82,6 +82,26 @@ describe('Prisma migration chain on PostgreSQL', () => {
     return rows[0]?.def;
   }
 
+  it('creates PayOS sequence, constraints and one-processing index (13.1)', async () => {
+    if (!dbAvailable) return;
+    const sequence = await prisma.$queryRaw<Array<{ start_value: bigint }>>`
+      SELECT start_value FROM pg_sequences WHERE schemaname = current_schema()
+        AND sequencename = 'top_up_order_code_seq'`;
+    expect(sequence[0]?.start_value).toBe(BigInt(1000000000));
+    await expect(
+      indexDef('top_up_requests_one_processing_per_user'),
+    ).resolves.toMatch(/UNIQUE INDEX .* WHERE .*'PROCESSING'/);
+    await expect(
+      constraintDef('top_up_requests_payos_amount_check'),
+    ).resolves.toContain('amount_vnd');
+    await expect(
+      constraintDef('top_up_requests_channel_shape_check'),
+    ).resolves.toContain('order_code');
+    await expect(
+      constraintDef('top_up_requests_channel_status_check'),
+    ).resolves.toContain('PROCESSING');
+  });
+
   it('creates every table previously built only by db push', async () => {
     if (!dbAvailable) return;
     const rows = await prisma.$queryRaw<Array<{ table_name: string }>>`
@@ -297,12 +317,15 @@ describe('Prisma migration chain on PostgreSQL', () => {
   it('creates the IR.4b email delivery schema and notification types', async () => {
     if (!dbAvailable) return;
     const values = await enumValues('NotificationType');
-    expect(values.slice(-5)).toEqual([
+    expect(values.slice(-8)).toEqual([
       'TOPUP_REJECTED',
       'ACCOUNT_LOCKED',
       'ACCOUNT_UNLOCKED',
       'VOUCHER_EXPIRING',
       'CODE_ISSUE_RESOLVED',
+      'TOPUP_CANCELLED',
+      'TOPUP_AMOUNT_MISMATCH',
+      'TOPUP_REFUNDED',
     ]);
     const deliveries = await columnsOf('email_deliveries');
     expect(deliveries.has('idempotency_key')).toBe(true);

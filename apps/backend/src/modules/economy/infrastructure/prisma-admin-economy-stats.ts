@@ -21,7 +21,7 @@ export class PrismaAdminEconomyStats implements AdminEconomyStatsPort {
 
   async pendingTopUpSummary(): Promise<PendingTopUpSummary> {
     const result = await this.prisma.topUpRequest.aggregate({
-      where: { status: 'PENDING' },
+      where: { channel: 'MANUAL', status: 'PENDING' },
       _count: { _all: true },
       _sum: { amount: true, amountVnd: true },
     });
@@ -33,8 +33,8 @@ export class PrismaAdminEconomyStats implements AdminEconomyStatsPort {
   }
 
   async oldestPendingTopUp(): Promise<PendingTopUpRecord | null> {
-    return this.prisma.topUpRequest.findFirst({
-      where: { status: 'PENDING' },
+    const row = await this.prisma.topUpRequest.findFirst({
+      where: { channel: 'MANUAL', status: 'PENDING' },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       select: {
         id: true,
@@ -45,6 +45,9 @@ export class PrismaAdminEconomyStats implements AdminEconomyStatsPort {
         createdAt: true,
       },
     });
+    return row && row.transferReference !== null
+      ? { ...row, transferReference: row.transferReference }
+      : null;
   }
 
   async balanceTotals(): Promise<{ escrow: number; pending: number }> {

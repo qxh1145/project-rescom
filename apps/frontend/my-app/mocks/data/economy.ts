@@ -29,8 +29,8 @@ function seedWallet(user: MockSessionUser): MockWallet {
   return user.profileComplete && user.email === "minh.le@fpt.edu.vn"
     ? // Figma pages 21–27 supersede page 7’s 112 available.
       // Escrow 140 = the two running publisher surveys in Figma 10 (100 + 40); available is after those locks.
-      { available: 186, pending: 18, escrow: 140, frozen: 0, integrityHold: 0 }
-    : { available: 0, pending: 0, escrow: 0, frozen: 100, integrityHold: 0 };
+      { available: 186, pending: 18, escrow: 140, frozen: 0, integrityHold: 0, refundHold: 0 }
+    : { available: 0, pending: 0, escrow: 0, frozen: 100, integrityHold: 0, refundHold: 0 };
 }
 
 export function walletOf(user: MockSessionUser): MockWallet {
@@ -51,8 +51,11 @@ export function updateWallet(user: MockSessionUser, mutator: (wallet: MockWallet
 }
 
 export function toBalanceDto(wallet: MockWallet): WalletBalanceDto {
+  // `total` excludes refundHold (decision 13.7; 13.10 may revisit with the REFUND_HOLD ledger class).
   const total = wallet.available + wallet.pending + wallet.escrow + wallet.frozen + wallet.integrityHold;
-  return { ...wallet, total };
+  // MOCK-ONLY scenario `?msw=refund-hold` shows the sixth balance without a refund flow.
+  const refundHold = getActiveScenario() === "refund-hold" ? 50 : (wallet.refundHold ?? 0);
+  return { ...wallet, refundHold, total };
 }
 
 /**
@@ -222,6 +225,22 @@ export function releaseDuePendingRewards(user: MockSessionUser): { released: num
   );
   if (!anyDue) return { released: 0, activated: false };
   return withEconomy(user, (state) => releaseDueRewards(state, ruleContext(), releaseAll));
+}
+
+/** Story 13.7: a PayOS top-up settled → Khả dụng +points once, journal `topup-credit:`. */
+export function creditPayosTopUp(user: MockSessionUser, input: { points: number; orderCode: number }): MockTransaction {
+  updateWallet(user, (wallet) => {
+    wallet.available += input.points;
+  });
+  return recordTransaction(user, {
+    kind: "TOP_UP_PAYOS",
+    amount: input.points,
+    status: "AVAILABLE",
+    note: `#${input.orderCode}`,
+    surveyId: null,
+    attemptId: null,
+    releasesAt: null,
+  });
 }
 
 /**

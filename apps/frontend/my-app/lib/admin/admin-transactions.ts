@@ -25,7 +25,7 @@ export const TRANSACTION_FILTERS = [
  * Hoàn = points given back (escrow refund, dispute outcome, reversal).
  */
 const FILTER_KINDS: Record<Exclude<TransactionFilter, "all">, readonly HistoryKind[]> = {
-  "top-up": ["TOP_UP"],
+  "top-up": ["TOP_UP", "TOP_UP_PAYOS", "TOP_UP_MISMATCH"],
   escrow: ["SURVEY_ESCROW"],
   reward: ["SURVEY_REWARD", "REWARD_RELEASE", "DISPUTE_HOLD"],
   refund: ["ESCROW_REFUND", "DISPUTE_RESOLUTION", "REVERSAL"],
@@ -145,6 +145,8 @@ const TITLES: Record<HistoryKind, string> = {
   DISPUTE_HOLD: "Giữ điểm khi khiếu nại",
   DISPUTE_RESOLUTION: "Kết quả khiếu nại",
   TOP_UP: "Nạp điểm",
+  TOP_UP_PAYOS: "Nạp Điểm qua PayOS",
+  TOP_UP_MISMATCH: "Nạp Điểm (điều chỉnh sai số tiền)",
   VOUCHER_REDEMPTION: "Đổi voucher",
   SURVEY_ESCROW: "Khoá ký quỹ",
   ESCROW_REFUND: "Hoàn ký quỹ",

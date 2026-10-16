@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { TopUpReviewScreen } from "./components/TopUpReviewScreen";
+import { TopUpConsoleScreen } from "./components/TopUpConsoleScreen";
 
 export const metadata: Metadata = {
-  title: "Duyệt nạp điểm | Rescom Admin",
+  title: "Nạp điểm | Rescom Admin",
 };
 
-/** `/admin/top-ups[?id=<topUpId>]` — Figma 11b "Duyệt nạp điểm" (63:369, desktop only). */
+/** `/admin/top-ups?tab=payos|manual` admin top-up console. */
 export default function AdminTopUpsPage() {
   return (
     <Suspense>
-      <TopUpReviewScreen />
+      <TopUpConsoleScreen />
     </Suspense>
   );
 }
