@@ -294,9 +294,9 @@ export function RefundRequestsPanel({ onChanged }: { onChanged: () => void }) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = fileName ?? "payos-refunds.csv";
+      a.download = fileName || `rescom-payos-topups-${from}-${to}.csv`;
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
       toast("Không thể xuất CSV", payosAdminErrorMessage(err), "error");
     } finally {
@@ -389,6 +389,7 @@ export function RefundRequestsPanel({ onChanged }: { onChanged: () => void }) {
           <div className="w-full sm:w-64">
             <input
               type="search"
+              maxLength={100}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Tìm theo mã đơn hoặc email…"

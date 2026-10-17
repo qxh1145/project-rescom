@@ -46,7 +46,7 @@ export function BankTransferDialog({
     const state = bankTransferState(
       {
         reference: bankRef.trim() || undefined,
-        transferredAt: transferredAt ? new Date(transferredAt) : undefined,
+        transferredAt: transferredAt || undefined,
       },
       new Date(item!.submittedAt),
       new Date(),

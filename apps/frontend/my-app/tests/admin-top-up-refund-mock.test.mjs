@@ -204,6 +204,29 @@ test("Story 13.12 MSW admin refund resolution lifecycle", async (t) => {
     assert.equal(resolveRes.body.error?.code, "REFUND_NOT_HELD");
   });
 
+  await t.test("reject hold-less request with manualTransferRecorded=true and replay without field -> 200 replayed: true", async () => {
+    setCurrentUserId("user-admin-004");
+    const listRes = await getJson("/api/admin/top-ups/refunds?status=OPEN&verdict=NOT_ELIGIBLE");
+    assert.equal(listRes.status, 200);
+    const notEligible = listRes.body.data.items[0];
+    if (notEligible) {
+      const rejectRes = await postJson(`/api/admin/top-ups/refunds/${notEligible.id}/resolve`, {
+        decision: "REJECTED",
+        reason: "Offline refund completed",
+        manualTransferRecorded: true,
+      });
+      assert.equal(rejectRes.status, 200);
+      assert.equal(rejectRes.body.data.replayed, false);
+
+      const replayRes = await postJson(`/api/admin/top-ups/refunds/${notEligible.id}/resolve`, {
+        decision: "REJECTED",
+        reason: "Offline refund completed",
+      });
+      assert.equal(replayRes.status, 200);
+      assert.equal(replayRes.body.data.replayed, true);
+    }
+  });
+
   await t.test("reject with manualTransferRecorded=true on held request -> 400 VALIDATION_ERROR", async () => {
     setCurrentUserId("user-admin-004");
     const listRes = await getJson("/api/admin/top-ups/refunds?status=OPEN&verdict=ELIGIBLE");
