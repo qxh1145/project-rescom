@@ -93,10 +93,20 @@ export function renderNotificationEmail(
         subject: 'Rescom: Giao dịch nạp điểm đã được hoàn tiền',
         heading: 'Giao dịch nạp điểm đã được hoàn tiền',
         paragraphs: [
-          'Giao dịch nạp điểm của bạn đã được hoàn tiền thủ công. Không có Điểm nào được cộng.',
-          'Bạn có thể xem chi tiết giao dịch trong Ví Rescom.',
+          'Giao dịch nạp điểm của bạn đã được hoàn tiền về tài khoản đã thanh toán.',
+          'Chi tiết (số tiền, Điểm) có trong Ví Rescom.',
         ],
         link: { label: 'Mở Ví Rescom', url: walletUrl },
+      });
+    case 'TOPUP_REFUND_REJECTED':
+      return render({
+        subject: 'Rescom: Yêu cầu hoàn tiền bị từ chối',
+        heading: 'Yêu cầu hoàn tiền bị từ chối',
+        paragraphs: [
+          'Yêu cầu hoàn tiền nạp điểm của bạn đã bị từ chối. Lý do và số dư cập nhật có trong Ví Rescom.',
+          supportSentence(context.supportEmail),
+        ],
+        link: { label: 'Xem chi tiết trong Ví Rescom', url: walletUrl },
       });
     case 'TOPUP_SUCCESS':
       return render({

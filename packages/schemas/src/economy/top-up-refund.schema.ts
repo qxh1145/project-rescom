@@ -7,6 +7,9 @@ export function topUpRefundDeadline(paidAt: Date): Date {
 }
 
 export const TOP_UP_REFUND_NOTE_MAX = 300;
+export const TOP_UP_REFUND_SLA_BUSINESS_DAYS = 3;
+export const TOP_UP_REFUND_REJECTION_REASON_MAX = 500;
+export const TOP_UP_REFUND_BANK_REFERENCE_MAX = 100;
 
 export const topUpRefundReasonSchema = z.enum([
   'WRONG_AMOUNT',
@@ -83,8 +86,8 @@ export const userTopUpRefundRequestSchema = z
     submittedAt: z.string().datetime(),
     withdrawnAt: z.string().datetime().nullable(),
     resolvedAt: z.string().datetime().nullable().optional(),
-    rejectionReason: z.string().max(500).nullable().optional(),
-    bankTransferReference: z.string().max(100).nullable().optional(),
+    rejectionReason: z.string().max(TOP_UP_REFUND_REJECTION_REASON_MAX).nullable().optional(),
+    bankTransferReference: z.string().max(TOP_UP_REFUND_BANK_REFERENCE_MAX).nullable().optional(),
     bankTransferredAt: z.string().datetime().nullable().optional(),
   })
   .strict();
@@ -97,6 +100,149 @@ export const topUpRefundResultSchema = z
   })
   .strict();
 export type TopUpRefundResult = z.infer<typeof topUpRefundResultSchema>;
+
+export const resolveTopUpRefundSchema = z.discriminatedUnion('decision', [
+  z
+    .object({
+      decision: z.literal('REFUNDED'),
+      destinationConfirmed: z.boolean().optional(),
+      bankTransferReference: z
+        .string()
+        .trim()
+        .min(1)
+        .max(TOP_UP_REFUND_BANK_REFERENCE_MAX)
+        .optional(),
+      bankTransferredAt: z.string().datetime().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      decision: z.literal('REJECTED'),
+      reason: z
+        .string()
+        .trim()
+        .min(1)
+        .max(TOP_UP_REFUND_REJECTION_REASON_MAX),
+      manualTransferRecorded: z.boolean().default(false),
+    })
+    .strict(),
+]);
+export type ResolveTopUpRefund = z.infer<typeof resolveTopUpRefundSchema>;
+export type ResolveTopUpRefundInput = z.input<typeof resolveTopUpRefundSchema>;
+
+export const recordTopUpRefundBankTransferSchema = z
+  .object({
+    bankTransferReference: z
+      .string()
+      .trim()
+      .min(1)
+      .max(TOP_UP_REFUND_BANK_REFERENCE_MAX)
+      .optional(),
+    bankTransferredAt: z.string().datetime().optional(),
+  })
+  .strict()
+  .refine(
+    (val) =>
+      val.bankTransferReference !== undefined || val.bankTransferredAt !== undefined,
+    {
+      message:
+        'At least one of bankTransferReference or bankTransferredAt must be provided',
+    },
+  );
+export type RecordTopUpRefundBankTransfer = z.infer<
+  typeof recordTopUpRefundBankTransferSchema
+>;
+export type RecordTopUpRefundBankTransferInput = z.input<
+  typeof recordTopUpRefundBankTransferSchema
+>;
+
+export const adminTopUpRefundListItemSchema = z
+  .object({
+    id: z.string().uuid(),
+    topUpId: z.string().uuid(),
+    orderCode: z.number().int(),
+    userId: z.string().uuid(),
+    userEmail: z.string().nullable(),
+    userName: z.string().nullable(),
+    amountVnd: z.number().int().positive(),
+    points: z.number().int().positive(),
+    status: topUpRefundStatusSchema,
+    eligibility: topUpRefundEligibilitySchema,
+    ineligibleReason: topUpRefundIneligibleReasonSchema.nullable(),
+    reason: topUpRefundReasonSchema,
+    destinationVerified: z.boolean(),
+    heldPoints: z.number().int().nonnegative(),
+    submittedAt: z.string().datetime(),
+    dueAt: z.string().datetime(),
+    overdue: z.boolean(),
+    resolvedAt: z.string().datetime().nullable(),
+  })
+  .strict();
+export type AdminTopUpRefundListItem = z.infer<typeof adminTopUpRefundListItemSchema>;
+
+export const adminTopUpRefundDestinationSchema = z
+  .object({
+    bankId: z.string().nullable(),
+    bankName: z.string().nullable(),
+    holderName: z.string().nullable(),
+    accountNumber: z.string().nullable(),
+    verified: z.boolean(),
+  })
+  .strict();
+export type AdminTopUpRefundDestination = z.infer<typeof adminTopUpRefundDestinationSchema>;
+
+export const adminTopUpRefundDetailSchema = adminTopUpRefundListItemSchema
+  .extend({
+    note: z.string(),
+    paidAt: z.string().datetime(),
+    providerReference: z.string().nullable(),
+    destination: adminTopUpRefundDestinationSchema,
+    rejectionReason: z.string().nullable(),
+    manualTransferRecorded: z.boolean(),
+    bankTransferReference: z.string().nullable(),
+    bankTransferredAt: z.string().datetime().nullable(),
+    bankTransferRecordedAt: z.string().datetime().nullable(),
+    withdrawnAt: z.string().datetime().nullable(),
+    resolvedBy: z
+      .object({
+        id: z.string().uuid(),
+        email: z.string().nullable(),
+      })
+      .nullable(),
+    holdJournalId: z.string().uuid().nullable(),
+    resolveJournalId: z.string().uuid().nullable(),
+  })
+  .strict();
+export type AdminTopUpRefundDetail = z.infer<typeof adminTopUpRefundDetailSchema>;
+
+export const adminTopUpRefundListQuerySchema = z
+  .object({
+    status: z.enum(['OPEN', 'RESOLVED', 'ALL']).default('OPEN'),
+    verdict: z.enum(['ALL', 'ELIGIBLE', 'NOT_ELIGIBLE']).default('ALL'),
+    q: z.string().trim().max(100).optional(),
+    page: z.coerce.number().int().min(1).max(10_000).default(1),
+  })
+  .strict();
+export type AdminTopUpRefundListQuery = z.infer<typeof adminTopUpRefundListQuerySchema>;
+export type AdminTopUpRefundListQueryInput = z.input<typeof adminTopUpRefundListQuerySchema>;
+
+export const adminTopUpRefundListResponseSchema = z
+  .object({
+    items: z.array(adminTopUpRefundListItemSchema),
+    total: z.number().int().nonnegative(),
+    page: z.number().int().min(1),
+    pageSize: z.number().int().positive(),
+  })
+  .strict();
+export type AdminTopUpRefundListResponse = z.infer<typeof adminTopUpRefundListResponseSchema>;
+
+export const adminResolveTopUpRefundResultSchema = z
+  .object({
+    request: adminTopUpRefundDetailSchema,
+    replayed: z.boolean(),
+  })
+  .strict();
+export type AdminResolveTopUpRefundResult = z.infer<typeof adminResolveTopUpRefundResultSchema>;
 
 export const topUpRefundHoldKey = (id: string): string => `topup-refund-hold:${id}`;
 export const topUpRefundWithdrawKey = (id: string): string => `topup-refund-withdraw:${id}`;
@@ -116,11 +262,19 @@ export const topUpRefundChangedPayloadSchema = z
     topUpId: z.string().uuid(),
     userId: z.string().uuid(),
     orderCode: z.number().int(),
-    status: z.enum(['REQUESTED', 'WITHDRAWN']),
+    status: z.enum(['REQUESTED', 'WITHDRAWN', 'REFUNDED', 'REJECTED']),
     eligibility: topUpRefundEligibilitySchema,
     ineligibleReason: topUpRefundIneligibleReasonSchema.nullable(),
     points: z.number().int(),
     amountVnd: z.number().int(),
+    rejectionReason: z
+      .string()
+      .max(TOP_UP_REFUND_REJECTION_REASON_MAX)
+      .nullable()
+      .optional(),
+    // True when the user's held Points were released back to Available
+    // (REJECTED/WITHDRAWN). Optional: Outbox events queued before this field existed omit it.
+    holdReleased: z.boolean().optional(),
     occurredAt: z.string().datetime(),
   })
   .strict();

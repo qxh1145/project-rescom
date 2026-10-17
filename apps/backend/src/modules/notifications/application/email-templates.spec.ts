@@ -55,4 +55,23 @@ describe('Email templates (Story IR.4b B7, plan 5.4)', () => {
     expect(email.html).toContain(escapeHtml(url));
     expect(email.html).not.toContain('<y>');
   });
+
+  it('renders generic body for TOPUP_REFUNDED and informative body for TOPUP_REFUND_REJECTED', () => {
+    const refunded = renderNotificationEmail('TOPUP_REFUNDED', context);
+    expect(refunded.subject).toBe(
+      'Rescom: Giao dịch nạp điểm đã được hoàn tiền',
+    );
+    expect(refunded.text).toContain(
+      'Giao dịch nạp điểm của bạn đã được hoàn tiền về tài khoản đã thanh toán.',
+    );
+    expect(refunded.text).toContain('https://app.rescom.test/wallet');
+
+    const rejected = renderNotificationEmail('TOPUP_REFUND_REJECTED', context);
+    expect(rejected.subject).toBe('Rescom: Yêu cầu hoàn tiền bị từ chối');
+    expect(rejected.text).toContain(
+      'Yêu cầu hoàn tiền nạp điểm của bạn đã bị từ chối.',
+    );
+    expect(rejected.text).toContain('hotro@rescom.test');
+    expect(rejected.text).toContain('https://app.rescom.test/wallet');
+  });
 });

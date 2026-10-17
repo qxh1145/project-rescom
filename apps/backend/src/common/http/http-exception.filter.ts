@@ -150,6 +150,11 @@ import {
   TopUpRefundAlreadyRequestedException,
   TopUpRefundNotFoundException,
   RefundAlreadyResolvedException,
+  RefundNotHeldException,
+  RefundDestinationUnconfirmedException,
+  RefundNotRefundedException,
+  RefundBankTransferAlreadyRecordedException,
+  RefundResolutionValidationException,
 } from '../../modules/economy/application/exceptions/economy.exceptions';
 import { NotificationNotFoundException } from '../../modules/notifications/application/exceptions/notification.exceptions';
 import {
@@ -579,6 +584,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
             : {}),
         };
       }
+    } else if (exception instanceof RefundResolutionValidationException) {
+      status = HttpStatus.BAD_REQUEST;
+      code = exception.code;
+      message = exception.message;
+      details = exception.details;
     } else if (exception instanceof TopUpRefundNotAllowedException) {
       status = HttpStatus.CONFLICT;
       code = exception.code;
@@ -586,7 +596,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
       details = { reason: exception.reason };
     } else if (
       exception instanceof TopUpRefundAlreadyRequestedException ||
-      exception instanceof RefundAlreadyResolvedException
+      exception instanceof RefundAlreadyResolvedException ||
+      exception instanceof RefundNotHeldException ||
+      exception instanceof RefundDestinationUnconfirmedException ||
+      exception instanceof RefundNotRefundedException ||
+      exception instanceof RefundBankTransferAlreadyRecordedException
     ) {
       status = HttpStatus.CONFLICT;
       code = exception.code;

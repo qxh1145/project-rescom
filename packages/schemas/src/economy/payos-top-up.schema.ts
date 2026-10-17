@@ -132,6 +132,7 @@ export const topUpAdminAlertConditionSchema = z.enum([
   "MISMATCH_SLA_BREACHED",
   "PAID_ON_CLOSED_LINK",
   "PROVIDER_FAILURE",
+  "REFUND_SLA_BREACHED",
 ]);
 export type TopUpAdminAlertCondition = z.infer<typeof topUpAdminAlertConditionSchema>;
 
@@ -143,6 +144,7 @@ export const topUpAdminAlertEventSchema = z.object({
   amountVnd: z.number().int().optional(),
   amountPaidVnd: z.number().int().optional(),
   paidAt: z.string().datetime().optional(),
+  refundRequestId: z.string().uuid().optional(),
   occurredAt: z.string().datetime(),
 });
 export type TopUpAdminAlertEvent = z.infer<typeof topUpAdminAlertEventSchema>;
@@ -217,7 +219,7 @@ export const adminTopUpActionRequiredSchema = z.object({
   mismatches: z.array(adminPayosMismatchSchema).max(TOP_UP_ACTION_REQUIRED_MAX),
 }).strict();
 export type AdminTopUpActionRequired = z.infer<typeof adminTopUpActionRequiredSchema>;
-export const adminTopUpTabCountsSchema = z.object({ payos: z.number().int().nonnegative(), manual: z.number().int().nonnegative(), actionRequired: z.number().int().nonnegative() }).strict();
+export const adminTopUpTabCountsSchema = z.object({ payos: z.number().int().nonnegative(), manual: z.number().int().nonnegative(), actionRequired: z.number().int().nonnegative(), refunds: z.number().int().nonnegative().default(0) }).strict();
 export const PAYOS_TOP_UP_EXPORT_MAX_ROWS = 10_000;
 export const exportAdminPayosTopUpsSchema = z.object({ from: dateKeySchema, to: dateKeySchema }).strict()
   .refine(({ from, to }) => from <= to, { path: ['from'], message: 'from cannot be after to' })

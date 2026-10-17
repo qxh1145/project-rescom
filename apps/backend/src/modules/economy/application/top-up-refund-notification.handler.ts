@@ -40,15 +40,41 @@ export class TopUpRefundNotificationHandler implements OutboxHandler {
         dedupeKey: event.idempotencyKey,
       });
     } else if (status === 'WITHDRAWN') {
+      // Absent on Outbox events queued before holdReleased existed: keep old rule.
+      const released =
+        parsed.data.holdReleased ?? (eligibility === 'ELIGIBLE' && points > 0);
       const holdSuffix =
-        eligibility === 'ELIGIBLE' && points > 0
-          ? ` ${points} Điểm đã trở lại Khả dụng.`
-          : '';
+        released && points > 0 ? ` ${points} Điểm đã trở lại Khả dụng.` : '';
       const message = `Bạn đã rút yêu cầu hoàn tiền cho giao dịch nạp mã ${orderCode}.${holdSuffix}`;
 
       await this.notifications.publish({
         userId,
         type: 'TOPUP_REFUND_WITHDRAWN',
+        message,
+        dedupeKey: event.idempotencyKey,
+      });
+    } else if (status === 'REFUNDED') {
+      const message = `Đã hoàn ${parsed.data.amountVnd.toLocaleString('vi-VN')} VNĐ cho giao dịch nạp mã ${orderCode} về tài khoản đã thanh toán. ${points} Điểm đang giữ đã bị trừ.`;
+
+      await this.notifications.publish({
+        userId,
+        type: 'TOPUP_REFUNDED',
+        message,
+        dedupeKey: event.idempotencyKey,
+      });
+    } else if (status === 'REJECTED') {
+      const reasonPart = parsed.data.rejectionReason
+        ? ` Lý do: ${parsed.data.rejectionReason}.`
+        : '';
+      const holdSuffix =
+        parsed.data.holdReleased === true && points > 0
+          ? ` ${points} Điểm đã trở lại Khả dụng.`
+          : '';
+      const message = `Yêu cầu hoàn tiền cho giao dịch nạp mã ${orderCode} bị từ chối.${reasonPart}${holdSuffix}`;
+
+      await this.notifications.publish({
+        userId,
+        type: 'TOPUP_REFUND_REJECTED',
         message,
         dedupeKey: event.idempotencyKey,
       });

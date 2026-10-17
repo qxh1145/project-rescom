@@ -29,8 +29,10 @@ const PREFIX = "rescom:mockdb:";
  * 13: PayOS amount-mismatch resolution fields (Story 13.9).
  * 14: PayOS refundDeadline and refund summary fields (Story 13.10).
  * 15: PayOS destination unmasking, refund destination views, and full refund resolution fields (Story 13.11).
+ * 16: Admin refund resolution, bank transfer facts, and SLA (Story 13.12).
+ * 17: Seeded open refund requests hold their Điểm in the wallet (Story 13.12 review).
  */
-const SCHEMA_VERSION = 15;
+const SCHEMA_VERSION = 17;
 
 interface Persisted<T> {
   version: number;

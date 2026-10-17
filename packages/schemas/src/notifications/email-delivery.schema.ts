@@ -12,6 +12,7 @@ export const EMAIL_NOTIFICATION_TYPES = [
   'TOPUP_REFUNDED',
   'ACCOUNT_LOCKED',
   'ACCOUNT_UNLOCKED',
+  'TOPUP_REFUND_REJECTED',
 ] as const satisfies readonly NotificationType[];
 
 export type EmailNotificationType = (typeof EMAIL_NOTIFICATION_TYPES)[number];

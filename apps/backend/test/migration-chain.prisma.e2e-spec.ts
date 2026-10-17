@@ -348,7 +348,7 @@ describe('Prisma migration chain on PostgreSQL', () => {
   it('creates the IR.4b email delivery schema and notification types', async () => {
     if (!dbAvailable) return;
     const values = await enumValues('NotificationType');
-    expect(values.slice(-10)).toEqual([
+    expect(values.slice(-11)).toEqual([
       'TOPUP_REJECTED',
       'ACCOUNT_LOCKED',
       'ACCOUNT_UNLOCKED',
@@ -359,6 +359,7 @@ describe('Prisma migration chain on PostgreSQL', () => {
       'TOPUP_REFUNDED',
       'TOPUP_REFUND_REQUESTED',
       'TOPUP_REFUND_WITHDRAWN',
+      'TOPUP_REFUND_REJECTED',
     ]);
     const deliveries = await columnsOf('email_deliveries');
     expect(deliveries.has('idempotency_key')).toBe(true);

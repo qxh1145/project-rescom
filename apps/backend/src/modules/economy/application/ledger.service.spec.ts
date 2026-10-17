@@ -979,7 +979,11 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
       });
 
       it('AC8: INSUFFICIENT_ESCROW_BALANCE carries refundHoldPoints only when a hold exists (publish)', async () => {
-        const params = { userId: user1Id, formVersionId: versionId, amount: 600 };
+        const params = {
+          userId: user1Id,
+          formVersionId: versionId,
+          amount: 600,
+        };
         await expect(service.reserveEscrow(params)).rejects.toMatchObject({
           refundHoldPoints: undefined,
         });

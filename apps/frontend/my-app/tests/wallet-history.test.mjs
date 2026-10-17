@@ -234,23 +234,29 @@ test("wallet history: direction follows the caller's own entries", async (t) => 
   await t.test("refund hold and withdrawal (Story 13.10): titles, direction out of / back into Khả dụng", () => {
     const hold = uuid();
     const withdraw = uuid();
+    const resolve = uuid();
     const rows = history.toHistoryRows(
       [
         entry(hold, "USER_AVAILABLE", -120, "topup-refund-hold:r-1"),
         entry(hold, "REFUND_HOLD", 120, "topup-refund-hold:r-1"),
         entry(withdraw, "USER_AVAILABLE", 120, "topup-refund-withdraw:r-1"),
         entry(withdraw, "REFUND_HOLD", -120, "topup-refund-withdraw:r-1"),
+        entry(resolve, "REFUND_HOLD", -120, "topup-refund-resolve:r-2", {
+          description: "Top-up refund: order 12345 · top-up req-2",
+        }),
       ],
       NOW,
     );
-    assert.equal(rows.length, 2);
+    assert.equal(rows.length, 3);
     assert.deepEqual(
       rows.map((row) => [row.kind, row.title, row.amount, row.bucket, row.direction]),
       [
         ["TOP_UP_REFUND_HOLD", "Giữ chờ hoàn tiền", -120, "REFUND_HOLD", "out"],
         ["TOP_UP_REFUND_RELEASE", "Hoàn lại từ giữ chờ hoàn tiền", 120, "USER_AVAILABLE", "in"],
+        ["TOP_UP_REFUND", "Hoàn tiền nạp Điểm", -120, "REFUND_HOLD", "out"],
       ],
     );
+    assert.equal(rows[2].note, "Hoàn tiền đơn #12345");
   });
 
   await t.test("dispute refund: taken from the respondent, returned to the publisher", () => {
@@ -445,3 +451,89 @@ test("wallet view schema is the shared DTO: parses a verified response, rejects 
     false,
   );
 });
+
+test("Story 13.12: wallet history handles topup-refund-resolve (REFUNDED vs REJECTED release) and topUpHref", () => {
+  const topUpId = "11111111-2222-4333-8444-555555555555";
+  const journalRefunded = uuid();
+  const journalRejected = uuid();
+
+  // 1. REFUNDED: REFUND_HOLD is debited (-250)
+  const entriesRefunded = [
+    {
+      id: uuid(),
+      journalId: journalRefunded,
+      accountClass: "REFUND_HOLD",
+      amount: -250,
+      idempotencyKey: "topup-refund-resolve:req-refunded",
+      reversesJournalId: null,
+      description: `Top-up refund: order 800001 · top-up ${topUpId}`,
+      createdAt: "2026-10-16T12:00:00Z",
+    },
+  ];
+
+  // 2. REJECTED: USER_AVAILABLE is credited (+250)
+  const entriesRejected = [
+    {
+      id: uuid(),
+      journalId: journalRejected,
+      accountClass: "REFUND_HOLD",
+      amount: -250,
+      idempotencyKey: "topup-refund-resolve:req-rejected",
+      reversesJournalId: null,
+      description: `Top-up refund release: order 800002 · top-up ${topUpId}`,
+      createdAt: "2026-10-16T13:00:00Z",
+    },
+    {
+      id: uuid(),
+      journalId: journalRejected,
+      accountClass: "USER_AVAILABLE",
+      amount: 250,
+      idempotencyKey: "topup-refund-resolve:req-rejected",
+      reversesJournalId: null,
+      description: `Top-up refund release: order 800002 · top-up ${topUpId}`,
+      createdAt: "2026-10-16T13:00:00Z",
+    },
+  ];
+
+  assert.equal(
+    history.historyKindOf("topup-refund-resolve:req-refunded", null, entriesRefunded),
+    "TOP_UP_REFUND",
+  );
+  assert.equal(
+    history.historyKindOf("topup-refund-resolve:req-rejected", null, entriesRejected),
+    "TOP_UP_REFUND_RELEASE",
+  );
+
+  const rowsRefunded = history.toHistoryRows(entriesRefunded);
+  assert.equal(rowsRefunded.length, 1);
+  assert.equal(rowsRefunded[0].kind, "TOP_UP_REFUND");
+  assert.equal(rowsRefunded[0].title, "Hoàn tiền nạp Điểm");
+  assert.equal(rowsRefunded[0].direction, "out");
+  assert.equal(rowsRefunded[0].amount, -250);
+  assert.equal(rowsRefunded[0].topUpHref, `/wallet/top-up/${topUpId}`);
+
+  const rowsRejected = history.toHistoryRows(entriesRejected);
+  assert.equal(rowsRejected.length, 1);
+  assert.equal(rowsRejected[0].kind, "TOP_UP_REFUND_RELEASE");
+  assert.equal(rowsRejected[0].title, "Hoàn lại từ giữ chờ hoàn tiền");
+  assert.equal(rowsRejected[0].direction, "in");
+  assert.equal(rowsRejected[0].amount, 250);
+  assert.equal(rowsRejected[0].topUpHref, `/wallet/top-up/${topUpId}`);
+
+  // When description has no topUpId, topUpHref is null
+  const entriesNoUuid = [
+    {
+      id: uuid(),
+      journalId: uuid(),
+      accountClass: "REFUND_HOLD",
+      amount: -100,
+      idempotencyKey: "topup-refund-resolve:req-no-uuid",
+      reversesJournalId: null,
+      description: "Top-up refund without uuid",
+      createdAt: "2026-10-16T14:00:00Z",
+    },
+  ];
+  const rowsNoUuid = history.toHistoryRows(entriesNoUuid);
+  assert.equal(rowsNoUuid[0].topUpHref, null);
+});
+

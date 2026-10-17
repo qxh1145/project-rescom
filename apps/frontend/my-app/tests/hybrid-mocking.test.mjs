@@ -62,7 +62,7 @@ export async function resolve(specifier, context, nextResolve) {
  * users (fixtures) that the demo dispute/quality cases name, not the session.
  */
 const NO_MOCK_SESSION = `
-export { findMockUserByEmail } from ${JSON.stringify(pathToFileURL(path.join(appRoot, "mocks", "db", "session.ts")).href)};
+export { findMockUserByEmail, findMockUserById } from ${JSON.stringify(pathToFileURL(path.join(appRoot, "mocks", "db", "session.ts")).href)};
 export async function getMockSessionUser() {
   throw new Error("hybrid handler read the mock session");
 }

@@ -446,3 +446,71 @@ export function withdrawTopUpRefund(
   return full;
 }
 
+/**
+ * Story 13.12 (Task 10/11): Admin resolves refund.
+ * REFUNDED: removes points from refundHold.
+ */
+export function resolveRefundPayout(
+  user: MockSessionUser,
+  input: { points: number; topUpId: string; orderCode: number; requestId: string },
+): MockTransaction | null {
+  if (input.points <= 0) return null;
+  transactionsOf(user);
+  let deducted = 0;
+  updateWallet(user, (wallet) => {
+    deducted = Math.min(wallet.refundHold ?? 0, input.points);
+    wallet.refundHold = (wallet.refundHold ?? 0) - deducted;
+  });
+  if (deducted <= 0) return null;
+  const full: MockTransaction = {
+    id: `topup-refund-resolve:${input.requestId}`,
+    kind: "TOP_UP_REFUND",
+    amount: -deducted,
+    status: "HELD",
+    note: `Top-up refund: order ${input.orderCode} · top-up ${input.topUpId}`,
+    surveyId: null,
+    attemptId: null,
+    createdAt: nowIso(),
+    releasesAt: null,
+  };
+  transactions.update((all) => {
+    all[user.id].unshift(full);
+  });
+  return full;
+}
+
+/**
+ * Story 13.12 (Task 10/11): Admin rejects refund.
+ * Held points return to available.
+ */
+export function resolveRefundReject(
+  user: MockSessionUser,
+  input: { points: number; topUpId: string; orderCode: number; requestId: string },
+): MockTransaction | null {
+  if (input.points <= 0) return null;
+  transactionsOf(user);
+  let released = 0;
+  updateWallet(user, (wallet) => {
+    released = Math.min(wallet.refundHold ?? 0, input.points);
+    wallet.refundHold = (wallet.refundHold ?? 0) - released;
+    wallet.available += released;
+  });
+  if (released <= 0) return null;
+  const full: MockTransaction = {
+    id: `topup-refund-resolve:${input.requestId}`,
+    kind: "TOP_UP_REFUND_RELEASE",
+    amount: released,
+    status: "AVAILABLE",
+    note: `Top-up refund: order ${input.orderCode} · top-up ${input.topUpId}`,
+    surveyId: null,
+    attemptId: null,
+    createdAt: nowIso(),
+    releasesAt: null,
+  };
+  transactions.update((all) => {
+    all[user.id].unshift(full);
+  });
+  return full;
+}
+
+

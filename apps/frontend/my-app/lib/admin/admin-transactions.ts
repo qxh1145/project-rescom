@@ -150,6 +150,7 @@ const TITLES: Record<HistoryKind, string> = {
   TOP_UP_MISMATCH: "Nạp Điểm (điều chỉnh sai số tiền)",
   TOP_UP_REFUND_HOLD: "Giữ chờ hoàn tiền",
   TOP_UP_REFUND_RELEASE: "Hoàn lại từ giữ chờ hoàn tiền",
+  TOP_UP_REFUND: "Hoàn tiền nạp Điểm",
   VOUCHER_REDEMPTION: "Đổi voucher",
   SURVEY_ESCROW: "Khoá ký quỹ",
   ESCROW_REFUND: "Hoàn ký quỹ",
