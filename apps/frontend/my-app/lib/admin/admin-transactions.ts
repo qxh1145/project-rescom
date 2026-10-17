@@ -258,8 +258,12 @@ export interface AdminTransactionRow {
   tone: TransactionTone;
 }
 
-export function journalKindOf(journal: Pick<AdminJournalInput, "idempotencyKey" | "reversesJournalId">): HistoryKind {
-  return historyKindOf(journal.idempotencyKey, journal.reversesJournalId);
+export function journalKindOf(
+  journal: Pick<AdminJournalInput, "idempotencyKey" | "reversesJournalId"> & {
+    entries?: readonly AdminJournalEntryInput[];
+  },
+): HistoryKind {
+  return historyKindOf(journal.idempotencyKey, journal.reversesJournalId, journal.entries as any);
 }
 
 /** Largest entry on one side (a journal may split across accounts). */

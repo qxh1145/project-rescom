@@ -96,7 +96,8 @@ export const adminPayosTopUpHandlers: RequestHandler[] = [
   http.post(apiUrl("/admin/top-ups/refunds/:requestId/resolve"), async ({ request, params }) => {
     const denied = await guard(); if (denied) return denied;
     const csrf = missingCsrf(request); if (csrf) return csrf;
-    const body = resolveTopUpRefundSchema.safeParse(await request.json().catch(() => null));
+    const rawBody = await request.json().catch(() => null);
+    const body = resolveTopUpRefundSchema.safeParse(rawBody);
     if (!body.success) return fail(400, "VALIDATION_ERROR", "Invalid resolution body");
     const detail = adminRefundDetail(params.requestId as string);
     if (!detail) return fail(404, "TOPUP_REFUND_NOT_FOUND", "Refund request not found");
@@ -109,6 +110,27 @@ export const adminPayosTopUpHandlers: RequestHandler[] = [
 
     if (detail.status !== "REQUESTED") {
       if (detail.status === body.data.decision) {
+        if (body.data.decision === "REFUNDED") {
+          const incomingTime = body.data.bankTransferredAt ? new Date(body.data.bankTransferredAt).getTime() : null;
+          const existingTime = detail.bankTransferredAt ? new Date(detail.bankTransferredAt).getTime() : null;
+          if (
+            (body.data.bankTransferReference !== undefined && body.data.bankTransferReference !== detail.bankTransferReference) ||
+            (body.data.bankTransferredAt !== undefined && incomingTime !== existingTime)
+          ) {
+            return fail(409, "REFUND_ALREADY_RESOLVED", "Refund request is already resolved");
+          }
+        } else if (body.data.decision === "REJECTED") {
+          const manualSent =
+            typeof rawBody === "object" &&
+            rawBody !== null &&
+            (rawBody as Record<string, unknown>).manualTransferRecorded !== undefined;
+          if (
+            body.data.reason !== detail.rejectionReason ||
+            (manualSent && body.data.manualTransferRecorded !== detail.manualTransferRecorded)
+          ) {
+            return fail(409, "REFUND_ALREADY_RESOLVED", "Refund request is already resolved");
+          }
+        }
         return ok({ request: detail, replayed: true });
       }
       return fail(409, "REFUND_ALREADY_RESOLVED", "Refund request is already resolved");
@@ -169,7 +191,7 @@ export const adminPayosTopUpHandlers: RequestHandler[] = [
           orderCode: topUp.orderCode,
           requestId: params.requestId as string,
         });
-      } else if (body.data.decision === "REJECTED" && topUp.refund?.request?.eligibility === "ELIGIBLE") {
+      } else if (body.data.decision === "REJECTED" && detail.heldPoints > 0) {
         resolveRefundReject(user, {
           points: topUp.points,
           topUpId: topUp.id,
@@ -193,7 +215,9 @@ export const adminPayosTopUpHandlers: RequestHandler[] = [
     if (adminUser.id === detail.userId) return fail(403, "TOPUP_SELF_REVIEW_FORBIDDEN", "Self review forbidden");
     if (detail.status !== "REFUNDED") return fail(409, "REFUND_NOT_REFUNDED", "Refund request is not refunded");
     if (detail.bankTransferReference || detail.bankTransferRecordedAt) {
-      if (detail.bankTransferReference === (body.data.bankTransferReference ?? null) && detail.bankTransferredAt === (body.data.bankTransferredAt ?? null)) {
+      const incomingTime = body.data.bankTransferredAt ? new Date(body.data.bankTransferredAt).getTime() : null;
+      const existingTime = detail.bankTransferredAt ? new Date(detail.bankTransferredAt).getTime() : null;
+      if (detail.bankTransferReference === (body.data.bankTransferReference ?? null) && incomingTime === existingTime) {
         return ok({ request: detail, replayed: true });
       }
       return fail(409, "REFUND_BANK_TRANSFER_ALREADY_RECORDED", "Bank transfer reference is already recorded");

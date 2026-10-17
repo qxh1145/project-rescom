@@ -201,6 +201,25 @@ Code review 2026-10-17, re-review of BE fixes (chunk 1 after 17 patches): backen
 - [x] [Review][Patch] (low) `(topUp as any)?.providerReference` in in-memory repo → add field to `TopUpRowForRefund` [apps/backend/src/modules/economy/infrastructure/in-memory-payos-top-up.repository.ts:2145]
 - [x] [Review][Patch] (low) `heldPoints = holdJournalId ? points : 0` stays > 0 after REFUNDED/REJECTED (hold consumed/released) — "Điểm giữ" wrong; align with FE item above (derive from status REQUESTED + hold) [apps/backend/src/modules/economy/infrastructure/prisma-payos-top-up.repository.ts]
 
+Code review 2026-10-17, chunk 2/2: frontend + MSW adversarial review. Layers: Blind Hunter, Edge Case Hunter, Acceptance Auditor (all completed). 6 dismissed.
+
+- [x] [Review][Patch] (medium) Native `datetime-local` input lacks explicit `Asia/Ho_Chi_Minh` (+07:00) pinning in `bankTransferState` [apps/frontend/my-app/lib/admin/payos-top-up-refund.ts:241]
+- [x] [Review][Patch] (medium) Admin transactions view misclassifies REJECTED refund release journals as `TOP_UP_REFUND` ("Hoàn tiền nạp Điểm") by not passing entries to `historyKindOf` [apps/frontend/my-app/lib/admin/admin-transactions.ts:261]
+- [x] [Review][Patch] (medium) MSW mock handlers ignore differing payload fields on terminal replay and use strict string comparison on date [apps/frontend/my-app/mocks/handlers/admin-payos-top-ups.ts:111]
+- [x] [Review][Patch] (low) Drawer header renders duplicate status badge for resolved requests [apps/frontend/my-app/app/(signed-in)/(admin)/admin/top-ups/components/RefundDrawer.tsx:104]
+- [x] [Review][Patch] (low) Drawer destination account copy button missing when `bankName` is null but `bankId` is present [apps/frontend/my-app/app/(signed-in)/(admin)/admin/top-ups/components/RefundDrawer.tsx:226]
+- [x] [Review][Patch] (low) Immediate `URL.revokeObjectURL(url)` in CSV download can abort download; fallback filename should match pattern [apps/frontend/my-app/app/(signed-in)/(admin)/admin/top-ups/components/RefundRequestsPanel.tsx:297]
+- [x] [Review][Patch] (low) Search input in `RefundRequestsPanel` missing `maxLength={100}` [apps/frontend/my-app/app/(signed-in)/(admin)/admin/top-ups/components/RefundRequestsPanel.tsx:390]
+- [x] [Review][Patch] (low) `verdictExplanation` renders empty parentheses `()` when `detail.paidAt` is null [apps/frontend/my-app/lib/admin/payos-top-up-refund.ts:70]
+
+Code review 2026-10-17, re-review of uncommitted changes (chunk 3). Layers: Blind Hunter, Edge Case Hunter, Acceptance Auditor (all completed). 10 dismissed.
+
+- [x] [Review][Patch] (medium) MSW mock rejects valid REJECTED replay when manualTransferRecorded omitted [apps/frontend/my-app/mocks/handlers/admin-payos-top-ups.ts:124]
+- [x] [Review][Patch] (low) Inconsistent fallback using nullish coalescing instead of boolean OR on bank name/ID in drawer [apps/frontend/my-app/app/(signed-in)/(admin)/admin/top-ups/components/RefundDrawer.tsx:226]
+- [x] [Review][Patch] (low) verdictExplanation renders empty parentheses if paidAt is an invalid date string [apps/frontend/my-app/lib/admin/payos-top-up-refund.ts:70]
+- [x] [Review][Patch] (low) Lowercase z UTC indicator and seconds handling in bankTransferState [apps/frontend/my-app/lib/admin/payos-top-up-refund.ts:245]
+- [x] [Review][Patch] (low) Fallback filename check in CSV export uses ?? instead of || [apps/frontend/my-app/app/(signed-in)/(admin)/admin/top-ups/components/RefundRequestsPanel.tsx:297]
+
 ## Dev Notes
 
 ### Scope boundary (read first)

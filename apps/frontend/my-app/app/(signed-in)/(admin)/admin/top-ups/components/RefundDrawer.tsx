@@ -101,15 +101,17 @@ export function RefundDrawer({
             </h2>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <TopUpStatusChip chip={{ label: statusBadge.label, ...STATUS_CHIP_STYLE[statusBadge.variant] }} />
-              <span
-                className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                  sla.overdue
-                    ? "bg-rose-100 text-rose-800"
-                    : "bg-surface-subtle text-ink-muted"
-                }`}
-              >
-                {sla.line}
-              </span>
+              {isRequested && (
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                    sla.overdue
+                      ? "bg-rose-100 text-rose-800"
+                      : "bg-surface-subtle text-ink-muted"
+                  }`}
+                >
+                  {sla.line}
+                </span>
+              )}
             </div>
             <p className="mt-2 text-xs text-ink-muted">
               {item.userName || item.userEmail || "Người dùng"} · {item.userEmail || "—"} · gửi{" "}
@@ -221,10 +223,10 @@ export function RefundDrawer({
                   <dt className="text-ink-muted">Ngân hàng</dt>
                   <div className="flex items-center gap-2">
                     <dd className="font-semibold text-ink">
-                      {item.destination.bankName ?? item.destination.bankId ?? "—"}
+                      {item.destination.bankName || item.destination.bankId || "—"}
                     </dd>
-                    {item.destination.bankName && (
-                      <IconButton icon={copiedKey === "bank" ? "check" : "copy"} label="Sao chép" iconSize={16} className="size-8!" onClick={() => handleCopy("bank", item.destination.bankName!)} />
+                    {(item.destination.bankName || item.destination.bankId) && (
+                      <IconButton icon={copiedKey === "bank" ? "check" : "copy"} label="Sao chép" iconSize={16} className="size-8!" onClick={() => handleCopy("bank", (item.destination.bankName || item.destination.bankId)!)} />
                     )}
                   </div>
                 </div>

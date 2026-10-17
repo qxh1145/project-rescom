@@ -67,8 +67,9 @@ export function verdictExplanation(
   detail: Pick<AdminTopUpRefundDetail, "eligibility" | "ineligibleReason" | "paidAt" | "points">,
 ): string {
   if (detail.eligibility === "ELIGIBLE") {
-    const paidAtStr = detail.paidAt ? formatShortDateTime(detail.paidAt) : "";
-    return `User chưa tiêu Điểm nào kể từ lúc nạp (${paidAtStr}). ${detail.points} Điểm đã chuyển sang Giữ chờ hoàn tiền.`;
+    const formatted = detail.paidAt ? formatShortDateTime(detail.paidAt) : "";
+    const paidAtStr = formatted ? ` (${formatted})` : "";
+    return `User chưa tiêu Điểm nào kể từ lúc nạp${paidAtStr}. ${detail.points} Điểm đã chuyển sang Giữ chờ hoàn tiền.`;
   }
   if (detail.ineligibleReason === "SPENT_SINCE_TOP_UP") {
     return "User đã dùng Điểm (đăng/mở lại khảo sát hoặc đổi voucher) sau khi nạp, kể cả lần đổi voucher thất bại đã được hoàn Điểm. Không có Điểm nào bị giữ.";
@@ -239,7 +240,18 @@ export function bankTransferState(
 
   let transferredAtIso: string | null = null;
   if (input.transferredAt) {
-    const t = new Date(input.transferredAt);
+    let t: Date;
+    if (typeof input.transferredAt === "string") {
+      const val = input.transferredAt.trim();
+      if (val.includes("T") && !val.toUpperCase().endsWith("Z") && !val.includes("+") && !val.includes("-", 10)) {
+        const timePart = val.length >= 19 ? val.slice(0, 19) : `${val.slice(0, 16)}:00`;
+        t = new Date(`${timePart}+07:00`);
+      } else {
+        t = new Date(val);
+      }
+    } else {
+      t = new Date(input.transferredAt);
+    }
     if (isNaN(t.getTime())) {
       return { valid: false, reference: ref, transferredAt: null, error: "Thời điểm chuyển khoản không hợp lệ" };
     }

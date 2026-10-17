@@ -27,12 +27,30 @@ const {
 } = await import("@rescom/schemas");
 
 const { ApiError } = await import("../lib/api/api-error.ts");
+const { journalKindOf } = await import("../lib/admin/admin-transactions.ts");
 
 test("Story 13.12: admin refund presentation and labels", () => {
   assert.equal(refundStatusBadge("REQUESTED").label, "Chờ xử lý");
   assert.equal(refundStatusBadge("REFUNDED").label, "Đã hoàn tiền");
   assert.equal(refundStatusBadge("REJECTED").label, "Đã từ chối");
   assert.equal(refundStatusBadge("WITHDRAWN").label, "Đã rút");
+
+  assert.equal(
+    journalKindOf({
+      idempotencyKey: "topup-refund-resolve:req-1",
+      reversesJournalId: null,
+      entries: [{ accountClass: "USER_AVAILABLE", amount: 100 }],
+    }),
+    "TOP_UP_REFUND_RELEASE"
+  );
+  assert.equal(
+    journalKindOf({
+      idempotencyKey: "topup-refund-resolve:req-2",
+      reversesJournalId: null,
+      entries: [{ accountClass: "SYSTEM_CLEARING", amount: 100 }],
+    }),
+    "TOP_UP_REFUND"
+  );
 
   assert.equal(refundEligibilityBadge("ELIGIBLE").label, "Hợp lệ");
   assert.equal(refundEligibilityBadge("NOT_ELIGIBLE").label, "Không đủ ĐK");
@@ -197,6 +215,15 @@ test("Story 13.12: verdict chips, reasons and explanations", () => {
     /ít hơn 250 Điểm/
   );
 
+  assert.equal(
+    verdictExplanation({ eligibility: "ELIGIBLE", ineligibleReason: null, paidAt: null, points: 250 }),
+    "User chưa tiêu Điểm nào kể từ lúc nạp. 250 Điểm đã chuyển sang Giữ chờ hoàn tiền."
+  );
+  assert.equal(
+    verdictExplanation({ eligibility: "ELIGIBLE", ineligibleReason: null, paidAt: "invalid-date", points: 250 }),
+    "User chưa tiêu Điểm nào kể từ lúc nạp. 250 Điểm đã chuyển sang Giữ chờ hoàn tiền."
+  );
+
   assert.equal(refundTransferContent(800001), "RESCOM HOAN 800001");
 
   // Audit trail
@@ -231,6 +258,30 @@ test("Story 13.12: verdict chips, reasons and explanations", () => {
   // Bank transfer state
   assert.equal(bankTransferState({}, new Date("2026-10-16T10:00:00Z")).valid, false);
   assert.equal(bankTransferState({ reference: "FT999" }, new Date("2026-10-16T10:00:00Z")).valid, true);
+  // datetime-local format without timezone pins to +07:00 (Vietnam time)
+  const vnState = bankTransferState(
+    { reference: "FT999", transferredAt: "2026-10-16T15:30" },
+    new Date("2026-10-16T00:00:00Z"),
+    new Date("2026-10-17T00:00:00Z"),
+  );
+  assert.equal(vnState.valid, true);
+  assert.equal(vnState.transferredAt, "2026-10-16T08:30:00.000Z");
+  // with seconds
+  const vnSecondsState = bankTransferState(
+    { reference: "FT999", transferredAt: "2026-10-16T15:30:45" },
+    new Date("2026-10-16T00:00:00Z"),
+    new Date("2026-10-17T00:00:00Z"),
+  );
+  assert.equal(vnSecondsState.valid, true);
+  assert.equal(vnSecondsState.transferredAt, "2026-10-16T08:30:45.000Z");
+  // with lowercase z
+  const utcLowerZState = bankTransferState(
+    { reference: "FT999", transferredAt: "2026-10-16T08:30:00z" },
+    new Date("2026-10-16T00:00:00Z"),
+    new Date("2026-10-17T00:00:00Z"),
+  );
+  assert.equal(utcLowerZState.valid, true);
+  assert.equal(utcLowerZState.transferredAt, "2026-10-16T08:30:00.000Z");
   assert.equal(
     bankTransferState(
       { reference: "FT999", transferredAt: "2026-10-15T10:00:00Z" },
