@@ -152,6 +152,15 @@ import type {
   UserTopUpRefundRequest,
 } from "@rescom/schemas";
 
+export interface MockAdminRefundRequest extends UserTopUpRefundRequest {
+  holdJournalId?: string | null;
+  resolveJournalId?: string | null;
+  note?: string | null;
+  manualTransferRecorded?: boolean;
+  bankTransferRecordedAt?: string | null;
+  resolvedBy?: { id: string; email: string } | null;
+}
+
 export interface MockPayosTopUp {
   id: string;
   userId: string;
@@ -177,7 +186,7 @@ export interface MockPayosTopUp {
     canRequest?: boolean;
     unavailableReason?: "NOT_SUCCESSFUL" | "LEGACY_MANUAL" | "DEADLINE_PASSED" | "MISMATCH_CREDITED" | "ALREADY_REQUESTED" | "WITHDRAWN" | null;
     destination?: UserTopUpRefundDestinationView | null;
-    request?: UserTopUpRefundRequest | null;
+    request?: MockAdminRefundRequest | null;
   };
 }
 

@@ -47,6 +47,7 @@ export class TopUpAdminAlertHandler implements OutboxHandler {
   private renderMessage(
     condition: TopUpAdminAlertCondition,
     orderCode?: number,
+    requestId?: string,
   ): string {
     const codeStr = orderCode !== undefined ? `#${orderCode}` : '';
     switch (condition) {
@@ -54,6 +55,8 @@ export class TopUpAdminAlertHandler implements OutboxHandler {
         return `Nạp Điểm ${codeStr} đã thanh toán nhưng chưa được cộng Điểm sau 30 phút. Kiểm tra lại với payOS.`;
       case 'MISMATCH_SLA_BREACHED':
         return `Nạp Điểm ${codeStr} lệch số tiền chưa được xử lý quá 3 ngày làm việc.`;
+      case 'REFUND_SLA_BREACHED':
+        return `Yêu cầu hoàn tiền ${codeStr} quá hạn 3 ngày làm việc — xử lý tại /admin/top-ups?tab=refunds${requestId ? `&request=${requestId}` : ''}.`;
       case 'PAID_ON_CLOSED_LINK':
         return `payOS báo đã nhận tiền cho Nạp Điểm ${codeStr} đã huỷ/hết hạn. Kiểm tra và hoàn tiền nếu cần.`;
       case 'PROVIDER_FAILURE':
@@ -73,8 +76,8 @@ export class TopUpAdminAlertHandler implements OutboxHandler {
       );
     }
 
-    const { condition, topUpId, orderCode } = parsed.data;
-    const message = this.renderMessage(condition, orderCode);
+    const { condition, topUpId, orderCode, refundRequestId } = parsed.data;
+    const message = this.renderMessage(condition, orderCode, refundRequestId);
 
     // Leg 1: In-app notification to active admins
     let leg1Failed = false;

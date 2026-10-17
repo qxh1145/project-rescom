@@ -23,6 +23,12 @@ import {
   userTopUpRefundDestinationSchema,
   userTopUpRefundDestinationViewSchema,
   userTopUpRefundRequestSchema,
+  resolveTopUpRefundSchema,
+  recordTopUpRefundBankTransferSchema,
+  adminTopUpRefundListItemSchema,
+  adminTopUpRefundDetailSchema,
+  adminTopUpRefundListQuerySchema,
+  adminResolveTopUpRefundResultSchema,
 } from './top-up-refund.schema';
 import { topUpCreditKey, topUpMismatchKey } from './payos-top-up.schema';
 
@@ -286,6 +292,268 @@ describe('Top-Up Refund Contracts (Story 13.10)', () => {
           },
         }).success,
       ).toBe(false);
+    });
+
+    it('widens topUpRefundChangedPayloadSchema to REFUNDED and REJECTED with optional rejectionReason', () => {
+      const refundedPayload = {
+        schemaVersion: 1 as const,
+        requestId: reqId,
+        topUpId,
+        userId,
+        orderCode: 1000000001,
+        status: 'REFUNDED' as const,
+        eligibility: 'ELIGIBLE' as const,
+        ineligibleReason: null,
+        points: 50,
+        amountVnd: 10000,
+        occurredAt: nowIso,
+      };
+      expect(topUpRefundChangedPayloadSchema.parse(refundedPayload)).toEqual(refundedPayload);
+
+      const rejectedPayload = {
+        ...refundedPayload,
+        status: 'REJECTED' as const,
+        rejectionReason: 'Invalid payment proof',
+      };
+      expect(topUpRefundChangedPayloadSchema.parse(rejectedPayload)).toEqual(rejectedPayload);
+
+      // Rejects reason > 500
+      expect(
+        topUpRefundChangedPayloadSchema.safeParse({
+          ...rejectedPayload,
+          rejectionReason: 'a'.repeat(501),
+        }).success,
+      ).toBe(false);
+    });
+  });
+
+  describe('resolveTopUpRefundSchema (Task 1)', () => {
+    it('parses valid REFUNDED decision with/without bank facts and destinationConfirmed', () => {
+      expect(
+        resolveTopUpRefundSchema.parse({
+          decision: 'REFUNDED',
+        }),
+      ).toEqual({
+        decision: 'REFUNDED',
+      });
+
+      expect(
+        resolveTopUpRefundSchema.parse({
+          decision: 'REFUNDED',
+          destinationConfirmed: true,
+          bankTransferReference: '  FT987654321  ',
+          bankTransferredAt: nowIso,
+        }),
+      ).toEqual({
+        decision: 'REFUNDED',
+        destinationConfirmed: true,
+        bankTransferReference: 'FT987654321',
+        bankTransferredAt: nowIso,
+      });
+    });
+
+    it('rejects REFUNDED with extra unknown keys', () => {
+      expect(
+        resolveTopUpRefundSchema.safeParse({
+          decision: 'REFUNDED',
+          extra: true,
+        }).success,
+      ).toBe(false);
+    });
+
+    it('parses valid REJECTED decision and defaults manualTransferRecorded to false', () => {
+      const parsed = resolveTopUpRefundSchema.parse({
+        decision: 'REJECTED',
+        reason: '  User did not respond  ',
+      });
+      expect(parsed).toEqual({
+        decision: 'REJECTED',
+        reason: 'User did not respond',
+        manualTransferRecorded: false,
+      });
+
+      const parsedManual = resolveTopUpRefundSchema.parse({
+        decision: 'REJECTED',
+        reason: 'Paid manually',
+        manualTransferRecorded: true,
+      });
+      if (parsedManual.decision === 'REJECTED') {
+        expect(parsedManual.manualTransferRecorded).toBe(true);
+      } else {
+        throw new Error('Expected REJECTED');
+      }
+    });
+
+    it('rejects REJECTED with empty, whitespace-only, or over-500-char reasons', () => {
+      expect(
+        resolveTopUpRefundSchema.safeParse({
+          decision: 'REJECTED',
+          reason: '',
+        }).success,
+      ).toBe(false);
+
+      expect(
+        resolveTopUpRefundSchema.safeParse({
+          decision: 'REJECTED',
+          reason: '   ',
+        }).success,
+      ).toBe(false);
+
+      expect(
+        resolveTopUpRefundSchema.safeParse({
+          decision: 'REJECTED',
+          reason: 'a'.repeat(500),
+        }).success,
+      ).toBe(true);
+
+      expect(
+        resolveTopUpRefundSchema.safeParse({
+          decision: 'REJECTED',
+          reason: 'a'.repeat(501),
+        }).success,
+      ).toBe(false);
+    });
+
+    it('rejects unknown decision', () => {
+      expect(
+        resolveTopUpRefundSchema.safeParse({
+          decision: 'CANCELLED',
+        }).success,
+      ).toBe(false);
+    });
+  });
+
+  describe('recordTopUpRefundBankTransferSchema', () => {
+    it('accepts when at least one field is provided', () => {
+      expect(
+        recordTopUpRefundBankTransferSchema.parse({
+          bankTransferReference: '  FT123  ',
+        }),
+      ).toEqual({
+        bankTransferReference: 'FT123',
+      });
+
+      expect(
+        recordTopUpRefundBankTransferSchema.parse({
+          bankTransferredAt: nowIso,
+        }),
+      ).toEqual({
+        bankTransferredAt: nowIso,
+      });
+
+      expect(
+        recordTopUpRefundBankTransferSchema.parse({
+          bankTransferReference: 'FT123',
+          bankTransferredAt: nowIso,
+        }),
+      ).toEqual({
+        bankTransferReference: 'FT123',
+        bankTransferredAt: nowIso,
+      });
+    });
+
+    it('rejects when neither field is provided', () => {
+      expect(recordTopUpRefundBankTransferSchema.safeParse({}).success).toBe(false);
+    });
+
+    it('rejects extra keys and over-100-char reference', () => {
+      expect(
+        recordTopUpRefundBankTransferSchema.safeParse({
+          bankTransferReference: 'FT123',
+          extra: true,
+        }).success,
+      ).toBe(false);
+
+      expect(
+        recordTopUpRefundBankTransferSchema.safeParse({
+          bankTransferReference: 'a'.repeat(101),
+        }).success,
+      ).toBe(false);
+    });
+  });
+
+  describe('Admin DTO schemas', () => {
+    const adminListItem = {
+      id: reqId,
+      topUpId,
+      orderCode: 1000000001,
+      userId,
+      userEmail: 'user@example.com',
+      userName: 'Nguyen Van A',
+      amountVnd: 10000,
+      points: 50,
+      status: 'REQUESTED' as const,
+      eligibility: 'ELIGIBLE' as const,
+      ineligibleReason: null,
+      reason: 'WRONG_AMOUNT' as const,
+      destinationVerified: true,
+      heldPoints: 50,
+      submittedAt: nowIso,
+      dueAt: '2026-10-21T12:00:00.000Z',
+      overdue: false,
+      resolvedAt: null,
+    };
+
+    it('validates adminTopUpRefundListItemSchema', () => {
+      expect(adminTopUpRefundListItemSchema.parse(adminListItem)).toEqual(adminListItem);
+    });
+
+    it('validates adminTopUpRefundDetailSchema with full account number in destination', () => {
+      const detail = {
+        ...adminListItem,
+        note: 'Customer note',
+        paidAt: nowIso,
+        providerReference: 'PAYOS123',
+        destination: {
+          bankId: '970422',
+          bankName: 'MBBank',
+          holderName: 'NGUYEN VAN A',
+          accountNumber: '01234567890123',
+          verified: true,
+        },
+        rejectionReason: null,
+        manualTransferRecorded: false,
+        bankTransferReference: null,
+        bankTransferredAt: null,
+        bankTransferRecordedAt: null,
+        withdrawnAt: null,
+        resolvedBy: null,
+        holdJournalId: '44444444-4444-4444-8444-444444444444',
+        resolveJournalId: null,
+      };
+
+      expect(adminTopUpRefundDetailSchema.parse(detail)).toEqual(detail);
+      expect(
+        adminResolveTopUpRefundResultSchema.parse({
+          request: detail,
+          replayed: false,
+        }),
+      ).toEqual({
+        request: detail,
+        replayed: false,
+      });
+    });
+
+    it('validates adminTopUpRefundListQuerySchema defaults and page coercion', () => {
+      expect(adminTopUpRefundListQuerySchema.parse({})).toEqual({
+        status: 'OPEN',
+        verdict: 'ALL',
+        page: 1,
+      });
+
+      expect(
+        adminTopUpRefundListQuerySchema.parse({
+          status: 'RESOLVED',
+          verdict: 'ELIGIBLE',
+          q: '  1000000001  ',
+          page: '3',
+        }),
+      ).toEqual({
+        status: 'RESOLVED',
+        verdict: 'ELIGIBLE',
+        q: '1000000001',
+        page: 3,
+      });
     });
   });
 });

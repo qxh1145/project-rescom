@@ -38,6 +38,7 @@ describe('Top-Up Refund (HTTP e2e)', () => {
   let ledgerService: LedgerService;
   let actor: { id: string; cookie: string; csrf: string };
   let other: { id: string; cookie: string; csrf: string };
+  let adminActor: { id: string; cookie: string; csrf: string };
 
   beforeAll(async () => {
     process.env.DATABASE_URL ||=
@@ -99,11 +100,14 @@ describe('Top-Up Refund (HTTP e2e)', () => {
     await app.init();
 
     const service = module.get(SessionService);
-    const makeActor = async (email: string) => {
+    const makeActor = async (
+      email: string,
+      role: 'RESPONDENT' | 'ADMIN' = 'RESPONDENT',
+    ) => {
       const user = await users.create({
         email,
         passwordHash: null,
-        role: 'RESPONDENT',
+        role,
         status: 'ACTIVE',
       });
       payosRepo.userEmails.set(user.id, email);
@@ -117,6 +121,7 @@ describe('Top-Up Refund (HTTP e2e)', () => {
 
     actor = await makeActor('user-refund@fpt.edu.vn');
     other = await makeActor('other-refund@fpt.edu.vn');
+    adminActor = await makeActor('admin-refund@fpt.edu.vn', 'ADMIN');
   });
 
   afterAll(async () => {
@@ -319,7 +324,9 @@ describe('Top-Up Refund (HTTP e2e)', () => {
       expect(topUpDto.refundDeadline).not.toBeNull();
       expect(topUpDto.refund.request).not.toBeNull();
       expect(topUpDto.refund.request.destination.last4).toBe('6789');
-      expect(topUpDto.refund.request.destination.accountNumber).toBe('0123456789');
+      expect(topUpDto.refund.request.destination.accountNumber).toBe(
+        '0123456789',
+      );
       expect(
         (topUpDto.refund.request.destination as any).counterAccountNumber,
       ).toBeUndefined();
@@ -357,6 +364,210 @@ describe('Top-Up Refund (HTTP e2e)', () => {
       expect(withdrawRes.body.data.request.destination.accountNumber).toBe(
         '0123456789',
       );
+    });
+  });
+
+  describe('Admin Refund Console & Resolution (Story 13.12)', () => {
+    it('exercises admin refund routes: list, detail, resolve, and bank-transfer', async () => {
+      const topUp = await seedSuccessfulTopUp(actor.id, 100);
+
+      // User submits refund request
+      const submitRes = await request(app.getHttpServer())
+        .post(`/economy/top-ups/payos/${topUp.id}/refund-request`)
+        .set('Cookie', actor.cookie)
+        .set('x-csrf-token', actor.csrf)
+        .set('Origin', origin)
+        .send({ reason: 'WRONG_AMOUNT', note: 'Accidental payment' })
+        .expect(200);
+
+      const refundId = submitRes.body.data.request.id;
+
+      // 1. GET /admin/top-ups/refunds
+      const listRes = await request(app.getHttpServer())
+        .get('/admin/top-ups/refunds')
+        .query({ status: 'OPEN', page: 1 })
+        .set('Cookie', adminActor.cookie)
+        .expect(200);
+
+      expect(listRes.body.data.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: refundId, status: 'REQUESTED' }),
+        ]),
+      );
+
+      // 2. GET /admin/top-ups/refunds/:param
+      const detailRes = await request(app.getHttpServer())
+        .get(`/admin/top-ups/refunds/${refundId}`)
+        .set('Cookie', adminActor.cookie)
+        .expect(200);
+
+      expect(detailRes.body.data.id).toBe(refundId);
+      expect(detailRes.body.data.orderCode).toBe(topUp.orderCode);
+      expect(detailRes.body.data.destination.accountNumber).toBe('0123456789');
+
+      // 3. POST /admin/top-ups/refunds/:param/resolve
+      const resolveRes = await request(app.getHttpServer())
+        .post(`/admin/top-ups/refunds/${refundId}/resolve`)
+        .set('Cookie', adminActor.cookie)
+        .set('x-csrf-token', adminActor.csrf)
+        .set('Origin', origin)
+        .send({
+          decision: 'REFUNDED',
+          destinationConfirmed: true,
+        })
+        .expect(200);
+
+      expect(resolveRes.body.data.request.status).toBe('REFUNDED');
+      expect(resolveRes.body.data.replayed).toBe(false);
+
+      // 4. POST /admin/top-ups/refunds/:param/bank-transfer
+      const bankTransferRes = await request(app.getHttpServer())
+        .post(`/admin/top-ups/refunds/${refundId}/bank-transfer`)
+        .set('Cookie', adminActor.cookie)
+        .set('x-csrf-token', adminActor.csrf)
+        .set('Origin', origin)
+        .send({
+          bankTransferReference: 'FT1312TEST',
+          bankTransferredAt: new Date().toISOString(),
+        })
+        .expect(200);
+
+      expect(bankTransferRes.body.data.replayed).toBe(false);
+      expect(bankTransferRes.body.data.request.bankTransferReference).toBe(
+        'FT1312TEST',
+      );
+    });
+
+    // PAYOS_ENABLED is false for this whole suite, so every admin route above
+    // already proves refund resolution works with checkout disabled.
+    describe('negative cases', () => {
+      const bodyOf = { decision: 'REJECTED', reason: 'No' };
+
+      it('returns 401 without a session and 403 without CSRF or for non-admins', async () => {
+        const id = randomUUID();
+        await request(app.getHttpServer())
+          .get('/admin/top-ups/refunds')
+          .expect(401);
+        await request(app.getHttpServer())
+          .post(`/admin/top-ups/refunds/${id}/resolve`)
+          .set('Origin', origin)
+          .send(bodyOf)
+          .expect(401);
+        await request(app.getHttpServer())
+          .post(`/admin/top-ups/refunds/${id}/resolve`)
+          .set('Cookie', adminActor.cookie)
+          .set('Origin', origin)
+          .send(bodyOf)
+          .expect(403);
+        await request(app.getHttpServer())
+          .get('/admin/top-ups/refunds')
+          .set('Cookie', actor.cookie)
+          .expect(403);
+        await request(app.getHttpServer())
+          .post(`/admin/top-ups/refunds/${id}/bank-transfer`)
+          .set('Cookie', adminActor.cookie)
+          .set('Origin', origin)
+          .send({ bankTransferReference: 'FT1' })
+          .expect(403);
+      });
+
+      it('returns 400 VALIDATION_ERROR for invalid bodies and 404 for unknown ids', async () => {
+        const id = randomUUID();
+        const post = (path: string, body: object) =>
+          request(app.getHttpServer())
+            .post(`/admin/top-ups/refunds/${id}/${path}`)
+            .set('Cookie', adminActor.cookie)
+            .set('x-csrf-token', adminActor.csrf)
+            .set('Origin', origin)
+            .send(body);
+
+        const bad = await post('resolve', { decision: 'REJECTED' }).expect(400);
+        expect(bad.body.error.code).toBe('VALIDATION_ERROR');
+        const empty = await post('bank-transfer', {}).expect(400);
+        expect(empty.body.error.code).toBe('VALIDATION_ERROR');
+
+        const missing = await post('resolve', bodyOf).expect(404);
+        expect(missing.body.error.code).toBe('TOPUP_REFUND_NOT_FOUND');
+        await post('bank-transfer', { bankTransferReference: 'FT1' }).expect(
+          404,
+        );
+        await request(app.getHttpServer())
+          .get(`/admin/top-ups/refunds/${id}`)
+          .set('Cookie', adminActor.cookie)
+          .expect(404);
+      });
+
+      it('returns 400 for unknown decision, 501-char reason, extra key and manual transfer on a held request', async () => {
+        const post = (id: string, body: object) =>
+          request(app.getHttpServer())
+            .post(`/admin/top-ups/refunds/${id}/resolve`)
+            .set('Cookie', adminActor.cookie)
+            .set('x-csrf-token', adminActor.csrf)
+            .set('Origin', origin)
+            .send(body);
+        const unknownId = randomUUID();
+        for (const body of [
+          { decision: 'APPROVED' },
+          { decision: 'REJECTED', reason: 'x'.repeat(501) },
+          { decision: 'REJECTED', reason: 'No', extra: 1 },
+        ]) {
+          const res = await post(unknownId, body).expect(400);
+          expect(res.body.error.code).toBe('VALIDATION_ERROR');
+        }
+
+        const topUp = await seedSuccessfulTopUp(actor.id, 100);
+        const submitRes = await request(app.getHttpServer())
+          .post(`/economy/top-ups/payos/${topUp.id}/refund-request`)
+          .set('Cookie', actor.cookie)
+          .set('x-csrf-token', actor.csrf)
+          .set('Origin', origin)
+          .send({ reason: 'WRONG_AMOUNT', note: 'Held request' })
+          .expect(200);
+        const held = await post(submitRes.body.data.request.id, {
+          decision: 'REJECTED',
+          reason: 'No',
+          manualTransferRecorded: true,
+        }).expect(400);
+        expect(held.body.error.code).toBe('VALIDATION_ERROR');
+      });
+
+      it('returns 400 for a future bankTransferredAt and keeps the full account number out of outbox payloads', async () => {
+        const topUp = await seedSuccessfulTopUp(actor.id, 100);
+        const submitRes = await request(app.getHttpServer())
+          .post(`/economy/top-ups/payos/${topUp.id}/refund-request`)
+          .set('Cookie', actor.cookie)
+          .set('x-csrf-token', actor.csrf)
+          .set('Origin', origin)
+          .send({ reason: 'WRONG_AMOUNT', note: 'Accidental payment' })
+          .expect(200);
+        const refundId = submitRes.body.data.request.id;
+
+        const future = await request(app.getHttpServer())
+          .post(`/admin/top-ups/refunds/${refundId}/resolve`)
+          .set('Cookie', adminActor.cookie)
+          .set('x-csrf-token', adminActor.csrf)
+          .set('Origin', origin)
+          .send({
+            decision: 'REFUNDED',
+            destinationConfirmed: true,
+            bankTransferredAt: new Date(Date.now() + 3_600_000).toISOString(),
+          })
+          .expect(400);
+        expect(future.body.error.code).toBe('VALIDATION_ERROR');
+
+        await request(app.getHttpServer())
+          .post(`/admin/top-ups/refunds/${refundId}/resolve`)
+          .set('Cookie', adminActor.cookie)
+          .set('x-csrf-token', adminActor.csrf)
+          .set('Origin', origin)
+          .send({ decision: 'REFUNDED', destinationConfirmed: true })
+          .expect(200);
+
+        expect(payosRepo.refundEvents.length).toBeGreaterThan(0);
+        expect(JSON.stringify(payosRepo.refundEvents)).not.toContain(
+          '0123456789',
+        );
+      });
     });
   });
 });

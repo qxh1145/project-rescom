@@ -208,6 +208,7 @@ describe('SpendJournals Completeness', () => {
     await fund(u, 'USER_AVAILABLE', 100_000);
     await fund(u, 'INTEGRITY_HOLD', 1_000);
     await fund(u, 'PENDING', 1_000);
+    await fund(u, 'REFUND_HOLD', 1_000);
     await fund(pub, 'ESCROW', 10_000);
     await fund(pub, 'USER_AVAILABLE', 1_000);
     const uAcc = await service.getOrCreateAccount(u, 'USER_AVAILABLE');
@@ -424,6 +425,17 @@ describe('SpendJournals Completeness', () => {
             userId: u,
             points: 10,
             key: `topup-refund-withdraw:${topUpRefundId}`,
+          }),
+      ],
+      [
+        'refundTopUpRefundHold',
+        () =>
+          service.refundTopUpRefundHold({
+            requestId: randomUUID(),
+            userId: u,
+            points: 10,
+            topUpId: randomUUID(),
+            orderCode: 999,
           }),
       ],
     ];

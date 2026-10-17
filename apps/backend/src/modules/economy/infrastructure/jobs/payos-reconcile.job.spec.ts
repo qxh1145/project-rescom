@@ -796,6 +796,130 @@ describe('PayosReconcileJob (Story 13.5 Task 5)', () => {
       ).toHaveLength(1);
     });
 
+    it('REFUND_SLA_BREACHED: across weekend raises once when SLA is breached', async () => {
+      // Friday 2026-10-16 10:00 VN (03:00Z)
+      // +3 business days in VN = Wednesday 2026-10-21 10:00 VN (03:00Z)
+      const requestedAtFri = new Date('2026-10-16T03:00:00.000Z');
+      const refundId = '00000000-0000-4000-8000-000000000055';
+      const topUpId = '00000000-0000-4000-8000-000000000056';
+      seedTopUp(repo, {
+        id: topUpId,
+        orderCode: 4006,
+        amountVnd: 50_000,
+        status: 'SUCCESSFUL',
+      });
+      repo.refundRequests.set(refundId, {
+        id: refundId,
+        topUpId,
+        userId: 'user-ref',
+        topUpJournalId: 'j-1',
+        holdJournalId: 'h-1',
+        releaseJournalId: null,
+        status: 'REQUESTED',
+        eligibility: 'ELIGIBLE',
+        ineligibleReason: null,
+        reason: 'OTHER',
+        note: '',
+        points: 250,
+        amountVnd: 50_000,
+        counterAccountBankId: '970422',
+        counterAccountBankName: 'MBBank',
+        counterAccountName: 'A',
+        counterAccountNumber: '0123',
+        destinationVerified: true,
+        withdrawnAt: null,
+        resolvedAt: null,
+        rejectionReason: null,
+        manualTransferRecorded: false,
+        resolvedByAdminId: null,
+        resolveJournalId: null,
+        bankTransferReference: null,
+        bankTransferredAt: null,
+        bankTransferRecordedAt: null,
+        correlationId: null,
+        createdAt: requestedAtFri,
+        updatedAt: requestedAtFri,
+      });
+
+      // Tuesday 2026-10-20: 2 business days -> no alert
+      const tuesday = new Date('2026-10-20T03:00:00.000Z');
+      await job.run(testJobContext(tuesday));
+      expect(
+        repo.alertEvents.filter(
+          (e) => e.payload.condition === 'REFUND_SLA_BREACHED',
+        ),
+      ).toHaveLength(0);
+
+      // Wednesday 2026-10-21 04:00Z: 3 business days passed -> raises alert
+      const wednesday = new Date('2026-10-21T04:00:00.000Z');
+      const s2 = await job.run(testJobContext(wednesday));
+      expect(s2.counts.alertsRaisedCount).toBe(1);
+      const refundAlerts = repo.alertEvents.filter(
+        (e) => e.payload.condition === 'REFUND_SLA_BREACHED',
+      );
+      expect(refundAlerts).toHaveLength(1);
+      expect(refundAlerts[0].payload.refundRequestId).toBe(refundId);
+
+      // Run again: deduped
+      const s3 = await job.run(testJobContext(wednesday));
+      expect(s3.counts.alertsRaisedCount).toBe(0);
+      expect(
+        repo.alertEvents.filter(
+          (e) => e.payload.condition === 'REFUND_SLA_BREACHED',
+        ),
+      ).toHaveLength(1);
+    });
+
+    it('REFUND_SLA_BREACHED: skips resolved requests', async () => {
+      const refundId = '00000000-0000-4000-8000-000000000057';
+      const topUpId = '00000000-0000-4000-8000-000000000058';
+      const requestedAtFri = new Date('2026-10-16T03:00:00.000Z');
+      seedTopUp(repo, {
+        id: topUpId,
+        orderCode: 4007,
+        amountVnd: 50_000,
+        status: 'SUCCESSFUL',
+      });
+      repo.refundRequests.set(refundId, {
+        id: refundId,
+        topUpId,
+        userId: 'user-ref',
+        topUpJournalId: 'j-1',
+        holdJournalId: null,
+        releaseJournalId: null,
+        status: 'REFUNDED',
+        eligibility: 'ELIGIBLE',
+        ineligibleReason: null,
+        reason: 'OTHER',
+        note: '',
+        points: 250,
+        amountVnd: 50_000,
+        counterAccountBankId: null,
+        counterAccountBankName: null,
+        counterAccountName: null,
+        counterAccountNumber: null,
+        destinationVerified: true,
+        withdrawnAt: null,
+        resolvedAt: new Date('2026-10-17T03:00:00.000Z'),
+        rejectionReason: null,
+        manualTransferRecorded: false,
+        resolvedByAdminId: null,
+        resolveJournalId: 'j-2',
+        bankTransferReference: null,
+        bankTransferredAt: null,
+        bankTransferRecordedAt: null,
+        correlationId: null,
+        createdAt: requestedAtFri,
+        updatedAt: requestedAtFri,
+      });
+      await job.run(testJobContext(new Date('2026-10-30T04:00:00.000Z')));
+      expect(
+        repo.alertEvents.filter(
+          (e) => e.payload.condition === 'REFUND_SLA_BREACHED',
+        ),
+      ).toHaveLength(0);
+    });
+
     it('PROVIDER_FAILURE: 3 consecutive all-failed runs alert once; 4th still 1; success then 3 more alerts new episode', async () => {
       seedTopUp(repo, {
         id: 'topup-pf',

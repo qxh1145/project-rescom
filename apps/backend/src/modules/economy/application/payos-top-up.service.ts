@@ -97,8 +97,14 @@ export class PayosTopUpService {
   }
 
   private adminDto(row: AdminPayosRow) {
+    const {
+      refundStatus: _refundStatus,
+      refundResolvedAt: _refundResolvedAt,
+      bankTransferReference: _bankTransferReference,
+      ...base
+    } = row;
     return adminPayosTopUpSchema.parse({
-      ...row,
+      ...base,
       createdAt: row.createdAt.toISOString(),
       paidAt: row.paidAt?.toISOString() ?? null,
       expiresAt: row.expiresAt.toISOString(),
@@ -172,11 +178,12 @@ export class PayosTopUpService {
   }
 
   async tabCounts() {
-    const [counts, actionRequired] = await Promise.all([
+    const [counts, actionRequired, refunds] = await Promise.all([
       this.options.repository.countByChannel(),
       this.options.repository.countActionRequired(),
+      this.options.repository.countOpenRefundRequests(),
     ]);
-    return { ...counts, actionRequired };
+    return { ...counts, actionRequired, refunds };
   }
 
   async resolveMismatch(
@@ -357,6 +364,9 @@ export class PayosTopUpService {
         'status',
         'createdAt',
         'paidAt',
+        'refundStatus',
+        'refundResolvedAt',
+        'bankTransferReference',
       ],
       rows.map((row) => [
         row.orderCode,
@@ -368,6 +378,9 @@ export class PayosTopUpService {
         row.status,
         vnTime(row.createdAt),
         vnTime(row.paidAt),
+        row.refundStatus ?? null,
+        vnTime(row.refundResolvedAt ?? null),
+        row.bankTransferReference ?? null,
       ]),
     );
   }

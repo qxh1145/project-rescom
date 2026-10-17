@@ -311,6 +311,7 @@ export class TopUpRefundService {
           ineligibleReason: refundReq.ineligibleReason,
           points: refundReq.points,
           amountVnd: refundReq.amountVnd,
+          holdReleased: releaseJournalId !== null,
           occurredAt: now.toISOString(),
         }),
       };
@@ -391,6 +392,10 @@ export class TopUpRefundService {
       },
       submittedAt: row.createdAt.toISOString(),
       withdrawnAt: row.withdrawnAt?.toISOString() ?? null,
+      resolvedAt: row.resolvedAt?.toISOString() ?? null,
+      rejectionReason: row.rejectionReason,
+      bankTransferReference: row.bankTransferReference,
+      bankTransferredAt: row.bankTransferredAt?.toISOString() ?? null,
     });
   }
 }

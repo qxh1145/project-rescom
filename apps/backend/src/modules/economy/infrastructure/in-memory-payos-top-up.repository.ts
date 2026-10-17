@@ -3,8 +3,12 @@ import {
   AdminMismatchRow,
   AdminPayosListParams,
   AdminPayosRow,
+  AdminRefundDetailRow,
+  AdminRefundListItemRow,
+  AdminRefundListParams,
   CreateProcessingResult,
   ListReconcileCandidatesParams,
+  OverdueRefundCandidateRow,
   PayosTopUp,
   PayosTopUpRepositoryPort,
   TopUpAdminAlertEvent,
@@ -24,6 +28,7 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
   manualPending = 0;
   manualCount = 0;
   readonly userEmails = new Map<string, string>();
+  readonly userNames = new Map<string, string>();
   private nextCode = 1_000_000_000;
   private readonly mismatchJournals = new Map<string, string>();
 
@@ -46,6 +51,7 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
   readonly manualTopUps = new Map<string, TopUpRowForRefund>();
 
   private adminRow(row: PayosTopUp): AdminPayosRow {
+    const refund = this.refundRequestsByTopUp.get(row.id);
     return {
       id: row.id,
       userId: row.userId,
@@ -60,6 +66,9 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
       expiresAt: row.expiresAt,
       cancelledAt: row.cancelledAt,
       userEmail: this.userEmails.get(row.userId) ?? null,
+      refundStatus: refund?.status ?? null,
+      refundResolvedAt: refund?.resolvedAt ?? null,
+      bankTransferReference: refund?.bankTransferReference ?? null,
     };
   }
 
@@ -485,6 +494,7 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
         counterAccountBankName: payos.counterAccountBankName,
         counterAccountName: payos.counterAccountName,
         counterAccountNumber: payos.counterAccountNumber,
+        providerReference: payos.providerReference,
         createdAt: payos.createdAt,
       };
     }
@@ -529,6 +539,13 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
       destinationVerified: data.destinationVerified,
       withdrawnAt: null,
       resolvedAt: null,
+      rejectionReason: null,
+      manualTransferRecorded: false,
+      resolvedByAdminId: null,
+      resolveJournalId: null,
+      bankTransferReference: null,
+      bankTransferredAt: null,
+      bankTransferRecordedAt: null,
       correlationId: data.correlationId,
       createdAt: data.createdAt,
       updatedAt: data.createdAt,
@@ -592,6 +609,10 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
           },
           submittedAt: row.createdAt,
           withdrawnAt: row.withdrawnAt,
+          resolvedAt: row.resolvedAt,
+          rejectionReason: row.rejectionReason,
+          bankTransferReference: row.bankTransferReference,
+          bankTransferredAt: row.bankTransferredAt,
         });
       }
     }
@@ -617,5 +638,225 @@ export class InMemoryPayosTopUpRepository implements PayosTopUpRepositoryPort {
 
   async getUserEmail(userId: string): Promise<string | null> {
     return this.userEmails.get(userId) ?? null;
+  }
+
+  // Story 13.12: Admin Refund Resolution
+  async findRefundRequestById(id: string): Promise<TopUpRefundRow | null> {
+    return this.refundRequests.get(id) ?? null;
+  }
+
+  async lockRefundRequestById(id: string): Promise<TopUpRefundRow | null> {
+    return this.refundRequests.get(id) ?? null;
+  }
+
+  async resolveRefundRequest(
+    id: string,
+    update: Parameters<PayosTopUpRepositoryPort['resolveRefundRequest']>[1],
+    events: Parameters<PayosTopUpRepositoryPort['resolveRefundRequest']>[2],
+  ): Promise<{ changed: boolean; request: TopUpRefundRow | null }> {
+    const row = this.refundRequests.get(id);
+    if (!row || row.status !== 'REQUESTED') {
+      return { changed: false, request: row ?? null };
+    }
+    row.status = update.status;
+    row.resolvedAt = update.resolvedAt;
+    row.resolvedByAdminId = update.resolvedByAdminId;
+    row.resolveJournalId = update.resolveJournalId;
+    row.rejectionReason = update.rejectionReason;
+    row.manualTransferRecorded = update.manualTransferRecorded;
+    row.bankTransferReference = update.bankTransferReference;
+    row.bankTransferredAt = update.bankTransferredAt;
+    row.bankTransferRecordedAt = update.bankTransferRecordedAt;
+    row.updatedAt = update.resolvedAt;
+    this.refundEvents.push(...events);
+    return { changed: true, request: row };
+  }
+
+  async recordRefundBankTransfer(
+    id: string,
+    update: Parameters<PayosTopUpRepositoryPort['recordRefundBankTransfer']>[1],
+    events: Parameters<PayosTopUpRepositoryPort['recordRefundBankTransfer']>[2],
+  ): Promise<{ changed: boolean; request: TopUpRefundRow | null }> {
+    const row = this.refundRequests.get(id);
+    if (
+      !row ||
+      row.status !== 'REFUNDED' ||
+      row.bankTransferRecordedAt !== null
+    ) {
+      return { changed: false, request: row ?? null };
+    }
+    row.bankTransferReference = update.bankTransferReference;
+    row.bankTransferredAt = update.bankTransferredAt;
+    row.bankTransferRecordedAt = update.recordedAt;
+    row.updatedAt = update.recordedAt;
+    this.refundEvents.push(...events);
+    return { changed: true, request: row };
+  }
+
+  async listRefundRequestsForAdmin(
+    params: AdminRefundListParams,
+  ): Promise<{ items: AdminRefundListItemRow[]; total: number }> {
+    let rows = [...this.refundRequests.values()];
+
+    if (params.status === 'OPEN') {
+      rows = rows.filter((r) => r.status === 'REQUESTED');
+    } else if (params.status === 'RESOLVED') {
+      rows = rows.filter((r) =>
+        ['REFUNDED', 'REJECTED', 'WITHDRAWN'].includes(r.status),
+      );
+    }
+
+    if (params.verdict === 'ELIGIBLE') {
+      rows = rows.filter((r) => r.eligibility === 'ELIGIBLE');
+    } else if (params.verdict === 'NOT_ELIGIBLE') {
+      rows = rows.filter((r) => r.eligibility === 'NOT_ELIGIBLE');
+    }
+
+    if (params.q && params.q.trim().length > 0) {
+      const q = params.q.trim().toLowerCase();
+      const isDigits = /^\d+$/.test(q);
+      rows = rows.filter((r) => {
+        const topUp =
+          this.rows.get(r.topUpId) ?? this.manualTopUps.get(r.topUpId);
+        const orderCodeMatch =
+          isDigits &&
+          topUp?.orderCode !== undefined &&
+          topUp?.orderCode !== null
+            ? String(topUp.orderCode) === q
+            : false;
+        const email = (this.userEmails.get(r.userId) ?? '').toLowerCase();
+        const emailMatch = email.includes(q);
+        return orderCodeMatch || emailMatch;
+      });
+    }
+
+    if (params.status === 'RESOLVED') {
+      rows.sort(
+        (a, b) =>
+          (b.resolvedAt?.getTime() ?? 0) - (a.resolvedAt?.getTime() ?? 0) ||
+          b.id.localeCompare(a.id),
+      );
+    } else if (params.status === 'ALL') {
+      rows.sort(
+        (a, b) =>
+          b.createdAt.getTime() - a.createdAt.getTime() ||
+          b.id.localeCompare(a.id),
+      );
+    } else {
+      // OPEN default
+      rows.sort(
+        (a, b) =>
+          a.createdAt.getTime() - b.createdAt.getTime() ||
+          a.id.localeCompare(b.id),
+      );
+    }
+
+    const total = rows.length;
+    const pageRows = rows.slice(
+      (params.page - 1) * params.pageSize,
+      params.page * params.pageSize,
+    );
+
+    const items: AdminRefundListItemRow[] = pageRows.map((r) => {
+      const topUp =
+        this.rows.get(r.topUpId) ?? this.manualTopUps.get(r.topUpId);
+      return {
+        id: r.id,
+        topUpId: r.topUpId,
+        orderCode: topUp?.orderCode ?? 0,
+        userId: r.userId,
+        userEmail: this.userEmails.get(r.userId) ?? null,
+        userName: this.userNames.get(r.userId) ?? null,
+        amountVnd: r.amountVnd,
+        points: r.points,
+        status: r.status,
+        eligibility: r.eligibility,
+        ineligibleReason: r.ineligibleReason,
+        reason: r.reason,
+        destinationVerified: r.destinationVerified,
+        heldPoints: r.status === 'REQUESTED' && r.holdJournalId ? r.points : 0,
+        submittedAt: r.createdAt,
+        resolvedAt: r.resolvedAt,
+        createdAt: r.createdAt,
+      };
+    });
+
+    return { items, total };
+  }
+
+  async findRefundRequestForAdmin(
+    id: string,
+  ): Promise<AdminRefundDetailRow | null> {
+    const r = this.refundRequests.get(id);
+    if (!r) return null;
+    const topUp = this.rows.get(r.topUpId) ?? this.manualTopUps.get(r.topUpId);
+    return {
+      id: r.id,
+      topUpId: r.topUpId,
+      orderCode: topUp?.orderCode ?? 0,
+      userId: r.userId,
+      userEmail: this.userEmails.get(r.userId) ?? null,
+      userName: this.userNames.get(r.userId) ?? null,
+      amountVnd: r.amountVnd,
+      points: r.points,
+      status: r.status,
+      eligibility: r.eligibility,
+      ineligibleReason: r.ineligibleReason,
+      reason: r.reason,
+      destinationVerified: r.destinationVerified,
+      heldPoints: r.status === 'REQUESTED' && r.holdJournalId ? r.points : 0,
+      submittedAt: r.createdAt,
+      resolvedAt: r.resolvedAt,
+      createdAt: r.createdAt,
+      note: r.note,
+      paidAt: topUp?.paidAt ?? r.createdAt,
+      providerReference: topUp?.providerReference ?? null,
+      counterAccountBankId: r.counterAccountBankId,
+      counterAccountBankName: r.counterAccountBankName,
+      counterAccountName: r.counterAccountName,
+      counterAccountNumber: r.counterAccountNumber,
+      rejectionReason: r.rejectionReason,
+      manualTransferRecorded: r.manualTransferRecorded,
+      bankTransferReference: r.bankTransferReference,
+      bankTransferredAt: r.bankTransferredAt,
+      bankTransferRecordedAt: r.bankTransferRecordedAt,
+      withdrawnAt: r.withdrawnAt,
+      resolvedByAdminId: r.resolvedByAdminId,
+      resolvedByAdminEmail: r.resolvedByAdminId
+        ? (this.userEmails.get(r.resolvedByAdminId) ?? null)
+        : null,
+      holdJournalId: r.holdJournalId,
+      resolveJournalId: r.resolveJournalId,
+    };
+  }
+
+  async countOpenRefundRequests(): Promise<number> {
+    let count = 0;
+    for (const r of this.refundRequests.values()) {
+      if (r.status === 'REQUESTED') count++;
+    }
+    return count;
+  }
+
+  async listOverdueRefundCandidates(
+    cutoff: Date,
+  ): Promise<OverdueRefundCandidateRow[]> {
+    const list: OverdueRefundCandidateRow[] = [];
+    for (const r of this.refundRequests.values()) {
+      if (r.status === 'REQUESTED' && r.createdAt <= cutoff) {
+        const topUp =
+          this.rows.get(r.topUpId) ?? this.manualTopUps.get(r.topUpId);
+        list.push({
+          id: r.id,
+          topUpId: r.topUpId,
+          orderCode: topUp?.orderCode ?? 0,
+          amountVnd: r.amountVnd,
+          createdAt: r.createdAt,
+        });
+      }
+    }
+    return list
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .slice(0, 200);
   }
 }

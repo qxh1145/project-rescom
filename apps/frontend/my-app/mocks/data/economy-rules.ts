@@ -25,6 +25,7 @@ export type MockTransactionKind =
   | "TOP_UP_PAYOS" // "Nạp Điểm qua PayOS" · `topup-credit:` journal
   | "TOP_UP_REFUND_HOLD" // "Giữ chờ hoàn tiền" · Khả dụng → Giữ chờ hoàn tiền (`topup-refund-hold:` journal)
   | "TOP_UP_REFUND_RELEASE" // "Hoàn lại từ giữ chờ hoàn tiền" · Giữ chờ hoàn tiền → Khả dụng (`topup-refund-withdraw:` journal)
+  | "TOP_UP_REFUND" // "Hoàn tiền nạp Điểm" · Giữ chờ hoàn tiền → SYSTEM_CLEARING (`topup-refund-resolve:` journal)
   | "VOUCHER_REDEMPTION" // "Đổi voucher" · Khả dụng −N
   | "VOUCHER_REFUND" // Voucher redemption reversal · Khả dụng +N
   | "SURVEY_ESCROW" // "Ký quỹ khảo sát" (publisher spend)
@@ -261,6 +262,11 @@ function entriesOf(row: MockTransaction, postedAsPending: boolean): Array<[Ledge
         ["REFUND_HOLD", -amount],
         ["USER_AVAILABLE", amount],
       ];
+    case "TOP_UP_REFUND":
+      return [
+        ["REFUND_HOLD", -amount],
+        ["SYSTEM_CLEARING", amount],
+      ];
     case "VOUCHER_REDEMPTION":
       return [["USER_AVAILABLE", -amount]];
     case "VOUCHER_REFUND":
@@ -333,6 +339,8 @@ function journalOf(userId: string, row: MockTransaction, postedAsPending: boolea
       return { key: `topup-refund-hold:${row.id}`, description: "Top-up refund hold" };
     case "TOP_UP_REFUND_RELEASE":
       return { key: `topup-refund-withdraw:${row.id}`, description: "Top-up refund hold release" };
+    case "TOP_UP_REFUND":
+      return { key: `topup-refund-resolve:${row.id}`, description: `Top-up refund: ${row.note}` };
     case "SURVEY_ESCROW":
       return { key: `publish:${row.id}`, description: `Escrow lock for survey publish: ${row.note}` };
     case "ESCROW_REFUND":

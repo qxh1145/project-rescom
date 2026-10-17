@@ -33,6 +33,13 @@ export interface TopUpRefundRow {
   destinationVerified: boolean;
   withdrawnAt: Date | null;
   resolvedAt: Date | null;
+  rejectionReason: string | null;
+  manualTransferRecorded: boolean;
+  resolvedByAdminId: string | null;
+  resolveJournalId: string | null;
+  bankTransferReference: string | null;
+  bankTransferredAt: Date | null;
+  bankTransferRecordedAt: Date | null;
   correlationId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -54,6 +61,7 @@ export interface TopUpRowForRefund {
   counterAccountBankName: string | null;
   counterAccountName: string | null;
   counterAccountNumber: string | null;
+  providerReference?: string | null;
   createdAt: Date;
 }
 
@@ -75,6 +83,10 @@ export interface UserTopUpRefundSummary {
   };
   submittedAt: Date;
   withdrawnAt: Date | null;
+  resolvedAt: Date | null;
+  rejectionReason: string | null;
+  bankTransferReference: string | null;
+  bankTransferredAt: Date | null;
 }
 
 export interface PayosTopUp {
@@ -177,7 +189,12 @@ export type AdminPayosRow = Pick<
   | 'paidAt'
   | 'expiresAt'
   | 'cancelledAt'
-> & { userEmail: string | null };
+> & {
+  userEmail: string | null;
+  refundStatus?: TopUpRefundStatus | null;
+  refundResolvedAt?: Date | null;
+  bankTransferReference?: string | null;
+};
 export interface AdminPayosListParams {
   status?: PayosTopUp['status'];
   fromUtc?: Date;
@@ -337,6 +354,118 @@ export interface PayosTopUpRepositoryPort {
   findCreditJournal(
     journalId: string,
   ): Promise<{ id: string; idempotencyKey: string; createdAt: Date } | null>;
-  findCreditJournalKeysByIds(journalIds: string[]): Promise<Map<string, string>>;
+  findCreditJournalKeysByIds(
+    journalIds: string[],
+  ): Promise<Map<string, string>>;
   getUserEmail(userId: string): Promise<string | null>;
+
+  // Story 13.12: Admin Refund Resolution
+  findRefundRequestById(id: string): Promise<TopUpRefundRow | null>;
+  lockRefundRequestById(id: string): Promise<TopUpRefundRow | null>;
+  resolveRefundRequest(
+    id: string,
+    update: {
+      status: TopUpRefundStatus;
+      resolvedAt: Date;
+      resolvedByAdminId: string;
+      resolveJournalId: string | null;
+      rejectionReason: string | null;
+      manualTransferRecorded: boolean;
+      bankTransferReference: string | null;
+      bankTransferredAt: Date | null;
+      bankTransferRecordedAt: Date | null;
+    },
+    events: Array<{
+      id: string;
+      idempotencyKey: string;
+      eventType: string;
+      producer: string;
+      aggregateType: string;
+      aggregateId: string;
+      aggregateVersion: number;
+      payload: Record<string, unknown>;
+    }>,
+  ): Promise<{ changed: boolean; request: TopUpRefundRow | null }>;
+  recordRefundBankTransfer(
+    id: string,
+    update: {
+      bankTransferReference: string | null;
+      bankTransferredAt: Date | null;
+      recordedAt: Date;
+    },
+    events: Array<{
+      id: string;
+      idempotencyKey: string;
+      eventType: string;
+      producer: string;
+      aggregateType: string;
+      aggregateId: string;
+      aggregateVersion: number;
+      payload: Record<string, unknown>;
+    }>,
+  ): Promise<{ changed: boolean; request: TopUpRefundRow | null }>;
+  listRefundRequestsForAdmin(
+    params: AdminRefundListParams,
+  ): Promise<{ items: AdminRefundListItemRow[]; total: number }>;
+  findRefundRequestForAdmin(id: string): Promise<AdminRefundDetailRow | null>;
+  countOpenRefundRequests(): Promise<number>;
+  listOverdueRefundCandidates(
+    cutoff: Date,
+  ): Promise<OverdueRefundCandidateRow[]>;
+}
+
+export interface AdminRefundListItemRow {
+  id: string;
+  topUpId: string;
+  orderCode: number;
+  userId: string;
+  userEmail: string | null;
+  userName: string | null;
+  amountVnd: number;
+  points: number;
+  status: TopUpRefundStatus;
+  eligibility: TopUpRefundEligibility;
+  ineligibleReason: TopUpRefundIneligibleReason | null;
+  reason: TopUpRefundReason;
+  destinationVerified: boolean;
+  heldPoints: number;
+  submittedAt: Date;
+  resolvedAt: Date | null;
+  createdAt: Date;
+}
+
+export interface AdminRefundDetailRow extends AdminRefundListItemRow {
+  note: string;
+  paidAt: Date;
+  providerReference: string | null;
+  counterAccountBankId: string | null;
+  counterAccountBankName: string | null;
+  counterAccountName: string | null;
+  counterAccountNumber: string | null;
+  rejectionReason: string | null;
+  manualTransferRecorded: boolean;
+  bankTransferReference: string | null;
+  bankTransferredAt: Date | null;
+  bankTransferRecordedAt: Date | null;
+  withdrawnAt: Date | null;
+  resolvedByAdminId: string | null;
+  resolvedByAdminEmail: string | null;
+  holdJournalId: string | null;
+  resolveJournalId: string | null;
+}
+
+export interface AdminRefundListParams {
+  status?: 'OPEN' | 'RESOLVED' | 'ALL';
+  verdict?: 'ALL' | 'ELIGIBLE' | 'NOT_ELIGIBLE';
+  q?: string;
+  page: number;
+  pageSize: number;
+}
+
+export interface OverdueRefundCandidateRow {
+  id: string;
+  topUpId: string;
+  orderCode: number;
+  amountVnd: number;
+  createdAt: Date;
 }

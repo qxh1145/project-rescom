@@ -40,3 +40,25 @@ test("admin DTO rejects sensitive extra keys", () => {
   assert.equal(adminPayosTopUpListSchema.safeParse({ items: [row], total: 1, limit: 10, offset: 0, hasMore: false }).success, true);
   assert.equal(adminPayosTopUpListSchema.safeParse({ items: [{ ...row, counterAccountNumber: "123" }], total: 1, limit: 10, offset: 0, hasMore: false }).success, false);
 });
+
+test("Story 13.12: tab counts schema and tab ordering", async () => {
+  const { adminTopUpTabCountsSchema } = await import("@rescom/schemas");
+  const parsed = adminTopUpTabCountsSchema.safeParse({
+    payos: 128,
+    manual: 5,
+    actionRequired: 3,
+    refunds: 2,
+  });
+  assert.equal(parsed.success, true);
+  assert.equal(parsed.data.refunds, 2);
+
+  // Default refunds count to 0 if omitted
+  const defaulted = adminTopUpTabCountsSchema.safeParse({
+    payos: 10,
+    manual: 2,
+    actionRequired: 1,
+  });
+  assert.equal(defaulted.success, true);
+  assert.equal(defaulted.data.refunds, 0);
+});
+

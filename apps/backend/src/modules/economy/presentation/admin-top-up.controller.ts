@@ -24,6 +24,12 @@ import {
   ResolveTopUpMismatch,
   resolveTopUpMismatchSchema,
   adminTopUpActionRequiredSchema,
+  AdminTopUpRefundListQuery,
+  adminTopUpRefundListQuerySchema,
+  ResolveTopUpRefund,
+  resolveTopUpRefundSchema,
+  RecordTopUpRefundBankTransfer,
+  recordTopUpRefundBankTransferSchema,
 } from '@rescom/schemas';
 import { Response } from 'express';
 import { SessionAuthGuard } from '../../auth/presentation/guards/session-auth.guard';
@@ -37,6 +43,7 @@ import { ZodValidationPipe } from '../../../common/http/zod-validation.pipe';
 import { createSuccessEnvelope } from '../../../common/http/response.envelope';
 import { TopUpService } from '../application/top-up.service';
 import { PayosTopUpService } from '../application/payos-top-up.service';
+import { AdminTopUpRefundService } from '../application/admin-top-up-refund.service';
 
 /**
  * Admin review queue for manual top-ups (Story 6.6, FR-35). `RolesGuard`
@@ -50,6 +57,7 @@ export class AdminTopUpController {
   constructor(
     private readonly topUpService: TopUpService,
     private readonly payosTopUpService: PayosTopUpService,
+    private readonly adminRefundService: AdminTopUpRefundService,
   ) {}
 
   /** Pending requests by default (oldest first) with user info and amount. */
@@ -99,6 +107,75 @@ export class AdminTopUpController {
   @Header('Cache-Control', 'no-store')
   async tabCounts() {
     return createSuccessEnvelope(await this.payosTopUpService.tabCounts());
+  }
+
+  @Get('refunds')
+  @Header('Cache-Control', 'no-store')
+  async listRefunds(
+    @Query(
+      new ZodValidationPipe(
+        adminTopUpRefundListQuerySchema,
+        'VALIDATION_ERROR',
+        'query',
+      ),
+    )
+    query: AdminTopUpRefundListQuery,
+  ) {
+    return createSuccessEnvelope(await this.adminRefundService.list(query));
+  }
+
+  @Get('refunds/:requestId')
+  @Header('Cache-Control', 'no-store')
+  async getRefund(@Param('requestId', ParseUUIDPipe) requestId: string) {
+    return createSuccessEnvelope(await this.adminRefundService.get(requestId));
+  }
+
+  @Post('refunds/:requestId/resolve')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(CsrfGuard, JsonOnlyGuard)
+  async resolveRefund(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Param('requestId', ParseUUIDPipe) requestId: string,
+    @Body(
+      new ZodValidationPipe(
+        resolveTopUpRefundSchema,
+        'VALIDATION_ERROR',
+        'body',
+      ),
+    )
+    body: ResolveTopUpRefund,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    return createSuccessEnvelope(
+      await this.adminRefundService.resolve(requestId, body, {
+        adminId: admin.id,
+        correlationId,
+      }),
+    );
+  }
+
+  @Post('refunds/:requestId/bank-transfer')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(CsrfGuard, JsonOnlyGuard)
+  async recordBankTransfer(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Param('requestId', ParseUUIDPipe) requestId: string,
+    @Body(
+      new ZodValidationPipe(
+        recordTopUpRefundBankTransferSchema,
+        'VALIDATION_ERROR',
+        'body',
+      ),
+    )
+    body: RecordTopUpRefundBankTransfer,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    return createSuccessEnvelope(
+      await this.adminRefundService.recordBankTransfer(requestId, body, {
+        adminId: admin.id,
+        correlationId,
+      }),
+    );
   }
 
   @Post('payos/export')

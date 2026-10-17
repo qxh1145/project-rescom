@@ -7,8 +7,12 @@ import {
   AdminMismatchRow,
   AdminPayosListParams,
   AdminPayosRow,
+  AdminRefundDetailRow,
+  AdminRefundListItemRow,
+  AdminRefundListParams,
   CreateProcessingResult,
   ListReconcileCandidatesParams,
+  OverdueRefundCandidateRow,
   PayosTopUp,
   PayosTopUpRepositoryPort,
   TopUpAdminAlertEvent,
@@ -50,6 +54,13 @@ function toRefundRow(
     destinationVerified: row.destinationVerified,
     withdrawnAt: row.withdrawnAt,
     resolvedAt: row.resolvedAt,
+    rejectionReason: row.rejectionReason,
+    manualTransferRecorded: row.manualTransferRecorded,
+    resolvedByAdminId: row.resolvedByAdminId,
+    resolveJournalId: row.resolveJournalId,
+    bankTransferReference: row.bankTransferReference,
+    bankTransferredAt: row.bankTransferredAt,
+    bankTransferRecordedAt: row.bankTransferRecordedAt,
     correlationId: row.correlationId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -78,6 +89,10 @@ function toUserRefundSummary(
     },
     submittedAt: row.createdAt,
     withdrawnAt: row.withdrawnAt,
+    resolvedAt: row.resolvedAt,
+    rejectionReason: row.rejectionReason,
+    bankTransferReference: row.bankTransferReference,
+    bankTransferredAt: row.bankTransferredAt,
   };
 }
 
@@ -207,11 +222,25 @@ export class PrismaPayosTopUpRepository implements PayosTopUpRepositoryPort {
         channel: 'PAYOS',
         createdAt: { gte: params.fromUtc, lt: params.toUtcExclusive },
       },
-      select: this.adminSelect,
+      select: {
+        ...this.adminSelect,
+        refundRequest: {
+          select: {
+            status: true,
+            resolvedAt: true,
+            bankTransferReference: true,
+          },
+        },
+      },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       take: params.limit,
     });
-    return rows.map((row) => this.adminRow(row));
+    return rows.map((row) => ({
+      ...this.adminRow(row),
+      refundStatus: row.refundRequest?.status ?? null,
+      refundResolvedAt: row.refundRequest?.resolvedAt ?? null,
+      bankTransferReference: row.refundRequest?.bankTransferReference ?? null,
+    }));
   }
 
   async countByChannel(): Promise<{ payos: number; manual: number }> {
@@ -1029,6 +1058,305 @@ export class PrismaPayosTopUpRepository implements PayosTopUpRepositoryPort {
         select: { email: true },
       });
       return user?.email ?? null;
+    });
+  }
+
+  // Story 13.12: Admin Refund Resolution
+  async findRefundRequestById(id: string): Promise<TopUpRefundRow | null> {
+    return runInTransaction(this.prisma, async (tx) => {
+      const row = await tx.topUpRefundRequest.findUnique({
+        where: { id },
+      });
+      return row ? toRefundRow(row) : null;
+    });
+  }
+
+  async lockRefundRequestById(id: string): Promise<TopUpRefundRow | null> {
+    return runInTransaction(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM top_up_refund_requests WHERE id = ${id}::uuid FOR UPDATE`;
+      const row = await tx.topUpRefundRequest.findUnique({
+        where: { id },
+      });
+      return row ? toRefundRow(row) : null;
+    });
+  }
+
+  async resolveRefundRequest(
+    id: string,
+    update: Parameters<PayosTopUpRepositoryPort['resolveRefundRequest']>[1],
+    events: Parameters<PayosTopUpRepositoryPort['resolveRefundRequest']>[2],
+  ): Promise<{ changed: boolean; request: TopUpRefundRow | null }> {
+    return runInTransaction(this.prisma, async (tx) => {
+      const result = await tx.topUpRefundRequest.updateMany({
+        where: { id, status: 'REQUESTED' },
+        data: {
+          status: update.status,
+          resolvedAt: update.resolvedAt,
+          resolvedByAdminId: update.resolvedByAdminId,
+          resolveJournalId: update.resolveJournalId,
+          rejectionReason: update.rejectionReason,
+          manualTransferRecorded: update.manualTransferRecorded,
+          bankTransferReference: update.bankTransferReference,
+          bankTransferredAt: update.bankTransferredAt,
+          bankTransferRecordedAt: update.bankTransferRecordedAt,
+        },
+      });
+      const changed = result.count > 0;
+      if (changed && events.length > 0) {
+        await tx.outboxEvent.createMany({
+          data: events.map((event) => ({
+            id: event.id,
+            idempotencyKey: event.idempotencyKey,
+            eventType: event.eventType,
+            schemaVersion: 1,
+            producer: event.producer,
+            aggregateType: event.aggregateType,
+            aggregateId: event.aggregateId,
+            aggregateVersion: event.aggregateVersion,
+            status: 'PENDING',
+            payload: event.payload as Prisma.InputJsonValue,
+          })),
+        });
+      }
+      const updated = await tx.topUpRefundRequest.findUnique({
+        where: { id },
+      });
+      return { changed, request: updated ? toRefundRow(updated) : null };
+    });
+  }
+
+  async recordRefundBankTransfer(
+    id: string,
+    update: Parameters<PayosTopUpRepositoryPort['recordRefundBankTransfer']>[1],
+    events: Parameters<PayosTopUpRepositoryPort['recordRefundBankTransfer']>[2],
+  ): Promise<{ changed: boolean; request: TopUpRefundRow | null }> {
+    return runInTransaction(this.prisma, async (tx) => {
+      const result = await tx.topUpRefundRequest.updateMany({
+        where: { id, status: 'REFUNDED', bankTransferRecordedAt: null },
+        data: {
+          bankTransferReference: update.bankTransferReference,
+          bankTransferredAt: update.bankTransferredAt,
+          bankTransferRecordedAt: update.recordedAt,
+        },
+      });
+      const changed = result.count > 0;
+      if (changed && events.length > 0) {
+        await tx.outboxEvent.createMany({
+          data: events.map((event) => ({
+            id: event.id,
+            idempotencyKey: event.idempotencyKey,
+            eventType: event.eventType,
+            schemaVersion: 1,
+            producer: event.producer,
+            aggregateType: event.aggregateType,
+            aggregateId: event.aggregateId,
+            aggregateVersion: event.aggregateVersion,
+            status: 'PENDING',
+            payload: event.payload as Prisma.InputJsonValue,
+          })),
+        });
+      }
+      const updated = await tx.topUpRefundRequest.findUnique({
+        where: { id },
+      });
+      return { changed, request: updated ? toRefundRow(updated) : null };
+    });
+  }
+
+  async listRefundRequestsForAdmin(
+    params: AdminRefundListParams,
+  ): Promise<{ items: AdminRefundListItemRow[]; total: number }> {
+    return runInTransaction(this.prisma, async (tx) => {
+      const where: Prisma.TopUpRefundRequestWhereInput = {};
+      if (params.status === 'OPEN') {
+        where.status = 'REQUESTED';
+      } else if (params.status === 'RESOLVED') {
+        where.status = { in: ['REFUNDED', 'REJECTED', 'WITHDRAWN'] };
+      }
+      if (params.verdict === 'ELIGIBLE') {
+        where.eligibility = 'ELIGIBLE';
+      } else if (params.verdict === 'NOT_ELIGIBLE') {
+        where.eligibility = 'NOT_ELIGIBLE';
+      }
+      if (params.q && params.q.trim().length > 0) {
+        const query = params.q.trim();
+        const isNumeric = /^\d+$/.test(query) && Number(query) <= 2147483647;
+        if (isNumeric) {
+          where.OR = [
+            { topUp: { orderCode: Number(query) } },
+            { user: { email: { contains: query, mode: 'insensitive' } } },
+          ];
+        } else {
+          where.user = { email: { contains: query, mode: 'insensitive' } };
+        }
+      }
+
+      let orderBy: Prisma.TopUpRefundRequestOrderByWithRelationInput[];
+      if (params.status === 'RESOLVED') {
+        orderBy = [
+          { resolvedAt: { sort: 'desc', nulls: 'last' } },
+          { id: 'desc' },
+        ];
+      } else if (params.status === 'ALL') {
+        orderBy = [{ createdAt: 'desc' }, { id: 'desc' }];
+      } else {
+        // OPEN default: nearest deadline first (monotonic with createdAt)
+        orderBy = [{ createdAt: 'asc' }, { id: 'asc' }];
+      }
+
+      const take = params.pageSize;
+      const skip = (params.page - 1) * params.pageSize;
+
+      const [rows, total] = await Promise.all([
+        tx.topUpRefundRequest.findMany({
+          where,
+          orderBy,
+          take,
+          skip,
+          include: {
+            topUp: { select: { orderCode: true } },
+            user: {
+              select: {
+                email: true,
+                profile: { select: { displayName: true } },
+              },
+            },
+          },
+        }),
+        tx.topUpRefundRequest.count({ where }),
+      ]);
+
+      const items: AdminRefundListItemRow[] = rows.map((row) => ({
+        id: row.id,
+        topUpId: row.topUpId,
+        orderCode: row.topUp.orderCode ?? 0,
+        userId: row.userId,
+        userEmail: row.user.email,
+        userName: row.user.profile?.displayName ?? null,
+        amountVnd: row.amountVnd,
+        points: row.points,
+        status: row.status as AdminRefundListItemRow['status'],
+        eligibility: row.eligibility as AdminRefundListItemRow['eligibility'],
+        ineligibleReason:
+          row.ineligibleReason as AdminRefundListItemRow['ineligibleReason'],
+        reason: row.reason as AdminRefundListItemRow['reason'],
+        destinationVerified: row.destinationVerified,
+        heldPoints:
+          row.status === 'REQUESTED' && row.holdJournalId ? row.points : 0,
+        submittedAt: row.createdAt,
+        resolvedAt: row.resolvedAt,
+        createdAt: row.createdAt,
+      }));
+
+      return { items, total };
+    });
+  }
+
+  async findRefundRequestForAdmin(
+    id: string,
+  ): Promise<AdminRefundDetailRow | null> {
+    return runInTransaction(this.prisma, async (tx) => {
+      const row = await tx.topUpRefundRequest.findUnique({
+        where: { id },
+        include: {
+          topUp: {
+            select: {
+              orderCode: true,
+              paidAt: true,
+              providerReference: true,
+              createdAt: true,
+            },
+          },
+          user: {
+            select: {
+              email: true,
+              profile: { select: { displayName: true } },
+            },
+          },
+          resolvedByAdmin: {
+            select: {
+              id: true,
+              email: true,
+            },
+          },
+        },
+      });
+      if (!row) return null;
+      return {
+        id: row.id,
+        topUpId: row.topUpId,
+        orderCode: row.topUp.orderCode ?? 0,
+        userId: row.userId,
+        userEmail: row.user.email,
+        userName: row.user.profile?.displayName ?? null,
+        amountVnd: row.amountVnd,
+        points: row.points,
+        status: row.status as AdminRefundDetailRow['status'],
+        eligibility: row.eligibility as AdminRefundDetailRow['eligibility'],
+        ineligibleReason:
+          row.ineligibleReason as AdminRefundDetailRow['ineligibleReason'],
+        reason: row.reason as AdminRefundDetailRow['reason'],
+        destinationVerified: row.destinationVerified,
+        heldPoints:
+          row.status === 'REQUESTED' && row.holdJournalId ? row.points : 0,
+        submittedAt: row.createdAt,
+        resolvedAt: row.resolvedAt,
+        createdAt: row.createdAt,
+        note: row.note,
+        paidAt: row.topUp.paidAt ?? row.topUp.createdAt,
+        providerReference: row.topUp.providerReference,
+        counterAccountBankId: row.counterAccountBankId,
+        counterAccountBankName: row.counterAccountBankName,
+        counterAccountName: row.counterAccountName,
+        counterAccountNumber: row.counterAccountNumber,
+        rejectionReason: row.rejectionReason,
+        manualTransferRecorded: row.manualTransferRecorded,
+        bankTransferReference: row.bankTransferReference,
+        bankTransferredAt: row.bankTransferredAt,
+        bankTransferRecordedAt: row.bankTransferRecordedAt,
+        withdrawnAt: row.withdrawnAt,
+        resolvedByAdminId: row.resolvedByAdminId,
+        resolvedByAdminEmail: row.resolvedByAdmin?.email ?? null,
+        holdJournalId: row.holdJournalId,
+        resolveJournalId: row.resolveJournalId,
+      };
+    });
+  }
+
+  async countOpenRefundRequests(): Promise<number> {
+    return runInTransaction(this.prisma, async (tx) => {
+      return tx.topUpRefundRequest.count({
+        where: { status: 'REQUESTED' },
+      });
+    });
+  }
+
+  async listOverdueRefundCandidates(
+    cutoff: Date,
+  ): Promise<OverdueRefundCandidateRow[]> {
+    return runInTransaction(this.prisma, async (tx) => {
+      const rows = await tx.topUpRefundRequest.findMany({
+        where: {
+          status: 'REQUESTED',
+          createdAt: { lte: cutoff },
+        },
+        orderBy: { createdAt: 'asc' },
+        take: 200,
+        select: {
+          id: true,
+          topUpId: true,
+          topUp: { select: { orderCode: true } },
+          amountVnd: true,
+          createdAt: true,
+        },
+      });
+      return rows.map((r) => ({
+        id: r.id,
+        topUpId: r.topUpId,
+        orderCode: r.topUp.orderCode ?? 0,
+        amountVnd: r.amountVnd,
+        createdAt: r.createdAt,
+      }));
     });
   }
 }

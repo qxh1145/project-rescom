@@ -488,5 +488,42 @@ DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'top_up_refund_requests_release_check' AND conrelid = '"top_up_refund_requests"'::regclass) THEN
       ALTER TABLE "top_up_refund_requests" ADD CONSTRAINT "top_up_refund_requests_release_check" CHECK ("release_journal_id" IS NULL OR "hold_journal_id" IS NOT NULL);
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'top_up_refund_requests_resolved_check' AND conrelid = '"top_up_refund_requests"'::regclass) THEN
+      ALTER TABLE "top_up_refund_requests" ADD CONSTRAINT "top_up_refund_requests_resolved_check" CHECK (
+        ("status" IN ('REFUNDED', 'REJECTED')) = ("resolved_at" IS NOT NULL AND "resolved_by_admin_id" IS NOT NULL)
+      );
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'top_up_refund_requests_refunded_check' AND conrelid = '"top_up_refund_requests"'::regclass) THEN
+      ALTER TABLE "top_up_refund_requests" ADD CONSTRAINT "top_up_refund_requests_refunded_check" CHECK (
+        "status" <> 'REFUNDED' OR ("hold_journal_id" IS NOT NULL AND "resolve_journal_id" IS NOT NULL)
+      );
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'top_up_refund_requests_rejected_check' AND conrelid = '"top_up_refund_requests"'::regclass) THEN
+      ALTER TABLE "top_up_refund_requests" ADD CONSTRAINT "top_up_refund_requests_rejected_check" CHECK (
+        ("status" = 'REJECTED') = ("rejection_reason" IS NOT NULL)
+        AND ("rejection_reason" IS NULL OR char_length(btrim("rejection_reason")) BETWEEN 1 AND 500)
+      );
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'top_up_refund_requests_manual_transfer_check' AND conrelid = '"top_up_refund_requests"'::regclass) THEN
+      ALTER TABLE "top_up_refund_requests" ADD CONSTRAINT "top_up_refund_requests_manual_transfer_check" CHECK (
+        NOT "manual_transfer_recorded" OR ("status" = 'REJECTED' AND "hold_journal_id" IS NULL)
+      );
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'top_up_refund_requests_bank_transfer_check' AND conrelid = '"top_up_refund_requests"'::regclass) THEN
+      ALTER TABLE "top_up_refund_requests" ADD CONSTRAINT "top_up_refund_requests_bank_transfer_check" CHECK (
+        (("bank_transfer_reference" IS NULL AND "bank_transferred_at" IS NULL) OR "status" = 'REFUNDED')
+        AND (("bank_transfer_recorded_at" IS NULL) = ("bank_transfer_reference" IS NULL AND "bank_transferred_at" IS NULL))
+      );
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'top_up_refund_requests_resolve_journal_check' AND conrelid = '"top_up_refund_requests"'::regclass) THEN
+      ALTER TABLE "top_up_refund_requests" ADD CONSTRAINT "top_up_refund_requests_resolve_journal_check" CHECK (
+        "resolve_journal_id" IS NULL OR "status" IN ('REFUNDED', 'REJECTED')
+      );
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'top_up_refund_requests_journals_exclusive_check' AND conrelid = '"top_up_refund_requests"'::regclass) THEN
+      ALTER TABLE "top_up_refund_requests" ADD CONSTRAINT "top_up_refund_requests_journals_exclusive_check" CHECK (
+        "release_journal_id" IS NULL OR "resolve_journal_id" IS NULL
+      );
+    END IF;
   END IF;
 END $$;

@@ -25,6 +25,7 @@ import {
   TOP_UP_REFUND_WITHDRAW_KEY_PREFIX,
   TOP_UP_REFUND_RESOLVE_KEY_PREFIX,
   topUpRefundHoldKey,
+  topUpRefundResolveKey,
   TopUpRefundIneligibleReason,
 } from '@rescom/schemas';
 import {
@@ -2752,6 +2753,63 @@ export class LedgerService {
       entries: [
         { accountId: refundHold.id, amount: -params.points },
         { accountId: available.id, amount: params.points },
+      ],
+    });
+  }
+
+  /**
+   * Story 13.12: Completes a top-up refund by debiting REFUND_HOLD and crediting SYSTEM_CLEARING (AC 4, 10).
+   */
+  async refundTopUpRefundHold(params: {
+    requestId: string;
+    userId: string;
+    points: number;
+    topUpId: string;
+    orderCode: number;
+  }): Promise<LedgerJournalEntity> {
+    if (!Number.isInteger(params.points) || params.points <= 0) {
+      throw new InvalidLedgerOperationException(
+        'Refund amount must be a positive integer.',
+      );
+    }
+
+    const refundHold = await this.getOrCreateAccount(
+      params.userId,
+      'REFUND_HOLD',
+    );
+    const clearing = await this.getOrCreateAccount(null, 'SYSTEM_CLEARING');
+
+    const idempotencyKey = topUpRefundResolveKey(params.requestId);
+    const existing =
+      await this.ledgerRepo.findJournalByIdempotencyKey(idempotencyKey);
+    if (existing) {
+      await this.assertReplayCompatible(
+        existing,
+        [
+          {
+            userId: params.userId,
+            accountClass: 'REFUND_HOLD',
+            amount: -params.points,
+          },
+          {
+            userId: null,
+            accountClass: 'SYSTEM_CLEARING',
+            amount: params.points,
+          },
+        ],
+        'exact',
+      );
+      return existing;
+    }
+
+    const description = `Top-up refund: order ${params.orderCode} · top-up ${params.topUpId}`;
+
+    return this.postJournal({
+      idempotencyKey,
+      description,
+      entries: [
+        { accountId: refundHold.id, amount: -params.points },
+        { accountId: clearing.id, amount: params.points },
       ],
     });
   }

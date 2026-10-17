@@ -19,6 +19,13 @@ export function payosAdminErrorMessage(error: unknown): string {
     case "TOPUP_MISMATCH_NOTHING_TO_CREDIT": return "Số tiền thực nhận chưa đủ quy đổi thành 1 Điểm.";
     case "TOPUP_PROVIDER_UNAVAILABLE": return "Không kết nối được payOS. Thử lại sau.";
     case "TOPUP_NOT_FOUND": return "Không tìm thấy giao dịch này.";
+    case "TOPUP_SELF_REVIEW_FORBIDDEN": return "Bạn không thể tự xử lý yêu cầu của chính mình.";
+    case "REFUND_ALREADY_RESOLVED": return "Yêu cầu đã được xử lý";
+    case "REFUND_DESTINATION_UNCONFIRMED": return "Vui lòng xác nhận đã kiểm tra tài khoản đích trước khi hoàn tất.";
+    case "REFUND_NOT_HELD": return "Điểm giữ hoàn tiền không khả dụng hoặc đã bị thay đổi.";
+    case "REFUND_NOT_REFUNDED": return "Chỉ có thể ghi nhận chuyển khoản cho yêu cầu ở trạng thái ĐÃ HOÀN TIỀN.";
+    case "REFUND_BANK_TRANSFER_ALREADY_RECORDED": return "Giao dịch chuyển khoản ngân hàng đã được ghi nhận trước đó.";
+    case "TOPUP_REFUND_NOT_FOUND": return "Không tìm thấy yêu cầu hoàn tiền này.";
     case "TOPUP_EXPORT_TOO_LARGE": {
       const maxRows = (error.details as { maxRows?: number } | undefined)?.maxRows ?? 10000;
       return `Quá ${maxRows} giao dịch — thu hẹp khoảng ngày.`;

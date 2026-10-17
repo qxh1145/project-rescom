@@ -191,6 +191,7 @@ enum NotificationType {
   TOPUP_REFUNDED
   TOPUP_REFUND_REQUESTED
   TOPUP_REFUND_WITHDRAWN
+  TOPUP_REFUND_REJECTED
 }
 
 /// Story IR.4b B5: one email delivery attempt per notification. Mirrors
@@ -350,7 +351,8 @@ model User {
   responses                     Response[]
   notifications                 Notification[]
   topUpRequests                 TopUpRequest[]
-  topUpRefundRequests           TopUpRefundRequest[]
+  topUpRefundRequests           TopUpRefundRequest[]       @relation("TopUpRefundUser")
+  resolvedTopUpRefundRequests   TopUpRefundRequest[]       @relation("TopUpRefundResolvedByAdmin")
   ledgerAccounts                LedgerAccount[]
   moderationDecisions           SurveyModerationDecision[] @relation("ModerationDecisionAdmin")
   surveyFeedback                SurveyFeedback[]
@@ -639,6 +641,7 @@ model LedgerJournal {
   topUpRefundsAsCredit TopUpRefundRequest[] @relation("TopUpRefundCreditJournal")
   topUpRefundAsHold    TopUpRefundRequest?  @relation("TopUpRefundHoldJournal")
   topUpRefundAsRelease TopUpRefundRequest?  @relation("TopUpRefundReleaseJournal")
+  topUpRefundAsResolve TopUpRefundRequest?  @relation("TopUpRefundResolveJournal")
 
   /// Plan 4.3 `GET /admin/ledger/journals`: keyset `before=<createdAt>:<id>`.
   @@index([createdAt, id])
@@ -1109,16 +1112,25 @@ model TopUpRefundRequest {
   destinationVerified    Boolean                      @map("destination_verified")
   withdrawnAt            DateTime?                    @map("withdrawn_at")
   resolvedAt             DateTime?                    @map("resolved_at")
+  rejectionReason        String?                      @map("rejection_reason") @db.VarChar(500)
+  manualTransferRecorded Boolean                      @default(false) @map("manual_transfer_recorded")
+  resolvedByAdminId      String?                      @map("resolved_by_admin_id") @db.Uuid
+  resolveJournalId       String?                      @unique @map("resolve_journal_id") @db.Uuid
+  bankTransferReference  String?                      @map("bank_transfer_reference") @db.VarChar(100)
+  bankTransferredAt      DateTime?                    @map("bank_transferred_at")
+  bankTransferRecordedAt DateTime?                    @map("bank_transfer_recorded_at")
   correlationId          String?                      @map("correlation_id") @db.Uuid
   createdAt              DateTime                     @default(now()) @map("created_at")
   updatedAt              DateTime                     @updatedAt @map("updated_at")
 
   topUp TopUpRequest @relation(fields: [topUpId], references: [id], onDelete: Restrict)
-  user  User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user  User         @relation("TopUpRefundUser", fields: [userId], references: [id], onDelete: Restrict)
+  resolvedByAdmin User? @relation("TopUpRefundResolvedByAdmin", fields: [resolvedByAdminId], references: [id], onDelete: Restrict)
 
   topUpJournal   LedgerJournal  @relation("TopUpRefundCreditJournal", fields: [topUpJournalId], references: [id], onDelete: Restrict)
   holdJournal    LedgerJournal? @relation("TopUpRefundHoldJournal", fields: [holdJournalId], references: [id], onDelete: Restrict)
   releaseJournal LedgerJournal? @relation("TopUpRefundReleaseJournal", fields: [releaseJournalId], references: [id], onDelete: Restrict)
+  resolveJournal LedgerJournal? @relation("TopUpRefundResolveJournal", fields: [resolveJournalId], references: [id], onDelete: Restrict)
 
   @@index([status, createdAt])
   @@index([userId, createdAt])

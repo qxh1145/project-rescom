@@ -46,3 +46,16 @@ export function findMockUserByEmail(email: string): MockSessionUser | null {
     profileComplete: user.isOnboarded,
   };
 }
+
+export function findMockUserById(id: string): MockSessionUser | null {
+  const user = Object.values(loadStore().users).find((candidate) => toMockUuid(candidate.id) === id);
+  if (!user) return null;
+  return {
+    id: toMockUuid(user.id),
+    email: user.email,
+    name: user.name,
+    role: user.role === "ADMIN" ? "ADMIN" : "USER",
+    profileComplete: user.isOnboarded,
+  };
+}
+

@@ -20,6 +20,7 @@ import { TopUpAdminAlerts } from './application/top-up-admin-alerts';
 import { TopUpAdminAlertHandler } from './infrastructure/top-up-admin-alert.handler';
 import { TopUpRefundAdminNoticeHandler } from './infrastructure/top-up-refund-admin-notice.handler';
 import { TopUpRefundService } from './application/top-up-refund.service';
+import { AdminTopUpRefundService } from './application/admin-top-up-refund.service';
 import {
   EMAIL_SENDER_PORT,
   EmailSenderPort,
@@ -252,6 +253,31 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
       ],
     },
     {
+      provide: AdminTopUpRefundService,
+      useFactory: (
+        repository: PayosTopUpRepositoryPort,
+        ledgerService: LedgerService,
+        unitOfWork: UnitOfWorkPort,
+        adminCapability: AdminCapabilityPort,
+        clock?: Clock,
+      ) =>
+        new AdminTopUpRefundService({
+          repository,
+          ledgerService,
+          unitOfWork,
+          adminCapability,
+          logger: new Logger(AdminTopUpRefundService.name),
+          ...(clock ? { now: () => clock.now() } : {}),
+        }),
+      inject: [
+        PAYOS_TOP_UP_REPOSITORY_PORT,
+        LedgerService,
+        UNIT_OF_WORK_PORT,
+        ADMIN_CAPABILITY_PORT,
+        { token: CLOCK, optional: true },
+      ],
+    },
+    {
       provide: TopUpRefundNotificationHandler,
       useFactory: (publisher: NotificationPublisherPort) =>
         new TopUpRefundNotificationHandler(publisher),
@@ -393,6 +419,7 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     EXTERNAL_DISPUTE_HOLD_QUERY_PORT,
     TopUpAdminAlerts,
     TopUpRefundService,
+    AdminTopUpRefundService,
   ],
 })
 export class EconomyModule {}

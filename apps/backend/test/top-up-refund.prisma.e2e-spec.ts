@@ -235,9 +235,13 @@ describe('Top-Up Refund Request & Hold on PostgreSQL (Story 13.10)', () => {
 
   async function balances(userId: string) {
     const rows = await h.prisma.ledgerAccount.findMany({
-      where: { userId, accountClass: { in: ['USER_AVAILABLE', 'REFUND_HOLD'] } },
+      where: {
+        userId,
+        accountClass: { in: ['USER_AVAILABLE', 'REFUND_HOLD'] },
+      },
     });
-    const of = (c: string) => rows.find((r) => r.accountClass === c)?.balance ?? 0;
+    const of = (c: string) =>
+      rows.find((r) => r.accountClass === c)?.balance ?? 0;
     return { available: of('USER_AVAILABLE'), hold: of('REFUND_HOLD') };
   }
 
@@ -266,7 +270,9 @@ describe('Top-Up Refund Request & Hold on PostgreSQL (Story 13.10)', () => {
 
         if (req.eligibility === 'ELIGIBLE') {
           expect(publishRes.status).toBe(409);
-          expect(publishRes.body.error.code).toBe('INSUFFICIENT_ESCROW_BALANCE');
+          expect(publishRes.body.error.code).toBe(
+            'INSUFFICIENT_ESCROW_BALANCE',
+          );
           expect(publishRes.body.error.details.refundHoldPoints).toBe(400);
           expect(bal).toEqual({ available: 0, hold: 400 });
         } else {
@@ -289,8 +295,14 @@ describe('Top-Up Refund Request & Hold on PostgreSQL (Story 13.10)', () => {
         const user = await h.user('RESPONDENT');
         // Activation prerequisites (starter unlock, 1 point) predate the top-up
         // so they are not "spend since top-up"; redemption costs POINTS + 1.
-        const avail = await h.ledger.getOrCreateAccount(user.id, 'USER_AVAILABLE');
-        const issuance = await h.ledger.getOrCreateAccount(null, 'SYSTEM_ISSUANCE');
+        const avail = await h.ledger.getOrCreateAccount(
+          user.id,
+          'USER_AVAILABLE',
+        );
+        const issuance = await h.ledger.getOrCreateAccount(
+          null,
+          'SYSTEM_ISSUANCE',
+        );
         await h.ledger.postJournal({
           idempotencyKey: `starter-unlock:${user.id}`,
           entries: [
@@ -399,9 +411,9 @@ describe('Top-Up Refund Request & Hold on PostgreSQL (Story 13.10)', () => {
       const user = await h.user('PUBLISHER');
       const { topUp } = await createSuccessfulTopUp(user, 400);
       const formId = await draftForm(user, 400);
-      expect((await h.send('post', `/forms/${formId}/publish`, user)).status).toBe(
-        200,
-      );
+      expect(
+        (await h.send('post', `/forms/${formId}/publish`, user)).status,
+      ).toBe(200);
 
       const res = await h.send('post', submitUrl(topUp.id), user, {
         reason: 'WRONG_AMOUNT',
@@ -430,7 +442,9 @@ describe('Top-Up Refund Request & Hold on PostgreSQL (Story 13.10)', () => {
         }),
       ).toBe(0);
       expect(
-        await h.prisma.outboxEvent.count({ where: { aggregateId: rows[0].id } }),
+        await h.prisma.outboxEvent.count({
+          where: { aggregateId: rows[0].id },
+        }),
       ).toBeGreaterThanOrEqual(2);
     },
   );

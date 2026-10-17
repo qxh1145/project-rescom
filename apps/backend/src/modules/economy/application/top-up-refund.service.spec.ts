@@ -608,6 +608,48 @@ describe('TopUpRefundService & Handlers', () => {
       ).rejects.toThrow(TopUpRefundAlreadyRequestedException);
     });
 
+    it('user DTO maps resolvedAt, rejectionReason, bankTransferReference, bankTransferredAt', async () => {
+      const topUp = await createSuccessfulTopUp({ points: 200 });
+      await refundService.submitRefund(
+        topUp.id,
+        { reason: 'WRONG_AMOUNT', note: 'test' },
+        { userId },
+      );
+      const req = repository.refundRequestsByTopUp.get(topUp.id)!;
+      // A WITHDRAWN replay is mapped through toUserRefundDto
+      req.status = 'WITHDRAWN';
+      req.resolvedAt = new Date('2026-10-17T01:00:00.000Z');
+      req.rejectionReason = 'because';
+      req.bankTransferReference = 'FT42';
+      req.bankTransferredAt = new Date('2026-10-17T00:30:00.000Z');
+
+      const { request } = await refundService.withdrawRefund(topUp.id, {
+        userId,
+      });
+      expect(request).toMatchObject({
+        resolvedAt: '2026-10-17T01:00:00.000Z',
+        rejectionReason: 'because',
+        bankTransferReference: 'FT42',
+        bankTransferredAt: '2026-10-17T00:30:00.000Z',
+      });
+    });
+
+    it('WITHDRAWN event carries holdReleased true for a held request', async () => {
+      const topUp = await createSuccessfulTopUp({ points: 200 });
+      await refundService.submitRefund(
+        topUp.id,
+        { reason: 'WRONG_AMOUNT', note: 'test' },
+        { userId },
+      );
+      await refundService.withdrawRefund(topUp.id, { userId });
+      const ev = repository.refundEvents.find(
+        (e) =>
+          e.eventType === TOP_UP_REFUND_CHANGED_EVENT_TYPE &&
+          (e.payload as any).status === 'WITHDRAWN',
+      );
+      expect((ev!.payload as any).holdReleased).toBe(true);
+    });
+
     it('refuses withdrawal on REFUNDED or REJECTED request with 409 REFUND_ALREADY_RESOLVED', async () => {
       const topUp = await createSuccessfulTopUp({ points: 200 });
       await refundService.submitRefund(

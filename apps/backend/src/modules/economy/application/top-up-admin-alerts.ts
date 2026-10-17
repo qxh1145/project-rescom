@@ -16,6 +16,7 @@ export interface TopUpAdminAlertDetails {
   amountVnd?: number;
   amountPaidVnd?: number;
   paidAt?: string;
+  refundRequestId?: string;
 }
 
 export class TopUpAdminAlerts {
@@ -42,6 +43,7 @@ export class TopUpAdminAlerts {
       amountVnd: details?.amountVnd,
       amountPaidVnd: details?.amountPaidVnd,
       paidAt: details?.paidAt,
+      refundRequestId: details?.refundRequestId,
       occurredAt,
     });
 
