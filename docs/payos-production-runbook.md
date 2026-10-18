@@ -2,271 +2,284 @@
 
 Tài liệu hướng dẫn Product Owner (PO) và đội ngũ vận hành thực hiện chuyển đổi an toàn (cutover) từ nạp tiền thủ công (Manual Top-Up) sang cổng thanh toán tự động payOS trên môi trường Production, quy trình xử lý sự cố (SOP) và kích hoạt công tắc khẩn cấp (kill-switch).
 
----
+Quy ước lệnh: chạy từ thư mục gốc repo trên VPS (ví dụ `/opt/rescom`), với:
 
-## 1. Tổng quan kiến trúc & Nguyên tắc cốt lõi
-
-- **Cấu hình độc quyền qua biến môi trường:** Cờ tính năng `PAYOS_ENABLED` chỉ được thiết lập tại file cấu hình server (`.env.prod`), không có API hoặc nút toggle trên giao diện người dùng (bảo vệ theo Decision D2).
-- **Quy trình hai giai đoạn (Part A & Part B):**
-  - **Part A (Dev Agent):** Đã hoàn tất toàn bộ mã nguồn, kiểm thử, component B4 switch card, chế độ read-only cho console duyệt điểm, và sổ tay vận hành.
-  - **Part B (PO / DevOps):** Thực hiện quy trình kích hoạt production theo tài liệu này và kiểm tra nghiệm thu thực tế.
-- **Mã nguồn thủ công được lưu giữ:** Logic nạp tiền thủ công vẫn được giữ trong backend nhằm phục vụ tra cứu lịch sử và làm phương án dự phòng khẩn cấp (Decision D1).
-- **Tài sản thương hiệu (Brand Assets):** Logo payOS và logo các ngân hàng NAPAS hiển thị fallback an toàn (icon mặc định) và sẽ được PO bổ sung file vector SVG chính thức vào thư mục `public/brand/payos/` và `public/brand/banks/` (Decision D4).
+```bash
+DC='docker compose -f deploy/docker-compose.hostinger.yml --env-file deploy/.env.prod'
+```
 
 ---
 
-## 2. Checklist nghiệm thu Production của Product Owner (Part B — AC 11–17)
+## 1. Checklist nghiệm thu Production của Product Owner (Part B — AC 11–17)
 
-Bảng kiểm này dành riêng cho Product Owner (PO) và DevOps khi thực thi trên môi trường Production. Story 13.13 chỉ chuyển sang `done` sau khi hoàn tất đầy đủ các mục dưới đây và đính kèm chứng cứ:
+Bảng kiểm này dành riêng cho PO và DevOps khi thực thi trên Production. Story 13.13 chỉ chuyển sang `done` sau khi hoàn tất đầy đủ các mục dưới đây và đính kèm chứng cứ (ghi vào bảng ở mục 9).
 
 - [ ] **11. Gate câu hỏi PRD (AC 11):** Xác nhận PRD Open Question 27 đã được trả lời và ghi nhận vào `prd.md` (dòng 1256) kèm ngày tháng và xác nhận của Owner.
 - [ ] **12. Xử lý tồn đọng thủ công (AC 12):**
   - [ ] Part A đã deploy (Frontend trên Vercel `main`, Backend trên VPS) với `PAYOS_ENABLED=false`.
-  - [ ] Admin giải quyết toàn bộ các yêu cầu nạp tiền `PENDING` thủ công qua thẻ B4 (`PayosSwitchCard`).
+  - [ ] Ghi lại số yêu cầu `PENDING` thủ công lúc bắt đầu (ngày 2026-10-15 có 4 yêu cầu, đếm lại trước khi làm).
+  - [ ] Admin giải quyết toàn bộ các yêu cầu `PENDING` thủ công qua thẻ B4 (`PayosSwitchCard`).
   - [ ] Người dùng nhận được thông báo in-app/email tương ứng (`TOPUP_SUCCESS` / `TOPUP_REJECTED`).
-  - [ ] Chạy lệnh kiểm tra hàng đợi thủ công:
+  - [ ] Chạy lệnh kiểm tra hàng đợi thủ công (script không có sẵn trong image nên phải copy vào container trước):
     ```bash
-    $DC exec -w /app/apps/backend backend node check-manual-topups.js
+    docker cp deploy/check-manual-topups.js rescom-backend-1:/app/apps/backend/
+    docker exec -w /app/apps/backend rescom-backend-1 node check-manual-topups.js
     ```
-    *Yêu cầu:* In ra `Manual PENDING top-ups: 0` và kết thúc với mã `exit 0`.
+    *Yêu cầu:* In ra `Manual PENDING top-ups: 0` và kết thúc với mã `exit 0` (exit 1 = còn yêu cầu, exit 2 = lỗi).
 - [ ] **13. Kiểm tra biến môi trường & Bảo mật secrets (AC 13):**
   - [ ] Đủ 4 biến trong `deploy/.env.prod`: `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY`, `TOPUP_REFUND_MAILBOX`.
-  - [ ] Lệnh kiểm tra sự tồn tại của 4 khóa (không in giá trị bí mật):
+  - [ ] Kiểm tra sự tồn tại của 4 khóa (không in giá trị bí mật):
     ```bash
     grep -cE '^(PAYOS_CLIENT_ID|PAYOS_API_KEY|PAYOS_CHECKSUM_KEY|TOPUP_REFUND_MAILBOX)=.+' deploy/.env.prod
     ```
     *Yêu cầu:* In ra đúng số `4`.
-  - [ ] Kiểm tra secrets không bị commit vào git repository:
-    ```bash
-    git ls-files deploy | grep -v example  # không được chứa .env.prod
-    git grep -nE '^(PAYOS_API_KEY|PAYOS_CHECKSUM_KEY|PAYOS_CLIENT_ID)=.+' # không tìm thấy giá trị thật
-    ```
+  - [ ] Kiểm tra secrets không nằm trong git (xem thêm mục 8.1).
 - [ ] **14. Tài sản thương hiệu chính thức (AC 14):**
-  - [ ] PO cung cấp file vector SVG chính thức cho logo payOS: `public/brand/payos/payos-logo.svg`.
-  - [ ] PO cung cấp logo ngân hàng NAPAS: `public/brand/banks/{code}.png` (hoặc `.svg`).
-  - [ ] Triển khai lên Vercel production trước khi kích hoạt `PAYOS_ENABLED=true`.
+  - [ ] Các file logo chính thức đã nằm đúng chỗ và đã deploy lên Vercel production trước khi bật `PAYOS_ENABLED=true` (danh sách file ở mục 4).
 - [ ] **15. Kích hoạt payOS Production (AC 15):**
   - [ ] Chạy `$DC exec backend node dist/apps/backend/src/scripts/payos-confirm-webhook.js` thành công (`exit 0`).
   - [ ] Đặt `PAYOS_ENABLED=true` trong `deploy/.env.prod` và chạy `$DC up -d --no-deps backend`.
   - [ ] Log backend hiển thị: `PayOS checkout enabled`.
   - [ ] Mở `/admin/top-ups`: Thẻ B4 biến mất, header hiển thị chip khóa "PayOS: Bật".
-  - [ ] Trang `/wallet/top-up` chỉ hiển thị giao diện nạp payOS; gọi `POST /economy/top-ups` trả về lỗi HTTP `404`.
+  - [ ] Trang `/wallet/top-up` chỉ hiển thị giao diện nạp payOS; gọi `POST /economy/top-ups` (nạp thủ công) trả về HTTP `404`.
 - [ ] **16. Giao dịch thử nghiệm thực tế (AC 16):**
   - [ ] Dùng một **tài khoản người dùng riêng biệt** (không dùng tài khoản Admin do quy tắc `TOPUP_SELF_REVIEW_FORBIDDEN`).
   - [ ] Nạp thử 10.000 VNĐ qua VietQR payOS trên giao diện web.
-  - [ ] Webhook payOS kích hoạt và cộng 50 Điểm ngay lập tức vào ví.
+  - [ ] Webhook payOS kích hoạt và cộng 50 Điểm vào ví.
   - [ ] Ghi lại mã đơn hàng (`orderCode`) và dòng log `payOS webhook credited`.
 - [ ] **17. Diễn tập quy trình hoàn tiền (Refund Drill - AC 17):**
   - [ ] Người dùng thử nghiệm gửi yêu cầu hoàn tiền cho đơn nạp trên trong vòng 24 giờ qua giao diện.
-  - [ ] Hệ thống tự động đặt trạng thái giữ chờ hoàn tiền (Refund Hold).
+  - [ ] Yêu cầu hợp lệ và hệ thống đặt Refund Hold.
   - [ ] Admin mở ngăn kéo hoàn tiền B2 (`/admin/top-ups`) và nhấn "Đánh dấu Đã hoàn tiền".
-  - [ ] Owner thực hiện lệnh chuyển khoản ngân hàng hoàn 10.000 VNĐ về tài khoản người dùng, sau đó nhập mã tham chiếu ngân hàng ("Thêm mã chuyển khoản").
-  - [ ] Người dùng nhận trạng thái `Đã hoàn tiền` kèm mã tham chiếu giao dịch.
-  - [ ] Ghi nhận biên bản hoàn tất (không lưu trữ số tài khoản ngân hàng).
+  - [ ] Owner chuyển khoản hoàn 10.000 VNĐ về tài khoản người dùng, sau đó nhập mã tham chiếu ngân hàng ("Thêm mã chuyển khoản").
+  - [ ] Người dùng thấy trạng thái `Đã hoàn tiền` kèm mã tham chiếu.
+  - [ ] Ghi nhận mã đơn và thời điểm từng bước (không lưu số tài khoản ngân hàng).
+
+---
+
+## 2. Tổng quan kiến trúc & Nguyên tắc cốt lõi
+
+- **Cấu hình độc quyền qua biến môi trường:** Cờ `PAYOS_ENABLED` chỉ được thiết lập tại file cấu hình server (`deploy/.env.prod`), không có API hoặc nút toggle trên giao diện (Decision D2).
+- **Hai giai đoạn:**
+  - **Part A (Dev Agent):** mã nguồn, kiểm thử, thẻ B4, chế độ read-only cho console duyệt điểm, sổ tay này.
+  - **Part B (PO / DevOps):** kích hoạt production theo tài liệu này và nghiệm thu thực tế.
+- **Mã nạp thủ công được giữ lại:** phục vụ tra cứu lịch sử và làm phương án dự phòng khẩn cấp (Decision D1).
+- **Tài sản thương hiệu:** logo payOS và logo ngân hàng hiển thị fallback an toàn (icon mặc định) cho tới khi PO bổ sung file chính thức (Decision D4, xem mục 4).
 
 ---
 
 ## 3. Kiểm tra điều kiện tiên quyết (Pre-flight Checks)
 
-Trước khi thực hiện kích hoạt trên VPS Production, PO/DevOps cần kiểm tra các điều kiện sau:
-
 ### 3.1. Hàng đợi thủ công bằng 0 (Drain Pending Queue)
-Không được kích hoạt payOS khi còn giao dịch thủ công đang chờ duyệt (`PENDING`).
-Kiểm tra trên giao diện `/admin/top-ups`:
-- Thẻ chuyển đổi **B4 (PayosSwitchCard)** phải hiển thị trạng thái **"Sẵn sàng bàn giao"** (Variant `ready`) với mascot Cheer và dấu tích xanh "0 yêu cầu chuyển khoản chờ duyệt".
-- Hoặc kiểm tra trực tiếp qua câu lệnh SQL trên VPS:
-  ```bash
-  $DC exec postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
-    "SELECT COUNT(*) AS pending_manual FROM \"TopUpRequest\" WHERE status = 'PENDING' AND method = 'MANUAL';"
-  ```
-  *Kết quả bắt buộc phải là `pending_manual = 0`.*
+Không được bật payOS khi còn giao dịch thủ công `PENDING`. Server cũng sẽ không khởi động với PayOS bật khi còn yêu cầu đang chờ.
 
-### 3.2. Thông tin xác thực payOS hợp lệ (Credentials Validation)
-Đảm bảo các biến môi trường trong `.env.prod` đã được cấu hình đầy đủ từ Story 13.6:
+- Trên `/admin/top-ups`, thẻ **B4 (PayosSwitchCard)** phải hiển thị **"Sẵn sàng bật PayOS"** (variant `ready`) với dấu tích xanh **"0 yêu cầu thủ công đang chờ"**.
+- Và/hoặc chạy script kiểm tra (xem mục 1, bước 12), hoặc truy vấn trực tiếp:
+  ```bash
+  $DC exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select status, count(*) from top_up_requests where channel = '\''MANUAL'\'' group by 1"'
+  ```
+  *Yêu cầu:* không có dòng `PENDING`.
+
+### 3.2. Thông tin xác thực payOS hợp lệ
+Đảm bảo `deploy/.env.prod` có đủ (từ Story 13.6):
 - `PAYOS_CLIENT_ID`
 - `PAYOS_API_KEY`
 - `PAYOS_CHECKSUM_KEY`
-- `TOPUP_REFUND_MAILBOX` (ví dụ: `trananhquan1104.work@gmail.com`)
+- `TOPUP_REFUND_MAILBOX` (hộp thư nhận yêu cầu hoàn tiền, ví dụ `<hop-thu-hoan-tien@ten-mien>`)
 
-Chạy script kiểm tra kết nối và webhook xác thực:
+Chạy script xác nhận webhook:
 ```bash
-cd /opt/rescom/deploy
-DC="docker compose -f docker-compose.hostinger.yml --env-file .env.prod"
 $DC exec backend node dist/apps/backend/src/scripts/payos-confirm-webhook.js
 ```
-*Yêu cầu:* Lệnh kết thúc với exit code `0`, hiển thị đúng tên tài khoản và 4 số cuối tài khoản nhận tiền.
+*Yêu cầu:* exit code `0`.
 
 ### 3.3. Đường dẫn Webhook có TLS hợp lệ
-Đảm bảo URL webhook công khai có thể tiếp nhận request từ payOS:
 ```bash
 curl -i -X POST https://app.rescom.io.vn/api/economy/top-ups/payos/webhook \
   -H 'content-type: application/json' -d '{}'
 ```
-*Kết quả mong đợi:* HTTP `401 Unauthorized` (chữ ký không hợp lệ, chứng minh route thông suốt và được bảo vệ, không phải 404 hay 403 Cloudflare block).
+*Kết quả mong đợi:* HTTP `401 Unauthorized` (chữ ký không hợp lệ, chứng minh route thông suốt và được bảo vệ, không phải 404 hay Cloudflare block).
+
+### 3.4. Kiểm tra lại bằng probe trước khi bật (Probe Re-check)
+Trước khi bật, có thể chạy lại probe để chắc chắn khóa payOS và luồng tạo link/đối soát còn hoạt động:
+```bash
+$DC exec -e PROBE_USER_EMAIL=<email-tai-khoan-thu> backend node dist/apps/backend/src/scripts/payos-probe.js
+```
+- `<email-tai-khoan-thu>` là tài khoản thử của bạn; không ghi email thật vào repo hay ticket.
+- Probe **từ chối chạy khi `PAYOS_ENABLED=true`** (`payos-probe-preflight.ts`), nên chỉ dùng được **trước khi bật**. Sau khi bật, cách kiểm tra duy nhất là nạp thật 10.000 VNĐ qua giao diện.
 
 ---
 
-## 4. Quy trình kích hoạt Production (Production Enable Steps)
+## 4. Tài sản thương hiệu (Logo Slots — AC 7 / AC 14)
 
-Thực hiện tuần tự các bước sau:
+Dev đã làm sẵn component với fallback; **không tự vẽ hay bịa logo**. PO cung cấp file chính thức và đặt vào thư mục `apps/frontend/my-app/public/brand/`:
 
-### Bước 1: Xử lý dứt điểm hàng đợi thủ công (Duyệt hoặc từ chối)
-Truy cập `/admin/top-ups` với quyền Admin. Duyệt (Approve) hoặc từ chối (Reject) toàn bộ các yêu cầu nạp tiền thủ công còn tồn đọng cho đến khi thẻ B4 chuyển sang variant **"Sẵn sàng bàn giao"**.
+| Slot | Đường dẫn file |
+| --- | --- |
+| Logo payOS | `public/brand/payos/payos-logo.svg` (hoặc `.png` nếu bộ kit chính thức chỉ có PNG) |
+| Ngân hàng | `public/brand/banks/{code}.png` |
 
-### Bước 2: Cập nhật biến môi trường `PAYOS_ENABLED=true`
-Mở file cấu hình production trên VPS:
+10 ngân hàng thuộc tập pilot (BIN NAPAS → `{code}`; kiểm tra lại BIN với danh sách NAPAS/VietQR chính thức trước khi commit):
+
+| Ngân hàng | BIN | File |
+| --- | --- | --- |
+| Vietcombank | 970436 | `public/brand/banks/vcb.png` |
+| BIDV | 970418 | `public/brand/banks/bidv.png` |
+| VietinBank | 970415 | `public/brand/banks/vietinbank.png` |
+| Agribank | 970405 | `public/brand/banks/agribank.png` |
+| Techcombank | 970407 | `public/brand/banks/techcombank.png` |
+| MBBank | 970422 | `public/brand/banks/mb.png` |
+| ACB | 970416 | `public/brand/banks/acb.png` |
+| VPBank | 970432 | `public/brand/banks/vpbank.png` |
+| TPBank | 970423 | `public/brand/banks/tpbank.png` |
+| Sacombank | 970403 | `public/brand/banks/sacombank.png` |
+
+Sau khi thả file vào thư mục, **dev phải sửa code** (file chỉ hiện khi đã được khai báo):
+1. `apps/frontend/my-app/components/brand/PayosLogo.tsx`: đổi `PAYOS_LOGO_AVAILABLE` từ `false` sang `true` (và đổi đuôi `src` nếu dùng `.png`).
+2. `apps/frontend/my-app/lib/brand/bank-logos.ts`: thêm `{code}` của từng file đã có vào `AVAILABLE_BANK_LOGOS` (ví dụ `"vcb"`, `"bidv"`). Chỉ thêm khi file tồn tại.
+
+Sau đó deploy Frontend lên Vercel (`main`) **trước khi** bật `PAYOS_ENABLED=true`. Part B bị chặn cho tới khi các file tồn tại (Decision D4).
+
+---
+
+## 5. Quy trình kích hoạt Production (Production Enable Steps)
+
+### Bước 1: Xử lý dứt điểm hàng đợi thủ công
+Truy cập `/admin/top-ups` với quyền Admin. Duyệt hoặc từ chối toàn bộ yêu cầu thủ công còn `PENDING` cho đến khi thẻ B4 chuyển sang **"Sẵn sàng bật PayOS"**. Xác nhận bằng `check-manual-topups.js` (mục 1, bước 12).
+
+### Bước 2: Xác nhận webhook
 ```bash
-cd /opt/rescom/deploy
-nano .env.prod
+$DC exec backend node dist/apps/backend/src/scripts/payos-confirm-webhook.js
 ```
-Tìm dòng `PAYOS_ENABLED` và đổi giá trị:
+
+### Bước 3: Cập nhật `PAYOS_ENABLED=true`
+```bash
+nano deploy/.env.prod
+```
 ```env
 PAYOS_ENABLED=true
 ```
-Lưu file (`Ctrl + O`, `Enter`, `Ctrl + X`).
 
-### Bước 3: Khởi động lại service backend
-Áp dụng cấu hình mới mà không làm gián đoạn các service khác:
+### Bước 4: Khởi động lại backend
 ```bash
 $DC up -d --no-deps backend
-$DC logs --tail 50 backend
+$DC logs backend | grep -E 'PayOS checkout enabled|PAYOS_ENABLED=true but'
 ```
-Kiểm tra backend đã sẵn sàng:
-```bash
-$DC exec backend node -e "fetch('http://127.0.0.1:4000/health/ready').then(r=>{console.log('Status:', r.status);process.exit(r.ok?0:1)})"
-```
-*Kết quả:* `Status: 200`.
+*Kết quả:* thấy `PayOS checkout enabled`. Nếu thấy `PAYOS_ENABLED=true but ...` nghĩa là backend từ chối bật (thường do còn yêu cầu thủ công `PENDING` hoặc thiếu biến); đọc nội dung dòng log và xử lý.
 
-### Bước 4: Kiểm tra giao diện Quản trị `/admin/top-ups`
-1. Tải lại trang `/admin/top-ups`.
-2. Quan sát:
-   - Thẻ chuyển đổi B4 (`PayosSwitchCard`) **hoàn toàn biến mất**.
-   - Header hiển thị chip trạng thái khóa: **"PayOS: Bật"** kèm icon ổ khóa (`Icon name="lock"`).
-   - Danh sách yêu cầu chuyển khoản thủ công chuyển sang chế độ **Chỉ đọc (Read-only)**: các nút Duyệt/Từ chối bị ẩn, modal xem chi tiết không hiển thị thao tác duyệt.
+### Bước 5: Kiểm tra giao diện Quản trị `/admin/top-ups`
+- Thẻ B4 **biến mất**.
+- Header hiển thị chip khóa **"PayOS: Bật"**.
+- Danh sách yêu cầu thủ công ở chế độ **Chỉ đọc**: không còn nút duyệt/từ chối.
 
-### Bước 5: Thực hiện giao dịch thử nghiệm thực tế (Smoke Test)
-1. Sử dụng tài khoản người dùng thực tế đăng nhập vào `https://app.rescom.io.vn/wallet/top-up`.
-2. Kiểm tra màn hình nạp tiền:
-   - Kênh nạp hiển thị mặc định qua **payOS** (tích hợp mã VietQR động, không còn hướng dẫn nạp thủ công).
-3. Chọn gói nạp tối thiểu (ví dụ: 10.000 VNĐ tương ứng 50 Điểm).
-4. Tiến hành quét mã VietQR và thanh toán 10.000 VNĐ từ ứng dụng ngân hàng.
-5. Xác nhận:
-   - Màn hình checkout tự động chuyển trạng thái thành công trong vòng vài giây sau khi chuyển khoản.
-   - Số dư ví người dùng tăng ngay lập tức (+50 Điểm).
-   - Bảng lịch sử giao dịch ghi nhận dòng `Nạp Điểm qua PayOS` với tone màu xanh (`TOP_UP_PAYOS`).
-   - Kiểm tra log backend:
-     ```bash
-     $DC logs backend --since 5m | grep -E 'payOS webhook credited'
-     ```
+### Bước 6: Giao dịch thử nghiệm thực tế (Smoke Test)
+1. Dùng **tài khoản người dùng riêng** (không phải Admin) vào `https://app.rescom.io.vn/wallet/top-up`.
+2. Màn hình nạp chỉ còn kênh payOS (VietQR động).
+3. Chọn gói 10.000 VNĐ (50 Điểm), quét VietQR và thanh toán.
+4. Xác nhận checkout chuyển trạng thái thành công, ví tăng +50 Điểm, lịch sử có dòng nạp qua PayOS.
+5. Kiểm tra log:
+   ```bash
+   $DC logs backend --since 5m | grep -E 'payOS webhook credited'
+   ```
+6. Ghi mã đơn và kết quả vào bảng nhật ký (mục 9), rồi thực hiện Refund Drill (mục 1, bước 17).
 
 ---
 
-## 5. Kế hoạch hoàn tác & Công tắc khẩn cấp (Rollback & Kill-Switch)
+## 6. Tắt khẩn cấp & Hoàn tác (Emergency Disable / Rollback)
 
-Nếu phát hiện sự cố nghiêm trọng (ví dụ: lỗi gián đoạn dịch vụ payOS diện rộng, sai sót đối soát, hoặc lỗi bảo mật), thực hiện quy trình hạ cờ khẩn cấp:
+Dùng khi có sự cố nghiêm trọng (payOS gián đoạn diện rộng, sai lệch đối soát, lỗi bảo mật).
 
-### 5.1. Kích hoạt Rollback
-1. Truy cập VPS và chỉnh sửa `.env.prod`:
-   ```bash
-   cd /opt/rescom/deploy
-   nano .env.prod
-   ```
-   Đặt lại:
+### 6.1. Thực hiện
+1. Sửa `deploy/.env.prod`:
    ```env
    PAYOS_ENABLED=false
    ```
-2. Khởi động lại service backend:
+2. Áp dụng:
    ```bash
    $DC up -d --no-deps backend
    ```
 
-### 5.2. Kiểm tra sau khi Rollback
-- Màn hình `/wallet/top-up` của người dùng: Route tạo đơn payOS sẽ trả về `404 PAYOS_CHECKOUT_DISABLED` hoặc giao diện người dùng chuyển về phương thức thủ công (tùy cấu hình feature flag).
-- Trang `/admin/top-ups`:
-  - Thẻ B4 chuyển đổi hiển thị trở lại.
-  - Chip trạng thái trên header hiển thị `PayOS: Tắt`.
-  - Nếu không có yêu cầu tồn đọng, thẻ hiển thị mascot Cheer "Sẵn sàng bàn giao". Nếu có yêu cầu phát sinh, thẻ hiển thị danh sách cảnh báo amber để admin xử lý tiếp.
+### 6.2. Hành vi sau khi tắt
+- **Checkout payOS đóng ngay.**
+- **Vẫn chạy bình thường** (không bao giờ bị khóa bởi cờ, AD-25): webhook, đối soát định kỳ (reconcile), recheck, xử lý lệch tiền (mismatch) và hoàn tiền (refund).
+- **Link đang xử lý (`PROCESSING`) vẫn được cộng điểm** nếu người dùng đã thanh toán.
+- **Tác dụng phụ (Decision D1):** form nạp VietQR thủ công **mở lại** cho người dùng. Do đó, muốn bật lại payOS phải xử lý sạch các yêu cầu thủ công `PENDING` phát sinh một lần nữa (mục 3.1 và bước 12 của checklist).
+
+### 6.3. Kiểm tra sau khi tắt
+- `/wallet/top-up`: người dùng thấy giao diện nạp thủ công.
+- `/admin/top-ups`: thẻ B4 hiển thị trở lại, chip header `PayOS: Tắt`. Không có yêu cầu tồn đọng thì thẻ ở trạng thái "Sẵn sàng bật PayOS"; có yêu cầu phát sinh thì thẻ hiện cảnh báo để admin xử lý.
 
 ---
 
-## 6. Quy trình xử lý sự cố & Tình huống đặc biệt (SOPs)
+## 7. Quy trình xử lý sự cố (SOPs)
 
-### 6.1. Giao dịch đang thực hiện trong lúc chuyển đổi (In-flight Payments)
-- **Tình huống:** Người dùng đã quét mã thanh toán payOS ngay trước thời điểm tắt flag, hoặc tiền ngân hàng đã trừ nhưng webhook bị trễ trong lúc backend restart.
-- **Cơ chế tự phục hồi:**
-  - Định kỳ mỗi 5 phút, tiến trình cron `payos-reconcile` tự động quét các đơn nạp tiền ở trạng thái `PENDING` và gọi API payOS để đối soát.
-  - Nếu payOS báo trạng thái `PAID`, hệ thống sẽ tự động cộng điểm (`TOP_UP_PAYOS`) vào ví người dùng ngay cả khi `PAYOS_ENABLED=false`.
-- **Thao tác thủ công khẩn cấp:** Người dùng hoặc Admin có thể nhấn nút **"Kiểm tra lại giao dịch"** (`POST /economy/top-ups/payos/{id}/recheck`) trên trang chi tiết đơn nạp để đồng bộ ngay lập tức.
+### 7.1. Giao dịch đang thực hiện / đã thanh toán nhưng chưa cộng điểm (In-flight & Paid-uncredited)
+- **Tự phục hồi:** tiến trình đối soát (`payos-reconcile`) định kỳ quét các đơn chưa chốt và hỏi payOS; nếu payOS báo đã thanh toán thì cộng điểm, kể cả khi `PAYOS_ENABLED=false`.
+- **Thao tác thủ công của Admin** tại `/admin/top-ups`:
+  1. Mở tab **"Cần xử lý"** để xem các đơn cần can thiệp.
+  2. Nhấn nút **"Kiểm tra lại với payOS"** (recheck) trên đơn để đồng bộ ngay với payOS.
+  3. Theo dõi cảnh báo "đã thanh toán nhưng chưa cộng Điểm sau 30 phút": đơn nằm trong cảnh báo này cần xử lý ngay (recheck; nếu vẫn không được thì xem log theo mục 7.3).
+- Đơn lệch tiền xem mục 7.2.
 
-### 6.2. Lệch số tiền thanh toán (Amount Mismatch SOP)
-- **Tình huống:** Người dùng chuyển thiếu hoặc thừa tiền so với số tiền trên đơn nạp (ví dụ đơn 100.000 VNĐ nhưng chuyển 50.000 VNĐ hoặc 120.000 VNĐ).
-- **Hệ thống xử lý tự động (Story 13.7):**
-  - Giao dịch được ghi nhận với loại `TOP_UP_MISMATCH`.
-  - Hệ thống chỉ cộng số Điểm tương ứng với số tiền thực nhận vào tài khoản người dùng.
-  - Ghi nhận thông tin chênh lệch vào cơ sở dữ liệu.
-- **Xử lý hoàn tiền:** Admin sử dụng ngăn kéo hoàn tiền (`RefundDrawer`) tại `/admin/top-ups` để hoàn trả khoản chênh lệch về tài khoản ngân hàng nguồn của người dùng nếu có khiếu nại.
+### 7.2. Lệch số tiền thanh toán (Amount Mismatch)
+- **Tình huống:** người dùng chuyển thiếu hoặc thừa so với số tiền trên đơn.
+- **Hệ thống tự xử lý (Story 13.7):** ghi nhận loại `TOP_UP_MISMATCH`, chỉ cộng Điểm tương ứng số tiền thực nhận, lưu chênh lệch vào cơ sở dữ liệu.
+- **Giải quyết:** Admin xử lý mismatch tại `/admin/top-ups` (tab "Cần xử lý"); nếu cần trả lại khoản chênh lệch thì dùng ngăn kéo hoàn tiền (`RefundDrawer`) để hoàn về tài khoản ngân hàng nguồn.
 
-### 6.3. Xử lý yêu cầu nạp tiền không nhận được điểm (Uncredited Top-Up)
-Khi người dùng báo đã trừ tiền ngân hàng nhưng tài khoản chưa lên điểm sau 15 phút:
-1. Tra cứu mã đơn hàng (`orderCode` hoặc `topUpId`) trong cơ sở dữ liệu:
+### 7.3. Người dùng báo đã trừ tiền nhưng chưa lên điểm
+1. Tra cứu đơn trong cơ sở dữ liệu:
    ```bash
-   $DC exec postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
-     "SELECT id, \"orderCode\", status, amount, \"pointsCredited\", \"createdAt\" FROM \"TopUpRequest\" WHERE \"orderCode\" = <ORDER_CODE>;"
+   $DC exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select id, order_code, status, amount_vnd, points_credited, created_at from top_up_requests where order_code = <ORDER_CODE>"'
    ```
-2. Kiểm tra log webhook tương ứng:
+2. Xem log webhook:
    ```bash
    $DC logs backend --since 1h | grep '<ORDER_CODE>'
    ```
-3. Nếu webhook chưa tới: gọi endpoint recheck thủ công hoặc hướng dẫn người dùng nhấn "Kiểm tra lại" tại giao diện trang nạp.
-4. Nếu payOS chưa nhận được tiền: hướng dẫn người dùng liên hệ ngân hàng với mã tham chiếu giao dịch (FT Code).
+3. Chưa có webhook: dùng "Kiểm tra lại với payOS" (mục 7.1).
+4. payOS chưa nhận được tiền: hướng dẫn người dùng liên hệ ngân hàng với mã tham chiếu giao dịch.
 
 ---
 
-## 7. Quản trị thông tin bảo mật & Thay đổi khóa (Secrets Hygiene & Key Rotation)
+## 8. Bảo mật & Xoay vòng khóa
 
-### 7.1. Nguyên tắc bảo mật
-- Tuyệt đối không commit file `.env.prod` hoặc ghi `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY` vào git repo, ticket trao đổi, hay tài liệu chia sẻ.
-- Trong mọi trích xuất log gửi cho đội ngũ phát triển, bắt buộc phải che các trường nhạy cảm: `accountNumber`, `accountName`, `bin`, `webhook_secret`.
+### 8.1. Nguyên tắc & kiểm tra (Secrets Hygiene)
+- `deploy/.env.prod` đã gitignore. Tuyệt đối không commit hoặc dán `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY` vào repo, ticket hay tài liệu chia sẻ (repo này công khai).
+- Chứng minh không lộ secrets:
+  ```bash
+  git ls-files deploy | grep -v example     # không được có .env.prod
+  git grep -nE '^(PAYOS_API_KEY|PAYOS_CHECKSUM_KEY|PAYOS_CLIENT_ID)=.+'   # không được tìm thấy giá trị thật
+  ```
+- Khi gửi log cho đội phát triển, che các trường nhạy cảm: số tài khoản, tên tài khoản, BIN, secret.
 
-### 7.2. Quy trình xoay vòng khóa (Key Rotation)
-Khi cần đổi API Key hoặc Checksum Key trên cổng payOS:
-1. Đăng nhập payOS Dashboard, tạo cặp khóa mới hoặc lấy thông tin khóa cập nhật.
-2. Chỉnh sửa `.env.prod` trên VPS với cặp khóa mới.
-3. Cập nhật `PAYOS_CHECKSUM_KEY` và `PAYOS_API_KEY`.
-4. Khởi động lại service backend:
+### 8.2. Xoay vòng khóa (Key Rotation)
+1. Lấy thông tin khóa mới trên payOS Dashboard.
+2. Cập nhật **cả 3 secrets** trong `deploy/.env.prod`: `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY`.
+3. Khởi động lại backend:
    ```bash
    $DC up -d --no-deps backend
    ```
-5. Chạy script xác nhận webhook để đảm bảo khóa mới hoạt động thông suốt:
+4. Chạy lại xác nhận webhook:
    ```bash
    $DC exec backend node dist/apps/backend/src/scripts/payos-confirm-webhook.js
    ```
+5. Kiểm tra lại khóa mới:
+   - Khi `PAYOS_ENABLED=false`: có thể chạy `payos-probe` (mục 3.4).
+   - Khi `PAYOS_ENABLED=true`: `payos-probe` từ chối chạy, nên kiểm tra bằng một giao dịch thật 10.000 VNĐ qua giao diện (như mục 5, bước 6).
 
 ---
 
-## 8. Mẫu biên bản nghiệm thu kích hoạt (Enable Log Template)
+## 9. Nhật ký kích hoạt (Enable Log)
 
-Sau khi hoàn tất kích hoạt trên Production, PO lập biên bản nghiệm thu theo mẫu dưới đây và lưu trữ vào hồ sơ dự án:
+PO điền bảng dưới đây khi thực hiện Part B và lưu vào hồ sơ dự án. Không ghi PII: không số tài khoản, không email. Mã đơn và số lượng thì được phép.
 
-```markdown
-# Biên bản kích hoạt payOS Production (Story 13.13 - Part B)
-
-- **Thời gian thực hiện:** [YYYY-MM-DD HH:mm:ss]
-- **Người thực hiện (Operator):** [Họ và tên / Vai trò]
-- **Môi trường:** Production (https://app.rescom.io.vn)
-- **Số lượng yêu cầu thủ công tồn đọng trước khi bật:** [0]
-- **Mã đơn hàng giao dịch thử nghiệm (Smoke Test Order Code):** [ORDER_CODE]
-- **Số tiền thử nghiệm:** 10.000 VNĐ (50 Điểm)
-- **Thời gian điểm vào ví:** [Ngay lập tức qua Webhook / ... giây]
-- **Kiểm tra giao diện Admin (/admin/top-ups):**
-  - [x] Thẻ B4 PayosSwitchCard đã ẩn hoàn toàn.
-  - [x] Header hiển thị chip "PayOS: Bật" (có khóa).
-  - [x] Bảng duyệt thủ công ở chế độ chỉ đọc (Read-only).
-- **Kiểm tra giao diện Người dùng (/wallet/top-up):**
-  - [x] Tạo đơn nạp payOS thành công với VietQR.
-  - [x] Giao dịch nạp tiền thành công và cộng đúng điểm.
-- **Bổ sung tài sản thương hiệu (Brand Assets):**
-  - [ ] Đã đưa logo chính thức SVG vào public/brand/payos/ và public/brand/banks/
-- **Kết luận:** [ĐẠT NGHIỆM THU / YÊU CẦU ĐIỀU CHỈNH]
-- **Chữ ký xác nhận PO:** [Đã ký / Xác nhận qua email]
-```
+| Ngày | Bước | Kết quả | Tham chiếu chứng cứ |
+| --- | --- | --- | --- |
+| YYYY-MM-DD | Số yêu cầu thủ công PENDING lúc bắt đầu | [n] | Ảnh chụp B4 / output script |
+| YYYY-MM-DD | `check-manual-topups.js` sau khi xử lý | `Manual PENDING top-ups: 0` | Output script |
+| YYYY-MM-DD | Logo chính thức đã deploy | [Đạt / Chưa] | Commit / deploy Vercel |
+| YYYY-MM-DD | `payos-confirm-webhook` | [exit 0] | Output lệnh |
+| YYYY-MM-DD | Bật `PAYOS_ENABLED=true` + restart | [Log `PayOS checkout enabled`] | Dòng log |
+| YYYY-MM-DD | Kiểm tra `/admin/top-ups` (B4 ẩn, chip "PayOS: Bật", thủ công chỉ đọc) | [Đạt / Không đạt] | Ảnh chụp |
+| YYYY-MM-DD | Nạp thử 10.000 VNĐ (tài khoản riêng) | [orderCode = ...] | Log `payOS webhook credited` |
+| YYYY-MM-DD | Refund Drill | [Đã hoàn tiền + mã tham chiếu] | orderCode, mốc thời gian từng bước |
+| YYYY-MM-DD | Kết luận nghiệm thu | [ĐẠT / YÊU CẦU ĐIỀU CHỈNH] | Xác nhận của PO |

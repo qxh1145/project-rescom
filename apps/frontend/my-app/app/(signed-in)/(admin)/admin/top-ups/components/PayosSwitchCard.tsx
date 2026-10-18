@@ -28,7 +28,8 @@ import { RejectTopUpDialog } from "./RejectTopUpDialog";
 
 interface PayosSwitchCardProps {
   mode: WalletTopUpMode;
-  manualTotal: number;
+  /** Handled manual rows, or null while tab counts are unknown. */
+  manualTotal: number | null;
   onChanged: () => void;
   onRetryMode?: () => void;
 }
@@ -52,7 +53,7 @@ export function PayosSwitchCard({
   const { refreshCounts } = useAdminCounts();
   const [items, setItems] = useState<AdminTopUp[]>([]);
   const [total, setTotal] = useState<number | null>(null);
-  const [loadingList, setLoadingList] = useState(true);
+  const [listFailed, setListFailed] = useState(false);
   const [nonce, setNonce] = useState(0);
 
   // Active dialog state
@@ -73,8 +74,9 @@ export function PayosSwitchCard({
     setToasts((old) => old.filter((t) => t.id !== id));
   }, []);
 
+  // Refetches keep the current list on screen (no unmount of open dialogs / toasts).
   const refreshList = useCallback(() => {
-    setLoadingList(true);
+    setListFailed(false);
     setNonce((n) => n + 1);
   }, []);
 
@@ -88,13 +90,13 @@ export function PayosSwitchCard({
         if (!cancelled) {
           setItems(res.items);
           setTotal(res.total);
-          setLoadingList(false);
+          setListFailed(false);
         }
       })
       .catch((err: unknown) => {
         if (!cancelled) {
           if ((err as { name?: string })?.name === "AbortError") return;
-          setLoadingList(false);
+          setListFailed(true);
         }
       });
 
@@ -111,8 +113,14 @@ export function PayosSwitchCard({
 
   if (variant === "hidden") return null;
 
-  // Render error loading availability
-  if (variant === "error") {
+  // Render error loading availability, or the pending list (card must not vanish while PayOS is off)
+  const failure =
+    variant === "error"
+      ? { message: PAYOS_SWITCH_COPY.loadError, retry: onRetryMode }
+      : listFailed && mode === "manual"
+        ? { message: PAYOS_SWITCH_COPY.listLoadError, retry: refreshList }
+        : null;
+  if (failure) {
     return (
       <section
         aria-labelledby="payos-switch-card-title"
@@ -121,10 +129,10 @@ export function PayosSwitchCard({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 text-danger">
             <Icon name="alert-circle" size={20} />
-            <span className="font-semibold">{PAYOS_SWITCH_COPY.loadError}</span>
+            <span className="font-semibold">{failure.message}</span>
           </div>
-          {onRetryMode && (
-            <Button variant="secondary" size="base" radius="field" onClick={onRetryMode}>
+          {failure.retry && (
+            <Button variant="secondary" size="base" radius="field" onClick={failure.retry}>
               {PAYOS_SWITCH_COPY.retry}
             </Button>
           )}
@@ -133,8 +141,8 @@ export function PayosSwitchCard({
     );
   }
 
-  // Loading availability or pending list
-  if (variant === "loading" || loadingList) {
+  // Initial load of availability or pending list
+  if (variant === "loading") {
     return null;
   }
 
@@ -408,9 +416,11 @@ export function PayosSwitchCard({
             <h3 className="text-title-sm font-extrabold text-ink">
               {PAYOS_SWITCH_COPY.readyTitle}
             </h3>
-            <p className="mt-1 text-body-sm text-ink-muted">
-              {PAYOS_SWITCH_COPY.readyHandledSubtitle(manualTotal)}
-            </p>
+            {manualTotal !== null && (
+              <p className="mt-1 text-body-sm text-ink-muted">
+                {PAYOS_SWITCH_COPY.readyHandledSubtitle(manualTotal)}
+              </p>
+            )}
 
             <ul className="mt-6 flex flex-col gap-2.5 text-left text-body-sm font-semibold text-ink">
               <li className="flex items-center gap-2">
@@ -462,8 +472,8 @@ export function PayosSwitchCard({
         />
       )}
 
-      {/* Toasts when dialogs are not open */}
-      {!approving && <CodeIssueToasts items={toasts} dismiss={dismissToast} />}
+      {/* Toasts when dialogs are not open (the reject dialog shows its error inline) */}
+      {!approving && !rejecting && <CodeIssueToasts items={toasts} dismiss={dismissToast} />}
     </>
   );
 }

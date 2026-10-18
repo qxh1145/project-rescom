@@ -45,7 +45,8 @@ export function itemCode(item: { id: string; orderCode?: number | string | null;
 /**
  * Page header meta copy (Figma 190:1898 / 190:2091 / AC 1).
  * - payos: "PayOS tự cộng Điểm · hoàn tiền thủ công, hạn 3 ngày làm việc"
- * - manual/error: "{dd/MM/yyyy hôm nay} · đang dùng nạp thủ công"
+ * - manual: "{dd/MM/yyyy hôm nay} · đang dùng nạp thủ công"
+ * - error: "{dd/MM/yyyy hôm nay} · chưa xác định được trạng thái PayOS" (mode unknown, fail-closed)
  * - loading: ""
  */
 export function headerMeta(
@@ -57,10 +58,23 @@ export function headerMeta(
   }
   const parts = vietnamDateTimeParts(today);
   const dateStr = parts ? `${parts.day}/${parts.month}/${parts.year}` : "";
-  if (mode === "manual" || mode === "error") {
+  if (mode === "manual") {
     return dateStr ? `${dateStr} · đang dùng nạp thủ công` : "Đang dùng nạp thủ công";
   }
+  if (mode === "error") {
+    return dateStr ? `${dateStr} · chưa xác định được trạng thái PayOS` : "Chưa xác định được trạng thái PayOS";
+  }
   return "";
+}
+
+/** Manual tab is writable only when PayOS is known to be off; loading/error fail closed. */
+export function manualTabReadOnly(mode: "loading" | "payos" | "manual" | "error"): boolean {
+  return mode !== "manual";
+}
+
+/** Initial status filter of the manual tab: history (APPROVED) when read-only, the queue otherwise. */
+export function manualTabInitialStatus(readOnly: boolean): "APPROVED" | "PENDING" {
+  return readOnly ? "APPROVED" : "PENDING";
 }
 
 /** Verbatim copy strings from Figma B4 & AC 1-3. */
@@ -72,6 +86,7 @@ export const PAYOS_SWITCH_COPY = {
   chipOn: "PayOS: Bật",
   chipCaption: "Bật/tắt bằng cấu hình server (PAYOS_ENABLED)",
   loadError: "Không tải được trạng thái PayOS.",
+  listLoadError: "Không tải được danh sách yêu cầu nạp thủ công đang chờ.",
   retry: "Thử lại",
   pendingBannerTitle: (n: number) =>
     `Còn ${n} yêu cầu nạp thủ công đang chờ. Cần xử lý hết trước khi bật PayOS.`,
@@ -89,8 +104,8 @@ export const PAYOS_SWITCH_COPY = {
   readyChecklistPending: "0 yêu cầu thủ công đang chờ",
   readyChecklistRestart: "Báo kỹ thuật bật PAYOS_ENABLED và triển khai lại.",
   confirmApproveTitle: (code: string) => `Duyệt yêu cầu ${code}?`,
-  confirmApproveCredit: (points: string | number, name: string, email: string) =>
-    `Cộng ${points} Điểm cho ${name} (${email}).`,
+  confirmApproveCredit: (points: string | number, name: string, email: string | null) =>
+    email ? `Cộng ${points} Điểm cho ${name} (${email}).` : `Cộng ${points} Điểm cho ${name}.`,
   confirmApproveStatement: (amount: string, ref: string) =>
     `Chỉ duyệt khi sao kê có khoản ${amount} với nội dung ${ref}.`,
   buttonCancel: "Huỷ",

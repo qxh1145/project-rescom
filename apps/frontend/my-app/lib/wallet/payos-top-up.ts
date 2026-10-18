@@ -17,6 +17,11 @@ export const PAYOS_QUICK_AMOUNTS = [
 
 export { PAYOS_TOP_UP_MAX_VND, PAYOS_TOP_UP_MIN_VND, POINT_VND_RATE };
 
+/** Wallet top-up mode from `GET /economy/payos/availability` (Story 13.13). */
+export function topUpModeFromAvailability(availability: { payosEnabled: boolean }): "payos" | "manual" {
+  return availability.payosEnabled ? "payos" : "manual";
+}
+
 /** Terminal statuses for PayOS top-ups where polling should cease */
 export const PAYOS_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   "SUCCESSFUL",
