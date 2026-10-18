@@ -166,6 +166,15 @@ development_status:
   13-13-manual-top-up-retirement-production-enable: review  # 2026-10-18 Part A code review: 11 patches applied on feat/13-13-review-patches (uncommitted), 1002 FE tests pass, tsc+eslint clean; awaiting Part B Owner prod enable
   epic-13-retrospective: optional
 
+  # Added 2026-10-18 by sprint-change-proposal-2026-10-18 (Admin console gaps; 8.5/10.7 stay Phase 2)
+  # Starts after 13.13 Part B; stories independent; 14.1 has the only migration
+  epic-14: backlog
+  14-1-missing-code-report-resolution: backlog
+  14-2-rewards-daily-points-limit-setting: backlog
+  14-3-admin-audit-log-viewer: backlog
+  14-4-ledger-operations-panel: backlog
+  epic-14-retrospective: optional
+
 # ==============================================================================
 # PHASE 2 DEFERRED EPICS & SUB-EPICS (Post-MVP Scope)
 # Deferred on 2026-09-17 per BMAD scope pruning decision

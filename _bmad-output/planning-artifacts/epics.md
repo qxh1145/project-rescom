@@ -210,6 +210,7 @@ UX-DR-P15: PayOS and bank logos are placeholders in Figma; production uses the o
 - **Epic 11: Production Deployment & Pilot Readiness** -> NFR-ADD-3, NFR-ADD-4, NFR-ADD-5, AD-23 (no new FRs)
 - **Epic 12: Rewards — Voucher Redemption & Flash Sale** -> FR-68, FR-69, FR-70, FR-71, FR-72, FR-73, FR-74, FR-75
 - **Epic 13: PayOS Top-Up & 24-Hour Refund** -> FR-34 (PayOS, amended 2026-10-15), FR-35 (amended 2026-10-15), FR-31 (amend: Escrow + Refund Hold, 6 balances), FR-76, FR-77, FR-78, FR-79; NFR-31, NFR-32; FR-56 amendment (PayOS top-ups by status, open refund requests) covered by the Story 13.8 B1 tab count badges, Epic 9 dashboard unchanged; FR-57 amendment (top-up and refund notifications, email for Successful/Refunded/Refund Rejected) covered by Stories 13.3, 13.4, 13.5, 13.9, 13.10, 13.12
+- **Epic 14: Admin Console Completion** -> FR-23 (Admin resolution half), FR-74 (Admin-editable daily limit), FR-ADD-13 (viewer); ledger operator fallbacks from Epic 6 (no new FR)
 
 ## Epic List
 
@@ -274,6 +275,12 @@ UX-DR-P15: PayOS and bank logos are placeholders in Figma; production uses the o
 **Cross-epic touch:** Refund stories change the spend flows of Epic 6 (publish/reopen) and Epic 12 (voucher redemption); both regression suites must pass.
 **Dependency:** Builds on Epic 6 and Epic 12; develop against a fake `PaymentProviderPort`. Production enable (`PAYOS_ENABLED`) requires OQ-27, the manual `PENDING` rows resolved (4 on 2026-10-15; re-count before enable), and the prod-enable checklist (confirm-webhook, 10,000 VNĐ credited by webhook, refund drill, pre-deploy `PENDING` check, runbook for emergency disable and key rotation).
 
+### Epic 14: Admin Console Completion
+**Goal:** Admins can resolve missing-code reports, change the Rewards daily Points limit, read the Audit Log, and run the ledger operator fallbacks from the console instead of the API or the database.
+**FRs covered:** FR-23 (resolution), FR-74 (daily limit setting), FR-ADD-13 (viewer). Added by `sprint-change-proposal-2026-10-18.md`.
+**Out of scope:** Story 8.5 (FR-54 complaints) and Story 10.7 (FR-65 quality review) stay Phase 2; the `ATTEMPT_DISPUTE` and `LOCKED_ATTEMPT` dispute kinds stay on MSW.
+**Dependency:** Starts after Story 13.13 Part B. Stories are independent; 14.1 is the only one with a migration. Screens without Figma frames (14.2–14.4) reuse the existing Admin shell, table, card, and confirm-dialog components.
+
 ### Additional Production Requirements (Newly Added)
 
 **Form Builder & Schema**
@@ -298,7 +305,7 @@ UX-DR-P15: PayOS and bank logos are placeholders in Figma; production uses the o
 **Security & Production Infra**
 - **FR-ADD-11:** Idempotency: All financial operations (Point credits, Escrow locks, Refunds, and Survey completion rewards) must use idempotent keys to prevent double-spending on network retries.
 - **FR-ADD-12:** Authorization: the system must enforce permissions. `ADMIN` is a privileged assignment; publishing and responding are simultaneous normal-user capabilities gated by product eligibility, not mutually exclusive account roles.
-- **FR-ADD-13:** Audit Log: The system must maintain an immutable audit log of critical administrative actions and system-level financial operations.
+- **FR-ADD-13:** Audit Log: The system must maintain an immutable audit log of critical administrative actions and system-level financial operations. Admins can view, filter, and open audit records in the Admin console (Story 14.3).
 - **NFR-ADD-3:** Secret Management: All environment variables (DB credentials, JWT secrets, OAuth tokens) must be securely managed and not hardcoded.
 - **NFR-ADD-4:** Observability: The production system must implement structured logging, APM monitoring, and expose health check endpoints (`/health`).
 - **NFR-ADD-5:** Disaster Recovery: The PostgreSQL database must have automated daily backups and a documented restore procedure. [Decision Required: Define RPO (Recovery Point Objective), RTO (Recovery Time Objective), and backup retention period].
@@ -2020,3 +2027,74 @@ So that users get instant top-ups without stranded requests or downtime.
 **And** the runbook in `docs/` covers emergency disable (flag off closes checkout while webhook and reconciliation keep running), clearing in-flight and paid-uncredited top-ups, rotating payOS keys with a `confirm-webhook` re-run, and re-checking with the probe.
 **And** `TOPUP_REFUND_MAILBOX` and payOS secrets are present in `deploy/.env.prod` and absent from the repository.
 **And** placeholder PayOS and bank logos are replaced with the official logo sets before enable (UX-DR-P15).
+
+## Epic 14: Admin Console Completion
+
+Admins can resolve missing-code reports, change the Rewards daily Points limit, read the Audit Log, and run the ledger operator fallbacks from the console. Added 2026-10-18 by `sprint-change-proposal-2026-10-18.md`.
+
+### Story 14.1: Missing-Code Report Resolution
+
+As an Admin,
+I want to resolve a Respondent's missing-code report,
+So that a Respondent whose Publisher forgot the completion code is paid or told why not.
+
+**Acceptance Criteria:**
+
+**Given** an unresolved missing-code report (`GET /admin/missing-code-reports`)
+**When** the Admin calls `POST /admin/missing-code-reports/:attemptId/resolve` with `{ outcome, note }` (`ADMIN` only, CSRF, JSON-only, strict body)
+**Then** `outcome` is `CREDIT_RESPONDENT` or `DISMISSED`, and `note` is required (1–500 characters) for `DISMISSED` and optional for `CREDIT_RESPONDENT` (FR-23).
+**And** `CREDIT_RESPONDENT` moves the attempt to `COMPLETED` and settles through the existing External completion path (`external-completion:{attemptId}` → Pending, released after 48 h by the scheduler); Respondent, Publisher, and amount are derived server-side, never from the body (FR-24, FR-ADD-11).
+**And** it is refused with 409 when the attempt is a guest attempt, already `COMPLETED` or already rewarded, the survey is closed or its quota is full, or the escrow is below the reward (`INSUFFICIENT_BALANCE`); nothing changes on refusal.
+**And** `survey_attempts` gains additive nullable columns `missing_code_resolved_at`, `missing_code_resolution`, `missing_code_resolution_note`, `missing_code_resolved_by`; resolved reports leave the unresolved list and count.
+**And** resolution takes a row lock on the attempt with a CAS on `missing_code_resolved_at IS NULL`; a second resolve, or a resolve racing a code reset or a late correct code, gets 409 `MISSING_CODE_ALREADY_RESOLVED` or the existing completion conflict, proven by a concurrency test; the reward is paid at most once.
+**And** the resolution, its audit event, and its Outbox notifications commit in one transaction: the Respondent is notified for both outcomes (with the note), and the Publisher is notified on `CREDIT_RESPONDENT` to check the completion code on the external form (FR-57).
+**And** with mocking disabled, the "Báo thiếu mã" tab of `/admin/disputes` (Figma 11c, 62:1609) shows "Cộng Điểm cho người làm" and "Bỏ qua" (reason required), plus the existing "Mở lại giới hạn mã"; `MISSING_CODE` leaves the MSW-only set in `tests/route-diff.test.mjs`, and the category counts are updated.
+**And** the `ATTEMPT_DISPUTE` and `LOCKED_ATTEMPT` kinds and `NoExternalDisputeHolds` are unchanged.
+
+### Story 14.2: Rewards Daily Points Limit Setting
+
+As an Admin,
+I want to change the per-user daily Points redemption limit in the console,
+So that I can tune abuse controls without an API call.
+
+**Acceptance Criteria:**
+
+**Given** Rewards is enabled (`REWARDS_ENABLED`)
+**When** the Admin opens `/admin/vouchers`
+**Then** a "Giới hạn Điểm đổi mỗi ngày" card shows the current `dailyPointsLimit` from `GET /admin/rewards/settings` (FR-74).
+**And** editing accepts integers 1–1,000,000 (`updateRewardsSettingsSchema`), shows a confirm dialog with old → new value and "áp dụng từ lần đổi tiếp theo", and saves with `PUT /admin/rewards/settings`.
+**And** validation and server errors are shown inline; the card is hidden when Rewards is disabled.
+**And** an MSW handler and a contract test match the shared schema; no backend change.
+
+### Story 14.3: Admin Audit Log Viewer
+
+As an Admin,
+I want to read the Audit Log in the console,
+So that I can trace who changed what without database access.
+
+**Acceptance Criteria:**
+
+**Given** `GET /admin/audit-logs` and `GET /admin/audit-logs/:id` (Story 1.5)
+**When** the Admin opens `/admin/audit-log` (new nav item "Nhật ký thao tác")
+**Then** a paginated table lists time, action, actor, target user, and outcome, newest first, with filters for action, actor, target user, outcome, and date range (`listAuditLogsQuerySchema`) (FR-ADD-13).
+**And** the read DTO gains additive `actor` / `targetUser` `{ id, displayName }` fields, resolved through the existing `findDisplayLabels` port; IDs remain available.
+**And** a row opens a detail drawer showing `errorCode` and `metadata` as formatted JSON.
+**And** before release, the audit writers are checked: no metadata stores passwords, tokens, OTPs, or full bank account numbers; any such key is masked in the read DTO, covered by a test.
+**And** non-Admins get 403; empty, loading, and error states follow the FraudLog screen.
+
+### Story 14.4: Ledger Operations Panel
+
+As an Admin,
+I want to run the ledger operator fallbacks from the console,
+So that I can repair a stuck reward or check balances without curl.
+
+**Acceptance Criteria:**
+
+**Given** the existing Admin-only routes in `ledger.controller.ts` and `admin-reward-redrive.controller.ts`
+**When** the Admin opens the "Vận hành" tab of `/admin/transactions`
+**Then** "Kiểm tra toàn vẹn sổ cái" runs `GET /economy/integrity` and shows the report; each account it flags offers "Kiểm tra số dư" (`GET /economy/accounts/:id/balance`) and "Đối soát" (`POST /economy/accounts/:id/reconcile`).
+**And** "Chạy lại trả thưởng" accepts a response ID (Internal) or an attempt ID (External) and calls the matching re-drive route with an empty body; the result shows the posted or existing settlement.
+**And** "Giải phóng Điểm chờ đã đủ 48 giờ" calls `POST /economy/rewards/release-matured` with an optional limit (1–500) and shows released count and `hasMore`.
+**And** every mutating action needs a confirm dialog naming its effect, sends CSRF, and disables itself while running; 404 and 409 codes are shown in Vietnamese.
+**And** every mutating route writes an audit event; any route that does not is fixed in this story (backend touch limited to adding the audit event).
+**And** the `docs/` operations runbook links to the panel.
