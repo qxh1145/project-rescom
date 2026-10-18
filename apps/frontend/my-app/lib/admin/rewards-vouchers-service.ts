@@ -1,7 +1,8 @@
 // ASSUMED API CONTRACT: backend Stories 12.7–12.10 must match shared schemas.
 import {
   adminVoucherListSchema, adminVoucherDetailSchema, adminVoucherCreatedSchema,
-  adminVoucherBrandListSchema, adminCodeImportResultSchema,
+  adminVoucherBrandListSchema, adminCodeImportResultSchema, rewardsSettingsSchema,
+  type UpdateRewardsSettingsDto,
   type AdminVoucherListQueryDto, type AdminVoucherStatePatchDto,
   type adminVoucherInputSchema, type adminVoucherPriceChangeSchema,
   type adminStockAdjustmentSchema, type adminCodeImportRequestSchema,
@@ -61,4 +62,15 @@ export function importAdminVoucherCodes(id: string, request: CodeImport, signal?
 export function listAdminVoucherBrands(signal?: AbortSignal) {
   if (!REWARDS_ENABLED) throw new Error("Rewards admin disabled");
   return apiRequest("/admin/rewards/brands", { schema: adminVoucherBrandListSchema, signal });
+}
+
+// Backend Story 12.8 task 4.6; 404 when Rewards is disabled on the backend.
+export function getRewardsSettings(signal?: AbortSignal) {
+  if (!REWARDS_ENABLED) throw new Error("Rewards admin disabled");
+  return apiRequest("/admin/rewards/settings", { schema: rewardsSettingsSchema, signal });
+}
+
+export function updateRewardsSettings(input: UpdateRewardsSettingsDto, signal?: AbortSignal) {
+  if (!REWARDS_ENABLED) throw new Error("Rewards admin disabled");
+  return apiRequest("/admin/rewards/settings", { method: "PUT", body: input, schema: rewardsSettingsSchema, signal });
 }

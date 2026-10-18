@@ -1,3 +1,4 @@
+import { rewardsSettingsSchema } from '@rescom/schemas';
 import { FixedClock } from '../../../common/time/clock';
 import { PassThroughUnitOfWork } from '../../../common/database/unit-of-work.port';
 import { RewardsAdminCatalogService } from './rewards-admin-catalog.service';
@@ -173,6 +174,50 @@ describe('Rewards application services', () => {
       `rewards-admin:${voucherId}:patch`,
       `rewards-admin:${voucherId}:stock`,
     ]);
+  });
+  it('reads and updates the daily Points limit with one audit, Admin only (Story 14.2 contract)', async () => {
+    const f = fixture();
+    const service = new RewardsAdminCatalogService({
+      ...f,
+      now: () => clock.now(),
+    });
+    const read = await service.getSettings(adminId);
+    expect(rewardsSettingsSchema.parse(read)).toEqual({
+      dailyPointsLimit: 500,
+    });
+    const updated = await service.updateSettings(adminId, {
+      dailyPointsLimit: 800,
+    });
+    expect(rewardsSettingsSchema.parse(updated)).toEqual({
+      dailyPointsLimit: 800,
+    });
+    expect(await service.getSettings(adminId)).toEqual({
+      dailyPointsLimit: 800,
+    });
+    expect(f.audits).toHaveLength(1);
+    expect(f.audits[0]).toMatchObject({
+      eventType: 'REWARDS_SETTINGS_UPDATED',
+      payload: { dailyPointsLimit: 800, updatedById: adminId },
+    });
+    const suspended = new RewardsAdminCatalogService({
+      ...f,
+      adminCapability: {
+        ...f.adminCapability,
+        findCurrentCapability: async (id) => ({
+          userId: id,
+          role: 'ADMIN',
+          status: 'SUSPENDED',
+        }),
+      },
+      now: () => clock.now(),
+    });
+    await expect(
+      suspended.updateSettings(adminId, { dailyPointsLimit: 900 }),
+    ).rejects.toMatchObject({ code: 'REWARDS_ADMIN_CAPABILITY_REQUIRED' });
+    expect(await service.getSettings(adminId)).toEqual({
+      dailyPointsLimit: 800,
+    });
+    expect(f.audits).toHaveLength(1);
   });
 
   describe('review hardening', () => {

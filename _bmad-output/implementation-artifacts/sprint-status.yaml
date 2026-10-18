@@ -169,7 +169,7 @@ development_status:
   # Starts after 13.13 Part B; stories independent; 14.1 has the only migration
   epic-14: in-progress
   14-1-missing-code-report-resolution: done  # implemented 2026-10-18; code review 2026-10-18: 9 patches applied (uncommitted), e2e 38/38 live, FE 1003/1003
-  14-2-rewards-daily-points-limit-setting: backlog
+  14-2-rewards-daily-points-limit-setting: review  # implemented 2026-10-18 (FE only + test-only BE e2e); FE 1006/1006, BE 2744/2744
   14-3-admin-audit-log-viewer: backlog
   14-4-ledger-operations-panel: backlog
   14-5-admin-direct-point-credit: backlog  # added 2026-10-18 (FR-80): Available, no hard cap (>5,000 extra confirm), credit only
