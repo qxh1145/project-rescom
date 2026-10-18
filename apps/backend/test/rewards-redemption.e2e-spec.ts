@@ -7,6 +7,7 @@ import {
   redemptionQuoteSchema,
   redemptionResultSchema,
   redemptionErrorSchema,
+  rewardsSettingsSchema,
   CreateRedemptionQuoteDto,
   RedeemVoucherDto,
   IDEMPOTENCY_KEY_HEADER,
@@ -520,5 +521,39 @@ describe('Rewards redemption HTTP contracts (in memory)', () => {
     ).expect(403);
     const { requestId: _r3, ...byKeyBody } = byKey.body.error;
     expect(byKeyBody).toEqual(failedBody);
+  });
+  it('serves the Admin daily Points limit settings (Story 14.2 FE contract)', async () => {
+    const admin = await actor('ADMIN');
+    const member = await actor('RESPONDENT');
+    const put = (body: object, who?: Actor, csrf = true) => {
+      const call = request(app.getHttpServer())
+        .put('/admin/rewards/settings')
+        .set('Origin', ORIGIN);
+      if (who) call.set('Cookie', [who.cookie]);
+      if (who && csrf) call.set('x-csrf-token', who.csrf);
+      return call.send(body);
+    };
+    await get('/admin/rewards/settings').expect(401);
+    await get('/admin/rewards/settings', member).expect(403);
+    const before = rewardsSettingsSchema.parse(
+      (await get('/admin/rewards/settings', admin).expect(200)).body.data,
+    ).dailyPointsLimit;
+    await put({ dailyPointsLimit: 800 }, member).expect(403);
+    await put({ dailyPointsLimit: 800 }, admin, false).expect(403);
+    for (const dailyPointsLimit of [0, 1_000_001, 1.5, '800']) {
+      const invalid = await put({ dailyPointsLimit }, admin).expect(400);
+      expect(invalid.body.error.code).toBe('VALIDATION_ERROR');
+    }
+    try {
+      const updated = await put({ dailyPointsLimit: 800 }, admin).expect(200);
+      expect(rewardsSettingsSchema.parse(updated.body.data)).toEqual({
+        dailyPointsLimit: 800,
+      });
+      const read = await get('/api/admin/rewards/settings', admin).expect(200);
+      expect(read.headers['cache-control']).toBe('no-store');
+      expect(read.body.data).toEqual({ dailyPointsLimit: 800 });
+    } finally {
+      await redemptions.setDailyPointsLimit(before);
+    }
   });
 });

@@ -45,3 +45,26 @@ test("active voucher offers Flash Sale deep link, archived does not", () => {
   assert.deepEqual(voucherActionsOf({ id: "voucher-id", state: "ACTIVE", isVisible: true }).find(action => action.key === "flash"), { key: "flash", label: "Tạo Flash Sale", href: "/admin/flash-sales/new?voucherId=voucher-id" });
   assert.equal(voucherActionsOf({ state: "ARCHIVED" }).some(action => action.key === "flash"), false);
 });
+
+test("daily points limit input accepts integers 1..1,000,000 only", async () => {
+  const { parseDailyLimitInput } = await import("../lib/admin/rewards-vouchers-view.ts");
+  assert.deepEqual(parseDailyLimitInput("1"), { value: 1 });
+  assert.deepEqual(parseDailyLimitInput("1000000"), { value: 1000000 });
+  assert.deepEqual(parseDailyLimitInput(" 800 "), { value: 800 });
+  for (const raw of ["", "0", "1000001", "1.5", "1e3", "-1", "abc", "1.000"]) {
+    assert.deepEqual(parseDailyLimitInput(raw), { error: "Nhập số nguyên từ 1 đến 1.000.000." }, raw);
+  }
+});
+
+test("daily points limit errors map to Vietnamese", async () => {
+  const { rewardsSettingsErrorMessage } = await import("../lib/admin/rewards-vouchers-view.ts");
+  const { ApiError } = await import("../lib/api/api-error.ts");
+  const http = (status, code) => new ApiError({ kind: "http", status, code, message: "x" });
+  assert.match(rewardsSettingsErrorMessage(http(400, "VALIDATION_ERROR")), /Giá trị không hợp lệ/);
+  assert.match(rewardsSettingsErrorMessage(http(403, "REWARDS_ADMIN_CAPABILITY_REQUIRED")), /quyền Admin/);
+  assert.match(rewardsSettingsErrorMessage(http(403, "FORBIDDEN_RESOURCE")), /quyền Admin/);
+  assert.match(rewardsSettingsErrorMessage(http(403, "AUTH_INVALID_CSRF_TOKEN")), /Tải lại trang/);
+  assert.match(rewardsSettingsErrorMessage(http(404, null)), /Đổi quà đang tắt/);
+  assert.equal(rewardsSettingsErrorMessage(new ApiError({ kind: "network", message: "x" })), "Không lưu được giới hạn. Thử lại.");
+  assert.equal(rewardsSettingsErrorMessage(new Error("boom")), "Không lưu được giới hạn. Thử lại.");
+});

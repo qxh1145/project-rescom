@@ -1,5 +1,6 @@
-import { POINT_VND_RATE, type adminVoucherInputSchema, type adminVoucherSchema, type AdminVoucherListDto } from "@rescom/schemas";
+import { POINT_VND_RATE, updateRewardsSettingsSchema, type adminVoucherInputSchema, type adminVoucherSchema, type AdminVoucherListDto } from "@rescom/schemas";
 import type { z } from "zod";
+import { isApiError } from "../api/api-error.ts";
 import { formatDayMonth } from "../format/date-time.ts";
 import { REWARDS_ENABLED } from "../pilot-scope.ts";
 import { formatPoints, formatVnd } from "../rewards/voucher-display.ts";
@@ -101,4 +102,24 @@ export function preCheckItems(form: Form, csvResult: (ReturnType<typeof parseCod
     { tone: expiryValid ? "ok" : "warn", text: expiryValid ? "Hạn dùng mã đủ 7 ngày sau khi kết thúc đổi" : "Hạn dùng mã chưa đủ 7 ngày" },
     { tone: publishValid ? "ok" : "warn", text: publishValid ? "Thời gian phân phối hợp lệ" : "Thời gian phân phối chưa hợp lệ" },
   ] as { tone: "ok" | "warn"; text: string }[];
+}
+
+const DAILY_LIMIT_INPUT_ERROR = "Nhập số nguyên từ 1 đến 1.000.000.";
+
+/** Digits only (Number() would take "1e3", "1.5", "-1"); the range comes from the shared schema. */
+export function parseDailyLimitInput(raw: string): { value: number } | { error: string } {
+  const text = raw.trim();
+  if (!/^\d+$/.test(text)) return { error: DAILY_LIMIT_INPUT_ERROR };
+  const parsed = updateRewardsSettingsSchema.safeParse({ dailyPointsLimit: Number(text) });
+  return parsed.success ? { value: parsed.data.dailyPointsLimit } : { error: DAILY_LIMIT_INPUT_ERROR };
+}
+
+export function rewardsSettingsErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    if (error.code === "VALIDATION_ERROR") return "Giá trị không hợp lệ. Nhập số nguyên từ 1 đến 1.000.000.";
+    if (error.code === "REWARDS_ADMIN_CAPABILITY_REQUIRED" || error.code === "FORBIDDEN_RESOURCE") return "Tài khoản không còn quyền Admin để đổi cài đặt này.";
+    if (error.code === "AUTH_INVALID_CSRF_TOKEN") return "Phiên làm việc đã hết hạn. Tải lại trang rồi thử lại.";
+    if (error.status === 404) return "Tính năng Đổi quà đang tắt.";
+  }
+  return "Không lưu được giới hạn. Thử lại.";
 }

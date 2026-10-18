@@ -12,6 +12,7 @@ import { Toggle } from "@/components/ui/Toggle";
 import { patchAdminVoucher } from "@/lib/admin/rewards-vouchers-service";
 import { STATUS_FILTERS, voucherActionsOf, voucherRowView } from "@/lib/admin/rewards-vouchers-view";
 import { useAdminVouchers } from "../hooks/use-admin-vouchers";
+import { DailyPointsLimitCard } from "./DailyPointsLimitCard";
 
 type Voucher = AdminVoucherListDto["items"][number];
 type Filter = "ALL" | "ACTIVE" | "PAUSED" | "SOLD_OUT" | "EXPIRED" | "HIDDEN";
@@ -61,6 +62,7 @@ export function VouchersScreen() {
     <div className="space-y-6">
       {error && <Alert tone="danger">{error}</Alert>}
       {query.error && <div className="flex gap-3"><Alert tone="danger">Không tải được danh sách voucher.</Alert><Button onClick={query.reload}>Thử lại</Button></div>}
+      <DailyPointsLimitCard />
       <div className="grid grid-cols-3 gap-4">{[["Đang phân phối", summary?.active], ["Sắp hết (≤ 10%)", summary?.lowStock.length], ["Mã chưa phát", summary?.codesAvailable]].map(([label, value]) => <div key={label} className="rounded-card border border-line bg-surface p-5"><p className="text-ink-muted">{label}</p><strong className="text-title-sm">{value ?? "—"}</strong></div>)}</div>
       <div className="flex flex-wrap items-center gap-3" role="group" aria-label="Lọc trạng thái">{summary && STATUS_FILTERS(summary).map(({ key, label }) => <button type="button" key={key} onClick={() => setFilter(key as Filter)} aria-pressed={filter === key} className={`rounded-full border px-4 py-2 ${filter === key ? "border-primary bg-tone-green-bg text-primary" : "border-line bg-surface"}`}>{label}</button>)}<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm voucher" aria-label="Tìm voucher" className="ml-auto rounded-field border border-line p-2" /></div>
       <div className="overflow-x-auto rounded-card border border-line bg-surface"><table className="w-full min-w-[1000px] text-left text-body-sm"><thead className="bg-surface-subtle"><tr>{["Voucher · thương hiệu", "Giá trị", "Giá điểm", "Tồn kho", "Đã đổi", "Thời gian đổi", "Trạng thái", "Hiển thị", "Thao tác"].map((heading) => <th scope="col" className="p-4" key={heading}>{heading}</th>)}</tr></thead><tbody>

@@ -189,6 +189,9 @@ export const rewardsState = createCollection<UserSideState>("rewards-users", () 
   const { quotes, users, idempotency } = seed(); return { quotes, users, idempotency };
 });
 
+// Admin daily Points limit (backend `rewards_settings`, default 500). Not enforced by the mock redeem flow.
+export const rewardsSettings = createCollection<{ dailyPointsLimit: number }>("rewards-settings", () => ({ dailyPointsLimit: 500 }));
+
 const failure = (code: string, details: Record<string, unknown>): Failure => ({ ok: false, status: code === "ACCOUNT_NOT_ELIGIBLE" ? 403 : 409, code, details });
 const viewerOf = (viewer: { available: number; pending?: number }) => ({ available: viewer.available, pending: viewer.pending ?? 0 });
 const userRows = (users: Record<string, UserState>, userId: string): UserState => users[userId] ??= { tickets: [], history: [], issues: [] };

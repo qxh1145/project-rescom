@@ -1,7 +1,7 @@
 import { http, type RequestHandler } from "msw";
-import { adminCodeImportRequestSchema, adminCodeIssueListQuerySchema, adminResolveCodeIssueSchema, adminFlashSaleInputSchema, adminFlashSaleListQuerySchema, adminFlashEndRequestSchema, rewardsStatsQuerySchema, adminStockAdjustmentSchema, adminVoucherInputSchema, adminVoucherListQuerySchema, adminVoucherPriceChangeSchema, adminVoucherStatePatchSchema } from "@rescom/schemas";
+import { adminCodeImportRequestSchema, adminCodeIssueListQuerySchema, adminResolveCodeIssueSchema, adminFlashSaleInputSchema, adminFlashSaleListQuerySchema, adminFlashEndRequestSchema, rewardsStatsQuerySchema, updateRewardsSettingsSchema, adminStockAdjustmentSchema, adminVoucherInputSchema, adminVoucherListQuerySchema, adminVoucherPriceChangeSchema, adminVoucherStatePatchSchema } from "@rescom/schemas";
 import { apiUrl, isHybridMocking } from "@/lib/api/config";
-import { adminCodeIssuesOf, adminCodeIssueOf, resolveAdminCodeIssue, adminBrands, adminFlashSalesOf, adminFlashSaleDetailOf, createAdminFlashSale, updateAdminFlashSale, endAdminFlashSale, rewardsStatsOf, adminVoucherDetailOf, adminVouchersOf, adjustAdminVoucherStock, changeAdminVoucherPrice, createAdminVoucher, importAdminVoucherCodes, patchAdminVoucherState, updateAdminVoucher } from "../data/rewards";
+import { adminCodeIssuesOf, adminCodeIssueOf, resolveAdminCodeIssue, adminBrands, adminFlashSalesOf, adminFlashSaleDetailOf, createAdminFlashSale, updateAdminFlashSale, endAdminFlashSale, rewardsStatsOf, rewardsSettings, adminVoucherDetailOf, adminVouchersOf, adjustAdminVoucherStock, changeAdminVoucherPrice, createAdminVoucher, importAdminVoucherCodes, patchAdminVoucherState, updateAdminVoucher } from "../data/rewards";
 import { fail, missingCsrf, ok } from "../envelope";
 import { HYBRID_ADMIN } from "../hybrid";
 import { applyScenario, getActiveScenario } from "../scenarios";
@@ -135,5 +135,15 @@ export const rewardsAdminHandlers: RequestHandler[] = [
     const checked = await guarded(request); if (checked.error) return checked.error;
     const query = rewardsStatsQuerySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
     return query.success ? respond(rewardsStatsOf(query.data)) : fail(400, "VALIDATION_ERROR", "Invalid query.", { details: query.error.format() });
+  }),
+  // ASSUMED API CONTRACT: backend Story 12.8 task 4.6. 400 VALIDATION_ERROR; 401/403 auth/CSRF; 404 when Rewards is disabled.
+  http.get(apiUrl("/admin/rewards/settings"), async ({ request }) => {
+    const checked = await guarded(request); return checked.error ?? ok(rewardsSettings.get());
+  }),
+  // ASSUMED API CONTRACT: backend Story 12.8 task 4.6. 400 VALIDATION_ERROR; 401/403 auth/CSRF; 404 when Rewards is disabled.
+  http.put(apiUrl("/admin/rewards/settings"), async ({ request }) => {
+    const checked = await guarded(request, true); if (checked.error) return checked.error;
+    const parsed = await body(request, updateRewardsSettingsSchema); if (parsed.error) return parsed.error;
+    return ok(rewardsSettings.update(() => parsed.value as { dailyPointsLimit: number }));
   }),
 ];

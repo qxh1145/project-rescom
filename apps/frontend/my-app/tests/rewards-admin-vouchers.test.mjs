@@ -181,6 +181,60 @@ test('voucher handlers enforce session, admin role, CSRF and body schema', async
   }
 });
 
+test('rewards settings handlers serve the shared schema with session, admin role, CSRF and body checks', async () => {
+  const { getResponse } = await import('msw');
+  const { rewardsSettingsSchema } = await import('@rescom/schemas');
+  globalThis.window = { location: { search: '?msw=default' }, localStorage: null };
+  const { rewardsAdminHandlers } = await import('../mocks/handlers/rewards-admin.ts');
+  const { resetStore, loadStore, setCurrentUserId, setMockStorage } = await import('../mocks/legacy/store.ts');
+  const { mockRepository } = await import('../mocks/legacy/repository.ts');
+  const { rewardsSettings } = await import('../mocks/data/rewards.ts');
+  mockRepository.setLatency(0);
+  const original = loadStore().currentUserId;
+  const saved = new Map();
+  setMockStorage({ getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value), removeItem: key => saved.delete(key) });
+  const call = async (method, body, csrf = true) => {
+    const response = await getResponse(rewardsAdminHandlers, new Request('http://localhost/api/admin/rewards/settings', {
+      method, headers: { ...(csrf ? { 'X-CSRF-Token': 'test' } : {}), 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }), { baseUrl: 'http://localhost' });
+    assert.ok(response);
+    return { status: response.status, body: await response.json() };
+  };
+  const before = rewardsSettings.get();
+  try {
+    resetStore();
+    setCurrentUserId(null);
+    assert.equal((await call('GET')).status, 401);
+    setCurrentUserId('user-new-001');
+    const nonAdmin = await call('GET');
+    assert.equal(nonAdmin.status, 403);
+    assert.equal(nonAdmin.body.error.code, 'FORBIDDEN_RESOURCE');
+    setCurrentUserId('user-admin-004');
+    const read = await call('GET');
+    assert.equal(read.status, 200);
+    assert.equal(rewardsSettingsSchema.parse(read.body.data).dailyPointsLimit, before.dailyPointsLimit);
+    const noCsrf = await call('PUT', { dailyPointsLimit: 800 }, false);
+    assert.equal(noCsrf.status, 403);
+    assert.equal(noCsrf.body.error.code, 'AUTH_INVALID_CSRF_TOKEN');
+    for (const dailyPointsLimit of [0, 1_000_001, 1.5, '800']) {
+      const invalid = await call('PUT', { dailyPointsLimit });
+      assert.equal(invalid.status, 400, String(dailyPointsLimit));
+      assert.equal(invalid.body.error.code, 'VALIDATION_ERROR');
+      assert.ok(invalid.body.error.details);
+    }
+    const updated = await call('PUT', { dailyPointsLimit: 800 });
+    assert.equal(updated.status, 200);
+    assert.deepEqual(rewardsSettingsSchema.parse(updated.body.data), { dailyPointsLimit: 800 });
+    assert.equal((await call('GET')).body.data.dailyPointsLimit, 800);
+  } finally {
+    rewardsSettings.set(before);
+    setMockStorage(null);
+    setCurrentUserId(original);
+    delete globalThis.window;
+  }
+});
+
 test('voucher service exports guard pilot build; admin voucher components avoid direct mocks', async () => {
   const { readFileSync, readdirSync } = await import('node:fs');
   const service = readFileSync(new URL('../lib/admin/rewards-vouchers-service.ts', import.meta.url), 'utf8');
