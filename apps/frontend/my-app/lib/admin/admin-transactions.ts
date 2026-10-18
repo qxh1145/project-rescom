@@ -263,7 +263,7 @@ export function journalKindOf(
     entries?: readonly AdminJournalEntryInput[];
   },
 ): HistoryKind {
-  return historyKindOf(journal.idempotencyKey, journal.reversesJournalId, journal.entries as any);
+  return historyKindOf(journal.idempotencyKey, journal.reversesJournalId, journal.entries);
 }
 
 /** Largest entry on one side (a journal may split across accounts). */

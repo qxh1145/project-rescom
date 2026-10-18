@@ -2,6 +2,7 @@
 
 import { useRef, useState, type KeyboardEvent } from "react";
 import type { TopUpRefundReason, UserTopUpRefundDestinationView } from "@rescom/schemas";
+import { BankLogo } from "@/components/brand/BankLogo";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Radio } from "@/components/ui/Radio";
@@ -114,7 +115,7 @@ export function RefundForm({
             </span>
             <div className="flex items-center gap-2">
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white border border-line shadow-xs">
-                <Icon name="bank" size={16} className="text-ink-muted" />
+                <BankLogo bankId={destination?.bankId} bankName={destInfo.bank} size={16} className="text-ink-muted" />
               </span>
               <span className="text-body-sm font-bold text-ink">
                 {destInfo.bank} · {destInfo.accountNumber}

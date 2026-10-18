@@ -335,6 +335,8 @@ docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod up 
 - Kiểm tra: `GET /health/live` (process sống) và `GET /health/ready` (DB + ClamAV; trả 503 nếu một trong hai lỗi).
 - Tạo hạ tầng (Hostinger VPS, Postgres container + backup WAL lên Cloudflare R2, bucket R2, firewall chỉ nhận Cloudflare, Vercel, OAuth): Story 11.2 (tham khảo `_bmad-output/implementation-artifacts/11-2-cloud-infrastructure-checklist.md`). Môi trường staging được đề xuất sử dụng domain `staging-api.rescom.io.vn` / `staging-app.rescom.io.vn` với file env riêng biệt (`deploy/.env.staging`) chờ owner xác nhận. CI/CD, rollback: Story 11.3.
 
-## payOS production probe (Story 13.6)
+## payOS production setup & runbook (Story 13.6 & Story 13.13)
 
-Owner thực hiện theo [checklist setup payOS](../docs/payos-production-setup.md); giữ `PAYOS_ENABLED=false` đến Story 13.13.
+- **Setup & probe ban đầu:** Thực hiện theo [checklist setup payOS](../docs/payos-production-setup.md).
+- **Chuyển đổi & Vận hành production:** Thực hiện theo [Sổ tay vận hành payOS Production](../docs/payos-production-runbook.md) (hướng dẫn bật `PAYOS_ENABLED=true`, xử lý hàng đợi thủ công, SOPs sự cố, và kill-switch).
+

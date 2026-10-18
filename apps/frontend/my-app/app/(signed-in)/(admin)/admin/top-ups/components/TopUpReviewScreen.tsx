@@ -15,8 +15,16 @@ import { TopUpReviewPanel } from "./TopUpReviewPanel";
  * Figma 11b "Duyệt nạp điểm" (63:369): requests table (605px) + "Đối chiếu
  * yêu cầu" panel (470px). ASSUMED below lg: the panel stacks under the table.
  */
-export function TopUpReviewScreen({ onChanged, embedded = false }: { onChanged?: () => void; embedded?: boolean } = {}) {
-  const review = useTopUpReview();
+export function TopUpReviewScreen({
+  onChanged,
+  embedded = false,
+  readOnly = false,
+}: {
+  onChanged?: () => void;
+  embedded?: boolean;
+  readOnly?: boolean;
+} = {}) {
+  const review = useTopUpReview(readOnly ? "APPROVED" : "PENDING");
   // The dialog keeps the request it was opened for, even if the list reloads under it.
   const [rejecting, setRejecting] = useState<AdminTopUp | null>(null);
   const { selected, failure } = review;
@@ -69,11 +77,12 @@ export function TopUpReviewScreen({ onChanged, embedded = false }: { onChanged?:
                 review.clearFailure();
                 setRejecting(selected);
               }}
+              readOnly={readOnly}
             />
           ) : null}
         </div>
       </div>
-      {rejecting ? (
+      {!readOnly && rejecting ? (
         <RejectTopUpDialog
           item={rejecting}
           busy={review.busy === "reject"}

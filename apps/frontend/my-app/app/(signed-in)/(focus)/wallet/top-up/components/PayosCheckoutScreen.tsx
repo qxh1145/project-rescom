@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Alert } from "@/components/ui/Alert";
+import { PayosLogo } from "@/components/brand/PayosLogo";
 import { Button, buttonClassName } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import { ToggleChip } from "@/components/ui/ToggleChip";
@@ -219,9 +220,12 @@ export function PayosCheckoutScreen() {
         width={600}
         desktopHeader={
           <>
-            <h1 id="top-up-dialog-title" className="text-[22px] font-extrabold text-ink">
-              Nạp điểm qua PayOS
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 id="top-up-dialog-title" className="text-[22px] font-extrabold text-ink">
+                Nạp điểm qua PayOS
+              </h1>
+              <PayosLogo size={20} />
+            </div>
             <p className="mt-1 text-body-sm text-ink-muted">
               Quét mã VietQR chuyển khoản nhanh 24/7.
             </p>

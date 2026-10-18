@@ -1,6 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
-import { ManualCheckoutEnabledGuard } from './payos-checkout-enabled.guard';
+import { NotFoundException } from '@nestjs/common';
+import {
+  ManualCheckoutEnabledGuard,
+  PayosCheckoutEnabledGuard,
+} from './payos-checkout-enabled.guard';
 import { PayosAvailability } from '../application/payos-availability';
 import { TopUpController } from './top-up.controller';
 import { AdminTopUpController } from './admin-top-up.controller';
@@ -16,6 +20,7 @@ import { ROLES_KEY } from '../../auth/presentation/decorators/roles.decorator';
 describe('Story 6.6: top-up controllers', () => {
   let userController: TopUpController;
   let adminController: AdminTopUpController;
+  let availability: PayosAvailability;
   let service: jest.Mocked<
     Pick<
       TopUpService,
@@ -77,6 +82,7 @@ describe('Story 6.6: top-up controllers', () => {
 
     userController = module.get(TopUpController);
     adminController = module.get(AdminTopUpController);
+    availability = module.get(PayosAvailability);
   });
 
   describe('TopUpController (user)', () => {
@@ -206,5 +212,47 @@ describe('Story 6.6: top-up controllers', () => {
         ),
       ).toEqual([CsrfGuard, JsonOnlyGuard]);
     });
+
+    it('approves and rejects successfully while PayOS checkout is open (AD-25)', async () => {
+      availability.open();
+      const approvedResult = { replayed: false } as never;
+      service.approveTopUp.mockResolvedValue(approvedResult);
+
+      const approvedResponse = await adminController.approve(admin, topUpId);
+      expect(approvedResponse.data).toEqual(approvedResult);
+
+      const rejectedResult = { replayed: false } as never;
+      service.rejectTopUp.mockResolvedValue(rejectedResult);
+
+      const rejectedResponse = await adminController.reject(admin, topUpId, {
+        reason: 'Lý do từ chối hợp lệ',
+      });
+      expect(rejectedResponse.data).toEqual(rejectedResult);
+    });
+  });
+
+  describe('Story 13.13: Checkout Guards (ManualCheckoutEnabledGuard & PayosCheckoutEnabledGuard)', () => {
+    it('ManualCheckoutEnabledGuard throws 404 when PayOS is open, allows when closed', () => {
+      const openAvailability = new PayosAvailability();
+      openAvailability.open();
+      const guardWithOpen = new ManualCheckoutEnabledGuard(openAvailability);
+      expect(() => guardWithOpen.canActivate()).toThrow(NotFoundException);
+
+      const closedAvailability = new PayosAvailability();
+      const guardWithClosed = new ManualCheckoutEnabledGuard(closedAvailability);
+      expect(guardWithClosed.canActivate()).toBe(true);
+    });
+
+    it('PayosCheckoutEnabledGuard allows when PayOS is open, throws 404 when closed', () => {
+      const openAvailability = new PayosAvailability();
+      openAvailability.open();
+      const guardWithOpen = new PayosCheckoutEnabledGuard(openAvailability);
+      expect(guardWithOpen.canActivate()).toBe(true);
+
+      const closedAvailability = new PayosAvailability();
+      const guardWithClosed = new PayosCheckoutEnabledGuard(closedAvailability);
+      expect(() => guardWithClosed.canActivate()).toThrow(NotFoundException);
+    });
   });
 });
+

@@ -19,8 +19,8 @@ import { formatPoints } from "@/lib/wallet/top-up";
 export type ReviewAction = "approve" | "reject";
 
 /** `/admin/top-ups` state: status tab, selected request, checklist, approve / reject. */
-export function useTopUpReview() {
-  const [status, setStatusState] = useState<TopUpStatus>("PENDING");
+export function useTopUpReview(initialStatus: TopUpStatus = "PENDING") {
+  const [status, setStatusState] = useState<TopUpStatus>(initialStatus);
   const query = useApiQuery(`admin:top-ups:${status}`, (signal) => listAdminTopUps({ status }, signal));
   const { counts, refreshCounts } = useAdminCounts();
   // `?id=<topUpId>` (links from the overview) preselects that request when it is in the list.

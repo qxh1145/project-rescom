@@ -86,3 +86,9 @@ $DC up -d --no-deps backend && $DC logs --tail 50 backend
 ## Quyết định FR-77 (AC 8)
 
 Nếu dòng `CHECK transaction[...] counterAccountNumberPresent=false` (hoặc `counterAccountName`/`counterAccountBankId` vắng): Owner **phải quyết định trước khi bắt đầu Story 13.10** có đổi FR-77 không (PRD đã có nhánh "unverified destination"). Ghi quyết định vào `prd.md` FR-77 thành dòng amendment có ngày, và vào story 13.6. Nếu có đủ: ghi "present; no FR-77 change".
+
+## Tài liệu vận hành
+
+Khi hệ thống đã sẵn sàng bàn giao và hoàn tất toàn bộ các tính năng của Epic 13, Product Owner và đội ngũ DevOps thực hiện quy trình kích hoạt production theo:
+- **[Sổ tay vận hành payOS Production (Story 13.13)](./payos-production-runbook.md)**: Hướng dẫn chi tiết kiểm tra tiền điều kiện, các bước bật cờ `PAYOS_ENABLED=true`, xử lý hàng đợi nạp tiền thủ công, SOPs sự cố, quy trình hoàn tác (kill-switch) và mẫu biên bản nghiệm thu.
+

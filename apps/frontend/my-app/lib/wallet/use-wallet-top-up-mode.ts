@@ -42,3 +42,5 @@ export function useWalletTopUpMode(): {
 
   return { mode, reload };
 }
+
+export const usePayosAvailability = useWalletTopUpMode;

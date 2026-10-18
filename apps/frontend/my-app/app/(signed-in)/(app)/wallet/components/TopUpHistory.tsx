@@ -10,6 +10,7 @@ import {
   type HistoryTopUp,
 } from "@/lib/wallet/top-up-history";
 import { TopUpStatusChip } from "@/components/wallet/TopUpStatusChip";
+import { PayosLogo } from "@/components/brand/PayosLogo";
 
 interface TopUpHistoryProps {
   items: HistoryTopUp[];
@@ -83,8 +84,15 @@ export function TopUpHistory({
                       >
                         Mã: {item.code}
                       </Link>
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">
-                        {item.channel === "PAYOS" ? "PayOS" : "Thủ công (cũ)"}
+                      <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">
+                        {item.channel === "PAYOS" ? (
+                          <>
+                            <PayosLogo size={16} />
+                            PayOS
+                          </>
+                        ) : (
+                          "Thủ công (cũ)"
+                        )}
                       </span>
                     </div>
                     <span className="text-[11px] text-ink-muted">
