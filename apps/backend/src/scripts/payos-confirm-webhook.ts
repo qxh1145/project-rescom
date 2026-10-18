@@ -23,7 +23,9 @@ async function main(): Promise<void> {
   ]) {
     if (!process.env[key]?.trim()) throw new Error(`${key} is missing`);
   }
-  process.env.SCHEDULER_ENABLED = 'false';
+  if (process.env.NODE_ENV !== 'production' && !process.env.SCHEDULER_ENABLED) {
+    process.env.SCHEDULER_ENABLED = 'false';
+  }
   const { AppModule } = await import('../app.module');
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn', 'log'],

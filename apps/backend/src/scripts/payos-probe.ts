@@ -27,7 +27,9 @@ async function main(): Promise<void> {
     probeEmail: process.env.PROBE_USER_EMAIL,
   });
   if (reasons.length) throw new Error(reasons.join('; '));
-  process.env.SCHEDULER_ENABLED = 'false';
+  if (process.env.NODE_ENV !== 'production' && !process.env.SCHEDULER_ENABLED) {
+    process.env.SCHEDULER_ENABLED = 'false';
+  }
   const { AppModule } = await import('../app.module');
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn', 'log'],
