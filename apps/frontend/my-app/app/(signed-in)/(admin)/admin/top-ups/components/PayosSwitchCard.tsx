@@ -122,22 +122,26 @@ export function PayosSwitchCard({
         : null;
   if (failure) {
     return (
-      <section
-        aria-labelledby="payos-switch-card-title"
-        className="rounded-[22px] border border-danger/30 bg-surface p-6 shadow-xs"
-      >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-danger">
-            <Icon name="alert-circle" size={20} />
-            <span className="font-semibold">{failure.message}</span>
+      <>
+        <section
+          aria-labelledby="payos-switch-card-title"
+          className="rounded-[22px] border border-danger/30 bg-surface p-6 shadow-xs"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 text-danger">
+              <Icon name="alert-circle" size={20} />
+              <span className="font-semibold">{failure.message}</span>
+            </div>
+            {failure.retry && (
+              <Button variant="secondary" size="base" radius="field" onClick={failure.retry}>
+                {PAYOS_SWITCH_COPY.retry}
+              </Button>
+            )}
           </div>
-          {failure.retry && (
-            <Button variant="secondary" size="base" radius="field" onClick={failure.retry}>
-              {PAYOS_SWITCH_COPY.retry}
-            </Button>
-          )}
-        </div>
-      </section>
+        </section>
+        {/* Keep action toasts visible when the post-action refetch fails. */}
+        <CodeIssueToasts items={toasts} dismiss={dismissToast} />
+      </>
     );
   }
 

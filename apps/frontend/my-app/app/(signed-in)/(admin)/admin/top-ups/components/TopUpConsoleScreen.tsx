@@ -82,6 +82,7 @@ export function TopUpConsoleScreen() {
               <ManualTopUpsPanel
                 key={String(manualTabReadOnly(payosMode))}
                 readOnly={manualTabReadOnly(payosMode)}
+                modeUnknown={payosMode === "error"}
                 onChanged={refresh}
               />
             )}
