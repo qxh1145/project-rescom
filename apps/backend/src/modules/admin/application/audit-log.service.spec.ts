@@ -5,10 +5,16 @@ import { AuditLogNotFoundException } from './exceptions/audit-log.exceptions';
 describe('AuditLogService', () => {
   let service: AuditLogService;
   let repository: InMemoryAuditLogRepository;
+  let mockProfiles: {
+    findDisplayLabels: jest.Mock;
+  };
 
   beforeEach(() => {
     repository = new InMemoryAuditLogRepository();
-    service = new AuditLogService(repository);
+    mockProfiles = {
+      findDisplayLabels: jest.fn().mockResolvedValue(new Map()),
+    };
+    service = new AuditLogService(repository, mockProfiles);
   });
 
   describe('listAuditLogs', () => {
@@ -129,6 +135,59 @@ describe('AuditLogService', () => {
       await expect(
         service.getAuditLogById('00000000-0000-0000-0000-000000000000'),
       ).rejects.toThrow(AuditLogNotFoundException);
+    });
+  });
+
+  describe('displayLabels', () => {
+    it('should return empty map without calling findDisplayLabels when logs have no userIds', async () => {
+      const logs = [
+        await repository.append({
+          action: 'LOGIN_FAILURE',
+          userId: null,
+          targetUserId: null,
+          outcome: 'FAILURE',
+        }),
+      ];
+
+      const labels = await service.displayLabels(logs);
+      expect(labels.size).toBe(0);
+      expect(mockProfiles.findDisplayLabels).not.toHaveBeenCalled();
+    });
+
+    it('should collect distinct non-null userIds and call findDisplayLabels once', async () => {
+      const userA = '11111111-1111-1111-1111-111111111111';
+      const userB = '22222222-2222-2222-2222-222222222222';
+
+      mockProfiles.findDisplayLabels.mockResolvedValueOnce(
+        new Map([
+          [userA, 'Alice'],
+          [userB, 'Bob'],
+        ]),
+      );
+
+      const logs = [
+        await repository.append({
+          action: 'USER_ROLE_CHANGED',
+          userId: userA,
+          targetUserId: userB,
+          outcome: 'SUCCESS',
+        }),
+        await repository.append({
+          action: 'USER_STATUS_CHANGED',
+          userId: userA,
+          targetUserId: null,
+          outcome: 'SUCCESS',
+        }),
+      ];
+
+      const labels = await service.displayLabels(logs);
+      expect(labels.get(userA)).toBe('Alice');
+      expect(labels.get(userB)).toBe('Bob');
+      expect(mockProfiles.findDisplayLabels).toHaveBeenCalledTimes(1);
+      expect(mockProfiles.findDisplayLabels).toHaveBeenCalledWith([
+        userA,
+        userB,
+      ]);
     });
   });
 });

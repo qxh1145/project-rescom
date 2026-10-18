@@ -22,10 +22,13 @@ import {
 } from '../src/modules/auth/presentation/cookie-options.helper';
 import { USER_ADMIN_TRANSACTION_PORT } from '../src/modules/users/application/ports/user-admin-transaction.port';
 import { InMemoryUserAdminTransactionAdapter } from '../src/modules/users/infrastructure/in-memory-user-admin-transaction.adapter';
+import { USER_PROFILE_REPOSITORY_PORT } from '../src/modules/users/application/ports/user-profile.repository.port';
+import { InMemoryUserProfileRepository } from '../src/modules/users/infrastructure/in-memory-user-profile.repository';
 
 describe('Admin Audit Logs E2E Tests (Story 1.5)', () => {
   let app: INestApplication;
   let userRepo: InMemoryUserRepository;
+  let userProfileRepo: InMemoryUserProfileRepository;
   let sessionRepo: InMemorySessionRepository;
   let auditRepo: InMemoryAuditLogRepository;
   let sessionService: SessionService;
@@ -45,6 +48,7 @@ describe('Admin Audit Logs E2E Tests (Story 1.5)', () => {
       'postgresql://postgres:postgres@localhost:5433/rescom_test';
 
     userRepo = new InMemoryUserRepository();
+    userProfileRepo = new InMemoryUserProfileRepository();
     auditRepo = new InMemoryAuditLogRepository();
     const identityAudit = new InMemoryIdentityAuditRepository();
     const origIdentityAppend = identityAudit.append.bind(identityAudit);
@@ -83,6 +87,8 @@ describe('Admin Audit Logs E2E Tests (Story 1.5)', () => {
       .useValue(mockPrisma)
       .overrideProvider(USER_REPOSITORY_PORT)
       .useValue(userRepo)
+      .overrideProvider(USER_PROFILE_REPOSITORY_PORT)
+      .useValue(userProfileRepo)
       .overrideProvider(SESSION_REPOSITORY_PORT)
       .useValue(sessionRepo)
       .overrideProvider(IDENTITY_AUDIT_PORT)
@@ -114,11 +120,17 @@ describe('Admin Audit Logs E2E Tests (Story 1.5)', () => {
       passwordHash: 'hashed_pw',
       role: 'ADMIN',
     });
+    await userProfileRepo.upsertPartial(adminUser.id, {
+      displayName: 'Admin Boss',
+    });
 
     respondentUser = await userRepo.create({
       email: 'respondent-audit@example.com',
       passwordHash: 'hashed_pw',
       role: 'RESPONDENT',
+    });
+    await userProfileRepo.upsertPartial(respondentUser.id, {
+      displayName: 'Test Respondent',
     });
 
     // Create sessions
@@ -219,6 +231,19 @@ describe('Admin Audit Logs E2E Tests (Story 1.5)', () => {
       expect(res.body.data.pagination).toBeDefined();
       expect(res.body.data.pagination.page).toBe(1);
       expect(res.body.data.pagination.limit).toBe(10);
+
+      const userRoleLog = res.body.data.items.find(
+        (i: any) => i.action === 'USER_ROLE_CHANGED',
+      );
+      expect(userRoleLog).toBeDefined();
+      expect(userRoleLog.actor).toEqual({
+        id: adminUser.id,
+        displayName: 'Admin Boss',
+      });
+      expect(userRoleLog.targetUser).toEqual({
+        id: respondentUser.id,
+        displayName: 'Test Respondent',
+      });
     });
 
     it('should filter audit logs by action', async () => {
@@ -327,11 +352,12 @@ describe('Admin Audit Logs E2E Tests (Story 1.5)', () => {
   });
 
   describe('Single Record Retrieval', () => {
-    it('should retrieve a single audit log by ID', async () => {
+    it('should retrieve a single audit log by ID with actor and masked metadata', async () => {
       const created = await auditRepo.append({
         action: 'TEST_SINGLE_FETCH',
         userId: adminUser.id,
         outcome: 'SUCCESS',
+        metadata: { password: 'secret_to_mask', accountNumber: '12345678' },
       });
 
       const res = await request(app.getHttpServer())
@@ -341,6 +367,14 @@ describe('Admin Audit Logs E2E Tests (Story 1.5)', () => {
       expect(res.status).toBe(200);
       expect(res.body.data.auditLog.id).toBe(created.id);
       expect(res.body.data.auditLog.action).toBe('TEST_SINGLE_FETCH');
+      expect(res.body.data.auditLog.actor).toEqual({
+        id: adminUser.id,
+        displayName: 'Admin Boss',
+      });
+      expect(res.body.data.auditLog.metadata).toEqual({
+        password: '[ĐÃ ẨN]',
+        accountNumber: '••••5678',
+      });
     });
 
     it('should return 404 AUDIT_LOG_NOT_FOUND when ID does not exist', async () => {
