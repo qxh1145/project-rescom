@@ -22,8 +22,8 @@ Bảng kiểm này dành riêng cho PO và DevOps khi thực thi trên Productio
   - [ ] Người dùng nhận được thông báo in-app/email tương ứng (`TOPUP_SUCCESS` / `TOPUP_REJECTED`).
   - [ ] Chạy lệnh kiểm tra hàng đợi thủ công (script không có sẵn trong image nên phải copy vào container trước):
     ```bash
-    docker cp deploy/check-manual-topups.js rescom-backend-1:/app/apps/backend/
-    docker exec -w /app/apps/backend rescom-backend-1 node check-manual-topups.js
+    $DC cp deploy/check-manual-topups.js backend:/app/apps/backend/
+    $DC exec -w /app/apps/backend backend node check-manual-topups.js
     ```
     *Yêu cầu:* In ra `Manual PENDING top-ups: 0` và kết thúc với mã `exit 0` (exit 1 = còn yêu cầu, exit 2 = lỗi).
 - [ ] **13. Kiểm tra biến môi trường & Bảo mật secrets (AC 13):**
@@ -71,7 +71,7 @@ Bảng kiểm này dành riêng cho PO và DevOps khi thực thi trên Productio
 ## 3. Kiểm tra điều kiện tiên quyết (Pre-flight Checks)
 
 ### 3.1. Hàng đợi thủ công bằng 0 (Drain Pending Queue)
-Không được bật payOS khi còn giao dịch thủ công `PENDING`. Server cũng sẽ không khởi động với PayOS bật khi còn yêu cầu đang chờ.
+Không được bật payOS khi còn giao dịch thủ công `PENDING`. Nếu vẫn bật `PAYOS_ENABLED=true` khi còn yêu cầu đang chờ, backend vẫn chạy nhưng giữ PayOS **tắt** và ghi log `PAYOS_ENABLED=true but ... PayOS stays off until a restart with none` (xem Bước 4).
 
 - Trên `/admin/top-ups`, thẻ **B4 (PayosSwitchCard)** phải hiển thị **"Sẵn sàng bật PayOS"** (variant `ready`) với dấu tích xanh **"0 yêu cầu thủ công đang chờ"**.
 - Và/hoặc chạy script kiểm tra (xem mục 1, bước 12), hoặc truy vấn trực tiếp:
@@ -163,7 +163,14 @@ PAYOS_ENABLED=true
 ### Bước 4: Khởi động lại backend
 ```bash
 $DC up -d --no-deps backend
-$DC logs backend | grep -E 'PayOS checkout enabled|PAYOS_ENABLED=true but'
+```
+Kiểm tra backend đã sẵn sàng (đợi vài giây, chạy lại nếu chưa 200):
+```bash
+$DC exec backend node -e "fetch('http://127.0.0.1:4000/health/ready').then(r=>{console.log('Status:', r.status);process.exit(r.ok?0:1)})"
+```
+*Kết quả:* `Status: 200`. Sau đó chỉ đọc log của lần khởi động này (không dùng log cũ của các lần bật/tắt trước):
+```bash
+$DC logs --since 5m backend | grep -E 'PayOS checkout enabled|PAYOS_ENABLED=true but'
 ```
 *Kết quả:* thấy `PayOS checkout enabled`. Nếu thấy `PAYOS_ENABLED=true but ...` nghĩa là backend từ chối bật (thường do còn yêu cầu thủ công `PENDING` hoặc thiếu biến); đọc nội dung dòng log và xử lý.
 
@@ -207,7 +214,7 @@ Dùng khi có sự cố nghiêm trọng (payOS gián đoạn diện rộng, sai 
 
 ### 6.3. Kiểm tra sau khi tắt
 - `/wallet/top-up`: người dùng thấy giao diện nạp thủ công.
-- `/admin/top-ups`: thẻ B4 hiển thị trở lại, chip header `PayOS: Tắt`. Không có yêu cầu tồn đọng thì thẻ ở trạng thái "Sẵn sàng bật PayOS"; có yêu cầu phát sinh thì thẻ hiện cảnh báo để admin xử lý.
+- `/admin/top-ups`: thẻ B4 hiển thị trở lại với chip `PayOS: Tắt` bên trong thẻ; chip header `PayOS: Bật` biến mất. Không có yêu cầu tồn đọng thì thẻ ở trạng thái "Sẵn sàng bật PayOS"; có yêu cầu phát sinh thì thẻ hiện cảnh báo để admin xử lý.
 
 ---
 

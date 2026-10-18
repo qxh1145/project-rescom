@@ -165,6 +165,16 @@ Code review 2026-10-18 (diff `9477c89..cdd31d3`, Part A; layers: Blind Hunter, E
 - [x] [Review][Patch] Ready variant says "0 yêu cầu đã xử lý…" when tab counts are null/failed (`counts?.manual ?? 0`). Pass `null` and omit the subtitle when unknown. [TopUpConsoleScreen.tsx:62, PayosSwitchCard.tsx:412]
 - [x] [Review][Patch] Small UI fixes: standalone toasts render behind the open reject dialog (top-layer; use `!approving && !rejecting`); `userEmail` is nullable → "Cộng X Điểm cho Name ()" (omit the parens when null); `BankLogo` `<img>` has no `onError` fallback to the icon; delete the unused `usePayosAvailability` alias. [PayosSwitchCard.tsx:466, ManualApproveDialog.tsx, components/brand/BankLogo.tsx, lib/wallet/use-wallet-top-up-mode.ts:46]
 
+Re-review 2026-10-18 of the patch commit `73020f8` (layers: Blind Hunter, Edge Case Hunter, Acceptance Auditor). The Auditor verified that all 11 patches above are fixed and found no AC 6–8 or AC 11–17 violations. Result: 0 decision, 7 patch, 0 defer, 8 dismissed.
+
+- [x] [Review][Patch] Runbook Bước 4 (enable gate) can pass on a stale log line. `$DC logs backend | grep` has no `--since`, so an old `PayOS checkout enabled` line from an earlier enable/rollback cycle (section 6) matches. It also runs right after `up -d`, before the guard has logged. The `/health/ready` check from the previous version was dropped. Fix: re-add the `/health/ready` probe, then run `$DC logs --since 5m backend | grep …`. [docs/payos-production-runbook.md:165-168]
+- [x] [Review][Patch] Runbook 3.1 says the server "sẽ không khởi động" while manual PENDING rows exist. That is wrong: `payos-enable-guard.ts:46` keeps the server running and leaves PayOS off ("PayOS stays off until a restart with none"). Align the wording with Bước 4. [docs/payos-production-runbook.md:74]
+- [x] [Review][Patch] Runbook 6.3 places the off chip in the header ("chip header `PayOS: Tắt`"). The header chip exists only when PayOS is on. The "PayOS: Tắt" chip lives inside the B4 card (AC 1). [docs/payos-production-runbook.md:210]
+- [x] [Review][Patch] B4 list-failure branch drops toasts. After a successful approve or reject, `refreshList()` runs. If that refetch fails, the early-return error card replaces the card, so the success toast (and any error toast) unmounts. Fix: render `<CodeIssueToasts>` in the failure branch too. [PayosSwitchCard.tsx:113-145]
+- [x] [Review][Patch] The fail-closed manual tab claims PayOS is on. With `payosMode === "error"`, `ManualTopUpsPanel` shows "Chỉ đọc. Nạp thủ công … đã ngừng khi bật PayOS", which asserts a mode the app does not know. This is the same problem the header fix removed. Fix: use a neutral note in error mode, e.g. "Chỉ đọc. Chưa xác định được trạng thái PayOS — thử lại để duyệt." [ManualTopUpsPanel.tsx:16, TopUpConsoleScreen.tsx:83-86]
+- [x] [Review][Patch] Runbook uses a hardcoded container `rescom-backend-1` instead of the `$DC` convention. Use `$DC cp deploy/check-manual-topups.js backend:/app/apps/backend/` and `$DC exec -w /app/apps/backend backend node check-manual-topups.js`. [docs/payos-production-runbook.md:25-26]
+- [x] [Review][Patch] The sprint-status comment still says "(uncommitted)". The patches are committed in `73020f8`. [_bmad-output/implementation-artifacts/sprint-status.yaml:166]
+
 ## Dev Notes
 
 ### Scope boundary (read first)

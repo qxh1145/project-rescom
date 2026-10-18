@@ -163,7 +163,7 @@ development_status:
   13-10-refund-request-refund-hold-withdrawal: done  # code review 2026-10-16: 7 patches applied; re-review 2026-10-16: 7 patches applied, 1 pre-existing defer; created 2026-10-16; branch feat/13-10 from 4c2e792; backend + labels only; D1+D6 Owner-confirmed, full STK Admin-only; implemented & verified 2026-10-16
   13-11-refund-screens: done  # code review 2026-10-17: 16 patches applied (D1 schema .optional(), D2 TransferScreen reverted); created 2026-10-16; branch feat/13-11 from edbac15; Figma A4–A8 re-read (fix pass landed, unverified frames 196:3461/3588); FE + optional DTO fields + Task 1b BE read change (full account number to owner, refund.destination); Owner confirmed D1, D2/D7, D6
   13-12-admin-refund-resolution: done  # 2026-10-17 review complete: chunk 1 (BE 17 patches) + chunk 2 (FE 8 patches) + chunk 3 (5 patches applied & verified), 990 FE tests pass, typecheck clean, schemas 695 pass
-  13-13-manual-top-up-retirement-production-enable: review  # 2026-10-18 Part A code review: 11 patches applied on feat/13-13-review-patches (uncommitted), 1002 FE tests pass, tsc+eslint clean; awaiting Part B Owner prod enable
+  13-13-manual-top-up-retirement-production-enable: review  # 2026-10-18 Part A code review: 11 patches committed on feat/13-13-review-patches (73020f8); re-review 2026-10-18: 7 patches applied, 1002 FE tests pass, tsc+eslint clean; awaiting Part B Owner prod enable
   epic-13-retrospective: optional
 
 # ==============================================================================
