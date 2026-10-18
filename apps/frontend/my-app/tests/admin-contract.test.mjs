@@ -90,6 +90,7 @@ const { adminOverviewHandlers } = await import("../mocks/handlers/admin-overview
 const { adminFraudLogHandlers } = await import("../mocks/handlers/admin-fraud-log.ts");
 const { adminAuditLogsHandlers } = await import("../mocks/handlers/admin-audit-logs.ts");
 const { adminTransactionHandlers } = await import("../mocks/handlers/admin-transactions.ts");
+const { LEDGER_OPS_DEMO } = await import("../mocks/data/admin-transactions.ts");
 const { journalKindOf, matchesTransactionFilter, TRANSACTION_FILTERS } = await import("../lib/admin/admin-transactions.ts");
 const schemas = await import("@rescom/schemas");
 
@@ -112,6 +113,14 @@ async function get(route) {
   return { status: response.status, body: await response.json() };
 }
 
+async function post(route, body) {
+  const init = { method: "POST", headers: { "Content-Type": "application/json" } };
+  if (body !== undefined) init.body = JSON.stringify(body);
+  const response = await getResponse(handlers, new Request(`${ORIGIN}/api${route}`, init), { baseUrl: ORIGIN });
+  assert.ok(response, `a handler answers POST ${route}`);
+  return { status: response.status, body: await response.json() };
+}
+
 /** 2xx `data` must parse with the shared schema (strict: no extra field). */
 function parsed(schema, result) {
   assert.equal(result.status, 200, JSON.stringify(result.body.error));
@@ -127,6 +136,8 @@ const ROUTES = [
   "/admin/audit-logs",
   "/admin/ledger/journals",
   "/admin/ledger/summary",
+  "/economy/integrity",
+  `/economy/accounts/${randomUUID()}/balance`,
 ];
 
 test("non-admins get 403 FORBIDDEN_RESOURCE (the backend RolesGuard code), anonymous 401", async () => {
@@ -309,3 +320,76 @@ test("Audit log: shared query and page, filters, detail, 404", async () => {
   assert.equal(badQuery.body.error.code, "VALIDATION_ERROR");
 });
 
+
+test("Ledger ops: integrity, balance, reconcile, re-drive, release", async () => {
+  signIn();
+  const drifted = LEDGER_OPS_DEMO.driftedAccountId;
+
+  const report = parsed(schemas.ledgerIntegrityReportSchema, await get("/economy/integrity"));
+  assert.equal(report.isZeroSum, true);
+  assert.equal(report.driftedAccountsTruncated, false);
+  assert.deepEqual(report.driftedAccounts.map((account) => account.accountId), [drifted]);
+  assert.ok(report.driftedAccounts.length <= schemas.LEDGER_DRIFT_REPORT_LIMIT);
+
+  const before = parsed(schemas.accountBalanceVerificationSchema, await get(`/economy/accounts/${drifted}/balance`));
+  assert.equal(before.isConsistent, false);
+  assert.notEqual(before.projectedBalance, before.calculatedBalance);
+  const unknown = await get(`/economy/accounts/${randomUUID()}/balance`);
+  assert.equal(unknown.status, 404);
+  assert.equal(unknown.body.error.code, "ACCOUNT_NOT_FOUND");
+  assert.equal((await get("/economy/accounts/not-a-uuid/balance")).status, 400);
+
+  const unknownReconcile = await post(`/economy/accounts/${randomUUID()}/reconcile`);
+  assert.equal(unknownReconcile.status, 404);
+  assert.equal(unknownReconcile.body.error.code, "ACCOUNT_NOT_FOUND");
+  const fixed = parsed(schemas.accountReconciliationResultSchema, await post(`/economy/accounts/${drifted}/reconcile`));
+  assert.equal(fixed.priorBalance, before.projectedBalance);
+  assert.equal(fixed.correctedBalance, before.calculatedBalance);
+  assert.deepEqual(parsed(schemas.ledgerIntegrityReportSchema, await get("/economy/integrity")).driftedAccounts, []);
+  assert.equal(parsed(schemas.accountBalanceVerificationSchema, await get(`/economy/accounts/${drifted}/balance`)).isConsistent, true);
+
+  const settled = parsed(schemas.rewardSettlementResultSchema, await post(`/economy/rewards/internal/${LEDGER_OPS_DEMO.settledResponseId}`, {}));
+  assert.equal(settled.status, "SETTLED");
+  const pending = parsed(schemas.rewardSettlementResultSchema, await post(`/economy/rewards/external/${LEDGER_OPS_DEMO.pendingAttemptId}`, {}));
+  assert.equal(pending.status, "PENDING");
+  const unavailable = await post(`/economy/rewards/external/${LEDGER_OPS_DEMO.unavailableAttemptId}`, {});
+  assert.equal(unavailable.status, 200);
+  assert.equal(unavailable.body.data, null);
+  const noResponse = await post(`/economy/rewards/internal/${randomUUID()}`, {});
+  assert.equal(noResponse.status, 404);
+  assert.equal(noResponse.body.error.code, "RESPONSE_NOT_FOUND");
+  const noAttempt = await post(`/economy/rewards/external/${randomUUID()}`, {});
+  assert.equal(noAttempt.status, 404);
+  assert.equal(noAttempt.body.error.code, "SURVEY_NOT_AVAILABLE");
+  const extraBody = await post(`/economy/rewards/internal/${LEDGER_OPS_DEMO.settledResponseId}`, { amount: 5 });
+  assert.equal(extraBody.status, 400);
+  assert.equal(extraBody.body.error.code, "VALIDATION_ERROR");
+
+  const first = parsed(schemas.maturedReleaseSummarySchema, await post("/economy/rewards/release-matured", { limit: 10 }));
+  assert.equal(first.processed, 10);
+  assert.equal(first.hasMore, true);
+  assert.ok(first.nextCursor);
+  const rest = parsed(
+    schemas.maturedReleaseSummarySchema,
+    await post("/economy/rewards/release-matured", { limit: 10, after: first.nextCursor }),
+  );
+  assert.equal(rest.hasMore, false);
+  assert.equal(rest.nextCursor, null);
+  for (const bad of [{ limit: schemas.MATURED_PENDING_RELEASE_MAX_LIMIT + 1 }, { limit: 0 }, { after: "garbage" }, { extra: 1 }]) {
+    const result = await post("/economy/rewards/release-matured", bad);
+    assert.equal(result.status, 400, JSON.stringify(bad));
+    assert.equal(result.body.error.code, "VALIDATION_ERROR");
+  }
+  parsed(schemas.maturedReleaseSummarySchema, await post("/economy/rewards/release-matured", {}));
+
+  const mutatingRoutes = [
+    `/economy/accounts/${drifted}/reconcile`,
+    `/economy/rewards/internal/${LEDGER_OPS_DEMO.settledResponseId}`,
+    `/economy/rewards/external/${LEDGER_OPS_DEMO.pendingAttemptId}`,
+    "/economy/rewards/release-matured",
+  ];
+  signIn("USER");
+  for (const route of mutatingRoutes) assert.equal((await post(route, {})).status, 403, route);
+  globalThis.__adminContractUser = null;
+  for (const route of mutatingRoutes) assert.equal((await post(route, {})).status, 401, route);
+});

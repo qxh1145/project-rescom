@@ -26,6 +26,9 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   OUTBOX_EVENT_REDRIVEN: "Chạy lại sự kiện Outbox",
   SURVEY_PINNED: "Ghim khảo sát",
   SURVEY_UNPINNED: "Bỏ ghim khảo sát",
+  LEDGER_ACCOUNT_RECONCILED: "Đối soát tài khoản sổ cái",
+  REWARD_REDRIVEN: "Chạy lại trả thưởng",
+  PENDING_REWARDS_RELEASED: "Giải phóng Điểm chờ 48 giờ",
 };
 
 export const AUDIT_ACTION_OPTIONS: Array<{ value: string; label: string }> = [

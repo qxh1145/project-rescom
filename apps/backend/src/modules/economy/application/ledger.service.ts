@@ -2,8 +2,12 @@ import { randomUUID } from 'crypto';
 import {
   DisputeHoldOutcome,
   EXTERNAL_COMPLETION_REVIEW_HOURS,
+  LEDGER_DRIFT_REPORT_LIMIT,
   LedgerAccountClass,
   LedgerAccountDto,
+  LedgerIntegrityReport,
+  AccountBalanceVerification,
+  AccountReconciliationResult,
   PostJournalInput,
   ReverseJournalInput,
   RewardPolicyMode,
@@ -227,23 +231,13 @@ export interface CreditApprovedTopUpParams {
   transferReference: string;
 }
 
-export interface AccountBalanceVerification {
-  accountId: string;
-  projectedBalance: number;
-  calculatedBalance: number;
-  isConsistent: boolean;
-}
-
-export interface AccountReconciliationResult {
-  accountId: string;
-  priorBalance: number;
-  correctedBalance: number;
-}
-
-export interface LedgerIntegrityReport {
-  totalSystemBalance: number;
-  isZeroSum: boolean;
-}
+// Story 14.4: the shared schema types are the report contract; re-exported
+// so existing importers keep compiling.
+export type {
+  AccountBalanceVerification,
+  AccountReconciliationResult,
+  LedgerIntegrityReport,
+};
 
 /** Epic 6 review P4: what the ledger says about one logical form's Escrow. */
 export interface FormEscrowPositionQuery {
@@ -2060,9 +2054,15 @@ export class LedgerService {
    */
   async verifyLedgerIntegrity(): Promise<LedgerIntegrityReport> {
     const total = await this.ledgerRepo.sumAllEntries();
+    // One extra row tells whether the list was cut off.
+    const drifted = await this.ledgerRepo.findDriftedAccounts(
+      LEDGER_DRIFT_REPORT_LIMIT + 1,
+    );
     return {
       totalSystemBalance: total,
       isZeroSum: total === 0,
+      driftedAccounts: drifted.slice(0, LEDGER_DRIFT_REPORT_LIMIT),
+      driftedAccountsTruncated: drifted.length > LEDGER_DRIFT_REPORT_LIMIT,
     };
   }
 

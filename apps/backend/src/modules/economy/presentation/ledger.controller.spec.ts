@@ -5,6 +5,7 @@ import { AuthenticatedUser } from '../../auth/presentation/types/authenticated-r
 import { RewardSettlementCoordinator } from '../application/reward-settlement.coordinator';
 import { NotificationsService } from '../../notifications/application/notifications.service';
 import { InMemoryNotificationRepository } from '../../notifications/infrastructure/in-memory-notification.repository';
+import { InMemoryIdentityAuditRepository } from '../../auth/infrastructure/in-memory-identity-audit.repository';
 import { ROLES_KEY } from '../../auth/presentation/decorators/roles.decorator';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -13,6 +14,7 @@ describe('LedgerController', () => {
   let controller: LedgerController;
   let service: LedgerService;
   let repo: InMemoryLedgerRepository;
+  let audit: InMemoryIdentityAuditRepository;
 
   const mockUser: AuthenticatedUser = {
     id: '11111111-1111-4111-8111-111111111111',
@@ -23,8 +25,9 @@ describe('LedgerController', () => {
 
   beforeEach(() => {
     repo = new InMemoryLedgerRepository();
+    audit = new InMemoryIdentityAuditRepository();
     service = new LedgerService(repo);
-    controller = new LedgerController(service);
+    controller = new LedgerController(service, audit);
   });
 
   it('posts a journal via endpoint and returns standard success envelope', async () => {
@@ -130,6 +133,61 @@ describe('LedgerController', () => {
     expect(integrityRes.data?.totalSystemBalance).toBe(0);
   });
 
+  describe('Reconcile audit (Story 14.4 D2)', () => {
+    const admin: AuthenticatedUser = {
+      ...mockUser,
+      id: '77777777-7777-4777-8777-777777777777',
+      role: 'ADMIN',
+    };
+
+    it('audits a reconcile once, with the prior and corrected balance', async () => {
+      const sys = await service.getOrCreateAccount(null, 'SYSTEM_ISSUANCE');
+      const userAcc = await service.getOrCreateAccount(
+        mockUser.id,
+        'USER_AVAILABLE',
+      );
+      await service.transfer({
+        fromAccountId: sys.id,
+        toAccountId: userAcc.id,
+        amount: 100,
+        idempotencyKey: 'tx-reconcile-audit',
+      });
+      await repo.rebuildAccountBalance(userAcc.id, 999);
+
+      const res = await controller.reconcileAccount(userAcc.id, admin);
+
+      expect(res.data).toEqual({
+        accountId: userAcc.id,
+        priorBalance: 999,
+        correctedBalance: 100,
+      });
+      expect(audit.records).toEqual([
+        {
+          action: 'LEDGER_ACCOUNT_RECONCILED',
+          userId: admin.id,
+          outcome: 'SUCCESS',
+          metadata: {
+            accountId: userAcc.id,
+            priorBalance: 999,
+            correctedBalance: 100,
+            changed: true,
+          },
+        },
+      ]);
+    });
+
+    it('appends no audit record when the account does not exist', async () => {
+      await expect(
+        controller.reconcileAccount(
+          '99999999-9999-4999-8999-999999999999',
+          admin,
+        ),
+      ).rejects.toThrow();
+
+      expect(audit.records).toEqual([]);
+    });
+  });
+
   describe('Reward Settlement Endpoints (Story 6.4, Epic 6 review P1/P2)', () => {
     const publisherId = '22222222-2222-4222-8222-222222222222';
     const attemptId = '44444444-4444-4444-8444-444444444444';
@@ -144,7 +202,7 @@ describe('LedgerController', () => {
     beforeEach(async () => {
       now = creditTime;
       service = new LedgerService(repo, { clock: () => now });
-      controller = new LedgerController(service);
+      controller = new LedgerController(service, audit);
       // Seed publisher escrow with 200 points
       const sys = await service.getOrCreateAccount(null, 'SYSTEM_ISSUANCE');
       const publisherEscrow = await service.getOrCreateAccount(
@@ -241,13 +299,21 @@ describe('LedgerController', () => {
       ).toEqual(['ADMIN']);
 
       now = new Date(creditTime.getTime() + 47 * HOUR_MS);
-      const early = await controller.releaseMaturedPendingRewards({
-        cutoffDate: new Date(creditTime.getTime() + 10 * HOUR_MS).toISOString(),
-      });
+      const early = await controller.releaseMaturedPendingRewards(
+        {
+          cutoffDate: new Date(
+            creditTime.getTime() + 10 * HOUR_MS,
+          ).toISOString(),
+        },
+        admin,
+      );
       expect(early.data).toMatchObject({ processed: 0, releasedCount: 0 });
 
       now = new Date(creditTime.getTime() + 49 * HOUR_MS);
-      const res = await controller.releaseMaturedPendingRewards({ limit: 10 });
+      const res = await controller.releaseMaturedPendingRewards(
+        { limit: 10 },
+        admin,
+      );
       expect(res.data).toMatchObject({
         processed: 1,
         releasedCount: 1,
@@ -255,10 +321,49 @@ describe('LedgerController', () => {
       });
     });
 
+    it('audits an Admin matured-release scan once, after it succeeds (Story 14.4 D2)', async () => {
+      now = new Date(creditTime.getTime() + 49 * HOUR_MS);
+
+      await controller.releaseMaturedPendingRewards({ limit: 10 }, admin);
+
+      expect(audit.records).toEqual([
+        {
+          action: 'PENDING_REWARDS_RELEASED',
+          userId: admin.id,
+          outcome: 'SUCCESS',
+          metadata: {
+            limit: 10,
+            after: false,
+            processed: 1,
+            releasedCount: 1,
+            disputedCount: 0,
+            failedCount: 0,
+            hasMore: false,
+          },
+        },
+      ]);
+    });
+
+    it('appends no audit record when the matured-release scan throws', async () => {
+      jest
+        .spyOn(
+          RewardSettlementCoordinator.prototype,
+          'releaseMaturedPendingRewards',
+        )
+        .mockRejectedValueOnce(new Error('boom'));
+
+      await expect(
+        controller.releaseMaturedPendingRewards({}, admin),
+      ).rejects.toThrow('boom');
+
+      expect(audit.records).toEqual([]);
+    });
+
     it('routes the release through the settlement coordinator so the respondent is notified (Story 9.6)', async () => {
       const notificationRepo = new InMemoryNotificationRepository();
       const notifyingController = new LedgerController(
         service,
+        audit,
         new RewardSettlementCoordinator(
           service,
           new NotificationsService(notificationRepo),

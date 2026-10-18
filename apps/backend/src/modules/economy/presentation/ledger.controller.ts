@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   Param,
   Post,
   Query,
@@ -33,6 +34,10 @@ import { ZodValidationPipe } from '../../../common/http/zod-validation.pipe';
 import { createSuccessEnvelope } from '../../../common/http/response.envelope';
 import { LedgerJournalEntity } from '../domain/ledger-journal.entity';
 import { LedgerAccountEntity } from '../domain/ledger-account.entity';
+import {
+  IDENTITY_AUDIT_PORT,
+  IdentityAuditPort,
+} from '../../auth/application/ports/identity-audit.port';
 import { RewardSettlementCoordinator } from '../application/reward-settlement.coordinator';
 import { PendingRewardForbiddenException } from '../application/exceptions/economy.exceptions';
 
@@ -43,6 +48,7 @@ export class LedgerController {
 
   constructor(
     private readonly ledgerService: LedgerService,
+    @Inject(IDENTITY_AUDIT_PORT) private readonly audit: IdentityAuditPort,
     coordinator?: RewardSettlementCoordinator,
   ) {
     this.coordinator =
@@ -109,8 +115,22 @@ export class LedgerController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(RolesGuard, CsrfGuard)
   @Roles('ADMIN')
-  async reconcileAccount(@Param('id', ParseUUIDPipe) id: string) {
+  async reconcileAccount(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     const result = await this.ledgerService.reconcileAccountBalance(id);
+    await this.audit.append({
+      action: 'LEDGER_ACCOUNT_RECONCILED',
+      userId: user.id,
+      outcome: 'SUCCESS',
+      metadata: {
+        accountId: result.accountId,
+        priorBalance: result.priorBalance,
+        correctedBalance: result.correctedBalance,
+        changed: result.priorBalance !== result.correctedBalance,
+      },
+    });
     return createSuccessEnvelope(result);
   }
 
@@ -168,11 +188,26 @@ export class LedgerController {
   async releaseMaturedPendingRewards(
     @Body(new ZodValidationPipe(releaseMaturedPendingRewardsSchema))
     body: ReleaseMaturedPendingRewardsInput,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     const summary = await this.coordinator.releaseMaturedPendingRewards({
       cutoffDate: body?.cutoffDate ? new Date(body.cutoffDate) : undefined,
       limit: body?.limit,
       after: body?.after,
+    });
+    await this.audit.append({
+      action: 'PENDING_REWARDS_RELEASED',
+      userId: user.id,
+      outcome: 'SUCCESS',
+      metadata: {
+        limit: body?.limit ?? null,
+        after: body?.after !== undefined,
+        processed: summary.processed,
+        releasedCount: summary.releasedCount,
+        disputedCount: summary.disputedCount,
+        failedCount: summary.failedCount,
+        hasMore: summary.hasMore,
+      },
     });
     return createSuccessEnvelope(summary);
   }

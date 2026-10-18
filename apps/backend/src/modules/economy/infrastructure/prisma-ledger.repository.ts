@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { canAccountClassOverdraft, LedgerAccountClass } from '@rescom/schemas';
+import {
+  canAccountClassOverdraft,
+  LedgerAccountClass,
+  LedgerDriftedAccount,
+} from '@rescom/schemas';
 import { PrismaService } from '../../../common/database/prisma.service';
 import {
   LedgerRepositoryPort,
@@ -466,6 +470,32 @@ export class PrismaLedgerRepository implements LedgerRepositoryPort {
       _sum: { amount: true },
     });
     return result._sum.amount ?? 0;
+  }
+
+  async findDriftedAccounts(limit: number): Promise<LedgerDriftedAccount[]> {
+    const rows: Array<{
+      id: string;
+      user_id: string | null;
+      account_class: LedgerAccountClass;
+      balance: number;
+      calculated: number;
+    }> = await this.client.$queryRaw`
+      SELECT a.id, a.user_id, a.account_class, a.balance,
+             COALESCE(SUM(e.amount), 0)::int AS calculated
+      FROM ledger_accounts a
+      LEFT JOIN ledger_entries e ON e.account_id = a.id
+      GROUP BY a.id
+      HAVING a.balance <> COALESCE(SUM(e.amount), 0)
+      ORDER BY a.id
+      LIMIT ${limit}
+    `;
+    return rows.map((row) => ({
+      accountId: row.id,
+      userId: row.user_id,
+      accountClass: row.account_class,
+      projectedBalance: row.balance,
+      calculatedBalance: row.calculated,
+    }));
   }
 
   async rebuildAccountBalance(

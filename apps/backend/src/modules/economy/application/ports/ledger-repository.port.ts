@@ -1,4 +1,4 @@
-import { LedgerAccountClass } from '@rescom/schemas';
+import { LedgerAccountClass, LedgerDriftedAccount } from '@rescom/schemas';
 import { LedgerAccountEntity } from '../../domain/ledger-account.entity';
 import { LedgerJournalEntity } from '../../domain/ledger-journal.entity';
 import { LedgerEntryEntity } from '../../domain/ledger-entry.entity';
@@ -106,6 +106,12 @@ export interface LedgerRepositoryPort {
    * Sums all entries across the entire ledger. Must equal 0 in a closed double-entry system.
    */
   sumAllEntries(): Promise<number>;
+
+  /**
+   * Story 14.4: up to `limit` accounts whose denormalized `balance` differs
+   * from the sum of their entries, ordered by account id. Read-only.
+   */
+  findDriftedAccounts(limit: number): Promise<LedgerDriftedAccount[]>;
 
   /**
    * Updates an account's denormalized balance to match the calculated sum of entries.

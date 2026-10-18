@@ -43,6 +43,7 @@ const HOUR_MS = 60 * 60 * 1000;
 describe('Story 6.4: Respondent Point Credit & Pending Logic E2E Tests', () => {
   let app: INestApplication;
   let userRepo: InMemoryUserRepository;
+  let auditRepo: InMemoryIdentityAuditRepository;
   let ledgerRepo: InMemoryLedgerRepository;
   let notificationRepo: InMemoryNotificationRepository;
   let formRepo: InMemoryFormRepository;
@@ -62,6 +63,9 @@ describe('Story 6.4: Respondent Point Credit & Pending Logic E2E Tests', () => {
   const internalVersionId = '10000000-0000-4000-8000-000000000002';
   const externalFormId = '20000000-0000-4000-8000-000000000001';
   const externalVersionId = '20000000-0000-4000-8000-000000000002';
+
+  const auditRecords = (action: string) =>
+    auditRepo.records.filter((r) => r.action === action);
 
   interface Actor {
     id: string;
@@ -193,7 +197,7 @@ describe('Story 6.4: Respondent Point Credit & Pending Logic E2E Tests', () => {
       'postgresql://postgres:postgres@localhost:5433/rescom_test';
 
     userRepo = new InMemoryUserRepository();
-    const auditRepo = new InMemoryIdentityAuditRepository();
+    auditRepo = new InMemoryIdentityAuditRepository();
     const sessionRepo = new InMemorySessionRepository(auditRepo);
     ledgerRepo = new InMemoryLedgerRepository();
     notificationRepo = new InMemoryNotificationRepository();
@@ -387,6 +391,19 @@ describe('Story 6.4: Respondent Point Credit & Pending Logic E2E Tests', () => {
         targetAccountClass: 'USER_AVAILABLE',
       });
       expect(res.body.data.journalId).toEqual(expect.any(String));
+      // Story 14.4 D2: the Admin re-drive is audited after it succeeds.
+      expect(auditRecords('REWARD_REDRIVEN')).toContainEqual({
+        action: 'REWARD_REDRIVEN',
+        userId: admin.id,
+        outcome: 'SUCCESS',
+        metadata: {
+          kind: 'INTERNAL',
+          responseId,
+          status: 'SETTLED',
+          journalId: res.body.data.journalId,
+          amount: 40,
+        },
+      });
 
       const replay = await post(
         `/economy/rewards/internal/${responseId}`,
@@ -432,6 +449,18 @@ describe('Story 6.4: Respondent Point Credit & Pending Logic E2E Tests', () => {
         status: 'PENDING',
         amount: 20,
         targetAccountClass: 'PENDING',
+      });
+      expect(auditRecords('REWARD_REDRIVEN')).toContainEqual({
+        action: 'REWARD_REDRIVEN',
+        userId: admin.id,
+        outcome: 'SUCCESS',
+        metadata: {
+          kind: 'EXTERNAL',
+          attemptId,
+          status: 'PENDING',
+          journalId: res.body.data.journalId,
+          amount: 20,
+        },
       });
 
       const replay = await post(
@@ -528,6 +557,8 @@ describe('Story 6.4: Respondent Point Credit & Pending Logic E2E Tests', () => {
       );
       expect(forbidden.status).toBe(403);
 
+      expect(auditRecords('PENDING_REWARDS_RELEASED')).toEqual([]);
+
       const early = await post('/economy/rewards/release-matured', admin, {});
       expect(early.status).toBe(200);
       expect(early.body.data).toMatchObject({ processed: 0 });
@@ -543,6 +574,33 @@ describe('Story 6.4: Respondent Point Credit & Pending Logic E2E Tests', () => {
         hasMore: false,
       });
       expect((await wallet(otherRespondent)).available).toBe(20);
+      // Story 14.4 D2: only the two Admin scans are audited, not the 403.
+      expect(
+        auditRecords('PENDING_REWARDS_RELEASED').map((r) => r.metadata),
+      ).toEqual([
+        {
+          limit: null,
+          after: false,
+          processed: 0,
+          releasedCount: 0,
+          disputedCount: 0,
+          failedCount: 0,
+          hasMore: false,
+        },
+        {
+          limit: 10,
+          after: false,
+          processed: 1,
+          releasedCount: 1,
+          disputedCount: 0,
+          failedCount: 0,
+          hasMore: false,
+        },
+      ]);
+      expect(auditRecords('PENDING_REWARDS_RELEASED')[0]).toMatchObject({
+        userId: admin.id,
+        outcome: 'SUCCESS',
+      });
     });
   });
 });

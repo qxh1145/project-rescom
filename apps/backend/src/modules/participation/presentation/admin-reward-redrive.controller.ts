@@ -3,6 +3,7 @@ import {
   Controller,
   HttpCode,
   HttpStatus,
+  Inject,
   Param,
   Post,
   UseGuards,
@@ -11,7 +12,12 @@ import { rewardRedriveRequestSchema } from '@rescom/schemas';
 import { SessionAuthGuard } from '../../auth/presentation/guards/session-auth.guard';
 import { RolesGuard } from '../../auth/presentation/guards/roles.guard';
 import { CsrfGuard } from '../../auth/presentation/guards/csrf.guard';
-import { Roles } from '../../auth/presentation/decorators';
+import { CurrentUser, Roles } from '../../auth/presentation/decorators';
+import { AuthenticatedUser } from '../../auth/presentation/types/authenticated-request.type';
+import {
+  IDENTITY_AUDIT_PORT,
+  IdentityAuditPort,
+} from '../../auth/application/ports/identity-audit.port';
 import { JsonOnlyGuard } from '../../../common/http/json-only.guard';
 import { ParseUUIDPipe } from '../../../common/http/parse-uuid.pipe';
 import { ZodValidationPipe } from '../../../common/http/zod-validation.pipe';
@@ -33,7 +39,10 @@ import { ParticipationService } from '../application/participation.service';
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles('ADMIN')
 export class AdminRewardRedriveController {
-  constructor(private readonly participationService: ParticipationService) {}
+  constructor(
+    private readonly participationService: ParticipationService,
+    @Inject(IDENTITY_AUDIT_PORT) private readonly audit: IdentityAuditPort,
+  ) {}
 
   @Post('internal/:responseId')
   @HttpCode(HttpStatus.OK)
@@ -41,9 +50,22 @@ export class AdminRewardRedriveController {
   async redriveInternalReward(
     @Param('responseId', ParseUUIDPipe) responseId: string,
     @Body(new ZodValidationPipe(rewardRedriveRequestSchema)) _body: unknown,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     const result =
       await this.participationService.redriveInternalReward(responseId);
+    await this.audit.append({
+      action: 'REWARD_REDRIVEN',
+      userId: user.id,
+      outcome: 'SUCCESS',
+      metadata: {
+        kind: 'INTERNAL',
+        responseId,
+        status: result.reward?.status ?? null,
+        journalId: result.reward?.journalId ?? null,
+        amount: result.reward?.amount ?? null,
+      },
+    });
     return createSuccessEnvelope(result.reward);
   }
 
@@ -53,9 +75,22 @@ export class AdminRewardRedriveController {
   async redriveExternalReward(
     @Param('attemptId', ParseUUIDPipe) attemptId: string,
     @Body(new ZodValidationPipe(rewardRedriveRequestSchema)) _body: unknown,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     const reward =
       await this.participationService.redriveExternalReward(attemptId);
+    await this.audit.append({
+      action: 'REWARD_REDRIVEN',
+      userId: user.id,
+      outcome: 'SUCCESS',
+      metadata: {
+        kind: 'EXTERNAL',
+        attemptId,
+        status: reward?.status ?? null,
+        journalId: reward?.journalId ?? null,
+        amount: reward?.amount ?? null,
+      },
+    });
     return createSuccessEnvelope(reward);
   }
 }
