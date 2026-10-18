@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { PayosTopUpDto, UserTopUpRefundRequest, WalletBalanceDto } from "@rescom/schemas";
 import { Mascot } from "@/components/brand/Mascot";
+import { PayosLogo } from "@/components/brand/PayosLogo";
 import { Button, buttonClassName } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Dialog } from "@/components/ui/Dialog";
@@ -304,7 +305,9 @@ export function PayosTopUpScreen({ initialTopUp }: PayosTopUpScreenProps) {
               </div>
               <div className="flex justify-between py-2.5">
                 <dt className="text-ink-muted">Kênh thanh toán</dt>
-                <dd className="font-bold text-ink">PayOS (VietQR)</dd>
+                <dd className="inline-flex items-center gap-1.5 font-bold text-ink">
+                  <PayosLogo size={16} /> PayOS (VietQR)
+                </dd>
               </div>
               <div className="flex justify-between py-2.5">
                 <dt className="text-ink-muted">Thời gian tạo</dt>

@@ -1,6 +1,42 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+const stored = new Map();
+const localStorageMock = {
+  getItem: (key) => (stored.has(key) ? stored.get(key) : null),
+  setItem: (key, value) => stored.set(key, String(value)),
+  removeItem: (key) => stored.delete(key),
+  clear: () => stored.clear(),
+};
+globalThis.localStorage = localStorageMock;
+globalThis.window = {
+  location: { search: "?msw=default" },
+  localStorage: localStorageMock,
+};
+
+const { register } = await import("node:module");
+const path = await import("node:path");
+const { fileURLToPath } = await import("node:url");
+const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
+
+const loader = `import { existsSync, statSync } from 'node:fs'; import path from 'node:path'; import { fileURLToPath, pathToFileURL } from 'node:url';
+export async function resolve(specifier, context, nextResolve) {
+  if (specifier.startsWith('@/')) {
+    const file = path.join(${JSON.stringify(root)}, specifier.slice(2));
+    for (const f of [file + '.ts', file, path.join(file, 'index.ts'), file + '.tsx']) {
+      if (existsSync(f) && statSync(f).isFile()) return { url: pathToFileURL(f).href, shortCircuit: true };
+    }
+  }
+  if (!specifier.startsWith('./') && !specifier.startsWith('../')) return nextResolve(specifier, context);
+  if (!context.parentURL?.startsWith('file:')) return nextResolve(specifier, context);
+  const base = path.resolve(path.dirname(fileURLToPath(context.parentURL)), specifier);
+  for (const file of [base, base + '.ts', path.join(base, 'index.ts'), base + '.tsx']) {
+    if (existsSync(file) && statSync(file).isFile()) return { url: pathToFileURL(file).href, shortCircuit: true };
+  }
+  return nextResolve(specifier, context);
+}`;
+register(`data:text/javascript,${encodeURIComponent(loader)}`, import.meta.url);
+
 const {
   PAYOS_QUICK_AMOUNTS,
   PAYOS_TOP_UP_MIN_VND,
@@ -14,6 +50,9 @@ const {
   shouldPoll,
   payosTimeline,
 } = await import("../lib/wallet/payos-top-up.ts");
+const { mergeTopUps } = await import("../lib/wallet/top-up-history.ts");
+const { getResponse } = await import("msw");
+const { topUpHandlers } = await import("../mocks/handlers/top-up.ts");
 
 test("PayOS amounts and validation rules", async (t) => {
   await t.test("quick amounts are predefined multiples of 200", () => {
@@ -141,3 +180,57 @@ test("payosTimeline returns correct steps per status", () => {
   assert.equal(ref[1].state, "done");
   assert.equal(ref[2].state, "todo");
 });
+
+test("Story 13.13 wallet retirement pins", async (t) => {
+  await t.test("the mode is payos when availability is true", () => {
+    const toMode = (availability) => (availability.payosEnabled ? "payos" : "manual");
+    assert.equal(toMode({ payosEnabled: true }), "payos");
+    assert.equal(toMode({ payosEnabled: false }), "manual");
+  });
+
+  await t.test("the mock manual POST /economy/top-ups returns 404 in default scenario", async () => {
+    const req = new Request("http://localhost:3000/api/economy/top-ups", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": "test-csrf-token",
+      },
+      body: JSON.stringify({ amount: 100 }),
+    });
+    const res = await getResponse(topUpHandlers, req, { baseUrl: "http://localhost:3000" });
+    assert.ok(res, "handler matched");
+    assert.equal(res.status, 404);
+    const body = await res.json();
+    assert.equal(body.error?.code, "NOT_FOUND");
+  });
+
+  await t.test("mergeTopUps keeps MANUAL rows in payos mode", () => {
+    const manualRow = {
+      id: "manual-id-1",
+      amount: 100,
+      amountVnd: 20000,
+      status: "APPROVED",
+      transferReference: "RESCOM123456",
+      createdAt: "2026-10-15T08:00:00.000Z",
+    };
+    const payosRow = {
+      id: "payos-id-1",
+      orderCode: 9999,
+      amountVnd: 50000,
+      points: 250,
+      status: "SUCCESSFUL",
+      checkoutUrl: null,
+      expiresAt: "2026-10-15T10:35:00.000Z",
+      cancelledAt: null,
+      paidAt: "2026-10-15T10:32:00.000Z",
+      createdAt: "2026-10-15T10:30:00.000Z",
+    };
+    const merged = mergeTopUps([manualRow], [payosRow], 10);
+    assert.equal(merged.length, 2);
+    const manualFound = merged.find((item) => item.channel === "MANUAL");
+    assert.ok(manualFound, "manual row preserved in history");
+    assert.equal(manualFound.code, "RESCOM123456");
+    assert.equal(manualFound.points, 100);
+  });
+});
+

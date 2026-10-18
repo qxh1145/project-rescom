@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import type { AdminTopUpRefundDetail } from "@rescom/schemas";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
+import { BankLogo } from "@/components/brand/BankLogo";
 import { Icon } from "@/components/ui/Icon";
 import { IconButton } from "@/components/ui/IconButton";
 import { TopUpStatusChip } from "@/components/wallet/TopUpStatusChip";
@@ -222,6 +223,7 @@ export function RefundDrawer({
                 <div className="flex items-center justify-between py-2">
                   <dt className="text-ink-muted">Ngân hàng</dt>
                   <div className="flex items-center gap-2">
+                    <BankLogo bankId={item.destination.bankId} bankName={item.destination.bankName} size={16} />
                     <dd className="font-semibold text-ink">
                       {item.destination.bankName || item.destination.bankId || "—"}
                     </dd>

@@ -49,6 +49,9 @@ export const topUpHandlers: RequestHandler[] = [
   http.post(apiUrl("/economy/top-ups"), async ({ request }) => {
     const forced = await applyScenario("top-up");
     if (forced) return forced;
+    if (getActiveScenario() !== "payos-manual") {
+      return fail(404, "NOT_FOUND", "Manual top-up checkout is disabled.");
+    }
     const user = await getMockSessionUser();
     if (!user) return unauthorized();
     const csrf = missingCsrf(request);

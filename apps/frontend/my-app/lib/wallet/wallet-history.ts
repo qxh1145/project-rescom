@@ -104,7 +104,7 @@ const KEY_PREFIXES: ReadonlyArray<readonly [string, HistoryKind]> = [
 export function historyKindOf(
   idempotencyKey: string,
   reversesJournalId: string | null,
-  entries?: readonly WalletTransaction[],
+  entries?: readonly { accountClass?: string; amount: number }[],
 ): HistoryKind {
   if (reversesJournalId) return "REVERSAL";
   if (idempotencyKey.startsWith("topup-refund-resolve:")) {

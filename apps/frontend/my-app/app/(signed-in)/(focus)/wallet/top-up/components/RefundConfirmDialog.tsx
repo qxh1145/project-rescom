@@ -4,6 +4,7 @@ import type { TopUpRefundReason, UserTopUpRefundDestinationView } from "@rescom/
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
+import { BankLogo } from "@/components/brand/BankLogo";
 import { Icon } from "@/components/ui/Icon";
 import { formatShortDateTime } from "@/lib/format/date-time";
 import { formatPoints, formatVnd } from "@/lib/wallet/top-up";
@@ -87,7 +88,7 @@ export function RefundConfirmDialog({
 
           {/* Row 2: Destination */}
           <div className="flex items-start gap-2.5">
-            <Icon name="bank" size={16} className="mt-0.5 shrink-0 text-ink-muted" />
+            <BankLogo bankId={destination?.bankId} bankName={destInfo.bank} size={16} className="mt-0.5 shrink-0 text-ink-muted" />
             <p>
               {destInfo.verified ? (
                 <>
