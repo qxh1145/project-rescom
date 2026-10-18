@@ -49,6 +49,7 @@ const {
   pollDeadline,
   shouldPoll,
   payosTimeline,
+  topUpModeFromAvailability,
 } = await import("../lib/wallet/payos-top-up.ts");
 const { mergeTopUps } = await import("../lib/wallet/top-up-history.ts");
 const { getResponse } = await import("msw");
@@ -183,9 +184,8 @@ test("payosTimeline returns correct steps per status", () => {
 
 test("Story 13.13 wallet retirement pins", async (t) => {
   await t.test("the mode is payos when availability is true", () => {
-    const toMode = (availability) => (availability.payosEnabled ? "payos" : "manual");
-    assert.equal(toMode({ payosEnabled: true }), "payos");
-    assert.equal(toMode({ payosEnabled: false }), "manual");
+    assert.equal(topUpModeFromAvailability({ payosEnabled: true }), "payos");
+    assert.equal(topUpModeFromAvailability({ payosEnabled: false }), "manual");
   });
 
   await t.test("the mock manual POST /economy/top-ups returns 404 in default scenario", async () => {

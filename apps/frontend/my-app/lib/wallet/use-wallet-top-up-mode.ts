@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getPayosAvailability } from "@/lib/wallet/payos-top-up-service";
+import { topUpModeFromAvailability } from "@/lib/wallet/payos-top-up";
 
 export type WalletTopUpMode = "loading" | "payos" | "manual" | "error";
 
@@ -24,7 +25,7 @@ export function useWalletTopUpMode(): {
     getPayosAvailability(controller.signal)
       .then((res) => {
         if (!cancelled) {
-          setMode(res.payosEnabled ? "payos" : "manual");
+          setMode(topUpModeFromAvailability(res));
         }
       })
       .catch((err: unknown) => {
@@ -42,5 +43,3 @@ export function useWalletTopUpMode(): {
 
   return { mode, reload };
 }
-
-export const usePayosAvailability = useWalletTopUpMode;

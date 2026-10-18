@@ -42,6 +42,8 @@ const {
   pendingRowLabel,
   itemCode,
   headerMeta,
+  manualTabReadOnly,
+  manualTabInitialStatus,
   PAYOS_SWITCH_COPY,
 } = await import("../lib/admin/payos-switch.ts");
 
@@ -91,10 +93,10 @@ test("headerMeta for both modes (and date formatting)", () => {
     "30/09/2026 · đang dùng nạp thủ công",
   );
 
-  // error mode also informs admin that system is on manual top-up
+  // error mode does not claim a mode it cannot know (fail-closed)
   assert.equal(
     headerMeta("error", new Date("2026-09-30T10:00:00.000Z")),
-    "30/09/2026 · đang dùng nạp thủ công",
+    "30/09/2026 · chưa xác định được trạng thái PayOS",
   );
 
   // loading mode returns empty string
@@ -163,6 +165,7 @@ test("copy strings verbatim from Figma and AC 1-3", () => {
     PAYOS_SWITCH_COPY.confirmApproveCredit("500", "Trần Minh", "minh.tran@fpt.edu.vn"),
     "Cộng 500 Điểm cho Trần Minh (minh.tran@fpt.edu.vn).",
   );
+  assert.equal(PAYOS_SWITCH_COPY.confirmApproveCredit("500", "Trần Minh", null), "Cộng 500 Điểm cho Trần Minh.");
   assert.equal(
     PAYOS_SWITCH_COPY.confirmApproveStatement("100.000đ", "RESCOM LN5821"),
     "Chỉ duyệt khi sao kê có khoản 100.000đ với nội dung RESCOM LN5821.",
@@ -206,8 +209,11 @@ test("mock flow in payos-manual scenario: list pending -> approve one -> reject 
   );
 });
 
-test("read-only status logic: initial status is APPROVED when readOnly, PENDING otherwise", () => {
-  const getInitialStatus = (readOnly) => (readOnly ? "APPROVED" : "PENDING");
-  assert.equal(getInitialStatus(true), "APPROVED");
-  assert.equal(getInitialStatus(false), "PENDING");
+test("manual tab is writable only when PayOS is known off; initial status follows read-only", () => {
+  assert.equal(manualTabReadOnly("manual"), false);
+  assert.equal(manualTabReadOnly("payos"), true);
+  assert.equal(manualTabReadOnly("error"), true);
+  assert.equal(manualTabReadOnly("loading"), true);
+  assert.equal(manualTabInitialStatus(true), "APPROVED");
+  assert.equal(manualTabInitialStatus(false), "PENDING");
 });
