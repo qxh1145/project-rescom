@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { getBankInfoByBin, getBankLogoSrc } from "@/lib/brand/bank-logos";
 
@@ -21,8 +24,10 @@ export function BankLogo({ bankId, bankName, size = 16, className = "" }: BankLo
   const info = getBankInfoByBin(bankId);
   const src = getBankLogoSrc(bankId);
   const alt = bankName || info?.name || "Ngân hàng";
+  // A listed asset that fails to load (missing deploy, 404) falls back to the icon too.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
-  if (!src) {
+  if (!src || failedSrc === src) {
     return <Icon name="bank" size={size} className={className} />;
   }
 
@@ -34,6 +39,7 @@ export function BankLogo({ bankId, bankName, size = 16, className = "" }: BankLo
       width={size}
       height={size}
       className={`inline-block shrink-0 object-contain ${className}`}
+      onError={() => setFailedSrc(src)}
     />
   );
 }

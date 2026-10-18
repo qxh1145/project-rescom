@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AdminPage } from "@/components/layout/admin/AdminPage";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
+import { manualTabInitialStatus } from "@/lib/admin/payos-switch";
 import { topUpQueueLoadErrorMessage } from "@/lib/admin/top-up-admin-messages";
 import type { AdminTopUp } from "@/lib/admin/top-up-admin-service";
 import { useTopUpReview } from "../hooks/use-top-up-review";
@@ -24,7 +25,7 @@ export function TopUpReviewScreen({
   embedded?: boolean;
   readOnly?: boolean;
 } = {}) {
-  const review = useTopUpReview(readOnly ? "APPROVED" : "PENDING");
+  const review = useTopUpReview(manualTabInitialStatus(readOnly));
   // The dialog keeps the request it was opened for, even if the list reloads under it.
   const [rejecting, setRejecting] = useState<AdminTopUp | null>(null);
   const { selected, failure } = review;

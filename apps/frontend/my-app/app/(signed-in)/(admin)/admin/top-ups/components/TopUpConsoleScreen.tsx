@@ -4,7 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AdminPage } from "@/components/layout/admin/AdminPage";
 import { Icon } from "@/components/ui/Icon";
 import { getAdminTopUpTabCounts } from "@/lib/admin/payos-top-up-admin-service";
-import { headerMeta } from "@/lib/admin/payos-switch";
+import { headerMeta, manualTabReadOnly } from "@/lib/admin/payos-switch";
 import { useWalletTopUpMode } from "@/lib/wallet/use-wallet-top-up-mode";
 import { TopUpTabs, type ConsoleTab } from "./TopUpTabs";
 import { PayosTopUpsPanel } from "./PayosTopUpsPanel";
@@ -59,7 +59,7 @@ export function TopUpConsoleScreen() {
         {(payosMode === "manual" || payosMode === "error") && (
           <PayosSwitchCard
             mode={payosMode}
-            manualTotal={counts?.manual ?? 0}
+            manualTotal={counts?.manual ?? null}
             onChanged={refresh}
             onRetryMode={reloadPayosMode}
           />
@@ -77,7 +77,14 @@ export function TopUpConsoleScreen() {
           </section>
         ) : (
           <section role="tabpanel" id="top-ups-manual-panel" aria-labelledby="top-ups-manual-tab">
-            <ManualTopUpsPanel readOnly={payosMode === "payos"} onChanged={refresh} />
+            {/* Keyed on readOnly so the initial status filter follows the resolved mode. */}
+            {payosMode === "loading" ? null : (
+              <ManualTopUpsPanel
+                key={String(manualTabReadOnly(payosMode))}
+                readOnly={manualTabReadOnly(payosMode)}
+                onChanged={refresh}
+              />
+            )}
           </section>
         )}
       </div>

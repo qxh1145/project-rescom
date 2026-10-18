@@ -38,7 +38,7 @@ export function ManualApproveDialog({
 }: ManualApproveDialogProps) {
   const code = itemCode(item);
   const name = requesterName(item);
-  const email = item.userEmail ?? "";
+  const email = item.userEmail;
   const points = formatPoints(item.amount);
   const amount = formatVnd(item.amountVnd);
   const ref = formatTransferReference(item.transferReference);
