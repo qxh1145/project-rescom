@@ -481,3 +481,11 @@ Recorded by `sprint-change-proposal-2026-10-01.md`. All low severity.
 ## Deferred from: code review of 13-10-refund-request-refund-hold-withdrawal (2026-10-16)
 
 - `test/rewards-flash.prisma.e2e-spec.ts:144` lifecycle settle test fails (`settleRun.settled` received 0) on clean HEAD `4c2e792` too, so it predates 13.10; likely `findDueForSettle`/`isSettleDue` vs test fast-forward or shared financial test DB state. Investigate in an Epic 12 follow-up.
+
+## Deferred from: code review of 14-3-admin-audit-log-viewer (2026-10-18)
+
+- `AuditLogTable.tsx:68` shows the empty-state text under the error Alert (and when an invalid filter blocks the request); same as FraudLog. Hide the empty row when an error is set, across both admin log screens.
+- `AuditLogTable.tsx:87` uses `<tr role="button">`, which drops table-cell semantics for screen readers. Move the click target to a real button in a cell if a11y audit flags it.
+- `admin-audit-logs.controller.ts:91` awaits `displayLabels` unguarded; a profile query error fails the whole list/detail with 500. Degrade to null labels if it shows up in logs.
+- `AuditLogDrawer.tsx:27` detail fetch has no `useSessionLossRedirect`; on 401 the drawer shows a generic error until closed. Same as other admin drawers.
+- `prisma-audit-log.repository.ts:84` `orderBy: { createdAt: 'desc' }` has no `id` tie-break; rows with equal `createdAt` can repeat or vanish across pages (pre-existing, now reachable via the 50-row viewer).

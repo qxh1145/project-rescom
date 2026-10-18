@@ -209,9 +209,11 @@ import {
     },
     {
       provide: AuditLogService,
-      useFactory: (auditLogRepository: AuditLogRepositoryPort) =>
-        new AuditLogService(auditLogRepository),
-      inject: [AUDIT_LOG_REPOSITORY_PORT],
+      useFactory: (
+        auditLogRepository: AuditLogRepositoryPort,
+        profiles: UserProfileRepositoryPort,
+      ) => new AuditLogService(auditLogRepository, profiles),
+      inject: [AUDIT_LOG_REPOSITORY_PORT, USER_PROFILE_REPOSITORY_PORT],
     },
   ],
   exports: [UserAdminService, AuditLogService, AUDIT_LOG_REPOSITORY_PORT],

@@ -88,11 +88,18 @@ const { getResponse } = await import("msw");
 const { adminHandlers } = await import("../mocks/handlers/admin.ts");
 const { adminOverviewHandlers } = await import("../mocks/handlers/admin-overview.ts");
 const { adminFraudLogHandlers } = await import("../mocks/handlers/admin-fraud-log.ts");
+const { adminAuditLogsHandlers } = await import("../mocks/handlers/admin-audit-logs.ts");
 const { adminTransactionHandlers } = await import("../mocks/handlers/admin-transactions.ts");
 const { journalKindOf, matchesTransactionFilter, TRANSACTION_FILTERS } = await import("../lib/admin/admin-transactions.ts");
 const schemas = await import("@rescom/schemas");
 
-const handlers = [...adminHandlers, ...adminOverviewHandlers, ...adminFraudLogHandlers, ...adminTransactionHandlers];
+const handlers = [
+  ...adminHandlers,
+  ...adminOverviewHandlers,
+  ...adminFraudLogHandlers,
+  ...adminAuditLogsHandlers,
+  ...adminTransactionHandlers,
+];
 const ORIGIN = "http://localhost";
 
 function signIn(role = "ADMIN") {
@@ -113,7 +120,14 @@ function parsed(schema, result) {
   return outcome.data;
 }
 
-const ROUTES = ["/admin/queue-counts", "/admin/overview", "/admin/fraud-log", "/admin/ledger/journals", "/admin/ledger/summary"];
+const ROUTES = [
+  "/admin/queue-counts",
+  "/admin/overview",
+  "/admin/fraud-log",
+  "/admin/audit-logs",
+  "/admin/ledger/journals",
+  "/admin/ledger/summary",
+];
 
 test("non-admins get 403 FORBIDDEN_RESOURCE (the backend RolesGuard code), anonymous 401", async () => {
   signIn("USER");
@@ -216,3 +230,82 @@ test("ledger segments: the backend key prefixes match the frontend kind grouping
   const starter = journalKindOf({ idempotencyKey: `starter-grant:${id}`, reversesJournalId: null });
   assert.deepEqual(segments.filter((segment) => matchesTransactionFilter(starter, segment)), []);
 });
+
+test("Audit log: shared query and page, filters, detail, 404", async () => {
+  signIn();
+  const pageResult = await get("/admin/audit-logs");
+  const page = parsed(schemas.auditLogPageSchema, pageResult);
+  assert.ok(page.items.length > 0, "the mock seed has audit logs");
+  assert.equal(page.pagination.page, 1);
+  assert.equal(page.pagination.limit, 20);
+
+  // Newest first check
+  for (let i = 0; i < page.items.length - 1; i++) {
+    const a = new Date(page.items[i].createdAt).getTime();
+    const b = new Date(page.items[i + 1].createdAt).getTime();
+    assert.ok(a >= b, "items are newest first");
+  }
+
+  // Filter by action
+  const byAction = parsed(
+    schemas.auditLogPageSchema,
+    await get("/admin/audit-logs?action=USER_ROLE_CHANGED"),
+  );
+  assert.ok(byAction.items.length > 0);
+  assert.ok(byAction.pagination.total < page.pagination.total, "action filter narrows");
+  assert.ok(byAction.items.every((item) => item.action === "USER_ROLE_CHANGED"));
+
+  // Filter by outcome
+  const byOutcome = parsed(
+    schemas.auditLogPageSchema,
+    await get("/admin/audit-logs?outcome=FAILURE"),
+  );
+  assert.ok(byOutcome.items.length > 0);
+  assert.ok(byOutcome.pagination.total < page.pagination.total, "outcome filter narrows");
+  assert.ok(byOutcome.items.every((item) => item.outcome === "FAILURE"));
+
+  // Filter by actor and target user
+  const actorId = page.items.find((item) => item.userId)?.userId;
+  const byActor = parsed(schemas.auditLogPageSchema, await get(`/admin/audit-logs?userId=${actorId}`));
+  assert.ok(byActor.items.length > 0);
+  assert.ok(byActor.pagination.total < page.pagination.total, "actor filter narrows");
+  assert.ok(byActor.items.every((item) => item.userId === actorId));
+  const targetId = page.items.find((item) => item.targetUserId)?.targetUserId;
+  const byTarget = parsed(schemas.auditLogPageSchema, await get(`/admin/audit-logs?targetUserId=${targetId}`));
+  assert.ok(byTarget.items.length > 0);
+  assert.ok(byTarget.pagination.total < page.pagination.total, "target filter narrows");
+  assert.ok(byTarget.items.every((item) => item.targetUserId === targetId));
+
+  // Filter by date
+  const byDate = parsed(
+    schemas.auditLogPageSchema,
+    await get("/admin/audit-logs?startDate=2026-10-18T00:00:00%2B07:00&endDate=2026-10-18T23:59:59.999%2B07:00"),
+  );
+  assert.ok(byDate.items.length > 0);
+  assert.ok(byDate.pagination.total < page.pagination.total, "date filter narrows");
+  assert.ok(
+    byDate.items.every((item) => {
+      const at = new Date(item.createdAt).getTime();
+      return at >= Date.parse("2026-10-18T00:00:00+07:00") && at <= Date.parse("2026-10-18T23:59:59.999+07:00");
+    }),
+  );
+
+  // Detail endpoint
+  const firstId = page.items[0].id;
+  const detailRes = await get(`/admin/audit-logs/${firstId}`);
+  const detail = parsed(schemas.auditLogDetailSchema, detailRes);
+  assert.equal(detail.auditLog.id, firstId);
+  assert.ok(detail.auditLog.userId, "newest seed row has an actor");
+  assert.equal(detail.auditLog.actor?.id, detail.auditLog.userId);
+
+  // 404 on unknown UUID
+  const notFound = await get(`/admin/audit-logs/${randomUUID()}`);
+  assert.equal(notFound.status, 404);
+  assert.equal(notFound.body.error.code, "AUDIT_LOG_NOT_FOUND");
+
+  // 400 on page=0
+  const badQuery = await get("/admin/audit-logs?page=0");
+  assert.equal(badQuery.status, 400);
+  assert.equal(badQuery.body.error.code, "VALIDATION_ERROR");
+});
+

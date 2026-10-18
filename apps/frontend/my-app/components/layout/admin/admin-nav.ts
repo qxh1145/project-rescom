@@ -20,6 +20,7 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
   ...(PILOT_BUILD ? [] : [{ href: "/admin/quality", label: "Xét chất lượng", icon: "shield-check" as const, queue: "quality" as const }]),
   { href: "/admin/users", label: "Người dùng", icon: "users" },
   { href: "/admin/fraud-log", label: "FraudLog", icon: "shield-alert" },
+  { href: "/admin/audit-log", label: "Nhật ký thao tác", icon: "history" },
   { href: "/admin/transactions", label: "Giao dịch", icon: "arrows-swap" },
   ...(!REWARDS_ENABLED ? [] : [
     { href: "/admin/vouchers", label: "Voucher", icon: "ticket" as const },

@@ -4,6 +4,7 @@ import { ROUTE_ALLOWLIST } from "../route-allowlist";
 import { adminHandlers } from "./admin";
 import { adminDisputeHandlers } from "./admin-disputes";
 import { adminFraudLogHandlers } from "./admin-fraud-log";
+import { adminAuditLogsHandlers } from "./admin-audit-logs";
 import { adminModerationHandlers } from "./admin-moderation";
 import { adminOverviewHandlers } from "./admin-overview";
 import { adminQualityHandlers } from "./admin-quality";
@@ -45,6 +46,7 @@ export const handlers = [
   ...adminQualityHandlers,
   ...adminUserHandlers,
   ...adminFraudLogHandlers,
+  ...adminAuditLogsHandlers,
   ...adminTransactionHandlers,
   ...authHandlers,
   ...passwordResetHandlers,
