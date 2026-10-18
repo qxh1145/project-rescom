@@ -19,7 +19,11 @@ import { AUTH_COOKIE_NAME } from '../src/modules/auth/presentation/cookie-option
 import { LedgerService } from '../src/modules/economy/application/ledger.service';
 import { PrismaLedgerRepository } from '../src/modules/economy/infrastructure/prisma-ledger.repository';
 import { randomUUID } from 'crypto';
-import { walletDetailsSchema } from '@rescom/schemas';
+import {
+  accountReconciliationResultSchema,
+  ledgerIntegrityReportSchema,
+  walletDetailsSchema,
+} from '@rescom/schemas';
 
 describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
   let app: INestApplication;
@@ -481,6 +485,116 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
       expect(res.status).toBe(200);
       expect(res.body.data.totalSystemBalance).toBe(0);
       expect(res.body.data.isZeroSum).toBe(true);
+      expect(Array.isArray(res.body.data.driftedAccounts)).toBe(true);
+      expect(res.body.data.driftedAccountsTruncated).toBe(false);
+      expect(ledgerIntegrityReportSchema.safeParse(res.body.data).success).toBe(
+        true,
+      );
+    });
+
+    describe('POST /economy/accounts/:id/reconcile (Story 14.4)', () => {
+      const reconcileActions = () =>
+        auditRepo.records.filter(
+          (r) => r.action === 'LEDGER_ACCOUNT_RECONCILED',
+        );
+
+      it('flags a drifted account, reconciles it as Admin and audits the repair', async () => {
+        const systemAccount = await ledgerService.getOrCreateAccount(
+          null,
+          'SYSTEM_ISSUANCE',
+        );
+        const userAccount = await ledgerService.getOrCreateAccount(
+          respondentUserId,
+          'USER_AVAILABLE',
+        );
+        await ledgerService.transfer({
+          fromAccountId: systemAccount.id,
+          toAccountId: userAccount.id,
+          amount: 50,
+          idempotencyKey: `reconcile-e2e-${randomUUID()}`,
+        });
+        const settledBalance = (await ledgerService.getAccount(userAccount.id))
+          .balance;
+        await ledgerRepo.rebuildAccountBalance(userAccount.id, 999);
+
+        const integrity = await request(app.getHttpServer())
+          .get('/economy/integrity')
+          .set('Cookie', [authCookie])
+          .set('Origin', ALLOWED_ORIGIN);
+        expect(ledgerIntegrityReportSchema.parse(integrity.body.data)).toEqual(
+          expect.objectContaining({
+            driftedAccounts: [
+              {
+                accountId: userAccount.id,
+                userId: respondentUserId,
+                accountClass: 'USER_AVAILABLE',
+                projectedBalance: 999,
+                calculatedBalance: settledBalance,
+              },
+            ],
+          }),
+        );
+
+        const before = reconcileActions().length;
+        const res = await request(app.getHttpServer())
+          .post(`/economy/accounts/${userAccount.id}/reconcile`)
+          .set('Cookie', [authCookie])
+          .set('x-csrf-token', csrfToken)
+          .set('Origin', ALLOWED_ORIGIN);
+
+        expect(res.status).toBe(200);
+        expect(accountReconciliationResultSchema.parse(res.body.data)).toEqual({
+          accountId: userAccount.id,
+          priorBalance: 999,
+          correctedBalance: settledBalance,
+        });
+        const records = reconcileActions();
+        expect(records).toHaveLength(before + 1);
+        expect(records[records.length - 1]).toEqual({
+          action: 'LEDGER_ACCOUNT_RECONCILED',
+          userId: respondentUserId,
+          outcome: 'SUCCESS',
+          metadata: {
+            accountId: userAccount.id,
+            priorBalance: 999,
+            correctedBalance: settledBalance,
+            changed: true,
+          },
+        });
+
+        const after = await request(app.getHttpServer())
+          .get('/economy/integrity')
+          .set('Cookie', [authCookie])
+          .set('Origin', ALLOWED_ORIGIN);
+        expect(after.body.data.driftedAccounts).toEqual([]);
+      });
+
+      it('forbids a non-admin and writes no audit record', async () => {
+        const before = reconcileActions().length;
+
+        const res = await request(app.getHttpServer())
+          .post(`/economy/accounts/${randomUUID()}/reconcile`)
+          .set('Cookie', [respondentCookie])
+          .set('x-csrf-token', respondentCsrfToken)
+          .set('Origin', ALLOWED_ORIGIN);
+
+        expect(res.status).toBe(403);
+        expect(reconcileActions()).toHaveLength(before);
+      });
+
+      it('answers 404 ACCOUNT_NOT_FOUND for an unknown account and writes no audit record', async () => {
+        const before = reconcileActions().length;
+
+        const res = await request(app.getHttpServer())
+          .post(`/economy/accounts/${randomUUID()}/reconcile`)
+          .set('Cookie', [authCookie])
+          .set('x-csrf-token', csrfToken)
+          .set('Origin', ALLOWED_ORIGIN);
+
+        expect(res.status).toBe(404);
+        expect(res.body.error.code).toBe('ACCOUNT_NOT_FOUND');
+        expect(reconcileActions()).toHaveLength(before);
+      });
     });
   });
 

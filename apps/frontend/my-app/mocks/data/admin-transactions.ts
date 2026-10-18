@@ -1,4 +1,10 @@
-import type { LedgerAccountClass } from "@rescom/schemas";
+import {
+  encodeMaturedReleaseCursor,
+  type LedgerAccountClass,
+  type LedgerIntegrityReport,
+  type MaturedReleaseSummaryDto,
+  type RewardSettlementResultDto,
+} from "@rescom/schemas";
 import {
   compareJournalsNewestFirst,
   journalKindOf,
@@ -10,11 +16,12 @@ import type { AdminJournal, AdminLedgerSummary } from "@/lib/admin/transactions-
 import { vietnamDateKey } from "@/lib/format/date-time";
 import { loadStore } from "../legacy/store";
 import { pendingTopUpSummary } from "./admin-top-ups";
+import { FRAUD_SEED_USER_IDS } from "./admin-fraud-log";
 import { toMockUuid } from "./auth";
 import { mockEscrowTotal, transactions, wallets } from "./economy";
 import { ledgerItemsFromRows } from "./economy-rules";
 import { allTopUps } from "./top-up";
-import { createCollection } from "../db/store";
+import { createCollection, nowIso } from "../db/store";
 
 /**
  * Admin ledger view (Figma 11f "Giao dịch điểm", 63:1629). Journals are built
@@ -309,5 +316,132 @@ export function adminLedgerSummary(now = new Date()): AdminLedgerSummary {
       ),
       surveys: refunds.length,
     },
+  };
+}
+
+/**
+ * Ledger operations (Story 14.4): demo ids for the "Vận hành" tab. MOCK-ONLY: the real ids
+ * come from the database (integrity report, survey responses and attempts).
+ */
+export const LEDGER_OPS_DEMO = {
+  /** Drifted user account (projected 120, entries sum to 100) until reconciled. */
+  driftedAccountId: "14040000-0000-4000-8000-0000000000a1",
+  /** Consistent system account (not in the drift list). */
+  escrowAccountId: "14040000-0000-4000-8000-0000000000a2",
+  /** Internal response with a settled reward. */
+  settledResponseId: "14040000-0000-4000-8000-0000000000b1",
+  /** External attempt whose reward waits 48 hours. */
+  pendingAttemptId: "14040000-0000-4000-8000-0000000000c1",
+  /** External attempt whose settlement is unavailable (answer `null`). */
+  unavailableAttemptId: "14040000-0000-4000-8000-0000000000c2",
+} as const;
+
+interface MockLedgerAccount {
+  userId: string | null;
+  accountClass: LedgerAccountClass;
+  projectedBalance: number;
+  calculatedBalance: number;
+}
+
+interface LedgerOpsState {
+  accounts: Record<string, MockLedgerAccount>;
+  /** Pending rewards older than 48 hours that "Giải phóng" has not released yet. */
+  maturedPending: number;
+}
+
+const ledgerOps = createCollection<LedgerOpsState>("admin-ledger-ops", () => ({
+  accounts: {
+    [LEDGER_OPS_DEMO.driftedAccountId]: {
+      userId: FRAUD_SEED_USER_IDS.khang,
+      accountClass: "USER_AVAILABLE",
+      projectedBalance: 120,
+      calculatedBalance: 100,
+    },
+    [LEDGER_OPS_DEMO.escrowAccountId]: {
+      userId: null,
+      accountClass: "ESCROW",
+      projectedBalance: 4500,
+      calculatedBalance: 4500,
+    },
+  },
+  maturedPending: 14,
+}));
+
+const RELEASE_DEFAULT_LIMIT = 100;
+
+/** `GET /economy/integrity`: entries always sum to zero in the mock; drift = projected ≠ calculated. */
+export function ledgerOpsIntegrity(): LedgerIntegrityReport {
+  const driftedAccounts = Object.entries(ledgerOps.get().accounts)
+    .filter(([, account]) => account.projectedBalance !== account.calculatedBalance)
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([accountId, account]) => ({ accountId, ...account }));
+  return { totalSystemBalance: 0, isZeroSum: true, driftedAccounts, driftedAccountsTruncated: false };
+}
+
+/** `GET /economy/accounts/:id/balance`; `null` = unknown account (404). */
+export function ledgerOpsBalance(accountId: string) {
+  const account = ledgerOps.get().accounts[accountId];
+  if (!account) return null;
+  return {
+    accountId,
+    projectedBalance: account.projectedBalance,
+    calculatedBalance: account.calculatedBalance,
+    isConsistent: account.projectedBalance === account.calculatedBalance,
+  };
+}
+
+/** `POST /economy/accounts/:id/reconcile`: the projected balance becomes the sum of the entries. */
+export function ledgerOpsReconcile(accountId: string) {
+  const account = ledgerOps.get().accounts[accountId];
+  if (!account) return null;
+  ledgerOps.update((draft) => {
+    draft.accounts[accountId].projectedBalance = draft.accounts[accountId].calculatedBalance;
+  });
+  return { accountId, priorBalance: account.projectedBalance, correctedBalance: account.calculatedBalance };
+}
+
+/** `POST /economy/rewards/{internal,external}/:id`: `undefined` = not found (404), `null` = settlement unavailable. */
+export function ledgerOpsRedrive(kind: "internal" | "external", id: string): RewardSettlementResultDto | null | undefined {
+  const settledAt = nowIso();
+  if (kind === "internal" && id === LEDGER_OPS_DEMO.settledResponseId) {
+    return {
+      status: "SETTLED",
+      journalId: toMockUuid("ledger-ops:journal:settled"),
+      amount: 30,
+      targetAccountClass: "USER_AVAILABLE",
+      settledAt,
+    };
+  }
+  if (kind === "external" && id === LEDGER_OPS_DEMO.pendingAttemptId) {
+    return {
+      status: "PENDING",
+      journalId: toMockUuid("ledger-ops:journal:pending"),
+      amount: 20,
+      targetAccountClass: "PENDING",
+      settledAt,
+    };
+  }
+  if (kind === "external" && id === LEDGER_OPS_DEMO.unavailableAttemptId) return null;
+  return undefined;
+}
+
+/** `POST /economy/rewards/release-matured`: releases up to `limit` of the seeded matured credits. */
+export function ledgerOpsRelease(limit: number | undefined): MaturedReleaseSummaryDto {
+  const processed = Math.min(limit ?? RELEASE_DEFAULT_LIMIT, ledgerOps.get().maturedPending);
+  const remaining = ledgerOps.update((draft) => {
+    draft.maturedPending -= processed;
+  }).maturedPending;
+  const now = nowIso();
+  return {
+    processed,
+    releasedCount: processed,
+    disputedCount: 0,
+    failedCount: 0,
+    hasMore: remaining > 0,
+    nextCursor:
+      remaining > 0
+        ? encodeMaturedReleaseCursor({ createdAt: now, journalId: toMockUuid(`ledger-ops:cursor:${remaining}`) })
+        : null,
+    cutoffDate: new Date(Date.now() - 48 * 3_600_000).toISOString(),
   };
 }

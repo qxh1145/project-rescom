@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto';
+import { LEDGER_DRIFT_REPORT_LIMIT } from '@rescom/schemas';
 import { InMemoryLedgerRepository } from '../infrastructure/in-memory-ledger.repository';
 import { LedgerService } from './ledger.service';
 import { LedgerAccountEntity } from '../domain/ledger-account.entity';
@@ -762,6 +764,69 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
       const report = await service.verifyLedgerIntegrity();
       expect(report.totalSystemBalance).toBe(0);
       expect(report.isZeroSum).toBe(true);
+      expect(report.driftedAccounts).toEqual([]);
+      expect(report.driftedAccountsTruncated).toBe(false);
+    });
+
+    it('lists accounts whose projected balance drifted from their entries (Story 14.4 D1)', async () => {
+      const systemAccount = await service.getOrCreateAccount(
+        null,
+        'SYSTEM_ISSUANCE',
+      );
+      const userAccount = await service.getOrCreateAccount(
+        user1Id,
+        'USER_AVAILABLE',
+      );
+      await service.transfer({
+        fromAccountId: systemAccount.id,
+        toAccountId: userAccount.id,
+        amount: 200,
+        idempotencyKey: 'drift-1',
+      });
+      await repo.rebuildAccountBalance(userAccount.id, 999);
+
+      const report = await service.verifyLedgerIntegrity();
+
+      expect(report.isZeroSum).toBe(true);
+      expect(report.driftedAccounts).toEqual([
+        {
+          accountId: userAccount.id,
+          userId: user1Id,
+          accountClass: 'USER_AVAILABLE',
+          projectedBalance: 999,
+          calculatedBalance: 200,
+        },
+      ]);
+      expect(report.driftedAccountsTruncated).toBe(false);
+
+      await service.reconcileAccountBalance(userAccount.id);
+      expect((await service.verifyLedgerIntegrity()).driftedAccounts).toEqual(
+        [],
+      );
+    });
+
+    it('caps the drift list at LEDGER_DRIFT_REPORT_LIMIT and flags truncation', async () => {
+      const rows = Array.from(
+        { length: LEDGER_DRIFT_REPORT_LIMIT + 1 },
+        (_, i) => ({
+          accountId: randomUUID(),
+          userId: randomUUID(),
+          accountClass: 'USER_AVAILABLE' as const,
+          projectedBalance: i + 1,
+          calculatedBalance: 0,
+        }),
+      );
+      const spy = jest
+        .spyOn(repo, 'findDriftedAccounts')
+        .mockResolvedValue(rows);
+
+      const report = await service.verifyLedgerIntegrity();
+
+      expect(spy).toHaveBeenCalledWith(LEDGER_DRIFT_REPORT_LIMIT + 1);
+      expect(report.driftedAccounts).toEqual(
+        rows.slice(0, LEDGER_DRIFT_REPORT_LIMIT),
+      );
+      expect(report.driftedAccountsTruncated).toBe(true);
     });
   });
 

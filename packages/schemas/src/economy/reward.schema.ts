@@ -113,6 +113,23 @@ export type ReleaseMaturedPendingRewardsInput = z.infer<
   typeof releaseMaturedPendingRewardsSchema
 >;
 
+/** Story 14.4: result of `POST /economy/rewards/release-matured`. */
+export const maturedReleaseSummarySchema = z
+  .object({
+    processed: z.number().int().nonnegative(),
+    releasedCount: z.number().int().nonnegative(),
+    disputedCount: z.number().int().nonnegative(),
+    failedCount: z.number().int().nonnegative(),
+    hasMore: z.boolean(),
+    /** Pass as `after` to continue; null when `hasMore` is false. */
+    nextCursor: z.string().nullable(),
+    cutoffDate: z.string().datetime(),
+  })
+  .strict();
+export type MaturedReleaseSummaryDto = z.infer<
+  typeof maturedReleaseSummarySchema
+>;
+
 /**
  * Body of the Admin re-drive endpoints `POST /economy/rewards/internal/:responseId`
  * and `POST /economy/rewards/external/:attemptId` (Epic 6 review P1): every

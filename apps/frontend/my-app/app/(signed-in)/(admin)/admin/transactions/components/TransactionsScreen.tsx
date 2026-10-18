@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { AdminPage } from "@/components/layout/admin/AdminPage";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -15,22 +16,41 @@ import {
   summaryLoadErrorMessage,
   transactionsLoadErrorMessage,
 } from "@/lib/admin/transactions-messages";
+import type { TransactionsTab } from "@/lib/admin/ledger-ops-view";
 import { useAdminTransactions } from "../hooks/use-admin-transactions";
 import { JournalTable } from "./JournalTable";
+import { LedgerOpsPanel } from "./LedgerOpsPanel";
 import { LedgerSummaryCards } from "./LedgerSummaryCards";
+import { TransactionsTabs, transactionsPanelId, transactionsTabId } from "./TransactionsTabs";
 
 /**
  * Figma 11f "Giao dịch điểm" (63:1629): four summary cards, then the ledger
  * journals with "Loại giao dịch" segments and a period select. Read-only
  * ("Sổ ghi kép · không sửa, không xoá"). ASSUMED below lg: cards 2 per row,
- * the table scrolls horizontally.
+ * the table scrolls horizontally. Story 14.4: a second tab "Vận hành" (ledger
+ * operator fallbacks); the journal view above is unchanged. Both panels stay
+ * mounted (the inactive one is `hidden`) so switching tabs neither refetches
+ * journals nor loses a ledger check in progress.
  */
 export function TransactionsScreen() {
   const view = useAdminTransactions();
+  const [tab, setTab] = useState<TransactionsTab>("ledger");
 
   return (
-    <AdminPage title="Giao dịch điểm" meta="Sổ ghi kép · không sửa, không xoá">
-      <div className="flex flex-col gap-5">
+    <AdminPage title="Giao dịch điểm" meta={
+        <>
+          <TransactionsTabs active={tab} onSelect={setTab} />
+          {tab === "ledger" ? <span className="ml-4.5">Sổ ghi kép · không sửa, không xoá</span> : null}
+        </>
+      }
+    >
+      <div
+        id={transactionsPanelId("ledger")}
+        role="tabpanel"
+        aria-labelledby={transactionsTabId("ledger")}
+        hidden={tab !== "ledger"}
+        className="flex flex-col gap-5"
+      >
         {view.summaryError ? (
           <Alert tone="danger">
             {summaryLoadErrorMessage(view.summaryError)}{" "}
@@ -97,6 +117,14 @@ export function TransactionsScreen() {
             </div>
           ) : null}
         </section>
+      </div>
+      <div
+        id={transactionsPanelId("ops")}
+        role="tabpanel"
+        aria-labelledby={transactionsTabId("ops")}
+        hidden={tab !== "ops"}
+      >
+        <LedgerOpsPanel />
       </div>
     </AdminPage>
   );

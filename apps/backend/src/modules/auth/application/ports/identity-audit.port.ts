@@ -16,7 +16,11 @@ export type IdentityAuditAction =
   | 'OUTBOX_EVENT_REDRIVEN'
   // Plan 5.4: a reset link was issued / redeemed (password changed).
   | 'PASSWORD_RESET_REQUESTED'
-  | 'PASSWORD_RESET_COMPLETED';
+  | 'PASSWORD_RESET_COMPLETED'
+  // Story 14.4: Admin ledger operations (reconcile, reward re-drive, release).
+  | 'LEDGER_ACCOUNT_RECONCILED'
+  | 'REWARD_REDRIVEN'
+  | 'PENDING_REWARDS_RELEASED';
 
 export interface CreateIdentityAuditRecord {
   action: IdentityAuditAction;

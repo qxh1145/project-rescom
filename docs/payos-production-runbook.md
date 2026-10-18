@@ -220,6 +220,8 @@ Dùng khi có sự cố nghiêm trọng (payOS gián đoạn diện rộng, sai 
 
 ## 7. Quy trình xử lý sự cố (SOPs)
 
+Sự cố về sổ cái (số dư lệch, thưởng bị kẹt, Điểm chờ chưa được giải phóng): xem [Sổ tay vận hành sổ cái](ledger-operations-runbook.md).
+
 ### 7.1. Giao dịch đang thực hiện / đã thanh toán nhưng chưa cộng điểm (In-flight & Paid-uncredited)
 - **Tự phục hồi:** tiến trình đối soát (`payos-reconcile`) định kỳ quét các đơn chưa chốt và hỏi payOS; nếu payOS báo đã thanh toán thì cộng điểm, kể cả khi `PAYOS_ENABLED=false`.
 - **Thao tác thủ công của Admin** tại `/admin/top-ups`:

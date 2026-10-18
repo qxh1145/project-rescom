@@ -1,4 +1,4 @@
-import { LedgerAccountClass } from '@rescom/schemas';
+import { LedgerAccountClass, LedgerDriftedAccount } from '@rescom/schemas';
 import {
   LedgerRepositoryPort,
   MaturedCreditCursor,
@@ -342,6 +342,27 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
 
   async sumAllEntries(): Promise<number> {
     return this.entries.reduce((sum, e) => sum + e.amount, 0);
+  }
+
+  async findDriftedAccounts(limit: number): Promise<LedgerDriftedAccount[]> {
+    const sums = new Map<string, number>();
+    for (const entry of this.entries) {
+      sums.set(
+        entry.accountId,
+        (sums.get(entry.accountId) ?? 0) + entry.amount,
+      );
+    }
+    return Array.from(this.accounts.values())
+      .filter((acc) => acc.balance !== (sums.get(acc.id) ?? 0))
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .slice(0, limit)
+      .map((acc) => ({
+        accountId: acc.id,
+        userId: acc.userId,
+        accountClass: acc.accountClass,
+        projectedBalance: acc.balance,
+        calculatedBalance: sums.get(acc.id) ?? 0,
+      }));
   }
 
   async rebuildAccountBalance(
