@@ -12,9 +12,19 @@ export interface FormTitleLookupResult {
   byFormVersionId: Map<string, { formId: string; title: string }>;
 }
 
+export interface FormTitleSummary {
+  title: string;
+  rewardPerResponse: number;
+  status: string;
+}
+
 export interface FormTitleLookupPort {
   findTitles(params: {
     formIds: readonly string[];
     formVersionIds: readonly string[];
   }): Promise<FormTitleLookupResult>;
+
+  findSummaries(params: {
+    formIds: readonly string[];
+  }): Promise<Map<string, FormTitleSummary>>;
 }

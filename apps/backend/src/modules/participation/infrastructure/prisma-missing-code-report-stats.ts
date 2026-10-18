@@ -15,6 +15,7 @@ export class PrismaMissingCodeReportStats implements MissingCodeReportStatsPort 
       SELECT count(*)::int AS "count"
       FROM survey_attempts a
       WHERE a.missing_code_reported_at IS NOT NULL
+        AND a.missing_code_resolved_at IS NULL
         AND a.status <> 'COMPLETED'
         AND NOT EXISTS (
           SELECT 1 FROM completion_code_limit_resets r
@@ -36,19 +37,24 @@ export class PrismaMissingCodeReportStats implements MissingCodeReportStatsPort 
       Array<{
         id: string;
         survey_id: string;
+        form_version_id: string;
         respondent_id: string | null;
         reason: string | null;
         reported_at: Date;
         status: string;
+        failed_code_verifications: number;
       }>
     >`
       SELECT a.id::text AS id, a.survey_id::text AS survey_id,
+             a.form_version_id::text AS form_version_id,
              a.respondent_id::text AS respondent_id,
              a.missing_code_reason AS reason,
              a.missing_code_reported_at AS reported_at,
-             a.status::text AS status
+             a.status::text AS status,
+             a.failed_code_verifications AS failed_code_verifications
       FROM survey_attempts a
       WHERE a.missing_code_reported_at IS NOT NULL
+        AND a.missing_code_resolved_at IS NULL
         AND a.status <> 'COMPLETED'
         AND NOT EXISTS (
           SELECT 1 FROM completion_code_limit_resets r
@@ -65,10 +71,12 @@ export class PrismaMissingCodeReportStats implements MissingCodeReportStatsPort 
     return rows.map((row) => ({
       attemptId: row.id,
       surveyId: row.survey_id,
+      formVersionId: row.form_version_id,
       respondentId: row.respondent_id,
       reason: row.reason,
       reportedAt: row.reported_at,
       attemptStatus: row.status,
+      failedCodeVerifications: row.failed_code_verifications,
     }));
   }
 }

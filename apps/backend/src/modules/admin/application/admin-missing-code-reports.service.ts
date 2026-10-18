@@ -39,20 +39,20 @@ export class AdminMissingCodeReportsService {
         page.map((row) => row.respondentId).filter((id): id is string => !!id),
       ),
     ];
-    const [titles, names] = await Promise.all([
+    const [summaries, names] = await Promise.all([
       formIds.length > 0
-        ? this.deps.formTitles.findTitles({ formIds, formVersionIds: [] })
-        : Promise.resolve({ byFormId: new Map<string, string>() }),
+        ? this.deps.formTitles.findSummaries({ formIds })
+        : Promise.resolve(new Map()),
       userIds.length > 0
         ? this.deps.profiles.findDisplayLabels(userIds)
         : Promise.resolve(new Map<string, string | null>()),
     ]);
 
     const items = page.map((row): MissingCodeReport => {
-      const title = titles.byFormId.get(row.surveyId);
+      const summary = summaries.get(row.surveyId);
       return {
         attemptId: row.attemptId,
-        survey: title === undefined ? null : { id: row.surveyId, title },
+        survey: summary ? { id: row.surveyId, title: summary.title } : null,
         respondent: row.respondentId
           ? {
               id: row.respondentId,
@@ -62,6 +62,10 @@ export class AdminMissingCodeReportsService {
         reason: row.reason,
         reportedAt: row.reportedAt.toISOString(),
         attemptStatus: row.attemptStatus as MissingCodeReport['attemptStatus'],
+        formVersionId: row.formVersionId,
+        rewardPerResponse: summary?.rewardPerResponse ?? 0,
+        surveyOpen: summary?.status === 'PUBLISHED',
+        failedCodeVerifications: row.failedCodeVerifications,
       };
     });
     return {

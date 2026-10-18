@@ -149,6 +149,55 @@ test("decision note is required (sent to both parties)", () => {
   assert.match(view.validateDecisionNote("   ngắn  "), /ít nhất 10 ký tự/);
   assert.equal(view.validateDecisionNote("Câu trả lời không hợp lệ."), null);
   assert.match(view.validateDecisionNote("x".repeat(1001)), /tối đa 1000/);
+  // Story 14.1: custom audience and max limit (10-500)
+  assert.match(
+    view.validateDecisionNote("   ngắn  ", { min: 10, max: 500, audience: "người trả lời" }),
+    /gửi cho người trả lời/,
+  );
+  assert.match(
+    view.validateDecisionNote("x".repeat(501), { min: 10, max: 500, audience: "người trả lời" }),
+    /tối đa 500/,
+  );
+});
+
+test("Story 14.1: missingCodeReportActions builds actions, confirm copy, and disables credit appropriately", () => {
+  const baseReport = {
+    attemptId: "11111111-1111-4111-8111-111111111111",
+    survey: { id: "s1", title: "Khảo sát thử nghiệm" },
+    respondent: { id: "22222222-2222-4222-8222-222222222222", displayName: "Nguyễn Văn A" },
+    reason: "Không nhận được mã",
+    reportedAt: new Date().toISOString(),
+    attemptStatus: "IN_PROGRESS",
+    formVersionId: "33333333-3333-4333-8333-333333333333",
+    rewardPerResponse: 50,
+    surveyOpen: true,
+    failedCodeVerifications: 0,
+  };
+
+  // Normal open report: credit enabled, confirm copy specifies Điểm chờ (48 giờ)
+  const actions = view.missingCodeReportActions(baseReport);
+  assert.equal(actions.length, 2);
+  assert.equal(actions[0].outcome, "DISMISSED");
+  assert.equal(actions[1].outcome, "CREDIT_RESPONDENT");
+  assert.equal(actions[1].disabledReason, undefined);
+  assert.match(actions[1].confirmBody, /Điểm chờ \(48 giờ\)/);
+
+  // When failedCodeVerifications > 0: includes resetAction
+  const withStrikes = view.missingCodeReportActions({ ...baseReport, failedCodeVerifications: 2 });
+  assert.equal(withStrikes.length, 3);
+  assert.equal(withStrikes[1].outcome, "CODE_LIMIT_RESET");
+
+  // When attempt is COMPLETED: credit disabled
+  const completed = view.missingCodeReportActions({ ...baseReport, attemptStatus: "COMPLETED" });
+  assert.match(completed[1].disabledReason, /Lượt làm đã hoàn thành/);
+
+  // When survey is closed: credit disabled
+  const closed = view.missingCodeReportActions({ ...baseReport, surveyOpen: false });
+  assert.match(closed[1].disabledReason, /Khảo sát đã đóng/);
+
+  // When attempt is guest: credit disabled
+  const guest = view.missingCodeReportActions({ ...baseReport, respondent: null });
+  assert.match(guest[1].disabledReason, /khách không có tài khoản/);
 });
 
 test("error copy", () => {
@@ -158,6 +207,19 @@ test("error copy", () => {
   const network = new ApiError({ kind: "network", message: "x" });
   assert.match(messages.disputeListErrorMessage(network), /Không kết nối/);
   assert.equal(messages.isStaleCaseError(network), false);
+
+  // Story 14.1 error codes
+  const surveyClosed = new ApiError({ kind: "http", status: 409, code: "MISSING_CODE_SURVEY_CLOSED", message: "x" });
+  assert.match(messages.disputeResolveErrorMessage(surveyClosed), /Khảo sát đã đóng/);
+
+  const selfResolve = new ApiError({ kind: "http", status: 403, code: "MISSING_CODE_SELF_RESOLVE_FORBIDDEN", message: "x" });
+  assert.match(messages.disputeResolveErrorMessage(selfResolve), /chính mình/);
+
+  const missingResolved = new ApiError({ kind: "http", status: 409, code: "MISSING_CODE_REPORT_ALREADY_RESOLVED", message: "x" });
+  assert.equal(messages.isStaleCaseError(missingResolved), true);
+
+  const notFound = new ApiError({ kind: "http", status: 404, code: "MISSING_CODE_REPORT_NOT_FOUND", message: "x" });
+  assert.equal(messages.isStaleCaseError(notFound), true);
 });
 
 test("mock ledger: dispute resolutions map to the backend journal keys and wallet rows", () => {

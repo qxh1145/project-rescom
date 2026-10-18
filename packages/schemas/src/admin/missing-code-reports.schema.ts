@@ -38,6 +38,10 @@ export const missingCodeReportSchema = z
     reason: z.string().nullable(),
     reportedAt: z.string().datetime(),
     attemptStatus: attemptStatusSchema,
+    formVersionId: z.string().uuid(),
+    rewardPerResponse: z.number().int().nonnegative(),
+    surveyOpen: z.boolean(),
+    failedCodeVerifications: z.number().int().nonnegative(),
   })
   .strict();
 export type MissingCodeReport = z.infer<typeof missingCodeReportSchema>;

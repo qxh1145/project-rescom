@@ -307,6 +307,10 @@ describe('Prisma migration chain on PostgreSQL', () => {
     const attempts = await columnsOf('survey_attempts');
     expect(attempts.get('closed_reason')).toBe('YES');
     expect(attempts.get('closed_at')).toBe('YES');
+    expect(attempts.get('missing_code_resolved_at')).toBe('YES');
+    expect(attempts.get('missing_code_resolution')).toBe('YES');
+    expect(attempts.get('missing_code_resolution_note')).toBe('YES');
+    expect(attempts.get('missing_code_resolved_by')).toBe('YES');
     await expect(
       indexDef('survey_attempts_status_started_at_idx'),
     ).resolves.toMatch(/\(status, started_at\)/);

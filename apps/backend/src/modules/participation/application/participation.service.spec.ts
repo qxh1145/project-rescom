@@ -191,6 +191,9 @@ describe('ParticipationService', () => {
       reportMissingCompletionCode: jest.fn(),
       // Story IR.2a (the runner's cancel command, not used by this service).
       cancelAttempt: jest.fn(),
+      lockOpenMissingCodeReport: jest.fn(),
+      completeAttemptByAdmin: jest.fn(),
+      recordMissingCodeResolution: jest.fn(),
     };
 
     mockCompletionCodeService = {

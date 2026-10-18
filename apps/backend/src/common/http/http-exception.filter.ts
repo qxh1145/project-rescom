@@ -100,6 +100,10 @@ import {
   SurveyNotFoundException,
   AttemptNotFoundException,
   AttemptNotInProgressException,
+  MissingCodeReportNotFoundException,
+  MissingCodeSelfResolveForbiddenException,
+  MissingCodeReportAlreadyResolvedException,
+  MissingCodeSurveyClosedException,
 } from '../../modules/participation/application/exceptions/participation.exceptions';
 import { IntegrityConsentVersionMismatchException } from '../../modules/participation/application/exceptions/integrity-consent.exceptions';
 import {
@@ -451,10 +455,27 @@ export class HttpExceptionFilter implements ExceptionFilter {
     } else if (
       // Story IR.2a: unpublished surveys and other users' attempts are 404s
       // that reveal nothing.
+      // Story 14.1 (AC 5): unknown missing code reports return 404.
       exception instanceof SurveyNotFoundException ||
-      exception instanceof AttemptNotFoundException
+      exception instanceof AttemptNotFoundException ||
+      exception instanceof MissingCodeReportNotFoundException
     ) {
       status = HttpStatus.NOT_FOUND;
+      code = exception.code;
+      message = exception.message;
+    } else if (
+      // Story 14.1 (AC 5): Admin attempting to self-resolve their own attempt.
+      exception instanceof MissingCodeSelfResolveForbiddenException
+    ) {
+      status = HttpStatus.FORBIDDEN;
+      code = exception.code;
+      message = exception.message;
+    } else if (
+      // Story 14.1 (AC 3, AC 5): resolution conflict or survey closed during resolution.
+      exception instanceof MissingCodeReportAlreadyResolvedException ||
+      exception instanceof MissingCodeSurveyClosedException
+    ) {
+      status = HttpStatus.CONFLICT;
       code = exception.code;
       message = exception.message;
     } else if (exception instanceof AttemptNotInProgressException) {

@@ -48,6 +48,7 @@ import { PrismaSurveyFeedbackRepository } from './infrastructure/prisma-survey-f
 import { SurveyFeedbackController } from './presentation/survey-feedback.controller';
 import { AdminRewardRedriveController } from './presentation/admin-reward-redrive.controller';
 import { AdminCompletionCodeLimitController } from './presentation/admin-completion-code-limit.controller';
+import { AdminMissingCodeResolutionController } from './presentation/admin-missing-code-resolution.controller';
 import { SurveyRunnerReadService } from './application/survey-runner-read.service';
 import { SurveyRunnerController } from './presentation/survey-runner.controller';
 import { economyAttemptRewardQueries } from './infrastructure/economy-attempt-reward-query.adapter';
@@ -95,6 +96,8 @@ import { PrismaSurveyCompletionReader } from './infrastructure/prisma-survey-com
     AdminRewardRedriveController,
     // Decision E5-D1: Admin recovery of the completion-code limit.
     AdminCompletionCodeLimitController,
+    // Story 14.1 (AC 1): Admin missing-code report resolution.
+    AdminMissingCodeResolutionController,
     // Story IR.2a: survey runner reads (API-01..05) and the cancel command.
     SurveyRunnerController,
     // Integrity telemetry notice (Figma 14), Integrity-owned consent records.

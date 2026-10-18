@@ -2042,13 +2042,13 @@ So that a Respondent whose Publisher forgot the completion code is paid or told 
 
 **Given** an unresolved missing-code report (`GET /admin/missing-code-reports`)
 **When** the Admin calls `POST /admin/missing-code-reports/:attemptId/resolve` with `{ outcome, note }` (`ADMIN` only, CSRF, JSON-only, strict body)
-**Then** `outcome` is `CREDIT_RESPONDENT` or `DISMISSED`, and `note` is required (1–500 characters) for `DISMISSED` and optional for `CREDIT_RESPONDENT` (FR-23).
+**Then** `outcome` is `CREDIT_RESPONDENT` or `DISMISSED`, and `note` is required (10–500 characters) for both outcomes (FR-23; amended 2026-10-18 by Story 14.1 D5).
 **And** `CREDIT_RESPONDENT` moves the attempt to `COMPLETED` and settles through the existing External completion path (`external-completion:{attemptId}` → Pending, released after 48 h by the scheduler); Respondent, Publisher, and amount are derived server-side, never from the body (FR-24, FR-ADD-11).
-**And** it is refused with 409 when the attempt is a guest attempt, already `COMPLETED` or already rewarded, the survey is closed or its quota is full, or the escrow is below the reward (`INSUFFICIENT_BALANCE`); nothing changes on refusal.
+**And** it is refused with 409 when the attempt is a guest attempt, already `COMPLETED` or already rewarded, the survey is closed or its quota is full, or the escrow is below the reward (`SURVEY_REWARD_UNAVAILABLE`); nothing changes on refusal.
 **And** `survey_attempts` gains additive nullable columns `missing_code_resolved_at`, `missing_code_resolution`, `missing_code_resolution_note`, `missing_code_resolved_by`; resolved reports leave the unresolved list and count.
 **And** resolution takes a row lock on the attempt with a CAS on `missing_code_resolved_at IS NULL`; a second resolve, or a resolve racing a code reset or a late correct code, gets 409 `MISSING_CODE_ALREADY_RESOLVED` or the existing completion conflict, proven by a concurrency test; the reward is paid at most once.
 **And** the resolution, its audit event, and its Outbox notifications commit in one transaction: the Respondent is notified for both outcomes (with the note), and the Publisher is notified on `CREDIT_RESPONDENT` to check the completion code on the external form (FR-57).
-**And** with mocking disabled, the "Báo thiếu mã" tab of `/admin/disputes` (Figma 11c, 62:1609) shows "Cộng Điểm cho người làm" and "Bỏ qua" (reason required), plus the existing "Mở lại giới hạn mã"; `MISSING_CODE` leaves the MSW-only set in `tests/route-diff.test.mjs`, and the category counts are updated.
+**And** with mocking disabled, the "Báo thiếu mã" tab of `/admin/disputes` (Figma 11c, 62:1609) shows "Cộng Điểm cho người làm" and "Bỏ qua" (reason required), plus the existing "Mở lại giới hạn mã"; the new route has no MSW handler (hybrid passes it through), so `tests/route-diff.test.mjs` and its counts stay unchanged.
 **And** the `ATTEMPT_DISPUTE` and `LOCKED_ATTEMPT` kinds and `NoExternalDisputeHolds` are unchanged.
 
 ### Story 14.2: Rewards Daily Points Limit Setting

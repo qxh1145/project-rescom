@@ -16,6 +16,9 @@ import {
   ReserveAttemptResult,
   SubmitInternalResponseTransactionParams,
   SubmitInternalResponseTransactionResult,
+  LockedMissingCodeReport,
+  MissingCodeResolutionData,
+  MissingCodeOutboxEvent,
 } from '../application/ports/participation-repository.port';
 import type { FormCompletionRefs } from '../../forms/application/ports/form-repository.port';
 import {
@@ -28,7 +31,10 @@ import {
 } from '../domain/survey-attempt.entity';
 import { ResponseEntity } from '../domain/response.entity';
 import { IntegrityEventEntity } from '../domain/integrity-event.entity';
-import { UncleanAttachmentException } from '../application/exceptions/participation.exceptions';
+import {
+  SurveyAlreadyCompletedException,
+  UncleanAttachmentException,
+} from '../application/exceptions/participation.exceptions';
 
 /**
  * Epic 5 review P4/P28: the slice of a Storage `StoredObject` the submit
@@ -57,6 +63,10 @@ function withAttempt(
     formVersionId?: string;
     closedReason?: AttemptCloseReason;
     closedAt?: Date;
+    missingCodeResolvedAt?: Date | null;
+    missingCodeResolution?: 'CREDIT_RESPONDENT' | 'DISMISSED' | null;
+    missingCodeResolutionNote?: string | null;
+    missingCodeResolvedById?: string | null;
   },
 ): SurveyAttemptEntity {
   return new SurveyAttemptEntity(
@@ -76,6 +86,18 @@ function withAttempt(
     changes.codeVerification ?? attempt.codeVerification,
     changes.closedReason ?? attempt.closedReason,
     changes.closedAt ?? attempt.closedAt,
+    changes.missingCodeResolvedAt === undefined
+      ? attempt.missingCodeResolvedAt
+      : changes.missingCodeResolvedAt,
+    changes.missingCodeResolution === undefined
+      ? attempt.missingCodeResolution
+      : changes.missingCodeResolution,
+    changes.missingCodeResolutionNote === undefined
+      ? attempt.missingCodeResolutionNote
+      : changes.missingCodeResolutionNote,
+    changes.missingCodeResolvedById === undefined
+      ? attempt.missingCodeResolvedById
+      : changes.missingCodeResolvedById,
   );
 }
 
@@ -326,11 +348,19 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
     return { abandonedIds: due.map((att) => att.id) };
   }
 
-  async getQuotaStatus(formId: string, cutoffDate: Date): Promise<QuotaStatus> {
-    return this.quotaStatusSync(formId, cutoffDate);
+  async getQuotaStatus(
+    formId: string,
+    cutoffDate: Date,
+    excludeAttemptId?: string,
+  ): Promise<QuotaStatus> {
+    return this.quotaStatusSync(formId, cutoffDate, excludeAttemptId);
   }
 
-  private quotaStatusSync(formId: string, cutoffDate: Date): QuotaStatus {
+  private quotaStatusSync(
+    formId: string,
+    cutoffDate: Date,
+    excludeAttemptId?: string,
+  ): QuotaStatus {
     let completedCount = 0;
     for (const res of this.responses.values()) {
       if (
@@ -361,7 +391,8 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
       if (
         att.surveyId === formId &&
         att.status === 'IN_PROGRESS' &&
-        att.startedAt >= cutoffDate
+        att.startedAt >= cutoffDate &&
+        att.id !== excludeAttemptId
       ) {
         activeReservationCount++;
       }
@@ -1104,5 +1135,82 @@ export class InMemoryParticipationRepository implements ParticipationRepositoryP
     this.attempts.set(cancelled.id, cancelled);
     this.abandonResponseOf(cancelled.id);
     return { outcome: 'CANCELLED', attempt: cancelled };
+  }
+
+  async lockOpenMissingCodeReport(
+    attemptId: string,
+  ): Promise<LockedMissingCodeReport | null> {
+    const attempt = this.attempts.get(attemptId);
+    if (!attempt) return null;
+    const formOpen = this.formStatusLookup
+      ? this.formStatusLookup(attempt.surveyId) === 'PUBLISHED'
+      : true;
+    return {
+      attempt,
+      formOpen,
+    };
+  }
+
+  async completeAttemptByAdmin(
+    attemptId: string,
+    now: Date,
+  ): Promise<{ changed: boolean }> {
+    const attempt = this.attempts.get(attemptId);
+    if (!attempt) return { changed: false };
+    if (
+      attempt.respondentId &&
+      this.hasCompletedLogicalFormSync(
+        attempt.respondentId,
+        attempt.surveyId,
+        attempt.id,
+      )
+    ) {
+      throw new SurveyAlreadyCompletedException();
+    }
+    if (attempt.status === 'COMPLETED' || attempt.missingCodeResolvedAt !== null) {
+      return { changed: false };
+    }
+    const updated = withAttempt(attempt, {
+      status: 'COMPLETED',
+      submittedAt: now,
+    });
+    this.attempts.set(attemptId, updated);
+    return { changed: true };
+  }
+
+  async recordMissingCodeResolution(
+    attemptId: string,
+    data: MissingCodeResolutionData,
+    auditEvent: MissingCodeOutboxEvent,
+    resolvedEvent: MissingCodeOutboxEvent,
+  ): Promise<{ changed: boolean }> {
+    const attempt = this.attempts.get(attemptId);
+    if (!attempt || attempt.missingCodeResolvedAt !== null) {
+      throw new Error(
+        `Failed to record missing code resolution: attempt ${attemptId} is not open or was already resolved`,
+      );
+    }
+    const updated = withAttempt(attempt, {
+      missingCodeResolvedAt: data.resolvedAt,
+      missingCodeResolution: data.resolution,
+      missingCodeResolutionNote: data.note,
+      missingCodeResolvedById: data.adminId,
+    });
+    this.attempts.set(attemptId, updated);
+    this.outboxEvents.push(
+      {
+        id: auditEvent.id ?? randomUUID(),
+        eventType: auditEvent.eventType,
+        idempotencyKey: auditEvent.idempotencyKey,
+        payload: auditEvent.payload,
+      },
+      {
+        id: resolvedEvent.id ?? randomUUID(),
+        eventType: resolvedEvent.eventType,
+        idempotencyKey: resolvedEvent.idempotencyKey,
+        payload: resolvedEvent.payload,
+      },
+    );
+    return { changed: true };
   }
 }

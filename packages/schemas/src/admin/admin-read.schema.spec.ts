@@ -214,6 +214,10 @@ describe("missing-code report contracts", () => {
       reason: null,
       reportedAt: AT,
       attemptStatus: "IN_PROGRESS",
+      formVersionId: ID,
+      rewardPerResponse: 10,
+      surveyOpen: true,
+      failedCodeVerifications: 0,
     };
     expect(missingCodeReportPageSchema.parse({ items: [item], total: 1, nextCursor: null }).items).toHaveLength(1);
     expect(missingCodeReportPageSchema.safeParse({ items: [{ ...item, extra: 1 }], total: 1, nextCursor: null }).success).toBe(false);

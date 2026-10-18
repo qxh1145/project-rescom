@@ -7,11 +7,16 @@ import {
   PARTICIPATION_REPOSITORY_PORT,
   ParticipationRepositoryPort,
 } from '../application/ports/participation-repository.port';
+import {
+  NOTIFICATION_PUBLISHER_PORT,
+  NotificationPublisherPort,
+} from '../../notifications/application/ports/notification-publisher.port';
+import { MissingCodeResolvedNotificationHandler } from '../application/missing-code-resolved-notification.handler';
 import { ReservationExpiryJob } from './jobs/reservation-expiry.job';
 
 /**
- * Story IR.2b: registers `reservation-expiry` and the `InternalRewardRequested`
- * Outbox handler (registries optional in tests).
+ * Story IR.2b / 14.1: registers `reservation-expiry`, `InternalRewardRequested`,
+ * and `MissingCodeResolvedNotificationHandler` Outbox handlers.
  */
 @Injectable()
 export class ParticipationSchedulerRegistrar implements OnModuleInit {
@@ -19,6 +24,9 @@ export class ParticipationSchedulerRegistrar implements OnModuleInit {
     @Inject(PARTICIPATION_REPOSITORY_PORT)
     private readonly participationRepository: ParticipationRepositoryPort,
     private readonly rewards: RewardSettlementCoordinator,
+    @Optional()
+    @Inject(NOTIFICATION_PUBLISHER_PORT)
+    private readonly notifications?: NotificationPublisherPort,
     @Optional() private readonly jobs?: ScheduledJobRegistry,
     @Optional() private readonly handlers?: OutboxHandlerRegistry,
   ) {}
@@ -32,6 +40,11 @@ export class ParticipationSchedulerRegistrar implements OnModuleInit {
         this.participationRepository,
       ),
     );
+    if (this.notifications) {
+      this.handlers?.register(
+        new MissingCodeResolvedNotificationHandler(this.notifications),
+      );
+    }
     this.jobs?.register(new ReservationExpiryJob(this.participationRepository));
   }
 }

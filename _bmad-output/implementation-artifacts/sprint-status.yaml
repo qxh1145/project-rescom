@@ -167,8 +167,8 @@ development_status:
 
   # Added 2026-10-18 by sprint-change-proposal-2026-10-18 (Admin console gaps; 8.5/10.7 stay Phase 2)
   # Starts after 13.13 Part B; stories independent; 14.1 has the only migration
-  epic-14: backlog
-  14-1-missing-code-report-resolution: backlog
+  epic-14: in-progress
+  14-1-missing-code-report-resolution: review  # implemented 2026-10-18; all ACs verified, Prisma e2e & FE test suites green
   14-2-rewards-daily-points-limit-setting: backlog
   14-3-admin-audit-log-viewer: backlog
   14-4-ledger-operations-panel: backlog

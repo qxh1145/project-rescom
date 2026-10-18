@@ -46,6 +46,8 @@ export const EMPTY_CODE_VERIFICATION_STATE: AttemptCodeVerificationState =
     missingCodeReason: null,
   });
 
+export type MissingCodeResolutionOutcome = 'CREDIT_RESPONDENT' | 'DISMISSED';
+
 export class SurveyAttemptEntity {
   constructor(
     public readonly id: string,
@@ -64,7 +66,15 @@ export class SurveyAttemptEntity {
     /** Set with the ABANDONED transition; null otherwise and on legacy rows. */
     public readonly closedReason: AttemptCloseReason | null = null,
     public readonly closedAt: Date | null = null,
+    public readonly missingCodeResolvedAt: Date | null = null,
+    public readonly missingCodeResolution: MissingCodeResolutionOutcome | null = null,
+    public readonly missingCodeResolutionNote: string | null = null,
+    public readonly missingCodeResolvedById: string | null = null,
   ) {}
+
+  get missingCodeReportedAt(): Date | null {
+    return this.codeVerification.missingCodeReportedAt;
+  }
 
   isActive(cutoffDate: Date): boolean {
     return this.status === 'IN_PROGRESS' && this.startedAt >= cutoffDate;

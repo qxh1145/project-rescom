@@ -5,6 +5,7 @@ import {
 import {
   FormTitleLookupPort,
   FormTitleLookupResult,
+  FormTitleSummary,
 } from '../application/ports/form-title-lookup.port';
 import {
   PublishedFormAdminPort,
@@ -21,6 +22,7 @@ export interface InMemoryAdminForm {
   updatedAt: Date;
   versionIds?: string[];
   isPinned?: boolean;
+  rewardPerResponse?: number;
 }
 
 /** Test double of `PrismaFormAdminReads` over a seeded list of forms. */
@@ -94,6 +96,23 @@ export class InMemoryFormAdminReads
       }
     }
     return { byFormId, byFormVersionId };
+  }
+
+  async findSummaries(params: {
+    formIds: readonly string[];
+  }): Promise<Map<string, FormTitleSummary>> {
+    this.calls += 1;
+    const map = new Map<string, FormTitleSummary>();
+    for (const form of this.forms) {
+      if (params.formIds.includes(form.id)) {
+        map.set(form.id, {
+          title: form.title,
+          rewardPerResponse: form.rewardPerResponse ?? 0,
+          status: form.status,
+        });
+      }
+    }
+    return map;
   }
 
   async listPublished(params: {

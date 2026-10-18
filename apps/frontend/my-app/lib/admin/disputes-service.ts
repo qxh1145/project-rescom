@@ -3,8 +3,11 @@ import {
   completionCodeLimitResetResultSchema,
   disputeHoldOutcomeSchema,
   missingCodeReportPageSchema,
+  resolveMissingCodeReportResultSchema,
   type CompletionCodeLimitResetResultDto,
   type MissingCodeReport,
+  type ResolveMissingCodeReportInput,
+  type ResolveMissingCodeReportResult,
 } from "@rescom/schemas";
 import { apiRequest } from "../api/client.ts";
 import { isApiMockingEnabled, isHybridMocking } from "../api/config.ts";
@@ -200,4 +203,19 @@ export function resetCompletionCodeLimit(input: {
     body: input,
     schema: completionCodeLimitResetResultSchema,
   });
+}
+
+/** Story 14.1 (AC 1): resolves an open missing-completion-code report (credit respondent or dismiss). */
+export function resolveMissingCodeReport(
+  attemptId: string,
+  input: ResolveMissingCodeReportInput,
+): Promise<ResolveMissingCodeReportResult> {
+  return apiRequest(
+    `/admin/missing-code-reports/${encodeURIComponent(attemptId)}/resolve`,
+    {
+      method: "POST",
+      body: input,
+      schema: resolveMissingCodeReportResultSchema,
+    },
+  );
 }

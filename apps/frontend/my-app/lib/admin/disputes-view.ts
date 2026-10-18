@@ -1,3 +1,4 @@
+import type { MissingCodeReport } from "@rescom/schemas";
 import { PILOT_BUILD } from "../pilot-scope.ts";
 import { formatDayMonth, formatShortDateTime, formatTime } from "../format/date-time.ts";
 import { DISPUTE_REASON_LABELS } from "../forms/manage-messages.ts";
@@ -339,12 +340,64 @@ export function sideNoteOf(kind: DisputeCaseKind): string {
     : "Mở lại giới hạn mã không xoá lượt làm đã khoá hay nhật ký FraudLog. Khoá tài khoản là quyết định riêng.";
 }
 
-/** Error of the decision note (sent to both parties), or null when valid. */
-export function validateDecisionNote(note: string): string | null {
-  const length = note.trim().length;
-  if (length < DECISION_NOTE_MIN) {
-    return `Nhập lý do ít nhất ${DECISION_NOTE_MIN} ký tự: lý do được gửi cho cả hai bên.`;
+/** Story 14.1 (AC 8): Actions for a real missing completion code report row. */
+export function missingCodeReportActions(report: MissingCodeReport): CaseAction[] {
+  const points = `${report.rewardPerResponse} điểm`;
+  const code =
+    report.respondent?.displayName ||
+    (report.respondent?.id ? `#${report.respondent.id.slice(0, 8)}` : "khách");
+  const survey = `“${report.survey?.title || "Khảo sát"}”`;
+
+  let disabledReason: string | undefined;
+  if (report.attemptStatus === "COMPLETED") {
+    disabledReason =
+      "Lượt làm đã hoàn thành (người trả lời đã nhập đúng mã) nên không cộng điểm thêm.";
+  } else if (!report.surveyOpen) {
+    disabledReason = "Khảo sát đã đóng nên không thể cộng điểm.";
+  } else if (!report.respondent) {
+    disabledReason = "Lượt làm của khách không có tài khoản để cộng điểm.";
   }
-  if (length > DECISION_NOTE_MAX) return `Lý do tối đa ${DECISION_NOTE_MAX} ký tự.`;
+
+  const actions: CaseAction[] = [
+    {
+      outcome: "DISMISSED",
+      label: "Bác bỏ báo cáo",
+      primary: false,
+      confirmTitle: "Bác bỏ báo cáo thiếu mã?",
+      confirmBody: `Không cộng điểm cho ${code}. Người trả lời nhận thông báo kèm lý do.`,
+      confirmLabel: "Bác bỏ báo cáo",
+    },
+  ];
+
+  if (report.failedCodeVerifications > 0) {
+    actions.push(resetAction(code, survey));
+  }
+
+  actions.push({
+    outcome: "CREDIT_RESPONDENT",
+    label: `Cộng ${points} cho người trả lời`,
+    primary: true,
+    confirmTitle: `Cộng ${points} thủ công?`,
+    confirmBody: `Lượt làm của ${code} được xác nhận hoàn thành. ${points} sẽ được cộng vào Điểm chờ (48 giờ) của người trả lời. Người đăng và người trả lời nhận thông báo kèm lý do.`,
+    confirmLabel: `Cộng ${points}`,
+    ...(disabledReason ? { disabledReason } : {}),
+  });
+
+  return actions;
+}
+
+/** Error of the decision note (sent to both parties by default), or null when valid. */
+export function validateDecisionNote(
+  note: string,
+  options?: { min?: number; max?: number; audience?: string },
+): string | null {
+  const min = options?.min ?? DECISION_NOTE_MIN;
+  const max = options?.max ?? DECISION_NOTE_MAX;
+  const audience = options?.audience ?? "cả hai bên";
+  const length = note.trim().length;
+  if (length < min) {
+    return `Nhập lý do ít nhất ${min} ký tự: lý do được gửi cho ${audience}.`;
+  }
+  if (length > max) return `Lý do tối đa ${max} ký tự.`;
   return null;
 }
