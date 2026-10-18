@@ -55,7 +55,10 @@ export class MissingCodeResolvedNotificationHandler implements OutboxHandler {
 
       await this.notifications.publish({
         userId: respondentId,
-        type: 'MISSING_CODE_REPORT_RESOLVED',
+        type:
+          outcome === 'CREDIT_RESPONDENT'
+            ? 'REWARD_PENDING'
+            : 'MISSING_CODE_REPORT_RESOLVED',
         message: truncateMessage(respondentMessage),
         dedupeKey: `${event.idempotencyKey}:respondent`,
       });

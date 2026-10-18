@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import type { MissingCodeReport } from "@rescom/schemas";
 import {
   disputeResolveErrorMessage,
-  isStaleCaseError,
+  isStaleReportError,
 } from "@/lib/admin/disputes-messages";
 import {
   resetCompletionCodeLimit,
@@ -92,7 +92,7 @@ export function useMissingCodeResolution(
       onResolved(pending.outcome, report.rewardPerResponse);
     } catch (cause) {
       setFailure(cause);
-      if (isStaleCaseError(cause)) {
+      if (isStaleReportError(cause)) {
         setPending(null);
         onStale(disputeResolveErrorMessage(cause));
       } else {

@@ -38,6 +38,8 @@ describe('AdminMissingCodeReportsService', () => {
       reportedAt: at(n),
       attemptStatus: 'IN_PROGRESS',
       failedCodeVerifications: n,
+      attemptCancelled: n === 2,
+      respondentCompletedForm: n === 3,
     }));
   });
 
@@ -55,6 +57,12 @@ describe('AdminMissingCodeReportsService', () => {
       rewardPerResponse: 20,
       surveyOpen: true,
       failedCodeVerifications: 3,
+      attemptCancelled: false,
+      respondentCompletedForm: true,
+    });
+    expect(first.items[1]).toMatchObject({
+      attemptCancelled: true,
+      respondentCompletedForm: false,
     });
     expect(first.nextCursor).not.toBeNull();
 
@@ -79,6 +87,8 @@ describe('AdminMissingCodeReportsService', () => {
         reportedAt: at(1),
         attemptStatus: 'IN_PROGRESS',
         failedCodeVerifications: 0,
+        attemptCancelled: false,
+        respondentCompletedForm: false,
       },
     ];
 

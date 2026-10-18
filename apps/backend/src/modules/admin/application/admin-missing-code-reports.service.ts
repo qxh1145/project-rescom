@@ -66,6 +66,8 @@ export class AdminMissingCodeReportsService {
         rewardPerResponse: summary?.rewardPerResponse ?? 0,
         surveyOpen: summary?.status === 'PUBLISHED',
         failedCodeVerifications: row.failedCodeVerifications,
+        attemptCancelled: row.attemptCancelled,
+        respondentCompletedForm: row.respondentCompletedForm,
       };
     });
     return {

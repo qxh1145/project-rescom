@@ -43,6 +43,8 @@ export class PrismaMissingCodeReportStats implements MissingCodeReportStatsPort 
         reported_at: Date;
         status: string;
         failed_code_verifications: number;
+        attempt_cancelled: boolean;
+        respondent_completed_form: boolean;
       }>
     >`
       SELECT a.id::text AS id, a.survey_id::text AS survey_id,
@@ -51,7 +53,17 @@ export class PrismaMissingCodeReportStats implements MissingCodeReportStatsPort 
              a.missing_code_reason AS reason,
              a.missing_code_reported_at AS reported_at,
              a.status::text AS status,
-             a.failed_code_verifications AS failed_code_verifications
+             a.failed_code_verifications AS failed_code_verifications,
+             -- IS TRUE: legacy ABANDONED rows keep a NULL closed_reason (no backfill).
+             (a.status = 'ABANDONED' AND a.closed_reason = 'CANCELLED') IS TRUE AS attempt_cancelled,
+             -- Same logical form = same survey_id (survey_attempts_one_completion_per_account); no forms read.
+             EXISTS (
+               SELECT 1 FROM survey_attempts c
+               WHERE c.respondent_id = a.respondent_id
+                 AND c.survey_id = a.survey_id
+                 AND c.status = 'COMPLETED'
+                 AND c.id <> a.id
+             ) AS respondent_completed_form
       FROM survey_attempts a
       WHERE a.missing_code_reported_at IS NOT NULL
         AND a.missing_code_resolved_at IS NULL
@@ -77,6 +89,8 @@ export class PrismaMissingCodeReportStats implements MissingCodeReportStatsPort 
       reportedAt: row.reported_at,
       attemptStatus: row.status,
       failedCodeVerifications: row.failed_code_verifications,
+      attemptCancelled: row.attempt_cancelled,
+      respondentCompletedForm: row.respondent_completed_form,
     }));
   }
 }

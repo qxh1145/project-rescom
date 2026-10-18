@@ -208,6 +208,10 @@ test("report reason and report errors", () => {
   assert.equal(reportReasonError("Form không hiện mã"), null);
   assert.equal(reportFailureMessage(httpError(409, "ATTEMPT_LOCKED")), EXTERNAL_MESSAGES.reportLocked);
   assert.equal(reportFailureMessage(httpError(409, "SURVEY_ALREADY_COMPLETED")), EXTERNAL_MESSAGES.reportCompleted);
+  assert.equal(
+    reportFailureMessage(httpError(409, "MISSING_CODE_REPORT_ALREADY_RESOLVED")),
+    EXTERNAL_MESSAGES.reportResolved,
+  );
   assert.equal(reportFailureMessage(httpError(500, "X")), EXTERNAL_MESSAGES.reportFailed);
   assert.equal(
     reportFailureMessage(httpError(429, "RATE_LIMIT_EXCEEDED", undefined, { retryAfterSeconds: 30 })),

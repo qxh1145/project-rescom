@@ -3,7 +3,7 @@ baseline_commit: b0df9b2
 ---
 # Story 14.1: Missing-Code Report Resolution
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -149,6 +149,43 @@ so that a Respondent whose Publisher forgot the completion code is either paid o
   - [x] FE `tests/admin-disputes.test.mjs`: `missingCodeReportActions` (disabled reasons, reset only when failures > 0), note validation 10–500 with the missing-code copy, message mapping, and service schema parsing. All existing dispute tests stay green.
   - [x] Run `npm test --workspace @rescom/schemas`; backend `npm test --workspace backend -- participation missing-code notification http-exception`, `npm run test:e2e --workspace backend -- missing-code migration notification external-completion`, and `npm run build --workspace backend`; and in `apps/frontend/my-app`, `npm run typecheck`, `npm run lint`, `npm test`, and `npm run build`. Prisma e2e needs Docker Postgres. If Docker is down, say so in the completion notes and do not mark the story done.
   - [x] Visual check in hybrid mode at 1440 and 390 px, against Figma 11c `62:1609` (re-read it with the Figma MCP first): row actions, the disabled credit reason, note validation, confirm dialog copy, and the row disappearing with the counts updating.
+
+### Review Findings
+
+Code review 2026-10-18 (Blind Hunter, Edge Case Hunter, Acceptance Auditor; diff `b0df9b2..b380b30`).
+
+- [x] [Review][Patch] (Decision resolved 2026-10-18 by Quan: reject with message) Re-report after DISMISSED is silently swallowed — `reportMissingCompletionCode` must throw a clear error when `missingCodeResolvedAt !== null` instead of returning "submitted to RESCOM admin for review". Record it as an AC 9 deviation (Respondent route behavior changes) [apps/backend/src/modules/participation/application/participation.service.ts:1835]
+- [x] [Review][Patch] (Decision resolved 2026-10-18 by Quan: refuse credit) Credit must be refused for an attempt the Respondent cancelled after reporting (`ABANDONED` + `closedReason = CANCELLED`); DISMISSED still allowed. FE disables Credit with a reason (needs the close reason in the report DTO) [apps/backend/src/modules/participation/application/participation.service.ts:1938]
+- [x] [Review][Patch] (Decision resolved 2026-10-18 by Quan: DTO flag) Respondent already completed the form on another attempt — expose a flag (e.g. `respondentCompletedForm`) on the report DTO (Participation self-join, no `forms` read) and have the FE disable Credit with a reason; Admin dismisses [apps/backend/src/modules/participation/infrastructure/prisma-missing-code-report-stats.ts]
+- [x] [Review][Patch] Task 10 tests marked done but missing: AC 5 races `CREDIT_RESPONDENT` vs `DISMISSED` and vs the Respondent's late correct code; one-audit-row and PENDING-once assertions in race 9; resolved report leaves `countUnresolved`; CHECK `survey_attempts_missing_code_resolution_consistent` rejects a half-set row; HTTP e2e 401/403 (non-admin, no CSRF)/400 (bad body, unknown key, short note)/404, GET+POST same prefix, GET body new fields [apps/backend/test/missing-code-resolution.prisma.e2e-spec.ts:422]
+- [x] [Review][Patch] Respondent CREDIT notice must use type `REWARD_PENDING` (AC 6); handler and its spec use `MISSING_CODE_REPORT_RESOLVED` for both outcomes [apps/backend/src/modules/participation/application/missing-code-resolved-notification.handler.ts:56]
+- [x] [Review][Patch] Credit confirm copy says the Publisher receives the reason ("Người đăng và người trả lời nhận thông báo kèm lý do"), contradicting D6 [apps/frontend/my-app/lib/admin/disputes-view.ts:381]
+- [x] [Review][Patch] `completeAttemptByAdmin` result `{ changed }` ignored; throw on `changed = false` like `recordMissingCodeResolution` so a credit never settles without completing the attempt [apps/backend/src/modules/participation/application/participation.service.ts:1961]
+- [x] [Review][Patch] `isStaleCaseError` gained `status === 404`, which also changes the existing `use-case-decision.ts` dispute flow (Task 8: existing dispute behavior byte-identical); move the 404 rule into a missing-code-only helper [apps/frontend/my-app/lib/admin/disputes-messages.ts:61]
+- [x] [Review][Patch] "Mở lại giới hạn mã" offered on guest reports, then throws client-side in `confirm()`; gate the reset action on `report.respondent` [apps/frontend/my-app/lib/admin/disputes-view.ts:372]
+
+Review patch outcome (2026-10-18). All 9 patches were applied and are uncommitted on `feat/14-1-missing-code-report-resolution`.
+
+Deviations from the spec:
+- **AC 9 deviation.** The Respondent route `POST /attempts/:id/report-missing-code` now returns 409 `MISSING_CODE_REPORT_ALREADY_RESOLVED` once an Admin has resolved the report.
+- **AC 3 addition.** CREDIT on a cancelled attempt now returns 409 `MISSING_CODE_ATTEMPT_CANCELLED`.
+- **AC 7 addition.** The report DTO gains two required booleans: `attemptCancelled` and `respondentCompletedForm`.
+
+Verification:
+- schemas: 708 tests passed.
+- backend unit (`participation missing-code notification http-exception admin-missing-code`): 638 tests passed.
+- backend build: clean.
+- Prisma and HTTP e2e (`test:e2e -- missing-code`): 38 tests passed, 0 skipped, run live against Postgres on port 5433.
+- FE: typecheck, lint, build clean, and 1003 tests passed.
+
+Re-review of the patch diff (2026-10-18, Sonnet code-reviewer): the first result was FAIL on 1 medium finding, plus 2 low findings. All three were fixed in repair loop 1:
+- **Medium.** `attempt_cancelled` could be NULL for legacy ABANDONED rows whose `closed_reason` is NULL. The strict schema then broke the whole queue. It now uses `IS TRUE`, and e2e test 17 covers the legacy row.
+- **Low.** `MISSING_CODE_ATTEMPT_CANCELLED` was added to `isStaleReportError`, so the list reloads and shows the disabled reason.
+- **Low.** The full-mock MSW `actionsOf` credit copy was reverted to the pre-14.1 text to respect the AC 9 scope guard.
+
+Informational, not fixed: `respondentCompletedForm` checks only `survey_attempts`, not legacy attempt-less `responses`. In that case the stale 409 path handles it at click time.
+
+Verification after repair: e2e 38/38, FE 1003/1003, typecheck and backend build clean.
 
 ## Dev Notes
 

@@ -21,6 +21,8 @@ export interface UnresolvedMissingCodeReport {
   reportedAt: Date;
   attemptStatus: string;
   failedCodeVerifications: number;
+  attemptCancelled: boolean;
+  respondentCompletedForm: boolean;
 }
 
 export interface MissingCodeReportStatsPort {

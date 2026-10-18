@@ -356,6 +356,10 @@ export function missingCodeReportActions(report: MissingCodeReport): CaseAction[
     disabledReason = "Khảo sát đã đóng nên không thể cộng điểm.";
   } else if (!report.respondent) {
     disabledReason = "Lượt làm của khách không có tài khoản để cộng điểm.";
+  } else if (report.attemptCancelled) {
+    disabledReason = "Người trả lời đã huỷ lượt làm này nên không thể cộng điểm.";
+  } else if (report.respondentCompletedForm) {
+    disabledReason = "Người trả lời đã hoàn thành khảo sát này ở lượt làm khác.";
   }
 
   const actions: CaseAction[] = [
@@ -369,7 +373,7 @@ export function missingCodeReportActions(report: MissingCodeReport): CaseAction[
     },
   ];
 
-  if (report.failedCodeVerifications > 0) {
+  if (report.failedCodeVerifications > 0 && report.respondent) {
     actions.push(resetAction(code, survey));
   }
 
@@ -378,7 +382,7 @@ export function missingCodeReportActions(report: MissingCodeReport): CaseAction[
     label: `Cộng ${points} cho người trả lời`,
     primary: true,
     confirmTitle: `Cộng ${points} thủ công?`,
-    confirmBody: `Lượt làm của ${code} được xác nhận hoàn thành. ${points} sẽ được cộng vào Điểm chờ (48 giờ) của người trả lời. Người đăng và người trả lời nhận thông báo kèm lý do.`,
+    confirmBody: `Lượt làm của ${code} được xác nhận hoàn thành. ${points} sẽ được cộng vào Điểm chờ (48 giờ) của người trả lời. Người trả lời nhận thông báo kèm lý do; người đăng nhận thông báo kiểm tra mã hoàn thành (không kèm lý do).`,
     confirmLabel: `Cộng ${points}`,
     ...(disabledReason ? { disabledReason } : {}),
   });

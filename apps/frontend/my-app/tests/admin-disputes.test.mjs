@@ -172,6 +172,8 @@ test("Story 14.1: missingCodeReportActions builds actions, confirm copy, and dis
     rewardPerResponse: 50,
     surveyOpen: true,
     failedCodeVerifications: 0,
+    attemptCancelled: false,
+    respondentCompletedForm: false,
   };
 
   // Normal open report: credit enabled, confirm copy specifies Điểm chờ (48 giờ)
@@ -181,6 +183,9 @@ test("Story 14.1: missingCodeReportActions builds actions, confirm copy, and dis
   assert.equal(actions[1].outcome, "CREDIT_RESPONDENT");
   assert.equal(actions[1].disabledReason, undefined);
   assert.match(actions[1].confirmBody, /Điểm chờ \(48 giờ\)/);
+  assert.match(actions[1].confirmBody, /Người trả lời nhận thông báo kèm lý do/);
+  assert.match(actions[1].confirmBody, /người đăng nhận thông báo kiểm tra mã hoàn thành \(không kèm lý do\)/);
+  assert.doesNotMatch(actions[1].confirmBody, /Người đăng và người trả lời/);
 
   // When failedCodeVerifications > 0: includes resetAction
   const withStrikes = view.missingCodeReportActions({ ...baseReport, failedCodeVerifications: 2 });
@@ -198,6 +203,17 @@ test("Story 14.1: missingCodeReportActions builds actions, confirm copy, and dis
   // When attempt is guest: credit disabled
   const guest = view.missingCodeReportActions({ ...baseReport, respondent: null });
   assert.match(guest[1].disabledReason, /khách không có tài khoản/);
+
+  // Guests cannot be reset: no reset action even with failed verifications
+  const guestStrikes = view.missingCodeReportActions({ ...baseReport, respondent: null, failedCodeVerifications: 2 });
+  assert.equal(guestStrikes.length, 2);
+  assert.ok(guestStrikes.every((a) => a.outcome !== "CODE_LIMIT_RESET"));
+
+  const cancelled = view.missingCodeReportActions({ ...baseReport, attemptCancelled: true });
+  assert.match(cancelled[1].disabledReason, /huỷ lượt làm/);
+
+  const doneElsewhere = view.missingCodeReportActions({ ...baseReport, respondentCompletedForm: true });
+  assert.match(doneElsewhere[1].disabledReason, /ở lượt làm khác/);
 });
 
 test("error copy", () => {
@@ -216,10 +232,21 @@ test("error copy", () => {
   assert.match(messages.disputeResolveErrorMessage(selfResolve), /chính mình/);
 
   const missingResolved = new ApiError({ kind: "http", status: 409, code: "MISSING_CODE_REPORT_ALREADY_RESOLVED", message: "x" });
-  assert.equal(messages.isStaleCaseError(missingResolved), true);
+  assert.equal(messages.isStaleReportError(missingResolved), true);
 
   const notFound = new ApiError({ kind: "http", status: 404, code: "MISSING_CODE_REPORT_NOT_FOUND", message: "x" });
-  assert.equal(messages.isStaleCaseError(notFound), true);
+  assert.equal(messages.isStaleReportError(notFound), true);
+
+  // A bare 404 only counts for reports; the dispute flow keeps its original codes.
+  const bare404 = new ApiError({ kind: "http", status: 404, code: "SOMETHING_ELSE", message: "x" });
+  assert.equal(messages.isStaleCaseError(bare404), false);
+  assert.equal(messages.isStaleReportError(bare404), true);
+  assert.equal(messages.isStaleCaseError(missingResolved), false);
+
+  const cancelledAttempt = new ApiError({ kind: "http", status: 409, code: "MISSING_CODE_ATTEMPT_CANCELLED", message: "x" });
+  assert.match(messages.disputeResolveErrorMessage(cancelledAttempt), /huỷ lượt làm/);
+  assert.equal(messages.isStaleReportError(cancelledAttempt), true);
+  assert.equal(messages.isStaleCaseError(cancelledAttempt), false);
 });
 
 test("mock ledger: dispute resolutions map to the backend journal keys and wallet rows", () => {

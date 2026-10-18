@@ -377,3 +377,18 @@ export class MissingCodeSurveyClosedException extends Error {
     this.name = 'MissingCodeSurveyClosedException';
   }
 }
+
+/**
+ * Story 14.1 (review): CREDIT_RESPONDENT on an attempt the Respondent cancelled
+ * after reporting (ABANDONED + CANCELLED). DISMISSED stays allowed. 409.
+ */
+export class MissingCodeAttemptCancelledException extends Error {
+  readonly code = 'MISSING_CODE_ATTEMPT_CANCELLED';
+
+  constructor(
+    message = 'Cannot credit respondent because the attempt was cancelled.',
+  ) {
+    super(message);
+    this.name = 'MissingCodeAttemptCancelledException';
+  }
+}

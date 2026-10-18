@@ -104,6 +104,7 @@ import {
   MissingCodeSelfResolveForbiddenException,
   MissingCodeReportAlreadyResolvedException,
   MissingCodeSurveyClosedException,
+  MissingCodeAttemptCancelledException,
 } from '../../modules/participation/application/exceptions/participation.exceptions';
 import { IntegrityConsentVersionMismatchException } from '../../modules/participation/application/exceptions/integrity-consent.exceptions';
 import {
@@ -473,7 +474,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
     } else if (
       // Story 14.1 (AC 3, AC 5): resolution conflict or survey closed during resolution.
       exception instanceof MissingCodeReportAlreadyResolvedException ||
-      exception instanceof MissingCodeSurveyClosedException
+      exception instanceof MissingCodeSurveyClosedException ||
+      exception instanceof MissingCodeAttemptCancelledException
     ) {
       status = HttpStatus.CONFLICT;
       code = exception.code;

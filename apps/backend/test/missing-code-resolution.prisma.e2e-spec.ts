@@ -7,6 +7,12 @@ import {
   requireDb,
 } from './fixtures/financial-pg-harness';
 import { randomUUID } from 'crypto';
+import { EnvService } from '../src/common/config/env.service';
+import { CompletionCodeService } from '../src/modules/forms/infrastructure/completion-code.service';
+import {
+  MISSING_CODE_REPORT_STATS_PORT,
+  MissingCodeReportStatsPort,
+} from '../src/modules/participation/application/ports/missing-code-report-stats.port';
 
 const dbAvailable = probeDatabase();
 const liveIt = dbAvailable ? it : it.skip;
@@ -106,7 +112,8 @@ describe('Missing-Code Report Resolution on PostgreSQL (Story 14.1)', () => {
     surveyId: string,
     formVersionId: string,
     resp: Actor | null,
-    status: 'IN_PROGRESS' | 'COMPLETED' | 'ABANDONED' | 'LOCKED' = 'IN_PROGRESS',
+    status:
+      'IN_PROGRESS' | 'COMPLETED' | 'ABANDONED' | 'LOCKED' = 'IN_PROGRESS',
   ) {
     return h.prisma.surveyAttempt.create({
       data: {
@@ -121,12 +128,51 @@ describe('Missing-Code Report Resolution on PostgreSQL (Story 14.1)', () => {
     });
   }
 
+  const auditKey = (attemptId: string) =>
+    `admin-audit:missing-code:${attemptId}`;
+
+  async function auditRows(attemptId: string) {
+    return h.prisma.outboxEvent.findMany({
+      where: { idempotencyKey: auditKey(attemptId) },
+    });
+  }
+
+  async function externalJournals(attemptId: string) {
+    return h.prisma.ledgerJournal.findMany({
+      where: { idempotencyKey: `external-completion:${attemptId}` },
+    });
+  }
+
+  /** Sum of the Respondent's PENDING ledger entries (what has been credited to them). */
+  async function pendingBalance(userId: string) {
+    const sum = await h.prisma.ledgerEntry.aggregate({
+      _sum: { amount: true },
+      where: { account: { userId, accountClass: 'PENDING' } },
+    });
+    return sum._sum.amount ?? 0;
+  }
+
+  const resolve = (
+    attemptId: string,
+    by: Actor,
+    outcome: 'CREDIT_RESPONDENT' | 'DISMISSED',
+    note: string,
+  ) =>
+    h.send('post', `/admin/missing-code-reports/${attemptId}/resolve`, by, {
+      outcome,
+      note,
+    });
+
   liveIt(
     '1. full credit flow on an open survey: report -> resolve CREDIT -> verify COMPLETED, PENDING journal, and Outbox events',
     async () => {
       const pub = await h.user('PUBLISHER');
       const resp = await h.user('RESPONDENT');
-      const { form, version } = await createExternalSurveyWithEscrow(pub, 50, 10);
+      const { form, version } = await createExternalSurveyWithEscrow(
+        pub,
+        50,
+        10,
+      );
       const attempt = await createReportedAttempt(form.id, version.id, resp);
 
       const res = await h.send(
@@ -196,8 +242,12 @@ describe('Missing-Code Report Resolution on PostgreSQL (Story 14.1)', () => {
       );
       expect(auditEvent).toBeDefined();
       expect(resolvedEvent).toBeDefined();
-      expect(auditEvent?.idempotencyKey).toBe(`admin-audit:missing-code:${attempt.id}`);
-      expect(resolvedEvent?.idempotencyKey).toBe(`missing-code-resolved:${attempt.id}`);
+      expect(auditEvent?.idempotencyKey).toBe(
+        `admin-audit:missing-code:${attempt.id}`,
+      );
+      expect(resolvedEvent?.idempotencyKey).toBe(
+        `missing-code-resolved:${attempt.id}`,
+      );
     },
     60_000,
   );
@@ -207,7 +257,11 @@ describe('Missing-Code Report Resolution on PostgreSQL (Story 14.1)', () => {
     async () => {
       const pub = await h.user('PUBLISHER');
       const resp = await h.user('RESPONDENT');
-      const { form, version } = await createExternalSurveyWithEscrow(pub, 50, 10);
+      const { form, version } = await createExternalSurveyWithEscrow(
+        pub,
+        50,
+        10,
+      );
       const attempt = await createReportedAttempt(
         form.id,
         version.id,
@@ -265,7 +319,11 @@ describe('Missing-Code Report Resolution on PostgreSQL (Story 14.1)', () => {
     async () => {
       const pub = await h.user('PUBLISHER');
       const resp = await h.user('RESPONDENT');
-      const { form, version } = await createExternalSurveyWithEscrow(pub, 50, 1); // quota = 1
+      const { form, version } = await createExternalSurveyWithEscrow(
+        pub,
+        50,
+        1,
+      ); // quota = 1
 
       // Add one already completed attempt to fill quota
       const otherResp = await h.user('RESPONDENT');
@@ -348,7 +406,11 @@ describe('Missing-Code Report Resolution on PostgreSQL (Story 14.1)', () => {
     '6. self-resolve attempt: 403 MISSING_CODE_SELF_RESOLVE_FORBIDDEN',
     async () => {
       const pub = await h.user('PUBLISHER');
-      const { form, version } = await createExternalSurveyWithEscrow(pub, 50, 10);
+      const { form, version } = await createExternalSurveyWithEscrow(
+        pub,
+        50,
+        10,
+      );
       // Admin themselves took the survey
       const attempt = await createReportedAttempt(form.id, version.id, admin);
 
@@ -373,7 +435,11 @@ describe('Missing-Code Report Resolution on PostgreSQL (Story 14.1)', () => {
     async () => {
       const pub = await h.user('PUBLISHER');
       const resp = await h.user('RESPONDENT');
-      const { form, version } = await createExternalSurveyWithEscrow(pub, 50, 10);
+      const { form, version } = await createExternalSurveyWithEscrow(
+        pub,
+        50,
+        10,
+      );
       const attempt = await createReportedAttempt(form.id, version.id, resp);
 
       // First resolution
@@ -414,7 +480,9 @@ describe('Missing-Code Report Resolution on PostgreSQL (Story 14.1)', () => {
         },
       );
       expect(conflict.status).toBe(409);
-      expect(conflict.body.error.code).toBe('MISSING_CODE_REPORT_ALREADY_RESOLVED');
+      expect(conflict.body.error.code).toBe(
+        'MISSING_CODE_REPORT_ALREADY_RESOLVED',
+      );
     },
     60_000,
   );
@@ -424,7 +492,11 @@ describe('Missing-Code Report Resolution on PostgreSQL (Story 14.1)', () => {
     async () => {
       const pub = await h.user('PUBLISHER');
       const resp = await h.user('RESPONDENT');
-      const { form, version } = await createExternalSurveyWithEscrow(pub, 50, 10);
+      const { form, version } = await createExternalSurveyWithEscrow(
+        pub,
+        50,
+        10,
+      );
       const attempt = await createReportedAttempt(form.id, version.id, resp);
 
       const [res1, res2] = await Promise.all([
@@ -449,7 +521,10 @@ describe('Missing-Code Report Resolution on PostgreSQL (Story 14.1)', () => {
       ]);
 
       expect([res1.status, res2.status].sort()).toEqual([200, 200]);
-      const replayedFlags = [res1.body.data.replayed, res2.body.data.replayed].sort();
+      const replayedFlags = [
+        res1.body.data.replayed,
+        res2.body.data.replayed,
+      ].sort();
       expect(replayedFlags).toEqual([false, true]);
 
       // Exactly one ledger journal posted
@@ -459,6 +534,10 @@ describe('Missing-Code Report Resolution on PostgreSQL (Story 14.1)', () => {
         },
       });
       expect(journals).toHaveLength(1);
+
+      // Exactly one audit row, and the Respondent's PENDING was credited once.
+      expect(await auditRows(attempt.id)).toHaveLength(1);
+      expect(await pendingBalance(resp.id)).toBe(50);
     },
     60_000,
   );
@@ -468,7 +547,11 @@ describe('Missing-Code Report Resolution on PostgreSQL (Story 14.1)', () => {
     async () => {
       const pub = await h.user('PUBLISHER');
       const resp = await h.user('RESPONDENT');
-      const { form, version } = await createExternalSurveyWithEscrow(pub, 50, 10);
+      const { form, version } = await createExternalSurveyWithEscrow(
+        pub,
+        50,
+        10,
+      );
       const attempt = await createReportedAttempt(form.id, version.id, resp);
 
       const res = await h.send(
@@ -520,7 +603,11 @@ describe('Missing-Code Report Resolution on PostgreSQL (Story 14.1)', () => {
     async () => {
       const pub = await h.user('PUBLISHER');
       const resp = await h.user('RESPONDENT');
-      const { form, version } = await createExternalSurveyWithEscrow(pub, 50, 10);
+      const { form, version } = await createExternalSurveyWithEscrow(
+        pub,
+        50,
+        10,
+      );
       const attempt = await createReportedAttempt(form.id, version.id, resp);
 
       // Call via /api/admin/ prefix
@@ -539,4 +626,460 @@ describe('Missing-Code Report Resolution on PostgreSQL (Story 14.1)', () => {
     },
     60_000,
   );
+
+  liveIt(
+    '12. CREDIT_RESPONDENT vs DISMISSED race: exactly one resolution wins, journal/audit/PENDING consistent with the winner',
+    async () => {
+      const wins = { CREDIT_RESPONDENT: 0, DISMISSED: 0 };
+      for (let round = 0; round < 6; round++) {
+        const pub = await h.user('PUBLISHER');
+        const resp = await h.user('RESPONDENT');
+        const { form, version } = await createExternalSurveyWithEscrow(
+          pub,
+          50,
+          10,
+        );
+        const attempt = await createReportedAttempt(form.id, version.id, resp);
+
+        // Alternate which request is issued first so both winners are exercised.
+        const sendCredit = () =>
+          resolve(
+            attempt.id,
+            admin,
+            'CREDIT_RESPONDENT',
+            'Race: credit the respondent.',
+          );
+        const sendDismiss = () =>
+          resolve(
+            attempt.id,
+            otherAdmin,
+            'DISMISSED',
+            'Race: dismiss the report.',
+          );
+        let credit: Awaited<ReturnType<typeof sendCredit>>;
+        let dismiss: Awaited<ReturnType<typeof sendDismiss>>;
+        if (round % 2 === 0) {
+          [credit, dismiss] = await Promise.all([sendCredit(), sendDismiss()]);
+        } else {
+          [dismiss, credit] = await Promise.all([sendDismiss(), sendCredit()]);
+        }
+
+        const statuses = [credit.status, dismiss.status].sort();
+        expect(statuses).toEqual([200, 409]);
+        const loser = credit.status === 409 ? credit : dismiss;
+        expect(loser.body.error.code).toBe(
+          'MISSING_CODE_REPORT_ALREADY_RESOLVED',
+        );
+        const winner =
+          credit.status === 200 ? 'CREDIT_RESPONDENT' : 'DISMISSED';
+        wins[winner] += 1;
+
+        const row = await h.prisma.surveyAttempt.findUniqueOrThrow({
+          where: { id: attempt.id },
+        });
+        expect(row.missingCodeResolution).toBe(winner);
+        expect(row.missingCodeResolvedById).toBe(
+          winner === 'CREDIT_RESPONDENT' ? admin.id : otherAdmin.id,
+        );
+        expect(await auditRows(attempt.id)).toHaveLength(1);
+
+        const journals = await externalJournals(attempt.id);
+        if (winner === 'CREDIT_RESPONDENT') {
+          expect(row.status).toBe('COMPLETED');
+          expect(journals).toHaveLength(1);
+          expect(await pendingBalance(resp.id)).toBe(50);
+        } else {
+          expect(row.status).toBe('IN_PROGRESS');
+          expect(journals).toHaveLength(0);
+          expect(await pendingBalance(resp.id)).toBe(0);
+        }
+      }
+      expect(wins.CREDIT_RESPONDENT + wins.DISMISSED).toBe(6);
+    },
+    120_000,
+  );
+
+  liveIt(
+    '13. admin CREDIT_RESPONDENT vs the Respondent late correct code: one external-completion journal, PENDING credited once, attempt COMPLETED',
+    async () => {
+      const codes = new CompletionCodeService(
+        h.app.get(EnvService, { strict: false }),
+      );
+      const CODE = 'abc123';
+      const outcomes = { adminWon: 0, respondentWon: 0 };
+      for (let round = 0; round < 6; round++) {
+        const pub = await h.user('PUBLISHER');
+        const resp = await h.user('RESPONDENT');
+        const { form, version } = await createExternalSurveyWithEscrow(
+          pub,
+          50,
+          10,
+        );
+        await h.prisma.formVersion.update({
+          where: { id: version.id },
+          data: { completionCode: codes.computeVerifier(version.id, CODE) },
+        });
+        // Started past the time barrier, still inside the reservation window.
+        const attempt = await h.prisma.surveyAttempt.create({
+          data: {
+            surveyId: form.id,
+            formVersionId: version.id,
+            respondentId: resp.id,
+            status: 'IN_PROGRESS',
+            isGuest: false,
+            startedAt: new Date(Date.now() - 120_000),
+            missingCodeReportedAt: new Date(),
+            missingCodeReason: 'Code never shown after the Google Form',
+          },
+        });
+
+        const [adminRes, verifyRes] = await Promise.all([
+          resolve(
+            attempt.id,
+            admin,
+            'CREDIT_RESPONDENT',
+            'Race: admin credit vs late code.',
+          ),
+          h.send('post', `/attempts/${attempt.id}/verify-code`, resp, {
+            completionCode: CODE,
+          }),
+        ]);
+
+        // The Respondent's call always succeeds (fresh claim or replay).
+        expect(verifyRes.status).toBe(200);
+        if (adminRes.status === 200) {
+          expect(adminRes.body.data.replayed).toBe(false);
+          outcomes.adminWon += 1;
+        } else {
+          expect(adminRes.status).toBe(409);
+          expect(adminRes.body.error.code).toBe('SURVEY_ALREADY_COMPLETED');
+          outcomes.respondentWon += 1;
+        }
+
+        const row = await h.prisma.surveyAttempt.findUniqueOrThrow({
+          where: { id: attempt.id },
+        });
+        expect(row.status).toBe('COMPLETED');
+        expect(await externalJournals(attempt.id)).toHaveLength(1);
+        expect(await pendingBalance(resp.id)).toBe(50);
+        // Audit row only when the admin resolution actually landed.
+        expect(await auditRows(attempt.id)).toHaveLength(
+          adminRes.status === 200 ? 1 : 0,
+        );
+      }
+      expect(outcomes.adminWon + outcomes.respondentWon).toBe(6);
+    },
+    120_000,
+  );
+
+  liveIt(
+    '14. a resolved report leaves countUnresolved and listUnresolved of the report stats adapter',
+    async () => {
+      const stats = h.app.get<MissingCodeReportStatsPort>(
+        MISSING_CODE_REPORT_STATS_PORT,
+        { strict: false },
+      );
+      const pub = await h.user('PUBLISHER');
+      const resp = await h.user('RESPONDENT');
+      const { form, version } = await createExternalSurveyWithEscrow(
+        pub,
+        50,
+        10,
+      );
+      const attempt = await createReportedAttempt(form.id, version.id, resp);
+
+      const before = await stats.countUnresolved();
+      const listedBefore = await stats.listUnresolved(null, 200);
+      expect(listedBefore.map((r) => r.attemptId)).toContain(attempt.id);
+
+      const res = await resolve(
+        attempt.id,
+        admin,
+        'DISMISSED',
+        'Resolved, so it leaves the queue.',
+      );
+      expect(res.status).toBe(200);
+
+      expect(await stats.countUnresolved()).toBe(before - 1);
+      const listedAfter = await stats.listUnresolved(null, 200);
+      expect(listedAfter.map((r) => r.attemptId)).not.toContain(attempt.id);
+    },
+    60_000,
+  );
+
+  liveIt(
+    '16. CREDIT on a cancelled attempt: 409 MISSING_CODE_ATTEMPT_CANCELLED, no journal, report stays open; DISMISSED still succeeds',
+    async () => {
+      const pub = await h.user('PUBLISHER');
+      const resp = await h.user('RESPONDENT');
+      const { form, version } = await createExternalSurveyWithEscrow(
+        pub,
+        50,
+        10,
+      );
+      const attempt = await createReportedAttempt(
+        form.id,
+        version.id,
+        resp,
+        'ABANDONED',
+      );
+      await h.prisma.surveyAttempt.update({
+        where: { id: attempt.id },
+        data: { closedReason: 'CANCELLED' },
+      });
+
+      const credit = await resolve(
+        attempt.id,
+        admin,
+        'CREDIT_RESPONDENT',
+        'Trying to credit a cancelled attempt.',
+      );
+      expect(credit.status).toBe(409);
+      expect(credit.body.error.code).toBe('MISSING_CODE_ATTEMPT_CANCELLED');
+      expect(await externalJournals(attempt.id)).toHaveLength(0);
+      expect(await pendingBalance(resp.id)).toBe(0);
+      const open = await h.prisma.surveyAttempt.findUniqueOrThrow({
+        where: { id: attempt.id },
+      });
+      expect(open.missingCodeResolvedAt).toBeNull();
+      expect(open.status).toBe('ABANDONED');
+      expect(await auditRows(attempt.id)).toHaveLength(0);
+
+      const dismiss = await resolve(
+        attempt.id,
+        admin,
+        'DISMISSED',
+        'Cancelled by the respondent, so dismissed.',
+      );
+      expect(dismiss.status).toBe(200);
+      expect(dismiss.body.data.outcome).toBe('DISMISSED');
+    },
+    60_000,
+  );
+
+  liveIt(
+    '17. listUnresolved flags: attemptCancelled, respondentCompletedForm and both false for a plain reported attempt',
+    async () => {
+      const stats = h.app.get<MissingCodeReportStatsPort>(
+        MISSING_CODE_REPORT_STATS_PORT,
+        { strict: false },
+      );
+      const pub = await h.user('PUBLISHER');
+      const { form, version } = await createExternalSurveyWithEscrow(
+        pub,
+        50,
+        10,
+      );
+
+      const plainResp = await h.user('RESPONDENT');
+      const plain = await createReportedAttempt(form.id, version.id, plainResp);
+
+      const cancelResp = await h.user('RESPONDENT');
+      const cancelled = await createReportedAttempt(
+        form.id,
+        version.id,
+        cancelResp,
+        'ABANDONED',
+      );
+      await h.prisma.surveyAttempt.update({
+        where: { id: cancelled.id },
+        data: { closedReason: 'CANCELLED' },
+      });
+
+      const doneResp = await h.user('RESPONDENT');
+      const reportedAgain = await createReportedAttempt(
+        form.id,
+        version.id,
+        doneResp,
+      );
+      await h.prisma.surveyAttempt.create({
+        data: {
+          surveyId: form.id,
+          formVersionId: version.id,
+          respondentId: doneResp.id,
+          status: 'COMPLETED',
+          submittedAt: new Date(),
+        },
+      });
+
+      // Pre-IR.2a ABANDONED rows keep a NULL closed_reason (no backfill).
+      const legacyResp = await h.user('RESPONDENT');
+      const legacy = await createReportedAttempt(
+        form.id,
+        version.id,
+        legacyResp,
+        'ABANDONED',
+      );
+      await h.prisma.surveyAttempt.update({
+        where: { id: legacy.id },
+        data: { closedReason: null },
+      });
+
+      const rows = await stats.listUnresolved(null, 200);
+      const byId = new Map(rows.map((r) => [r.attemptId, r]));
+      expect(byId.get(plain.id)).toMatchObject({
+        attemptCancelled: false,
+        respondentCompletedForm: false,
+      });
+      expect(byId.get(legacy.id)?.attemptCancelled).toBe(false);
+      expect(byId.get(cancelled.id)).toMatchObject({
+        attemptCancelled: true,
+        respondentCompletedForm: false,
+      });
+      expect(byId.get(reportedAgain.id)).toMatchObject({
+        attemptCancelled: false,
+        respondentCompletedForm: true,
+      });
+    },
+    60_000,
+  );
+
+  liveIt(
+    '18. respondent re-report after a DISMISSED resolution: 409 MISSING_CODE_REPORT_ALREADY_RESOLVED',
+    async () => {
+      const pub = await h.user('PUBLISHER');
+      const resp = await h.user('RESPONDENT');
+      const { form, version } = await createExternalSurveyWithEscrow(
+        pub,
+        50,
+        10,
+      );
+      const attempt = await createReportedAttempt(form.id, version.id, resp);
+      const dismissed = await resolve(
+        attempt.id,
+        admin,
+        'DISMISSED',
+        'No proof of survey submission.',
+      );
+      expect(dismissed.status).toBe(200);
+
+      const rereport = await h.send(
+        'post',
+        `/attempts/${attempt.id}/report-missing-code`,
+        resp,
+        { reason: 'I still did not get the code' },
+      );
+      expect(rereport.status).toBe(409);
+      expect(rereport.body.error.code).toBe(
+        'MISSING_CODE_REPORT_ALREADY_RESOLVED',
+      );
+    },
+    60_000,
+  );
+
+  describe('CHECK survey_attempts_missing_code_resolution_consistent', () => {
+    const CONSTRAINT = /survey_attempts_missing_code_resolution_consistent/;
+
+    liveIt(
+      '15a. rejects a half-set resolution (only the resolution column)',
+      async () => {
+        const pub = await h.user('PUBLISHER');
+        const resp = await h.user('RESPONDENT');
+        const { form, version } = await createExternalSurveyWithEscrow(
+          pub,
+          50,
+          10,
+        );
+        const attempt = await createReportedAttempt(form.id, version.id, resp);
+
+        await expect(
+          h.prisma.$executeRawUnsafe(
+            `UPDATE survey_attempts SET missing_code_resolution = 'DISMISSED'::"MissingCodeResolution" WHERE id = $1::uuid`,
+            attempt.id,
+          ),
+        ).rejects.toThrow(CONSTRAINT);
+      },
+      60_000,
+    );
+
+    liveIt(
+      '15b. rejects three of the four columns (resolver missing)',
+      async () => {
+        const pub = await h.user('PUBLISHER');
+        const resp = await h.user('RESPONDENT');
+        const { form, version } = await createExternalSurveyWithEscrow(
+          pub,
+          50,
+          10,
+        );
+        const attempt = await createReportedAttempt(form.id, version.id, resp);
+
+        await expect(
+          h.prisma.$executeRawUnsafe(
+            `UPDATE survey_attempts
+               SET missing_code_resolved_at = now(),
+                   missing_code_resolution = 'DISMISSED'::"MissingCodeResolution",
+                   missing_code_resolution_note = 'Only three columns are set.'
+             WHERE id = $1::uuid`,
+            attempt.id,
+          ),
+        ).rejects.toThrow(CONSTRAINT);
+      },
+      60_000,
+    );
+
+    liveIt(
+      '15c. rejects a full resolution when missing_code_reported_at IS NULL',
+      async () => {
+        const pub = await h.user('PUBLISHER');
+        const resp = await h.user('RESPONDENT');
+        const { form, version } = await createExternalSurveyWithEscrow(
+          pub,
+          50,
+          10,
+        );
+        const unreported = await h.prisma.surveyAttempt.create({
+          data: {
+            surveyId: form.id,
+            formVersionId: version.id,
+            respondentId: resp.id,
+            status: 'IN_PROGRESS',
+            isGuest: false,
+          },
+        });
+
+        await expect(
+          h.prisma.$executeRawUnsafe(
+            `UPDATE survey_attempts
+               SET missing_code_resolved_at = now(),
+                   missing_code_resolution = 'DISMISSED'::"MissingCodeResolution",
+                   missing_code_resolution_note = 'No report exists for this attempt.',
+                   missing_code_resolved_by = $2::uuid
+             WHERE id = $1::uuid`,
+            unreported.id,
+            admin.id,
+          ),
+        ).rejects.toThrow(CONSTRAINT);
+      },
+      60_000,
+    );
+
+    liveIt(
+      '15d. accepts a fully-set resolution on a reported attempt',
+      async () => {
+        const pub = await h.user('PUBLISHER');
+        const resp = await h.user('RESPONDENT');
+        const { form, version } = await createExternalSurveyWithEscrow(
+          pub,
+          50,
+          10,
+        );
+        const attempt = await createReportedAttempt(form.id, version.id, resp);
+
+        await expect(
+          h.prisma.$executeRawUnsafe(
+            `UPDATE survey_attempts
+               SET missing_code_resolved_at = now(),
+                   missing_code_resolution = 'DISMISSED'::"MissingCodeResolution",
+                   missing_code_resolution_note = 'All four columns are set.',
+                   missing_code_resolved_by = $2::uuid
+             WHERE id = $1::uuid`,
+            attempt.id,
+            admin.id,
+          ),
+        ).resolves.toBe(1);
+      },
+      60_000,
+    );
+  });
 });

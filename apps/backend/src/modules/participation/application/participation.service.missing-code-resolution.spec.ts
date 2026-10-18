@@ -12,6 +12,7 @@ import { FormVersionEntity } from '../../forms/domain/form-version.entity';
 import { SurveyAttemptEntity } from '../domain/survey-attempt.entity';
 import {
   AttemptNotExternalException,
+  MissingCodeAttemptCancelledException,
   MissingCodeReportAlreadyResolvedException,
   MissingCodeReportNotFoundException,
   MissingCodeSelfResolveForbiddenException,
@@ -408,6 +409,58 @@ describe('ParticipationService.resolveMissingCodeReport (Story 14.1)', () => {
       ).rejects.toThrow(MissingCodeSurveyClosedException);
     });
 
+    it('throws MissingCodeAttemptCancelledException for a cancelled attempt and settles nothing', async () => {
+      const cancelled = createAttempt({
+        status: 'ABANDONED',
+        closedReason: 'CANCELLED',
+      });
+      mockParticipationRepo.lockOpenMissingCodeReport.mockResolvedValueOnce({
+        attempt: cancelled,
+        formOpen: true,
+      });
+
+      await expect(
+        service.resolveMissingCodeReport(adminId, attemptId, {
+          outcome: 'CREDIT_RESPONDENT',
+          note: 'Valid note for resolution here',
+        }),
+      ).rejects.toThrow(MissingCodeAttemptCancelledException);
+      expect(mockParticipationRepo.completeAttemptByAdmin).not.toHaveBeenCalled();
+      expect(mockRewardSettlementCoordinator.settleExternalReward).not.toHaveBeenCalled();
+    });
+
+    it('still credits an ABANDONED/EXPIRED attempt', async () => {
+      const expired = createAttempt({
+        status: 'ABANDONED',
+        closedReason: 'EXPIRED',
+      });
+      mockParticipationRepo.lockOpenMissingCodeReport.mockResolvedValueOnce({
+        attempt: expired,
+        formOpen: true,
+      });
+
+      const result = await service.resolveMissingCodeReport(adminId, attemptId, {
+        outcome: 'CREDIT_RESPONDENT',
+        note: 'Valid note for resolution here',
+      });
+      expect(result.attemptStatus).toBe('COMPLETED');
+    });
+
+    it('throws and never settles when completeAttemptByAdmin reports changed=false', async () => {
+      mockParticipationRepo.completeAttemptByAdmin.mockResolvedValueOnce({
+        changed: false,
+      });
+
+      await expect(
+        service.resolveMissingCodeReport(adminId, attemptId, {
+          outcome: 'CREDIT_RESPONDENT',
+          note: 'Valid note for resolution here',
+        }),
+      ).rejects.toThrow(/Failed to complete attempt/);
+      expect(mockRewardSettlementCoordinator.settleExternalReward).not.toHaveBeenCalled();
+      expect(mockParticipationRepo.recordMissingCodeResolution).not.toHaveBeenCalled();
+    });
+
     it('throws SurveyQuotaFullException when quota is reached excluding current attempt', async () => {
       mockParticipationRepo.getQuotaStatus.mockResolvedValueOnce({
         completedCount: 10,
@@ -569,5 +622,42 @@ describe('ParticipationService.resolveMissingCodeReport (Story 14.1)', () => {
         }),
       );
     });
+
+    it('still dismisses a cancelled attempt', async () => {
+      const cancelled = createAttempt({
+        status: 'ABANDONED',
+        closedReason: 'CANCELLED',
+      });
+      mockParticipationRepo.lockOpenMissingCodeReport.mockResolvedValueOnce({
+        attempt: cancelled,
+        formOpen: true,
+      });
+
+      const result = await service.resolveMissingCodeReport(adminId, attemptId, {
+        outcome: 'DISMISSED',
+        note: 'Respondent cancelled the attempt.',
+      });
+      expect(result.outcome).toBe('DISMISSED');
+    });
+  });
+
+  describe('Respondent re-report after resolution', () => {
+    it.each(['CREDIT_RESPONDENT', 'DISMISSED'] as const)(
+      'throws MissingCodeReportAlreadyResolvedException after %s',
+      async (resolution) => {
+        mockParticipationRepo.findAttemptById.mockResolvedValueOnce(
+          createAttempt({
+            missingCodeResolvedAt: new Date(),
+            missingCodeResolution: resolution,
+          }),
+        );
+
+        await expect(
+          service.reportMissingCompletionCode(formId, attemptId, respondentId, {
+            reason: 'I still did not get the code',
+          } as any),
+        ).rejects.toThrow('This missing-code report has already been reviewed.');
+      },
+    );
   });
 });

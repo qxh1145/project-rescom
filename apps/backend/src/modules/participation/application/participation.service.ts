@@ -75,6 +75,7 @@ import {
   MissingCodeSelfResolveForbiddenException,
   MissingCodeReportAlreadyResolvedException,
   MissingCodeSurveyClosedException,
+  MissingCodeAttemptCancelledException,
 } from './exceptions/participation.exceptions';
 import { InsufficientBalanceException } from '../../economy/application/exceptions/economy.exceptions';
 import {
@@ -1798,6 +1799,13 @@ export class ParticipationService {
       throw new ParticipantNotEligibleException('Unauthorized attempt access.');
     }
 
+    // Story 14.1 review: a reviewed report is final; do not swallow a re-report.
+    if (attempt.missingCodeResolvedAt !== null) {
+      throw new MissingCodeReportAlreadyResolvedException(
+        'This missing-code report has already been reviewed.',
+      );
+    }
+
     const formWithVersion = await this.formRepository.findById(
       attempt.surveyId,
     );
@@ -1941,6 +1949,12 @@ export class ParticipationService {
               'Guest attempts cannot be credited.',
             );
           }
+          if (
+            locked.attempt.status === 'ABANDONED' &&
+            locked.attempt.closedReason === 'CANCELLED'
+          ) {
+            throw new MissingCodeAttemptCancelledException();
+          }
           if (!locked.formOpen) {
             throw new MissingCodeSurveyClosedException();
           }
@@ -1958,10 +1972,16 @@ export class ParticipationService {
             throw new SurveyQuotaFullException();
           }
 
-          await this.participationRepository.completeAttemptByAdmin(
-            locked.attempt.id,
-            now,
-          );
+          const completion =
+            await this.participationRepository.completeAttemptByAdmin(
+              locked.attempt.id,
+              now,
+            );
+          if (!completion.changed) {
+            throw new Error(
+              `Failed to complete attempt ${locked.attempt.id} for missing code credit: attempt is not open or was already resolved`,
+            );
+          }
 
           rewardResult = await this.settleExternalOrExisting(
             locked.attempt.id,

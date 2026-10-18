@@ -37,6 +37,7 @@ const RESOLVE_MESSAGES: Record<string, string> = {
   // Story 14.1: Missing code report resolution errors
   MISSING_CODE_REPORT_NOT_FOUND: "Không tìm thấy báo cáo thiếu mã. Có thể nó đã được xử lý.",
   MISSING_CODE_REPORT_ALREADY_RESOLVED: "Báo cáo thiếu mã đã được xử lý. Danh sách vừa được tải lại.",
+  MISSING_CODE_ATTEMPT_CANCELLED: "Người trả lời đã huỷ lượt làm này nên không thể cộng điểm. Danh sách vừa được tải lại.",
   MISSING_CODE_SURVEY_CLOSED: "Khảo sát đã đóng, không thể cộng điểm cho lượt làm này.",
   MISSING_CODE_SELF_RESOLVE_FORBIDDEN: "Bạn không thể tự xử lý báo cáo thiếu mã trên lượt làm của chính mình.",
   SURVEY_ALREADY_COMPLETED: "Lượt làm này đã được hoàn thành trước đó. Danh sách vừa được tải lại.",
@@ -58,13 +59,22 @@ export function disputeResolveErrorMessage(error: unknown): string {
 export function isStaleCaseError(error: unknown): boolean {
   return (
     isApiError(error) &&
-    (error.status === 404 ||
-      error.code === "DISPUTE_CASE_ALREADY_RESOLVED" ||
+    (error.code === "DISPUTE_CASE_ALREADY_RESOLVED" ||
       error.code === "DISPUTE_CASE_NOT_FOUND" ||
       // The attempt was completed since the report: reload to show its current status.
-      error.code === "DISPUTE_ATTEMPT_ALREADY_REWARDED" ||
+      error.code === "DISPUTE_ATTEMPT_ALREADY_REWARDED")
+  );
+}
+
+/** Story 14.1: the missing-code report changed elsewhere: reload the queue after showing the message. */
+export function isStaleReportError(error: unknown): boolean {
+  return (
+    isApiError(error) &&
+    (error.status === 404 ||
       error.code === "MISSING_CODE_REPORT_ALREADY_RESOLVED" ||
       error.code === "MISSING_CODE_REPORT_NOT_FOUND" ||
+      // Cancelled since the list loaded: reload so the row shows the disabled reason.
+      error.code === "MISSING_CODE_ATTEMPT_CANCELLED" ||
       error.code === "SURVEY_ALREADY_COMPLETED")
   );
 }

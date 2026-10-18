@@ -61,7 +61,7 @@ describe('MissingCodeResolvedNotificationHandler (Story 14.1 AC 6)', () => {
     // Respondent notification
     expect(mockNotifications.publish).toHaveBeenCalledWith({
       userId: respondentId,
-      type: 'MISSING_CODE_REPORT_RESOLVED',
+      type: 'REWARD_PENDING',
       message:
         'Admin đã xác nhận bạn hoàn thành khảo sát "Customer Feedback Survey". 50 Điểm đang chờ, sẽ chuyển vào Khả dụng sau 48 giờ. Ghi chú: Verified completion screenshot provided.',
       dedupeKey: `${idempotencyKey}:respondent`,

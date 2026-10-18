@@ -60,6 +60,7 @@ import {
   MissingCodeSelfResolveForbiddenException,
   MissingCodeReportAlreadyResolvedException,
   MissingCodeSurveyClosedException,
+  MissingCodeAttemptCancelledException,
 } from '../../modules/participation/application/exceptions/participation.exceptions';
 import {
   SurveyFeedbackAlreadySubmittedException,
@@ -541,6 +542,11 @@ describe('HttpExceptionFilter (Unit Tests)', () => {
       new MissingCodeSurveyClosedException(),
       HttpStatus.CONFLICT,
       'MISSING_CODE_SURVEY_CLOSED',
+    ],
+    [
+      new MissingCodeAttemptCancelledException(),
+      HttpStatus.CONFLICT,
+      'MISSING_CODE_ATTEMPT_CANCELLED',
     ],
   ])(
     'maps Story 14.1 missing code resolution exception %# to its HTTP status and code',
