@@ -31,6 +31,9 @@ export type HistoryKind =
   | "TOP_UP"
   | "TOP_UP_PAYOS"
   | "TOP_UP_MISMATCH"
+  | "TOP_UP_REFUND_HOLD"
+  | "TOP_UP_REFUND_RELEASE"
+  | "TOP_UP_REFUND"
   | "VOUCHER_REDEMPTION"
   | "SURVEY_ESCROW"
   | "ESCROW_REFUND"
@@ -70,6 +73,8 @@ export interface HistoryRow {
    * frontend never calls the release route): "Sắp vào Khả dụng".
    */
   pendingDue: boolean;
+  /** Optional link to /wallet/top-up/{id} parsed from description (· top-up {uuid}). */
+  topUpHref?: string | null;
 }
 
 const KEY_PREFIXES: ReadonlyArray<readonly [string, HistoryKind]> = [
@@ -87,14 +92,27 @@ const KEY_PREFIXES: ReadonlyArray<readonly [string, HistoryKind]> = [
   ["topup-approval:", "TOP_UP"],
   ["topup-credit:", "TOP_UP_PAYOS"],
   ["topup-mismatch:", "TOP_UP_MISMATCH"],
+  ["topup-refund-hold:", "TOP_UP_REFUND_HOLD"],
+  ["topup-refund-withdraw:", "TOP_UP_REFUND_RELEASE"],
+  ["topup-refund-resolve:", "TOP_UP_REFUND"],
   ["redemption:", "VOUCHER_REDEMPTION"],
   ["publish:", "SURVEY_ESCROW"],
   ["reopen-escrow:", "SURVEY_ESCROW"],
   ["close-refund:", "ESCROW_REFUND"],
 ];
 
-export function historyKindOf(idempotencyKey: string, reversesJournalId: string | null): HistoryKind {
+export function historyKindOf(
+  idempotencyKey: string,
+  reversesJournalId: string | null,
+  entries?: readonly { accountClass?: string; amount: number }[],
+): HistoryKind {
   if (reversesJournalId) return "REVERSAL";
+  if (idempotencyKey.startsWith("topup-refund-resolve:")) {
+    if (entries && entries.some((entry) => entry.accountClass === "USER_AVAILABLE" && entry.amount > 0)) {
+      return "TOP_UP_REFUND_RELEASE";
+    }
+    return "TOP_UP_REFUND";
+  }
   const match = KEY_PREFIXES.find(([prefix]) => idempotencyKey.startsWith(prefix));
   return match ? match[1] : "OTHER";
 }
@@ -108,8 +126,11 @@ const ZERO_NET_DIRECTION: Partial<Record<HistoryKind, HistoryDirection>> = {
   REWARD_RELEASE: "in",
   DISPUTE_RESOLUTION: "in",
   ESCROW_REFUND: "in",
+  TOP_UP_REFUND_RELEASE: "in",
   SURVEY_ESCROW: "out",
   STARTER_EXPIRY: "out",
+  TOP_UP_REFUND_HOLD: "out",
+  TOP_UP_REFUND: "out",
   // Chờ duyệt → Đang giữ: the points are still the user's, nothing received or spent.
   DISPUTE_HOLD: "neutral",
 };
@@ -125,6 +146,9 @@ const TITLES: Record<HistoryKind, string> = {
   TOP_UP: "Nạp điểm",
   TOP_UP_PAYOS: "Nạp Điểm qua PayOS",
   TOP_UP_MISMATCH: "Nạp Điểm (đã điều chỉnh theo số thực nhận)",
+  TOP_UP_REFUND_HOLD: "Giữ chờ hoàn tiền",
+  TOP_UP_REFUND_RELEASE: "Hoàn lại từ giữ chờ hoàn tiền",
+  TOP_UP_REFUND: "Hoàn tiền nạp Điểm",
   VOUCHER_REDEMPTION: "Đổi voucher",
   SURVEY_ESCROW: "Ký quỹ khảo sát",
   ESCROW_REFUND: "Hoàn ký quỹ",
@@ -186,6 +210,15 @@ function notesOf(kind: HistoryKind, entry: WalletTransaction, payout: boolean): 
       return { note: "Thanh toán qua PayOS", shortNote: "PayOS" };
     case "TOP_UP_MISMATCH":
       return { note: "Điều chỉnh thanh toán sai số tiền", shortNote: "Điều chỉnh" };
+    case "TOP_UP_REFUND_HOLD":
+      return { note: "Khả dụng → Giữ chờ hoàn tiền", shortNote: "Giữ chờ hoàn tiền" };
+    case "TOP_UP_REFUND_RELEASE":
+      return { note: "Giữ chờ hoàn tiền → Khả dụng", shortNote: "Hoàn lại Khả dụng" };
+    case "TOP_UP_REFUND": {
+      const order = entry.description?.match(/order (\d+)/)?.[1];
+      const note = order ? `Hoàn tiền đơn #${order}` : "Hoàn tiền nạp Điểm";
+      return { note, shortNote: note };
+    }
     case "VOUCHER_REDEMPTION": {
       const note = titleFromDescription(entry.description) ?? "Voucher";
       return { note, shortNote: note };
@@ -247,7 +280,7 @@ export function toHistoryRows(transactions: readonly WalletTransaction[], now: D
   const rows: HistoryRow[] = [];
   for (const [journalId, entries] of groups) {
     const first = entries[0];
-    const kind = historyKindOf(first.idempotencyKey, first.reversesJournalId);
+    const kind = historyKindOf(first.idempotencyKey, first.reversesJournalId, entries);
     const positive = entries.filter((entry) => entry.amount > 0);
     const negative = entries.filter((entry) => entry.amount < 0);
     const received = positive.reduce((sum, entry) => sum + entry.amount, 0);
@@ -285,6 +318,9 @@ export function toHistoryRows(transactions: readonly WalletTransaction[], now: D
       else pendingDue = true;
     }
 
+    const topUpMatch = first.description?.match(/· top-up ([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/i);
+    const topUpHref = topUpMatch ? `/wallet/top-up/${topUpMatch[1]}` : null;
+
     rows.push({
       id: journalId,
       kind,
@@ -296,6 +332,7 @@ export function toHistoryRows(transactions: readonly WalletTransaction[], now: D
       bucket,
       pendingHoursLeft,
       pendingDue,
+      topUpHref,
     });
   }
   return rows;
@@ -335,7 +372,10 @@ export function filterHistory(rows: readonly HistoryRow[], filter: HistoryFilter
         (row) =>
           row.kind === "TOP_UP" ||
           row.kind === "TOP_UP_PAYOS" ||
-          row.kind === "TOP_UP_MISMATCH",
+          row.kind === "TOP_UP_MISMATCH" ||
+          row.kind === "TOP_UP_REFUND_HOLD" ||
+          row.kind === "TOP_UP_REFUND_RELEASE" ||
+          row.kind === "TOP_UP_REFUND",
       );
     default:
       return [...rows];

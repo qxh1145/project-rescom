@@ -178,6 +178,8 @@ export const TOP_UP_AUDIT_EVENT_TYPES = {
   RECHECKED: "AdminTopUpRechecked",
   MISMATCH_RESOLVED: "AdminTopUpMismatchResolved",
   EXPORTED: "AdminTopUpExported",
+  REFUND_RESOLVED: "AdminTopUpRefundResolved",
+  REFUND_BANK_TRANSFER_RECORDED: "AdminTopUpRefundBankTransferRecorded",
 } as const;
 
 /**

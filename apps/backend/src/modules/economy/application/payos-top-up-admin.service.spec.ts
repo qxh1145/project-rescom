@@ -66,6 +66,7 @@ describe('PayOS admin console', () => {
       payos: 1,
       manual: 2,
       actionRequired: 0,
+      refunds: 0,
     });
   });
   it('audits before returning CSV; audit failure returns no CSV', async () => {
@@ -82,6 +83,41 @@ describe('PayOS admin console', () => {
     await expect(service.exportForAdmin(input)).rejects.toThrow(
       'audit unavailable',
     );
+  });
+  it('CSV includes refund status and bankTransferReference columns', async () => {
+    const { repository, service } = setup();
+    jest.spyOn(repository, 'listForExport').mockResolvedValue([
+      {
+        orderCode: 1234567,
+        userEmail: 'u@example.com',
+        amountVnd: 50_000,
+        amountPaidVnd: 50_000,
+        points: 250,
+        pointsCredited: 250,
+        status: 'SUCCESSFUL',
+        createdAt: new Date('2026-10-16T01:00:00Z'),
+        paidAt: new Date('2026-10-16T01:05:00Z'),
+        refundStatus: 'REFUNDED',
+        refundResolvedAt: new Date('2026-10-17T01:00:00Z'),
+        bankTransferReference: 'FT999888777',
+      } as never,
+    ]);
+    const csv = await service.exportForAdmin({
+      from: '2026-10-16',
+      to: '2026-10-17',
+      adminId: userId,
+    });
+    const [header, row] = csv.replace(/"/g, '').split(/\r?\n/);
+    expect(header.split(',').slice(-3)).toEqual([
+      'refundStatus',
+      'refundResolvedAt',
+      'bankTransferReference',
+    ]);
+    expect(row.split(',').slice(-3)).toEqual([
+      'REFUNDED',
+      '2026-10-17T08:00:00.000+07:00',
+      'FT999888777',
+    ]);
   });
   it('rejects overflow without audit', async () => {
     const { repository, service } = setup();

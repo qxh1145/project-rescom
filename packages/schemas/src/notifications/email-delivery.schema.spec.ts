@@ -27,6 +27,7 @@ describe('Email delivery contracts (Story IR.4b part B)', () => {
       'TOPUP_REFUNDED',
       'ACCOUNT_LOCKED',
       'ACCOUNT_UNLOCKED',
+      'TOPUP_REFUND_REJECTED',
     ]);
     for (const type of EMAIL_NOTIFICATION_TYPES) {
       expect(NOTIFICATION_TYPES).toContain(type);

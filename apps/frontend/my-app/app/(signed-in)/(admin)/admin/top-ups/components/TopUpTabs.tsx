@@ -1,10 +1,13 @@
 "use client";
 import { useRef, type KeyboardEvent } from "react";
-export type ConsoleTab = "payos" | "action" | "manual";
+export type ConsoleTab = "payos" | "refunds" | "action" | "manual";
 const tabs: { id: ConsoleTab; label: string }[] = [
-  { id: "payos", label: "Giao dịch PayOS" }, { id: "action", label: "Cần xử lý" }, { id: "manual", label: "Lịch sử thủ công (cũ)" },
+  { id: "payos", label: "Giao dịch PayOS" },
+  { id: "refunds", label: "Yêu cầu hoàn tiền" },
+  { id: "action", label: "Cần xử lý" },
+  { id: "manual", label: "Lịch sử thủ công (cũ)" },
 ];
-export function TopUpTabs({ active, counts, failed, onSelect }: { active: ConsoleTab; counts: { payos: number; manual: number; actionRequired: number } | null; failed?: boolean; onSelect: (tab: ConsoleTab) => void }) {
+export function TopUpTabs({ active, counts, failed, onSelect }: { active: ConsoleTab; counts: { payos: number; manual: number; actionRequired: number; refunds?: number } | null; failed?: boolean; onSelect: (tab: ConsoleTab) => void }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   function keyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : event.key === "ArrowLeft" ? (index - 1 + tabs.length) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1;

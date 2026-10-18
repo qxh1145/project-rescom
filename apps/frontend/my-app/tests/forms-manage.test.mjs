@@ -634,3 +634,35 @@ test("plan 2.3 / IR.2b: system closes in the status pill and the reopen rules", 
     true,
   );
 });
+
+test("formActionErrorMessage appends refundHoldPoints sentence (Story 13.11, AC 10)", () => {
+  const baseErr = new ApiError({
+    kind: "http",
+    status: 409,
+    code: "INSUFFICIENT_ESCROW_BALANCE",
+    message: "Insufficient",
+  });
+  const baseMsg = messages.formActionErrorMessage(baseErr, "fallback");
+  assert.match(baseMsg, /Số dư khả dụng không đủ/);
+
+  const withHoldErr = new ApiError({
+    kind: "http",
+    status: 409,
+    code: "INSUFFICIENT_ESCROW_BALANCE",
+    message: "Insufficient",
+    details: { refundHoldPoints: 250 },
+  });
+  const withHoldMsg = messages.formActionErrorMessage(withHoldErr, "fallback");
+  assert.equal(withHoldMsg, `${baseMsg} 250 Điểm đang giữ chờ hoàn tiền.`);
+
+  for (const invalid of [{}, { refundHoldPoints: 0 }, { refundHoldPoints: -10 }, { refundHoldPoints: "250" }]) {
+    const err = new ApiError({
+      kind: "http",
+      status: 409,
+      code: "INSUFFICIENT_ESCROW_BALANCE",
+      message: "Insufficient",
+      details: invalid,
+    });
+    assert.equal(messages.formActionErrorMessage(err, "fallback"), baseMsg);
+  }
+});

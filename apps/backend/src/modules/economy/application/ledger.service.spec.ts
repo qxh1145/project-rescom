@@ -100,6 +100,31 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
     ).rejects.toThrow('Top-up credit journals cannot be reversed');
   });
 
+  it.each([
+    'topup-refund-hold:',
+    'topup-refund-withdraw:',
+    'topup-refund-resolve:',
+  ])('refuses reverseJournal for %s journals', async (prefix) => {
+    const issuance = await service.getOrCreateAccount(null, 'SYSTEM_ISSUANCE');
+    const available = await service.getOrCreateAccount(
+      user1Id,
+      'USER_AVAILABLE',
+    );
+    const journal = await service.postJournal({
+      idempotencyKey: `${prefix}a1ce7584-0bd5-4da8-8398-e0a5f1520ecd`,
+      entries: [
+        { accountId: issuance.id, amount: -10 },
+        { accountId: available.id, amount: 10 },
+      ],
+    });
+    await expect(
+      service.reverseJournal({ targetJournalId: journal.id }),
+    ).rejects.toThrow(InvalidLedgerOperationException);
+    await expect(
+      service.reverseJournal({ targetJournalId: journal.id }),
+    ).rejects.toThrow('Top-up credit journals cannot be reversed');
+  });
+
   it('credits PayOS once, rejects amount conflict and prevents reversal', async () => {
     const params = {
       topUpId: 'a1ce7584-0bd5-4da8-8398-e0a5f1520ecd',
@@ -755,13 +780,14 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
       });
 
       expect(wallet.transactions).toEqual([]);
-      expect(wallet.accounts).toHaveLength(5);
+      expect(wallet.accounts).toHaveLength(6);
       const classes = wallet.accounts.map((a) => a.accountClass);
       expect(classes).toContain('USER_AVAILABLE');
       expect(classes).toContain('PENDING');
       expect(classes).toContain('FROZEN');
       expect(classes).toContain('ESCROW');
       expect(classes).toContain('INTEGRITY_HOLD');
+      expect(classes).toContain('REFUND_HOLD');
     });
 
     it('accurately aggregates non-zero balances across all 5 account classes and computes total', async () => {
@@ -894,6 +920,18 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
       });
     });
 
+    async function holdRefund(points: number) {
+      const avail = await service.getOrCreateAccount(user1Id, 'USER_AVAILABLE');
+      const hold = await service.getOrCreateAccount(user1Id, 'REFUND_HOLD');
+      await service.transfer({
+        fromAccountId: avail.id,
+        toAccountId: hold.id,
+        amount: points,
+        idempotencyKey: `seed-refund-hold-${points}`,
+        description: 'seed hold',
+      });
+    }
+
     describe('reserveEscrow (FR-15)', () => {
       it('locks required points from USER_AVAILABLE to ESCROW', async () => {
         const journal = await service.reserveEscrow({
@@ -938,6 +976,21 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
         const wallet = await service.getWallet(user1Id);
         expect(wallet.balance.available).toBe(500);
         expect(wallet.balance.escrow).toBe(0);
+      });
+
+      it('AC8: INSUFFICIENT_ESCROW_BALANCE carries refundHoldPoints only when a hold exists (publish)', async () => {
+        const params = {
+          userId: user1Id,
+          formVersionId: versionId,
+          amount: 600,
+        };
+        await expect(service.reserveEscrow(params)).rejects.toMatchObject({
+          refundHoldPoints: undefined,
+        });
+        await holdRefund(200);
+        await expect(service.reserveEscrow(params)).rejects.toMatchObject({
+          refundHoldPoints: 200,
+        });
       });
 
       it('safely handles idempotent retries for the same formVersionId', async () => {
@@ -1197,6 +1250,22 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
             additionalAmount: 120,
           }),
         ).rejects.toThrow(IdempotencyConflictException);
+      });
+
+      it('AC8: carries refundHoldPoints only when a hold exists (reopen)', async () => {
+        const params = {
+          userId: user1Id,
+          formId,
+          reopenVersion: 2,
+          additionalAmount: 600,
+        };
+        await expect(service.reopenEscrow(params)).rejects.toMatchObject({
+          refundHoldPoints: undefined,
+        });
+        await holdRefund(200);
+        await expect(service.reopenEscrow(params)).rejects.toMatchObject({
+          refundHoldPoints: 200,
+        });
       });
 
       it('rejects reopen if available points are insufficient', async () => {

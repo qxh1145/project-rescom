@@ -1,0 +1,25 @@
+{
+  "_source": "production capture 2026-10-16 (Story 13.6), redacted, re-signed with test key; bank memo and reference replaced with same-shape placeholders (public repo)",
+  "code": "00",
+  "desc": "success",
+  "success": true,
+  "data": {
+    "accountNumber": "****9870",
+    "amount": 10000,
+    "description": "CS000000000 RC0000001",
+    "reference": "FT00000000000001",
+    "transactionDateTime": "2026-10-16 20:02:00",
+    "virtualAccountNumber": null,
+    "counterAccountBankId": "970422",
+    "counterAccountBankName": "",
+    "counterAccountName": null,
+    "counterAccountNumber": "****0614",
+    "virtualAccountName": null,
+    "currency": "VND",
+    "orderCode": 1000000001,
+    "paymentLinkId": "dfd6e70664d94c809af2d5873c2735e7",
+    "code": "00",
+    "desc": "success"
+  },
+  "signature": "e3c454a50f54e13cd96ca35a8796598aa0c0dfa167c3fd5c2a552a4fe94df638"
+}

@@ -2,6 +2,7 @@ import { redemptionErrorSchema, type RedemptionErrorDto, type RedemptionQuoteDto
 import { ApiError } from "../api/api-error.ts";
 import { formatTime, vietnamDateKey, formatDayMonth } from "../format/date-time.ts";
 import { formatPoints } from "./voucher-display.ts";
+import { refundHoldPointsFrom, refundHoldSentence } from "../wallet/refund-hold.ts";
 
 export const REDEEM_POLL_DELAYS_MS = [2000, 4000, 8000] as const;
 export type RedeemFailure = { kind: "rejected"; error: RedemptionErrorDto } | { kind: "unknown" } | { kind: "failed"; code: string | null };
@@ -41,7 +42,26 @@ export function redeemErrorView(error: RedemptionErrorDto, ctx: { priceSource: "
     }
     case "INSUFFICIENT_POINTS": {
       const { required, available } = error.details;
-      return { mascot: "confused.png", title: "Điểm khả dụng vừa thay đổi", body: ctx.availableBefore > available ? `Một giao dịch khác vừa dùng ${formatPoints(ctx.availableBefore - available)} điểm khả dụng của bạn. Voucher này chưa được đổi và bạn chưa bị trừ điểm.` : "Điểm khả dụng của bạn không đủ để đổi voucher này. Bạn chưa bị trừ điểm.", rows: [{ label: "Voucher cần", value: `${formatPoints(required)} điểm` }, { label: "Bạn đang có", value: `${formatPoints(available)} điểm` }, { label: "Còn thiếu", value: `${formatPoints(required - available)} điểm`, danger: true }], primary: action("Làm khảo sát kiếm thêm", "marketplace"), secondary: action("Nạp điểm", "topUp") };
+      const hold = refundHoldPointsFrom(error.details);
+      const baseBody =
+        ctx.availableBefore > available
+          ? `Một giao dịch khác vừa dùng ${formatPoints(ctx.availableBefore - available)} điểm khả dụng của bạn. Voucher này chưa được đổi và bạn chưa bị trừ điểm.`
+          : "Điểm khả dụng của bạn không đủ để đổi voucher này. Bạn chưa bị trừ điểm.";
+      const body = hold > 0 ? `${baseBody} ${refundHoldSentence(hold)}` : baseBody;
+      const rows: RedeemRow[] = [
+        { label: "Voucher cần", value: `${formatPoints(required)} điểm` },
+        { label: "Bạn đang có", value: `${formatPoints(available)} điểm` },
+        ...(hold > 0 ? [{ label: "Đang giữ chờ hoàn tiền", value: `${formatPoints(hold)} điểm` }] : []),
+        { label: "Còn thiếu", value: `${formatPoints(required - available)} điểm`, danger: true },
+      ];
+      return {
+        mascot: "confused.png",
+        title: "Điểm khả dụng vừa thay đổi",
+        body,
+        rows,
+        primary: action("Làm khảo sát kiếm thêm", "marketplace"),
+        secondary: action("Nạp điểm", "topUp"),
+      };
     }
     case "VOUCHER_UNAVAILABLE": {
       const status = error.details.status;

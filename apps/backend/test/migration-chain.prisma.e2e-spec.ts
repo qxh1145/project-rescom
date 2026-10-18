@@ -102,6 +102,37 @@ describe('Prisma migration chain on PostgreSQL', () => {
     ).resolves.toContain('PROCESSING');
   });
 
+  it('creates top-up refund requests table and constraints (13.10)', async () => {
+    if (!dbAvailable) return;
+    const ledgerClasses = await enumValues('LedgerAccountClass');
+    expect(ledgerClasses).toContain('REFUND_HOLD');
+    const refundStatuses = await enumValues('TopUpRefundStatus');
+    expect(refundStatuses).toEqual([
+      'REQUESTED',
+      'WITHDRAWN',
+      'REFUNDED',
+      'REJECTED',
+    ]);
+    const refundCols = await columnsOf('top_up_refund_requests');
+    expect(refundCols.has('top_up_id')).toBe(true);
+    expect(refundCols.has('destination_verified')).toBe(true);
+    await expect(
+      constraintDef('top_up_refund_requests_note_check'),
+    ).resolves.toContain('btrim');
+    await expect(
+      constraintDef('top_up_refund_requests_eligibility_check'),
+    ).resolves.toContain('hold_journal_id');
+    await expect(
+      constraintDef('top_up_refund_requests_withdrawn_check'),
+    ).resolves.toContain('withdrawn_at');
+    await expect(
+      constraintDef('top_up_refund_requests_release_check'),
+    ).resolves.toContain('release_journal_id');
+    await expect(
+      constraintDef('ledger_accounts_owner_class_check'),
+    ).resolves.toContain('REFUND_HOLD');
+  });
+
   it('creates every table previously built only by db push', async () => {
     if (!dbAvailable) return;
     const rows = await prisma.$queryRaw<Array<{ table_name: string }>>`
@@ -317,7 +348,7 @@ describe('Prisma migration chain on PostgreSQL', () => {
   it('creates the IR.4b email delivery schema and notification types', async () => {
     if (!dbAvailable) return;
     const values = await enumValues('NotificationType');
-    expect(values.slice(-8)).toEqual([
+    expect(values.slice(-11)).toEqual([
       'TOPUP_REJECTED',
       'ACCOUNT_LOCKED',
       'ACCOUNT_UNLOCKED',
@@ -326,6 +357,9 @@ describe('Prisma migration chain on PostgreSQL', () => {
       'TOPUP_CANCELLED',
       'TOPUP_AMOUNT_MISMATCH',
       'TOPUP_REFUNDED',
+      'TOPUP_REFUND_REQUESTED',
+      'TOPUP_REFUND_WITHDRAWN',
+      'TOPUP_REFUND_REJECTED',
     ]);
     const deliveries = await columnsOf('email_deliveries');
     expect(deliveries.has('idempotency_key')).toBe(true);

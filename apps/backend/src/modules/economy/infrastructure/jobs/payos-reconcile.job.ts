@@ -8,6 +8,7 @@ import {
 import {
   TopUpAdminAlertCondition,
   TOP_UP_MISMATCH_SLA_BUSINESS_DAYS,
+  TOP_UP_REFUND_SLA_BUSINESS_DAYS,
   addBusinessDays,
 } from '@rescom/schemas';
 import {
@@ -48,7 +49,9 @@ export class PayosReconcileJob implements ScheduledJob {
     private readonly service: PayosReconcileService,
     private readonly repository: Pick<
       PayosTopUpRepositoryPort,
-      'listReconcileCandidates' | 'findPayosById'
+      | 'listReconcileCandidates'
+      | 'findPayosById'
+      | 'listOverdueRefundCandidates'
     >,
     private readonly provider: PaymentProviderPort,
     private readonly alerts: TopUpAdminAlerts,
@@ -364,6 +367,45 @@ export class PayosReconcileJob implements ScheduledJob {
           this.episodeStartedAt.toISOString(),
         );
       }
+    }
+
+    // Refund SLA breach check (Story 13.12)
+    try {
+      const cutoff = new Date(
+        ctx.now.getTime() -
+          TOP_UP_REFUND_SLA_BUSINESS_DAYS * 24 * 60 * 60 * 1000,
+      );
+      const overdueCandidates =
+        await this.repository.listOverdueRefundCandidates(cutoff);
+      for (const candidate of overdueCandidates) {
+        const dueAt = addBusinessDays(
+          candidate.createdAt,
+          TOP_UP_REFUND_SLA_BUSINESS_DAYS,
+        );
+        if (dueAt.getTime() > ctx.now.getTime()) continue;
+        try {
+          await this.raiseAlert(
+            ctx,
+            counts,
+            'REFUND_SLA_BREACHED',
+            candidate.id,
+            {
+              refundRequestId: candidate.id,
+              topUpId: candidate.topUpId,
+              orderCode: candidate.orderCode,
+              amountVnd: candidate.amountVnd,
+            },
+          );
+        } catch (err) {
+          counts.failedCount++;
+          ctx.logger.error(
+            `Refund SLA alert failed for ${candidate.id}: ${err}`,
+          );
+        }
+      }
+    } catch (err) {
+      counts.failedCount++;
+      ctx.logger.error(`Overdue refund check failed: ${err}`);
     }
 
     assertNotAllFailed(

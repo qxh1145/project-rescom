@@ -10,10 +10,10 @@ describe('wallet balance readers', () => {
     } as unknown as PrismaService);
     expect(
       await reader.getBalance('00000000-0000-4000-8000-000000000001'),
-    ).toEqual({ available: 0, pending: 0 });
+    ).toEqual({ available: 0, pending: 0, refundHold: 0 });
     expect(
       await new InMemoryWalletBalanceReader().getBalance('missing'),
-    ).toEqual({ available: 0, pending: 0 });
+    ).toEqual({ available: 0, pending: 0, refundHold: 0 });
   });
 
   it('returns only available and pending POINTS accounts', async () => {
@@ -27,12 +27,13 @@ describe('wallet balance readers', () => {
     expect(await reader.getBalance('user')).toEqual({
       available: 45,
       pending: 20,
+      refundHold: 0,
     });
     expect(findMany).toHaveBeenCalledWith({
       where: {
         userId: 'user',
         currency: 'POINTS',
-        accountClass: { in: ['USER_AVAILABLE', 'PENDING'] },
+        accountClass: { in: ['USER_AVAILABLE', 'PENDING', 'REFUND_HOLD'] },
       },
       select: { accountClass: true, balance: true },
     });

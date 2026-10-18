@@ -23,7 +23,7 @@ function pendingNote(
 /**
  * 5 balance tiles (AC 1, FR-31, UX-DR-P2); "Khả dụng" is the BalanceCard hero above:
  * 1. Đang chờ  2. Ký quỹ  3. Đóng băng  4. Giữ để xét (integrityHold)
- * 5. Giữ chờ hoàn tiền (refundHold, shows 0 until 13.10)
+ * 5. Giữ chờ hoàn tiền (refundHold)
  */
 export function BalanceGrid({
   balance,

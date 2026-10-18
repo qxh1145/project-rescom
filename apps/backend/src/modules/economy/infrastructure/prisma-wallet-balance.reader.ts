@@ -9,12 +9,12 @@ export class PrismaWalletBalanceReader implements WalletBalancePort {
 
   async getBalance(
     userId: string,
-  ): Promise<{ available: number; pending: number }> {
+  ): Promise<{ available: number; pending: number; refundHold: number }> {
     const accounts = await currentClient(this.prisma).ledgerAccount.findMany({
       where: {
         userId,
         currency: 'POINTS',
-        accountClass: { in: ['USER_AVAILABLE', 'PENDING'] },
+        accountClass: { in: ['USER_AVAILABLE', 'PENDING', 'REFUND_HOLD'] },
       },
       select: { accountClass: true, balance: true },
     });
@@ -24,6 +24,9 @@ export class PrismaWalletBalanceReader implements WalletBalancePort {
           ?.balance ?? 0,
       pending:
         accounts.find((account) => account.accountClass === 'PENDING')
+          ?.balance ?? 0,
+      refundHold:
+        accounts.find((account) => account.accountClass === 'REFUND_HOLD')
           ?.balance ?? 0,
     };
   }

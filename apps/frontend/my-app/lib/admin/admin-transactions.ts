@@ -107,6 +107,7 @@ const ACCOUNT_LABELS: Record<LedgerAccountClass, string> = {
   FROZEN: "Đóng băng",
   ESCROW: "Ký quỹ",
   INTEGRITY_HOLD: "Đang giữ",
+  REFUND_HOLD: "Giữ chờ hoàn tiền",
   SYSTEM_ISSUANCE: "Phát hành",
   SYSTEM_SINK: "Thu hồi",
   SYSTEM_CLEARING: "Chuyển khoản",
@@ -147,6 +148,9 @@ const TITLES: Record<HistoryKind, string> = {
   TOP_UP: "Nạp điểm",
   TOP_UP_PAYOS: "Nạp Điểm qua PayOS",
   TOP_UP_MISMATCH: "Nạp Điểm (điều chỉnh sai số tiền)",
+  TOP_UP_REFUND_HOLD: "Giữ chờ hoàn tiền",
+  TOP_UP_REFUND_RELEASE: "Hoàn lại từ giữ chờ hoàn tiền",
+  TOP_UP_REFUND: "Hoàn tiền nạp Điểm",
   VOUCHER_REDEMPTION: "Đổi voucher",
   SURVEY_ESCROW: "Khoá ký quỹ",
   ESCROW_REFUND: "Hoàn ký quỹ",
@@ -254,8 +258,12 @@ export interface AdminTransactionRow {
   tone: TransactionTone;
 }
 
-export function journalKindOf(journal: Pick<AdminJournalInput, "idempotencyKey" | "reversesJournalId">): HistoryKind {
-  return historyKindOf(journal.idempotencyKey, journal.reversesJournalId);
+export function journalKindOf(
+  journal: Pick<AdminJournalInput, "idempotencyKey" | "reversesJournalId"> & {
+    entries?: readonly AdminJournalEntryInput[];
+  },
+): HistoryKind {
+  return historyKindOf(journal.idempotencyKey, journal.reversesJournalId, journal.entries);
 }
 
 /** Largest entry on one side (a journal may split across accounts). */

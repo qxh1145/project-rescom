@@ -21,6 +21,12 @@ import {
   topUpCreditKey,
   topUpMismatchKey,
   TOP_UP_MISMATCH_JOURNAL_KEY_PREFIX,
+  TOP_UP_REFUND_HOLD_KEY_PREFIX,
+  TOP_UP_REFUND_WITHDRAW_KEY_PREFIX,
+  TOP_UP_REFUND_RESOLVE_KEY_PREFIX,
+  topUpRefundHoldKey,
+  topUpRefundResolveKey,
+  TopUpRefundIneligibleReason,
 } from '@rescom/schemas';
 import {
   LedgerRepositoryPort,
@@ -354,6 +360,7 @@ export class LedgerService {
       'FROZEN',
       'ESCROW',
       'INTEGRITY_HOLD',
+      'REFUND_HOLD',
     ];
 
     // Query existing accounts first to avoid sequential N+1 roundtrips
@@ -380,6 +387,8 @@ export class LedgerService {
       accounts.find((a) => a.accountClass === 'FROZEN')?.balance ?? 0;
     const integrityHold =
       accounts.find((a) => a.accountClass === 'INTEGRITY_HOLD')?.balance ?? 0;
+    const refundHold =
+      accounts.find((a) => a.accountClass === 'REFUND_HOLD')?.balance ?? 0;
 
     const total = calculateWalletTotal({
       available,
@@ -395,7 +404,7 @@ export class LedgerService {
       escrow,
       frozen,
       integrityHold,
-      refundHold: 0, // not part of total (13.7 decision); 13.10 adds REFUND_HOLD
+      refundHold,
       total,
     };
 
@@ -556,7 +565,12 @@ export class LedgerService {
       targetJournal.idempotencyKey.startsWith('topup-credit:') ||
       targetJournal.idempotencyKey.startsWith(
         TOP_UP_MISMATCH_JOURNAL_KEY_PREFIX,
-      )
+      ) ||
+      targetJournal.idempotencyKey.startsWith(TOP_UP_REFUND_HOLD_KEY_PREFIX) ||
+      targetJournal.idempotencyKey.startsWith(
+        TOP_UP_REFUND_WITHDRAW_KEY_PREFIX,
+      ) ||
+      targetJournal.idempotencyKey.startsWith(TOP_UP_REFUND_RESOLVE_KEY_PREFIX)
     ) {
       throw new InvalidLedgerOperationException(
         'Top-up credit journals cannot be reversed; use the refund flow.',
@@ -870,9 +884,15 @@ export class LedgerService {
     );
 
     if (availableAccount.balance < params.amount) {
+      const refundHold = await this.ledgerRepo.findAccountByUserAndClass(
+        params.userId,
+        'REFUND_HOLD',
+      );
       throw new InsufficientEscrowBalanceException(
         availableAccount.balance,
         params.amount,
+        undefined,
+        refundHold?.balance,
       );
     }
 
@@ -1222,9 +1242,15 @@ export class LedgerService {
     );
 
     if (availableAccount.balance < params.additionalAmount) {
+      const refundHold = await this.ledgerRepo.findAccountByUserAndClass(
+        params.userId,
+        'REFUND_HOLD',
+      );
       throw new InsufficientEscrowBalanceException(
         availableAccount.balance,
         params.additionalAmount,
+        undefined,
+        refundHold?.balance,
       );
     }
 
@@ -1265,9 +1291,17 @@ export class LedgerService {
       ) {
         const available =
           await this.ledgerRepo.findAccountById(availableAccountId);
+        const refundHold = available?.userId
+          ? await this.ledgerRepo.findAccountByUserAndClass(
+              available.userId,
+              'REFUND_HOLD',
+            )
+          : null;
         throw new InsufficientEscrowBalanceException(
           available?.balance ?? 0,
           requiredAmount,
+          undefined,
+          refundHold?.balance,
         );
       }
       throw error;
@@ -2561,4 +2595,235 @@ export class LedgerService {
       (entry, index) => entry === commandEntries[index],
     );
   }
+
+  /**
+   * Places a refund hold on a top-up's points (Story 13.10, AD-26, FR-77, FR-78).
+   * Evaluated under the account locks:
+   * 1. Checks if any spend occurred since the top-up credit journal (with 15s lookback skew).
+   * 2. Checks if the available balance is sufficient.
+   * If either check fails, returns NOT_ELIGIBLE with reason (no journal posted).
+   * If eligible, posts USER_AVAILABLE -> REFUND_HOLD for the points amount.
+   */
+  async placeTopUpRefundHold(params: {
+    requestId: string;
+    userId: string;
+    points: number;
+    creditJournalCreatedAt: Date;
+    orderCode?: number;
+  }): Promise<PlaceTopUpRefundHoldResult> {
+    if (!Number.isInteger(params.points) || params.points <= 0) {
+      throw new InvalidLedgerOperationException(
+        'Top-up refund hold amount must be a positive integer.',
+      );
+    }
+
+    // getOrCreateAccount for REFUND_HOLD and USER_AVAILABLE before any lock (AD-26)
+    const refundHoldAccount = await this.getOrCreateAccount(
+      params.userId,
+      'REFUND_HOLD',
+    );
+    const availableAccount = await this.getOrCreateAccount(
+      params.userId,
+      'USER_AVAILABLE',
+    );
+
+    const idempotencyKey = topUpRefundHoldKey(params.requestId);
+    const existing =
+      await this.ledgerRepo.findJournalByIdempotencyKey(idempotencyKey);
+    if (existing) {
+      await this.assertReplayCompatible(
+        existing,
+        [
+          {
+            userId: params.userId,
+            accountClass: 'USER_AVAILABLE',
+            amount: -params.points,
+          },
+          {
+            userId: params.userId,
+            accountClass: 'REFUND_HOLD',
+            amount: params.points,
+          },
+        ],
+        'exact',
+      );
+      return { outcome: 'HELD', journalId: existing.id };
+    }
+
+    // ponytail: conservative 15 s lookback handles out-of-order timestamps; upgrade path = monotonic journal sequence.
+    const since = new Date(
+      params.creditJournalCreatedAt.getTime() - SPEND_ORDER_SKEW_MS,
+    );
+
+    const description =
+      params.orderCode !== undefined
+        ? `Top-up refund hold: order ${params.orderCode}`
+        : 'Top-up refund hold';
+
+    try {
+      const journal = await this.postJournal(
+        {
+          idempotencyKey,
+          description,
+          entries: [
+            { accountId: availableAccount.id, amount: -params.points },
+            { accountId: refundHoldAccount.id, amount: params.points },
+          ],
+        },
+        {
+          assertBeforeInsert: async () => {
+            const hasSpend = await this.ledgerRepo.hasSpendSince(
+              params.userId,
+              since,
+            );
+            if (hasSpend) {
+              throw new RefundSpendDetectedException();
+            }
+          },
+        },
+      );
+      return { outcome: 'HELD', journalId: journal.id };
+    } catch (error) {
+      if (error instanceof RefundSpendDetectedException) {
+        return { outcome: 'NOT_ELIGIBLE', reason: 'SPENT_SINCE_TOP_UP' };
+      }
+      if (error instanceof InsufficientBalanceException) {
+        return { outcome: 'NOT_ELIGIBLE', reason: 'INSUFFICIENT_AVAILABLE' };
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Releases a top-up refund hold from REFUND_HOLD back to USER_AVAILABLE (Story 13.10, AC 7).
+   */
+  async releaseTopUpRefundHold(params: {
+    requestId: string;
+    userId: string;
+    points: number;
+    key: string;
+    orderCode?: number;
+  }): Promise<LedgerJournalEntity> {
+    if (!Number.isInteger(params.points) || params.points <= 0) {
+      throw new InvalidLedgerOperationException(
+        'Release amount must be a positive integer.',
+      );
+    }
+
+    const refundHold = await this.getOrCreateAccount(
+      params.userId,
+      'REFUND_HOLD',
+    );
+    const available = await this.getOrCreateAccount(
+      params.userId,
+      'USER_AVAILABLE',
+    );
+
+    const existing = await this.ledgerRepo.findJournalByIdempotencyKey(
+      params.key,
+    );
+    if (existing) {
+      await this.assertReplayCompatible(
+        existing,
+        [
+          {
+            userId: params.userId,
+            accountClass: 'REFUND_HOLD',
+            amount: -params.points,
+          },
+          {
+            userId: params.userId,
+            accountClass: 'USER_AVAILABLE',
+            amount: params.points,
+          },
+        ],
+        'exact',
+      );
+      return existing;
+    }
+
+    const description =
+      params.orderCode !== undefined
+        ? `Top-up refund hold release: order ${params.orderCode}`
+        : 'Top-up refund hold release';
+
+    return this.postJournal({
+      idempotencyKey: params.key,
+      description,
+      entries: [
+        { accountId: refundHold.id, amount: -params.points },
+        { accountId: available.id, amount: params.points },
+      ],
+    });
+  }
+
+  /**
+   * Story 13.12: Completes a top-up refund by debiting REFUND_HOLD and crediting SYSTEM_CLEARING (AC 4, 10).
+   */
+  async refundTopUpRefundHold(params: {
+    requestId: string;
+    userId: string;
+    points: number;
+    topUpId: string;
+    orderCode: number;
+  }): Promise<LedgerJournalEntity> {
+    if (!Number.isInteger(params.points) || params.points <= 0) {
+      throw new InvalidLedgerOperationException(
+        'Refund amount must be a positive integer.',
+      );
+    }
+
+    const refundHold = await this.getOrCreateAccount(
+      params.userId,
+      'REFUND_HOLD',
+    );
+    const clearing = await this.getOrCreateAccount(null, 'SYSTEM_CLEARING');
+
+    const idempotencyKey = topUpRefundResolveKey(params.requestId);
+    const existing =
+      await this.ledgerRepo.findJournalByIdempotencyKey(idempotencyKey);
+    if (existing) {
+      await this.assertReplayCompatible(
+        existing,
+        [
+          {
+            userId: params.userId,
+            accountClass: 'REFUND_HOLD',
+            amount: -params.points,
+          },
+          {
+            userId: null,
+            accountClass: 'SYSTEM_CLEARING',
+            amount: params.points,
+          },
+        ],
+        'exact',
+      );
+      return existing;
+    }
+
+    const description = `Top-up refund: order ${params.orderCode} · top-up ${params.topUpId}`;
+
+    return this.postJournal({
+      idempotencyKey,
+      description,
+      entries: [
+        { accountId: refundHold.id, amount: -params.points },
+        { accountId: clearing.id, amount: params.points },
+      ],
+    });
+  }
 }
+
+export const SPEND_ORDER_SKEW_MS = 15_000;
+
+class RefundSpendDetectedException extends Error {
+  constructor() {
+    super('Spend detected since top-up credit journal.');
+    this.name = 'RefundSpendDetectedException';
+  }
+}
+
+export type PlaceTopUpRefundHoldResult =
+  | { outcome: 'HELD'; journalId: string }
+  | { outcome: 'NOT_ELIGIBLE'; reason: TopUpRefundIneligibleReason };

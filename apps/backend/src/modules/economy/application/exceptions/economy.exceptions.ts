@@ -27,6 +27,7 @@ export class InsufficientEscrowBalanceException extends InsufficientBalanceExcep
     public readonly availableBalance: number,
     public readonly requiredAmount: number,
     message?: string,
+    public readonly refundHoldPoints?: number,
   ) {
     super(
       message ??
@@ -311,5 +312,99 @@ export class TopUpMismatchNothingToCreditException extends Error {
   readonly code = 'TOPUP_MISMATCH_NOTHING_TO_CREDIT';
   constructor() {
     super('Paid amount is below one Point.');
+  }
+}
+
+export class TopUpRefundNotAllowedException extends Error {
+  readonly code = 'TOPUP_REFUND_NOT_ALLOWED';
+  readonly status = 409;
+  constructor(public readonly reason: string) {
+    super(`Top-up refund not allowed: ${reason}`);
+    this.name = 'TopUpRefundNotAllowedException';
+  }
+}
+
+export class TopUpRefundAlreadyRequestedException extends Error {
+  readonly code = 'TOPUP_REFUND_ALREADY_REQUESTED';
+  readonly status = 409;
+  constructor() {
+    super('Top-up refund already requested.');
+    this.name = 'TopUpRefundAlreadyRequestedException';
+  }
+}
+
+export class TopUpRefundNotFoundException extends Error {
+  readonly code = 'TOPUP_REFUND_NOT_FOUND';
+  readonly status = 404;
+  constructor(message?: string) {
+    super(
+      message
+        ? `Top-up refund request not found: ${message}`
+        : 'Top-up refund request not found.',
+    );
+    this.name = 'TopUpRefundNotFoundException';
+  }
+}
+
+export class RefundAlreadyResolvedException extends Error {
+  readonly code = 'REFUND_ALREADY_RESOLVED';
+  readonly status = 409;
+  constructor() {
+    super('Refund already resolved.');
+    this.name = 'RefundAlreadyResolvedException';
+  }
+}
+
+export class RefundNotHeldException extends Error {
+  readonly code = 'REFUND_NOT_HELD';
+  readonly status = 409;
+  constructor(message = 'Refund hold not active or points held is zero.') {
+    super(message);
+    this.name = 'RefundNotHeldException';
+  }
+}
+
+export class RefundDestinationUnconfirmedException extends Error {
+  readonly code = 'REFUND_DESTINATION_UNCONFIRMED';
+  readonly status = 409;
+  constructor(
+    message = 'Admin must confirm destination account before marking as refunded.',
+  ) {
+    super(message);
+    this.name = 'RefundDestinationUnconfirmedException';
+  }
+}
+
+export class RefundNotRefundedException extends Error {
+  readonly code = 'REFUND_NOT_REFUNDED';
+  readonly status = 409;
+  constructor(
+    message = 'Refund request must be in REFUNDED status to record bank transfer.',
+  ) {
+    super(message);
+    this.name = 'RefundNotRefundedException';
+  }
+}
+
+export class RefundBankTransferAlreadyRecordedException extends Error {
+  readonly code = 'REFUND_BANK_TRANSFER_ALREADY_RECORDED';
+  readonly status = 409;
+  constructor(
+    message = 'Bank transfer has already been recorded for this refund request.',
+  ) {
+    super(message);
+    this.name = 'RefundBankTransferAlreadyRecordedException';
+  }
+}
+
+export class RefundResolutionValidationException extends Error {
+  readonly code = 'VALIDATION_ERROR';
+  readonly status = 400;
+  constructor(
+    message: string,
+    readonly details: { path: string; code: string }[],
+  ) {
+    super(message);
+    this.name = 'RefundResolutionValidationException';
   }
 }

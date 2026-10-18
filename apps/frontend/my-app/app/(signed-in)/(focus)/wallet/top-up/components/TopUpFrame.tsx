@@ -9,8 +9,8 @@ interface TopUpFrameProps {
   mobileTitle: string;
   /** Back (mobile) / close (desktop) target. */
   exitHref: string;
-  /** Desktop dialog width in px (Figma 14b 720, 14c 600). */
-  width: 600 | 720;
+  /** Desktop dialog width in px (Figma 14b 720, 14c 600, refund 1080). */
+  width: 600 | 720 | 1080;
   /** Desktop dialog header (title, subtitle, status pill); hidden on mobile. */
   desktopHeader: ReactNode;
   /** Mobile sticky bottom bar (Figma 62:2835: white, top border, 52px CTA). */
@@ -32,7 +32,11 @@ export function TopUpFrame({ mobileTitle, exitHref, width, desktopHeader, mobile
         <section
           aria-labelledby="top-up-dialog-title"
           className={`flex w-full flex-1 flex-col lg:flex-none lg:rounded-card lg:bg-surface lg:px-8 lg:pt-7 lg:pb-7 lg:shadow-[0_24px_24px_rgba(30,36,70,0.25)] ${
-            width === 720 ? "lg:max-w-[720px]" : "lg:max-w-[600px]"
+            width === 1080
+              ? "lg:max-w-[1080px]"
+              : width === 720
+              ? "lg:max-w-[720px]"
+              : "lg:max-w-[600px]"
           }`}
         >
           <div className="hidden items-start gap-4 lg:flex">

@@ -65,6 +65,43 @@ test("top-up history chips and status mapping", async (t) => {
       "Đã hoàn tiền thủ công cho thanh toán sai số tiền — không có Điểm nào được cộng",
     );
   });
+
+  await t.test("refund chip variants (Story 13.11, AC 8)", () => {
+    // REQUESTED
+    assert.deepEqual(topUpChip("SUCCESSFUL", "PAYOS", "REQUESTED"), {
+      label: "Đang yêu cầu hoàn tiền",
+      icon: "refund",
+      tone: "teal",
+    });
+
+    // REFUNDED
+    assert.deepEqual(topUpChip("SUCCESSFUL", "PAYOS", "REFUNDED"), {
+      label: "Đã hoàn tiền",
+      icon: "refund",
+      tone: "teal",
+    });
+
+    // REJECTED
+    assert.deepEqual(topUpChip("SUCCESSFUL", "PAYOS", "REJECTED"), {
+      label: "Từ chối hoàn tiền",
+      icon: "x-circle",
+      tone: "danger",
+    });
+
+    // WITHDRAWN -> falls back to base status
+    assert.deepEqual(topUpChip("SUCCESSFUL", "PAYOS", "WITHDRAWN"), {
+      label: "Thành công",
+      icon: "check",
+      tone: "green",
+    });
+
+    // Old two-arg call unchanged
+    assert.deepEqual(topUpChip("SUCCESSFUL", "PAYOS"), {
+      label: "Thành công",
+      icon: "check",
+      tone: "green",
+    });
+  });
 });
 
 test("mapping and merging of top-ups", async () => {

@@ -19,6 +19,7 @@ interface TopUpReviewPanelProps {
   error: string | null;
   onApprove: () => void;
   onReject: () => void;
+  readOnly?: boolean;
 }
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
@@ -36,7 +37,16 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
  * checklist, then "Từ chối…" / "Duyệt & cộng N điểm". Reviewed requests show
  * the decision instead of the actions (ASSUMED (design), not drawn).
  */
-export function TopUpReviewPanel({ item, checked, onCheck, busy, error, onApprove, onReject }: TopUpReviewPanelProps) {
+export function TopUpReviewPanel({
+  item,
+  checked,
+  onCheck,
+  busy,
+  error,
+  onApprove,
+  onReject,
+  readOnly = false,
+}: TopUpReviewPanelProps) {
   const name = requesterName(item);
   const points = formatPoints(item.amount);
   const checks = reviewChecks(item);
@@ -71,7 +81,7 @@ export function TopUpReviewPanel({ item, checked, onCheck, busy, error, onApprov
         ) : null}
       </dl>
 
-      {pending ? (
+      {pending && !readOnly ? (
         <>
           <fieldset className="mt-4 rounded-2xl border border-line px-4 pt-2 pb-4">
             <legend className="px-1.5 text-label font-bold text-ink">Đã đối chiếu sao kê</legend>
@@ -127,9 +137,13 @@ export function TopUpReviewPanel({ item, checked, onCheck, busy, error, onApprov
         <Alert tone="info" className="mt-4">
           Đã cộng {points} điểm vào Khả dụng của {name}.
         </Alert>
-      ) : (
+      ) : item.status === "REJECTED" ? (
         <Alert tone="info" className="mt-4">
           Đã từ chối{item.rejectionReason ? `: ${item.rejectionReason}` : "."}
+        </Alert>
+      ) : (
+        <Alert tone="info" className="mt-4">
+          Yêu cầu đang chờ duyệt. Chế độ chỉ đọc khi PayOS bật.
         </Alert>
       )}
     </section>

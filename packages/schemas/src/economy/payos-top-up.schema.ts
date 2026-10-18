@@ -34,6 +34,12 @@ export const payosCheckoutSchema = z.object({
     ),
 });
 export type PayosCheckoutInput = z.infer<typeof payosCheckoutSchema>;
+import {
+  topUpRefundUnavailableReasonSchema,
+  userTopUpRefundDestinationViewSchema,
+  userTopUpRefundRequestSchema,
+} from "./top-up-refund.schema";
+
 export const payosTopUpStatusSchema = z.enum([
   "PROCESSING",
   "SUCCESSFUL",
@@ -55,6 +61,14 @@ export const payosTopUpSchema = z.object({
   cancelledAt: z.string().datetime().nullable(),
   paidAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
+  refundDeadline: z.string().datetime().nullable(),
+  refund: z.object({
+    canRequest: z.boolean(),
+    unavailableReason: topUpRefundUnavailableReasonSchema.nullable(),
+    request: userTopUpRefundRequestSchema.nullable(),
+    // Optional so an FE deployed before the BE (Story 13.11) still parses; missing = null.
+    destination: userTopUpRefundDestinationViewSchema.nullable().optional(),
+  }),
 });
 export type PayosTopUpDto = z.infer<typeof payosTopUpSchema>;
 export const payosCheckoutResultSchema = z.object({
@@ -118,6 +132,7 @@ export const topUpAdminAlertConditionSchema = z.enum([
   "MISMATCH_SLA_BREACHED",
   "PAID_ON_CLOSED_LINK",
   "PROVIDER_FAILURE",
+  "REFUND_SLA_BREACHED",
 ]);
 export type TopUpAdminAlertCondition = z.infer<typeof topUpAdminAlertConditionSchema>;
 
@@ -129,6 +144,7 @@ export const topUpAdminAlertEventSchema = z.object({
   amountVnd: z.number().int().optional(),
   amountPaidVnd: z.number().int().optional(),
   paidAt: z.string().datetime().optional(),
+  refundRequestId: z.string().uuid().optional(),
   occurredAt: z.string().datetime(),
 });
 export type TopUpAdminAlertEvent = z.infer<typeof topUpAdminAlertEventSchema>;
@@ -203,7 +219,7 @@ export const adminTopUpActionRequiredSchema = z.object({
   mismatches: z.array(adminPayosMismatchSchema).max(TOP_UP_ACTION_REQUIRED_MAX),
 }).strict();
 export type AdminTopUpActionRequired = z.infer<typeof adminTopUpActionRequiredSchema>;
-export const adminTopUpTabCountsSchema = z.object({ payos: z.number().int().nonnegative(), manual: z.number().int().nonnegative(), actionRequired: z.number().int().nonnegative() }).strict();
+export const adminTopUpTabCountsSchema = z.object({ payos: z.number().int().nonnegative(), manual: z.number().int().nonnegative(), actionRequired: z.number().int().nonnegative(), refunds: z.number().int().nonnegative().default(0) }).strict();
 export const PAYOS_TOP_UP_EXPORT_MAX_ROWS = 10_000;
 export const exportAdminPayosTopUpsSchema = z.object({ from: dateKeySchema, to: dateKeySchema }).strict()
   .refine(({ from, to }) => from <= to, { path: ['from'], message: 'from cannot be after to' })

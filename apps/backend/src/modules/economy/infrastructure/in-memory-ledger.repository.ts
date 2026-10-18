@@ -21,6 +21,7 @@ import {
   attemptIdFromDisputeHold,
   disputeResolutionKey,
 } from '../domain/dispute-hold';
+import { SPEND_DESTINATION_CLASSES } from '../domain/spend-journals';
 
 export class InMemoryLedgerRepository implements LedgerRepositoryPort {
   private readonly accounts = new Map<string, LedgerAccountEntity>();
@@ -463,5 +464,53 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
     });
 
     return enriched;
+  }
+
+  async hasSpendSince(userId: string, since: Date): Promise<boolean> {
+    const sinceMs = since.getTime();
+    const userAvailableAccountIds = new Set<string>();
+    for (const acc of this.accounts.values()) {
+      if (acc.userId === userId && acc.accountClass === 'USER_AVAILABLE') {
+        userAvailableAccountIds.add(acc.id);
+      }
+    }
+    if (userAvailableAccountIds.size === 0) return false;
+
+    const entriesByJournal = new Map<string, LedgerEntryEntity[]>();
+    for (const entry of this.entries) {
+      let list = entriesByJournal.get(entry.journalId);
+      if (!list) {
+        list = [];
+        entriesByJournal.set(entry.journalId, list);
+      }
+      list.push(entry);
+    }
+
+    for (const journal of this.journals.values()) {
+      if (journal.createdAt.getTime() < sinceMs) {
+        continue;
+      }
+      const journalEntries = entriesByJournal.get(journal.id) ?? [];
+      const hasDebitUserAvailable = journalEntries.some(
+        (e) => userAvailableAccountIds.has(e.accountId) && e.amount < 0,
+      );
+      if (!hasDebitUserAvailable) continue;
+
+      const hasCreditSpendDest = journalEntries.some((e) => {
+        if (e.amount <= 0) return false;
+        const acc = this.accounts.get(e.accountId);
+        return (
+          acc &&
+          (SPEND_DESTINATION_CLASSES as readonly string[]).includes(
+            acc.accountClass,
+          )
+        );
+      });
+
+      if (hasCreditSpendDest) {
+        return true;
+      }
+    }
+    return false;
   }
 }

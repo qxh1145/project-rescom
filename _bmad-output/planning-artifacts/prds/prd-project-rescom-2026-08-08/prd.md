@@ -624,6 +624,10 @@ User can request a refund of a Successful top-up through a templated in-app form
 - If Available Balance is below the top-up's Points at submission for any reason, the request is recorded Not eligible and nothing is held
 - The eligibility check and the Refund Hold are atomic with Point spending: a concurrent spend either completes first (request becomes Not eligible) or fails for insufficient Available Points
 
+> **Amendment 2026-10-16 (Owner decision, Story 13.6 live probe):** The production probe (paid through MoMo) reported `counterAccountBankId` and `counterAccountNumber` (last 4) but no `counterAccountName`; `counterAccountBankName` was empty. The reported account may be a wallet pass-through account. A refund destination without the account holder name is therefore treated as "destination unverified" (branch above): the Admin confirms the paying account with the user by the account email before refunding. No other FR-77 change.
+
+> **Amendment 2026-10-16 (Owner decision, Story 13.11):** The user sees the full paying account number on their own top-up; Outbox, mailbox email and logs keep last 4.
+
 #### FR-78: Refund Eligibility and Admin Resolution
 RESCOM evaluates refund eligibility; the Admin performs the bank refund outside RESCOM and records the outcome.
 

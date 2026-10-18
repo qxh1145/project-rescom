@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Icon, type IconName } from "@/components/ui/Icon";
@@ -158,7 +159,13 @@ export function TransactionHistory({ rows: allRows, filter, onFilterChange, ...m
                     </td>
                     <td className="h-[59px] truncate border-b border-line-subtle pr-3 font-bold text-ink">{row.title}</td>
                     <td className="h-[59px] truncate border-b border-line-subtle pr-3 font-normal text-ink" title={row.note}>
-                      {row.note}
+                      {row.topUpHref ? (
+                        <Link href={row.topUpHref} className="text-primary hover:underline">
+                          {row.note}
+                        </Link>
+                      ) : (
+                        row.note
+                      )}
                     </td>
                     <td className="h-[59px] border-b border-line-subtle">
                       <Tag tone={pill.tone}>{statusLabel(row)}</Tag>
@@ -209,7 +216,16 @@ export function TransactionHistory({ rows: allRows, filter, onFilterChange, ...m
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-label font-bold text-ink">{row.title}</p>
                     <p className="mt-0.5 truncate text-[12px] text-ink-muted">
-                      {row.shortNote ? `${row.shortNote} · ` : ""}
+                      {row.shortNote ? (
+                        row.topUpHref ? (
+                          <Link href={row.topUpHref} className="text-primary hover:underline">
+                            {row.shortNote}
+                          </Link>
+                        ) : (
+                          row.shortNote
+                        )
+                      ) : null}
+                      {row.shortNote ? " · " : ""}
                       {formatShortDateTime(row.createdAt)}
                     </p>
                   </div>

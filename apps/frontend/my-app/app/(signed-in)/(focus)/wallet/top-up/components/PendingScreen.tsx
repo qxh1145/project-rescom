@@ -8,6 +8,7 @@ import { buttonClassName } from "@/components/ui/Button";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { formatDayMonth, formatTime } from "@/lib/format/date-time";
 import { formatPoints, formatVnd, topUpTimeline } from "@/lib/wallet/top-up";
+import { refundUnavailableCopy } from "@/lib/wallet/top-up-refund";
 import { loadTopUpErrorMessage } from "@/lib/wallet/wallet-messages";
 import { useTopUpRequest } from "../hooks/use-top-up-request";
 import { StatusTimeline } from "./StatusTimeline";
@@ -98,6 +99,15 @@ export function PendingScreen() {
         </div>
         <Mascot name={view.mascot} height={140} className="hidden shrink-0 lg:mr-1.5 lg:block" />
       </div>
+
+      {request.status === "APPROVED" && (
+        <div className="mt-6 rounded-2xl border border-line bg-surface p-5 shadow-xs">
+          <h3 className="text-body font-bold text-ink">Hoàn tiền</h3>
+          <p className="mt-2 text-caption text-ink-muted leading-relaxed">
+            {refundUnavailableCopy("LEGACY_MANUAL")}
+          </p>
+        </div>
+      )}
 
       <p className="mt-5 text-caption-relaxed text-ink-muted lg:hidden">
         {request.status === "REJECTED"

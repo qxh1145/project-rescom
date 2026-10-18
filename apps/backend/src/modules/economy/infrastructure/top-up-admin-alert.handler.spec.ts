@@ -303,4 +303,91 @@ describe('TopUpAdminAlertHandler', () => {
       handler.handle({ ...sampleEvent, payload: { bad: 'payload' } }),
     ).rejects.toBeInstanceOf(OutboxPayloadInvalidError);
   });
+
+  it('renders and publishes REFUND_SLA_BREACHED message', async () => {
+    const adminCapability: AdminCapabilityPort = {
+      findCurrentCapability: jest.fn(),
+      listActiveAdminIds: jest.fn().mockResolvedValue(['admin-1']),
+    };
+    const notifications: NotificationPublisherPort = {
+      publish: jest.fn().mockResolvedValue('CREATED'),
+    };
+    const emailSender: EmailSenderPort = {
+      supportsIdempotentResend: true,
+      send: jest
+        .fn()
+        .mockResolvedValue({ outcome: 'ACCEPTED', providerMessageId: 'msg-1' }),
+    };
+
+    const handler = new TopUpAdminAlertHandler(
+      adminCapability,
+      notifications,
+      emailSender,
+      () => 'refunds@rescom.vn',
+    );
+
+    await handler.handle({
+      ...sampleEvent,
+      payload: {
+        schemaVersion: 1,
+        condition: 'REFUND_SLA_BREACHED',
+        topUpId: '00000000-0000-4000-8000-000000000001',
+        orderCode: 9999,
+        refundRequestId: '00000000-0000-4000-8000-000000000002',
+        occurredAt: new Date().toISOString(),
+      },
+    });
+
+    expect(notifications.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'admin-1',
+        type: 'WARNING',
+        message: expect.stringContaining(
+          'Yêu cầu hoàn tiền #9999 quá hạn 3 ngày làm việc — xử lý tại /admin/top-ups?tab=refunds&request=00000000-0000-4000-8000-000000000002.',
+        ),
+      }),
+    );
+    expect(emailSender.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'refunds@rescom.vn',
+        subject: '[Cảnh báo đối soát RESCOM] REFUND_SLA_BREACHED #9999',
+      }),
+    );
+  });
+  it('REFUND_SLA_BREACHED omits &request= when refundRequestId is absent', async () => {
+    const notifications: NotificationPublisherPort = {
+      publish: jest.fn().mockResolvedValue('CREATED'),
+    };
+    const handler = new TopUpAdminAlertHandler(
+      {
+        findCurrentCapability: jest.fn(),
+        listActiveAdminIds: jest.fn().mockResolvedValue(['admin-1']),
+      },
+      notifications,
+      {
+        supportsIdempotentResend: true,
+        send: jest.fn().mockResolvedValue({
+          outcome: 'ACCEPTED',
+          providerMessageId: 'msg-1',
+        }),
+      },
+      () => null,
+    );
+
+    await handler.handle({
+      ...sampleEvent,
+      payload: {
+        schemaVersion: 1,
+        condition: 'REFUND_SLA_BREACHED',
+        topUpId: '00000000-0000-4000-8000-000000000001',
+        orderCode: 9999,
+        occurredAt: new Date().toISOString(),
+      },
+    });
+
+    const message = (notifications.publish as jest.Mock).mock.calls[0][0]
+      .message as string;
+    expect(message).toContain('/admin/top-ups?tab=refunds.');
+    expect(message).not.toContain('request=');
+  });
 });

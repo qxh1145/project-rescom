@@ -55,9 +55,19 @@ describe("payOS top-up list schemas", () => {
       cancelledAt: null,
       paidAt: null,
       createdAt: "2026-10-15T11:55:00.000Z",
+      refundDeadline: null,
+      refund: {
+        canRequest: false,
+        unavailableReason: "NOT_SUCCESSFUL",
+        request: null,
+        destination: null,
+      },
     };
     const page = { items: [item], total: 1, limit: 20, offset: 0, hasMore: false };
     expect(payosTopUpListSchema.safeParse(page).success).toBe(true);
+    // Pre-13.11 BE payload (no refund.destination) still parses.
+    const { destination: _omit, ...legacyRefund } = item.refund;
+    expect(payosTopUpListSchema.safeParse({ ...page, items: [{ ...item, refund: legacyRefund }] }).success).toBe(true);
     expect(payosTopUpListSchema.safeParse({ ...page, items: [{ ...item, status: "MANUAL" }] }).success).toBe(false);
     expect(payosTopUpListSchema.safeParse({ ...page, total: -1 }).success).toBe(false);
   });

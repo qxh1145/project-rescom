@@ -3,16 +3,20 @@ import {
   payosCheckoutResultSchema,
   payosTopUpListSchema,
   payosTopUpSchema,
+  submitTopUpRefundSchema,
+  topUpRefundResultSchema,
   type ListPayosTopUpsQuery,
   type PayosAvailability,
   type PayosCheckoutResultDto,
   type PayosTopUpDto,
   type PayosTopUpListDto,
+  type SubmitTopUpRefundInput,
+  type TopUpRefundResult,
 } from "@rescom/schemas";
 import { apiRequest } from "../api/client.ts";
 
 /**
- * PayOS point top-up service (Story 13.7, AC 2, 6, 7, 8, 9).
+ * PayOS point top-up service (Story 13.7, AC 2, 6, 7, 8, 9; Story 13.11, AC 3, 4, 6).
  * All endpoints under `/economy/top-ups/payos`.
  */
 
@@ -61,6 +65,32 @@ export function listPayosTopUps(
   const search = params.toString();
   return apiRequest(`/economy/top-ups/payos${search ? `?${search}` : ""}`, {
     schema: payosTopUpListSchema,
+    signal,
+  });
+}
+
+export function requestPayosRefund(
+  id: string,
+  body: SubmitTopUpRefundInput,
+  signal?: AbortSignal,
+): Promise<TopUpRefundResult> {
+  const validatedBody = submitTopUpRefundSchema.parse(body);
+  return apiRequest(`/economy/top-ups/payos/${encodeURIComponent(id)}/refund-request`, {
+    method: "POST",
+    body: validatedBody,
+    schema: topUpRefundResultSchema,
+    signal,
+  });
+}
+
+export function withdrawPayosRefund(
+  id: string,
+  signal?: AbortSignal,
+): Promise<TopUpRefundResult> {
+  return apiRequest(`/economy/top-ups/payos/${encodeURIComponent(id)}/refund-request/withdraw`, {
+    method: "POST",
+    body: {},
+    schema: topUpRefundResultSchema,
     signal,
   });
 }

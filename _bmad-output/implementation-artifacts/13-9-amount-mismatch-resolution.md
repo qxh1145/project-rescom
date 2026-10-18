@@ -111,6 +111,11 @@ so that the user gets either fair Points or their money back.
 - [x] [Review][Patch] Deadline line prints "(quá hạn)" lowercase via `sla.line.toLowerCase()`; AC2 says "Quá hạn" [apps/frontend/my-app/app/(signed-in)/(admin)/admin/top-ups/components/MismatchDrawer.tsx:30]
 - [x] [Review][Patch] MSW seed has no mismatch row with 2 business days left (Task 9: 100.000/98.000 "Còn 2 ngày làm việc"); all non-overdue rows have ~3 days [apps/frontend/my-app/mocks/data/admin-payos-top-ups.ts:31]
 - [x] [Review][Defer] Action-required lists capped at 100 per queue while the tab badge counts all rows; null-`paidAt` mismatch rows sort last (`paidAt asc`) and are cut first [apps/backend/src/modules/economy/infrastructure/prisma-payos-top-up.repository.ts:175] — deferred, known `ponytail:` ceiling (not pre-existing)
+- [x] [Review][Patch] Fallback text for null paidAt in ActionRequiredPanel uncredited table and cards [apps/frontend/my-app/app/(signed-in)/(admin)/admin/top-ups/components/ActionRequiredPanel.tsx:61]
+- [x] [Review][Patch] Fallback formatting for null paidAt in uncreditedBanner [apps/frontend/my-app/lib/admin/payos-top-up-mismatch.ts:13]
+- [x] [Review][Patch] Omit dangling " · thanh toán " when paidAt is null in MismatchDrawer subtitle [apps/frontend/my-app/app/(signed-in)/(admin)/admin/top-ups/components/MismatchDrawer.tsx:31]
+- [x] [Review][Patch] Defensive guard against null or non-object alert payload when parsing outbox alerts [apps/backend/src/modules/economy/infrastructure/prisma-payos-top-up.repository.ts:220]
+- [x] [Review][Patch] Refine payosAdminErrorMessage so generic ZodError or VALIDATION_ERROR does not show date-range export message during mismatch resolution or recheck [apps/frontend/my-app/lib/admin/payos-top-up-admin-messages.ts:5]
 
 ## Dev Notes
 

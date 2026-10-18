@@ -158,8 +158,14 @@ export const formsCreateHandlers: RequestHandler[] = [
         reserveSurveyEscrow(user, { amount: escrow, surveyId: id, title: dto.title });
       } catch (error) {
         if (error instanceof Error && error.message === "INSUFFICIENT_AVAILABLE") {
+          const wallet = walletOf(user);
+          const refundHold = wallet.refundHold ?? 0;
           return fail(409, "INSUFFICIENT_ESCROW_BALANCE", "Insufficient balance to reserve the escrow.", {
-            details: { availableBalance: walletOf(user).available, requiredAmount: escrow },
+            details: {
+              availableBalance: wallet.available,
+              requiredAmount: escrow,
+              ...(refundHold > 0 ? { refundHoldPoints: refundHold } : {}),
+            },
           });
         }
         throw error;

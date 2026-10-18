@@ -147,6 +147,20 @@ export function addTopUps(userId: string, requests: readonly MockTopUp[]): void 
   });
 }
 
+import type {
+  UserTopUpRefundDestinationView,
+  UserTopUpRefundRequest,
+} from "@rescom/schemas";
+
+export interface MockAdminRefundRequest extends UserTopUpRefundRequest {
+  holdJournalId?: string | null;
+  resolveJournalId?: string | null;
+  note?: string | null;
+  manualTransferRecorded?: boolean;
+  bankTransferRecordedAt?: string | null;
+  resolvedBy?: { id: string; email: string } | null;
+}
+
 export interface MockPayosTopUp {
   id: string;
   userId: string;
@@ -161,6 +175,19 @@ export interface MockPayosTopUp {
   amountPaidVnd?: number | null;
   mismatchResolution?: "CREDIT" | "MANUAL_REFUND";
   createdAt: string;
+  refundDeadline?: string | null;
+  counterAccount?: {
+    bankId: string | null;
+    bankName: string | null;
+    holderName: string | null;
+    accountNumber: string | null;
+  } | null;
+  refund?: {
+    canRequest?: boolean;
+    unavailableReason?: "NOT_SUCCESSFUL" | "LEGACY_MANUAL" | "DEADLINE_PASSED" | "MISMATCH_CREDITED" | "ALREADY_REQUESTED" | "WITHDRAWN" | null;
+    destination?: UserTopUpRefundDestinationView | null;
+    request?: MockAdminRefundRequest | null;
+  };
 }
 
 export const payosTopUps = createCollection<Record<string, MockPayosTopUp[]>>("payos-top-ups", () => ({}));
@@ -170,7 +197,32 @@ export const MOCK_PAYOS_AUTO_PAY_MS = 8_000;
 const MOCK_PAYOS_TTL_MS = 5 * 60_000;
 export const MOCK_PAYOS_RATE_LIMIT = { limit: 5, windowMs: 10 * 60_000 } as const;
 
-/** One row per terminal status plus a legacy manual request, for the demo user only. */
+/** Verified and unverified fake counter accounts for seeds and tests (never real data, repo is public). */
+const MOCK_VERIFIED_ACCOUNT = {
+  bankId: "970436",
+  bankName: "Vietcombank",
+  holderName: "TRAN THI A",
+  accountNumber: "0123456789",
+};
+const MOCK_UNVERIFIED_ACCOUNT = {
+  bankId: "970422",
+  bankName: null,
+  holderName: null,
+  accountNumber: "0987654321",
+};
+
+const toDestinationView = (
+  acc: typeof MOCK_VERIFIED_ACCOUNT | typeof MOCK_UNVERIFIED_ACCOUNT,
+): UserTopUpRefundDestinationView => ({
+  bankId: acc.bankId,
+  bankName: acc.bankName,
+  holderName: acc.holderName,
+  accountNumber: acc.accountNumber,
+  last4: acc.accountNumber ? acc.accountNumber.slice(-4) : null,
+  verified: Boolean(acc.bankId && acc.accountNumber && acc.holderName),
+});
+
+/** Seeds for the demo user covering all refund states (Story 13.11, Task 6). */
 function seedPayosTopUps(user: MockSessionUser): MockPayosTopUp[] {
   if (user.email !== "minh.le@fpt.edu.vn") return [];
   const row = (
@@ -178,19 +230,26 @@ function seedPayosTopUps(user: MockSessionUser): MockPayosTopUp[] {
     amountVnd: number,
     status: MockPayosTopUp["status"],
     hours: number,
-  ): MockPayosTopUp => ({
-    id: mockId(),
-    userId: user.id,
-    orderCode: 10_000 + n,
-    amountVnd,
-    points: amountVnd / POINT_VND_RATE,
-    status,
-    checkoutUrl: null,
-    expiresAt: new Date(Date.parse(hoursAgo(hours)) + MOCK_PAYOS_TTL_MS).toISOString(),
-    cancelledAt: status === "CANCELLED" ? hoursAgo(hours) : null,
-    paidAt: status === "SUCCESSFUL" || status === "MANUAL_REFUNDED" || status === "AMOUNT_MISMATCH" ? hoursAgo(hours) : null,
-    createdAt: hoursAgo(hours),
-  });
+    extra: Partial<MockPayosTopUp> = {},
+  ): MockPayosTopUp => {
+    const isPaid = status === "SUCCESSFUL" || status === "MANUAL_REFUNDED" || status === "AMOUNT_MISMATCH";
+    return {
+      id: mockId(),
+      userId: user.id,
+      orderCode: 10_000 + n,
+      amountVnd,
+      points: amountVnd / POINT_VND_RATE,
+      status,
+      checkoutUrl: null,
+      expiresAt: new Date(Date.parse(hoursAgo(hours)) + MOCK_PAYOS_TTL_MS).toISOString(),
+      cancelledAt: status === "CANCELLED" ? hoursAgo(hours) : null,
+      paidAt: isPaid ? hoursAgo(hours) : null,
+      createdAt: hoursAgo(hours + 0.1),
+      counterAccount: isPaid ? MOCK_VERIFIED_ACCOUNT : null,
+      ...extra,
+    };
+  };
+
   addTopUps(user.id, [
     {
       id: mockId(),
@@ -204,7 +263,150 @@ function seedPayosTopUps(user: MockSessionUser): MockPayosTopUp[] {
       userName: user.name,
     },
   ]);
+
+  const verifiedDest = toDestinationView(MOCK_VERIFIED_ACCOUNT);
+
+  // 1. SUCCESSFUL paid 1 h ago, verified destination
+  const seed1 = row(14, 50_000, "SUCCESSFUL", 1, {
+    counterAccount: MOCK_VERIFIED_ACCOUNT,
+  });
+
+  // 2. SUCCESSFUL unverified (probe shape: bankId + number without holder)
+  const seed2 = row(13, 100_000, "SUCCESSFUL", 2, {
+    counterAccount: MOCK_UNVERIFIED_ACCOUNT,
+  });
+
+  // 3. SUCCESSFUL paid 30 h ago (DEADLINE_PASSED)
+  const seed3 = row(12, 50_000, "SUCCESSFUL", 30, {
+    counterAccount: MOCK_VERIFIED_ACCOUNT,
+  });
+
+  // 4. SUCCESSFUL mismatch-credited (MISMATCH_CREDITED)
+  const seed4 = row(11, 40_000, "SUCCESSFUL", 4, {
+    mismatchResolution: "CREDIT",
+    amountPaidVnd: 40_000,
+  });
+
+  // 5. REQUESTED ELIGIBLE (50 points / 50_000đ)
+  const seed5 = row(10, 50_000, "SUCCESSFUL", 5, {
+    refund: {
+      canRequest: false,
+      unavailableReason: "ALREADY_REQUESTED",
+      destination: verifiedDest,
+      request: {
+        id: mockId(),
+        status: "REQUESTED",
+        eligibility: "ELIGIBLE",
+        ineligibleReason: null,
+        reason: "WRONG_AMOUNT",
+        points: 50,
+        amountVnd: 50_000,
+        destination: verifiedDest,
+        submittedAt: hoursAgo(3),
+        withdrawnAt: null,
+      },
+    },
+  });
+
+  // 6. REQUESTED NOT_ELIGIBLE (SPENT_SINCE_TOP_UP)
+  const seed6 = row(9, 40_000, "SUCCESSFUL", 6, {
+    refund: {
+      canRequest: false,
+      unavailableReason: "ALREADY_REQUESTED",
+      destination: verifiedDest,
+      request: {
+        id: mockId(),
+        status: "REQUESTED",
+        eligibility: "NOT_ELIGIBLE",
+        ineligibleReason: "SPENT_SINCE_TOP_UP",
+        reason: "NO_LONGER_NEEDED",
+        points: 40,
+        amountVnd: 40_000,
+        destination: verifiedDest,
+        submittedAt: hoursAgo(4),
+        withdrawnAt: null,
+      },
+    },
+  });
+
+  // 7. WITHDRAWN
+  const seed7 = row(8, 30_000, "SUCCESSFUL", 7, {
+    refund: {
+      canRequest: false,
+      unavailableReason: "WITHDRAWN",
+      destination: verifiedDest,
+      request: {
+        id: mockId(),
+        status: "WITHDRAWN",
+        eligibility: "ELIGIBLE",
+        ineligibleReason: null,
+        reason: "WRONG_AMOUNT",
+        points: 30,
+        amountVnd: 30_000,
+        destination: verifiedDest,
+        submittedAt: hoursAgo(5),
+        withdrawnAt: hoursAgo(2),
+      },
+    },
+  });
+
+  // 8. REFUNDED
+  const seed8 = row(7, 50_000, "SUCCESSFUL", 8, {
+    refund: {
+      canRequest: false,
+      unavailableReason: "ALREADY_REQUESTED",
+      destination: verifiedDest,
+      request: {
+        id: mockId(),
+        status: "REFUNDED",
+        eligibility: "ELIGIBLE",
+        ineligibleReason: null,
+        reason: "WRONG_ACCOUNT",
+        points: 50,
+        amountVnd: 50_000,
+        destination: verifiedDest,
+        submittedAt: hoursAgo(6),
+        withdrawnAt: null,
+        resolvedAt: hoursAgo(1),
+        bankTransferReference: "FT261016001",
+        bankTransferredAt: hoursAgo(1),
+      },
+    },
+  });
+
+  // 9. REJECTED
+  const seed9 = row(6, 50_000, "SUCCESSFUL", 9, {
+    refund: {
+      canRequest: false,
+      unavailableReason: "ALREADY_REQUESTED",
+      destination: verifiedDest,
+      request: {
+        id: mockId(),
+        status: "REJECTED",
+        eligibility: "ELIGIBLE",
+        ineligibleReason: null,
+        reason: "OTHER",
+        points: 50,
+        amountVnd: 50_000,
+        destination: verifiedDest,
+        submittedAt: hoursAgo(8),
+        withdrawnAt: null,
+        resolvedAt: hoursAgo(2),
+        rejectionReason: "Tài khoản nhận tiền không khớp với thông tin nạp.",
+      },
+    },
+  });
+
   return [
+    seed1,
+    seed2,
+    seed3,
+    seed4,
+    seed5,
+    seed6,
+    seed7,
+    seed8,
+    seed9,
     row(5, 100_000, "SUCCESSFUL", 24),
     row(4, 50_000, "CANCELLED", 48),
     row(3, 20_000, "EXPIRED", 72),

@@ -21,6 +21,8 @@ describe("redemption contracts (Story 12.1, FR-69)", () => {
     }
     expect(redemptionErrorSchema.safeParse({ code: "UNKNOWN", details: {}, message: "Error" }).success).toBe(false);
     expect(redemptionErrorSchema.safeParse({ ...errors[2], details: { required: 100, available: 100 }, message: "Error" }).success).toBe(false);
+    expect(redemptionErrorSchema.safeParse({ ...errors[2], details: { required: 150, available: 100, refundHoldPoints: 50 }, message: "Error" }).success).toBe(true);
+    expect(redemptionErrorSchema.safeParse({ ...errors[2], details: { required: 150, available: 100, refundHoldPoints: 0 }, message: "Error" }).success).toBe(false);
   });
   it("parses quote, ticket, result and history with invariants", () => {
     expect(createRedemptionQuoteSchema.safeParse({ voucherId: id }).success).toBe(true);

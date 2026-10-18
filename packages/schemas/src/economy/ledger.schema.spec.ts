@@ -24,6 +24,7 @@ describe("Economy & Ledger Schemas", () => {
         "FROZEN",
         "ESCROW",
         "INTEGRITY_HOLD",
+        "REFUND_HOLD",
         "SYSTEM_ISSUANCE",
         "SYSTEM_SINK",
         "SYSTEM_CLEARING",
