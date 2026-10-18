@@ -617,7 +617,7 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency E2E Tests', () => {
       expect(typeof res.body.data.balance.integrityHold).toBe('number');
       expect(typeof res.body.data.balance.total).toBe('number');
       expect(Array.isArray(res.body.data.transactions)).toBe(true);
-      expect(res.body.data.accounts).toHaveLength(5);
+      expect(res.body.data.accounts).toHaveLength(6);
     });
 
     it('supports GET /api/economy/wallet as direct route alias (AC3)', async () => {
