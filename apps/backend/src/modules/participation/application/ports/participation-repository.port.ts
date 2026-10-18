@@ -180,7 +180,11 @@ export interface ParticipationRepositoryPort {
   /**
    * Retrieves the current quota usage (completed responses + active unexpired reservations).
    */
-  getQuotaStatus(formId: string, cutoffDate: Date): Promise<QuotaStatus>;
+  getQuotaStatus(
+    formId: string,
+    cutoffDate: Date,
+    excludeAttemptId?: string,
+  ): Promise<QuotaStatus>;
 
   /**
    * Epic 5 review P1 (AD-19, FR-25): in ONE transaction under the form row
@@ -368,6 +372,58 @@ export interface ParticipationRepositoryPort {
    * attempts only). State-predicated: a replay never rewrites `closedAt`.
    */
   cancelAttempt(params: CancelAttemptParams): Promise<CancelAttemptResult>;
+
+  /**
+   * Story 14.1 (AC 2, 5): locks form `FOR NO KEY UPDATE` then attempt `FOR UPDATE`
+   * inside the ambient UoW transaction.
+   */
+  lockOpenMissingCodeReport(
+    attemptId: string,
+  ): Promise<LockedMissingCodeReport | null>;
+
+  /**
+   * Story 14.1 (AC 2, 5): moves an attempt to COMPLETED by admin resolution
+   * under the attempt lock, ensuring logical one-completion integrity.
+   */
+  completeAttemptByAdmin(
+    attemptId: string,
+    now: Date,
+  ): Promise<{ changed: boolean }>;
+
+  /**
+   * Story 14.1 (AC 4, 6): atomic CAS on missingCodeResolvedAt: null + writes
+   * audit and notification Outbox rows in one transaction.
+   */
+  recordMissingCodeResolution(
+    attemptId: string,
+    data: MissingCodeResolutionData,
+    auditEvent: MissingCodeOutboxEvent,
+    resolvedEvent: MissingCodeOutboxEvent,
+  ): Promise<{ changed: boolean }>;
+}
+
+export interface LockedMissingCodeReport {
+  attempt: SurveyAttemptEntity;
+  formOpen: boolean;
+}
+
+export interface MissingCodeResolutionData {
+  resolution: 'CREDIT_RESPONDENT' | 'DISMISSED';
+  note: string;
+  adminId: string;
+  resolvedAt: Date;
+}
+
+export interface MissingCodeOutboxEvent {
+  id?: string;
+  idempotencyKey: string;
+  eventType: string;
+  schemaVersion?: number;
+  producer?: string;
+  aggregateType?: string;
+  aggregateId?: string;
+  aggregateVersion?: number;
+  payload: Record<string, unknown>;
 }
 
 /**

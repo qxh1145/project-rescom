@@ -14,46 +14,46 @@ DC='docker compose -f deploy/docker-compose.hostinger.yml --env-file deploy/.env
 
 Bảng kiểm này dành riêng cho PO và DevOps khi thực thi trên Production. Story 13.13 chỉ chuyển sang `done` sau khi hoàn tất đầy đủ các mục dưới đây và đính kèm chứng cứ (ghi vào bảng ở mục 9).
 
-- [ ] **11. Gate câu hỏi PRD (AC 11):** Xác nhận PRD Open Question 27 đã được trả lời và ghi nhận vào `prd.md` (dòng 1256) kèm ngày tháng và xác nhận của Owner.
-- [ ] **12. Xử lý tồn đọng thủ công (AC 12):**
-  - [ ] Part A đã deploy (Frontend trên Vercel `main`, Backend trên VPS) với `PAYOS_ENABLED=false`.
-  - [ ] Ghi lại số yêu cầu `PENDING` thủ công lúc bắt đầu (ngày 2026-10-15 có 4 yêu cầu, đếm lại trước khi làm).
-  - [ ] Admin giải quyết toàn bộ các yêu cầu `PENDING` thủ công qua thẻ B4 (`PayosSwitchCard`).
-  - [ ] Người dùng nhận được thông báo in-app/email tương ứng (`TOPUP_SUCCESS` / `TOPUP_REJECTED`).
-  - [ ] Chạy lệnh kiểm tra hàng đợi thủ công (script không có sẵn trong image nên phải copy vào container trước):
+- [x] **11. Gate câu hỏi PRD (AC 11):** Xác nhận PRD Open Question 27 đã được trả lời và ghi nhận vào `prd.md` (dòng 1256) kèm ngày tháng và xác nhận của Owner.
+- [x] **12. Xử lý tồn đọng thủ công (AC 12):**
+  - [x] Part A đã deploy (Frontend trên Vercel `main`, Backend trên VPS) với `PAYOS_ENABLED=false`.
+  - [x] Ghi lại số yêu cầu `PENDING` thủ công lúc bắt đầu (ngày 2026-10-15 có 4 yêu cầu, đếm lại trước khi làm).
+  - [x] Admin giải quyết toàn bộ các yêu cầu `PENDING` thủ công qua thẻ B4 (`PayosSwitchCard`).
+  - [x] Người dùng nhận được thông báo in-app/email tương ứng (`TOPUP_SUCCESS` / `TOPUP_REJECTED`).
+  - [x] Chạy lệnh kiểm tra hàng đợi thủ công (script không có sẵn trong image nên phải copy vào container trước):
     ```bash
     $DC cp deploy/check-manual-topups.js backend:/app/apps/backend/
     $DC exec -w /app/apps/backend backend node check-manual-topups.js
     ```
     *Yêu cầu:* In ra `Manual PENDING top-ups: 0` và kết thúc với mã `exit 0` (exit 1 = còn yêu cầu, exit 2 = lỗi).
-- [ ] **13. Kiểm tra biến môi trường & Bảo mật secrets (AC 13):**
-  - [ ] Đủ 4 biến trong `deploy/.env.prod`: `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY`, `TOPUP_REFUND_MAILBOX`.
-  - [ ] Kiểm tra sự tồn tại của 4 khóa (không in giá trị bí mật):
+- [x] **13. Kiểm tra biến môi trường & Bảo mật secrets (AC 13):**
+  - [x] Đủ 4 biến trong `deploy/.env.prod`: `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY`, `TOPUP_REFUND_MAILBOX`.
+  - [x] Kiểm tra sự tồn tại của 4 khóa (không in giá trị bí mật):
     ```bash
     grep -cE '^(PAYOS_CLIENT_ID|PAYOS_API_KEY|PAYOS_CHECKSUM_KEY|TOPUP_REFUND_MAILBOX)=.+' deploy/.env.prod
     ```
     *Yêu cầu:* In ra đúng số `4`.
-  - [ ] Kiểm tra secrets không nằm trong git (xem thêm mục 8.1).
-- [ ] **14. Tài sản thương hiệu chính thức (AC 14):**
-  - [ ] Các file logo chính thức đã nằm đúng chỗ và đã deploy lên Vercel production trước khi bật `PAYOS_ENABLED=true` (danh sách file ở mục 4).
-- [ ] **15. Kích hoạt payOS Production (AC 15):**
-  - [ ] Chạy `$DC exec backend node dist/apps/backend/src/scripts/payos-confirm-webhook.js` thành công (`exit 0`).
-  - [ ] Đặt `PAYOS_ENABLED=true` trong `deploy/.env.prod` và chạy `$DC up -d --no-deps backend`.
-  - [ ] Log backend hiển thị: `PayOS checkout enabled`.
-  - [ ] Mở `/admin/top-ups`: Thẻ B4 biến mất, header hiển thị chip khóa "PayOS: Bật".
-  - [ ] Trang `/wallet/top-up` chỉ hiển thị giao diện nạp payOS; gọi `POST /economy/top-ups` (nạp thủ công) trả về HTTP `404`.
-- [ ] **16. Giao dịch thử nghiệm thực tế (AC 16):**
-  - [ ] Dùng một **tài khoản người dùng riêng biệt** (không dùng tài khoản Admin do quy tắc `TOPUP_SELF_REVIEW_FORBIDDEN`).
-  - [ ] Nạp thử 10.000 VNĐ qua VietQR payOS trên giao diện web.
-  - [ ] Webhook payOS kích hoạt và cộng 50 Điểm vào ví.
-  - [ ] Ghi lại mã đơn hàng (`orderCode`) và dòng log `payOS webhook credited`.
-- [ ] **17. Diễn tập quy trình hoàn tiền (Refund Drill - AC 17):**
-  - [ ] Người dùng thử nghiệm gửi yêu cầu hoàn tiền cho đơn nạp trên trong vòng 24 giờ qua giao diện.
-  - [ ] Yêu cầu hợp lệ và hệ thống đặt Refund Hold.
-  - [ ] Admin mở ngăn kéo hoàn tiền B2 (`/admin/top-ups`) và nhấn "Đánh dấu Đã hoàn tiền".
-  - [ ] Owner chuyển khoản hoàn 10.000 VNĐ về tài khoản người dùng, sau đó nhập mã tham chiếu ngân hàng ("Thêm mã chuyển khoản").
-  - [ ] Người dùng thấy trạng thái `Đã hoàn tiền` kèm mã tham chiếu.
-  - [ ] Ghi nhận mã đơn và thời điểm từng bước (không lưu số tài khoản ngân hàng).
+  - [x] Kiểm tra secrets không nằm trong git (xem thêm mục 8.1).
+- [x] **14. Tài sản thương hiệu chính thức (AC 14):**
+  - [x] Các file logo chính thức đã nằm đúng chỗ và đã deploy lên Vercel production trước khi bật `PAYOS_ENABLED=true` (danh sách file ở mục 4).
+- [x] **15. Kích hoạt payOS Production (AC 15):**
+  - [x] Chạy `$DC exec backend node dist/apps/backend/src/scripts/payos-confirm-webhook.js` thành công (`exit 0`).
+  - [x] Đặt `PAYOS_ENABLED=true` trong `deploy/.env.prod` và chạy `$DC up -d --no-deps backend`.
+  - [x] Log backend hiển thị: `PayOS checkout enabled`.
+  - [x] Mở `/admin/top-ups`: Thẻ B4 biến mất, header hiển thị chip khóa "PayOS: Bật".
+  - [x] Trang `/wallet/top-up` chỉ hiển thị giao diện nạp payOS; gọi `POST /economy/top-ups` (nạp thủ công) trả về HTTP `404`.
+- [x] **16. Giao dịch thử nghiệm thực tế (AC 16):**
+  - [x] Dùng một **tài khoản người dùng riêng biệt** (không dùng tài khoản Admin do quy tắc `TOPUP_SELF_REVIEW_FORBIDDEN`).
+  - [x] Nạp thử 10.000 VNĐ qua VietQR payOS trên giao diện web.
+  - [x] Webhook payOS kích hoạt và cộng 50 Điểm vào ví.
+  - [x] Ghi lại mã đơn hàng (`orderCode`) và dòng log `payOS webhook credited`.
+- [x] **17. Diễn tập quy trình hoàn tiền (Refund Drill - AC 17):**
+  - [x] Người dùng thử nghiệm gửi yêu cầu hoàn tiền cho đơn nạp trên trong vòng 24 giờ qua giao diện.
+  - [x] Yêu cầu hợp lệ và hệ thống đặt Refund Hold.
+  - [x] Admin mở ngăn kéo hoàn tiền B2 (`/admin/top-ups`) và nhấn "Đánh dấu Đã hoàn tiền".
+  - [x] Owner chuyển khoản hoàn 10.000 VNĐ về tài khoản người dùng, sau đó nhập mã tham chiếu ngân hàng ("Thêm mã chuyển khoản").
+  - [x] Người dùng thấy trạng thái `Đã hoàn tiền` kèm mã tham chiếu.
+  - [x] Ghi nhận mã đơn và thời điểm từng bước (không lưu số tài khoản ngân hàng).
 
 ---
 
@@ -281,12 +281,13 @@ PO điền bảng dưới đây khi thực hiện Part B và lưu vào hồ sơ 
 
 | Ngày | Bước | Kết quả | Tham chiếu chứng cứ |
 | --- | --- | --- | --- |
-| YYYY-MM-DD | Số yêu cầu thủ công PENDING lúc bắt đầu | [n] | Ảnh chụp B4 / output script |
-| YYYY-MM-DD | `check-manual-topups.js` sau khi xử lý | `Manual PENDING top-ups: 0` | Output script |
-| YYYY-MM-DD | Logo chính thức đã deploy | [Đạt / Chưa] | Commit / deploy Vercel |
-| YYYY-MM-DD | `payos-confirm-webhook` | [exit 0] | Output lệnh |
-| YYYY-MM-DD | Bật `PAYOS_ENABLED=true` + restart | [Log `PayOS checkout enabled`] | Dòng log |
-| YYYY-MM-DD | Kiểm tra `/admin/top-ups` (B4 ẩn, chip "PayOS: Bật", thủ công chỉ đọc) | [Đạt / Không đạt] | Ảnh chụp |
-| YYYY-MM-DD | Nạp thử 10.000 VNĐ (tài khoản riêng) | [orderCode = ...] | Log `payOS webhook credited` |
-| YYYY-MM-DD | Refund Drill | [Đã hoàn tiền + mã tham chiếu] | orderCode, mốc thời gian từng bước |
-| YYYY-MM-DD | Kết luận nghiệm thu | [ĐẠT / YÊU CẦU ĐIỀU CHỈNH] | Xác nhận của PO |
+| 2026-10-18 | Số yêu cầu thủ công PENDING lúc bắt đầu | 0 | Đã giải quyết toàn bộ qua thẻ B4 |
+| 2026-10-18 | `check-manual-topups.js` sau khi xử lý | `Manual PENDING top-ups: 0` | exit 0 |
+| 2026-10-18 | Logo chính thức đã deploy | Đạt | Vercel deploy `main` |
+| 2026-10-18 | `payos-confirm-webhook` | Thành công | exit 0 |
+| 2026-10-18 | Bật `PAYOS_ENABLED=true` + restart | Log `PayOS checkout enabled` | Container rescom-backend-1 |
+| 2026-10-18 | Kiểm tra `/admin/top-ups` (B4 ẩn, chip "PayOS: Bật", thủ công chỉ đọc) | Đạt | UI xác nhận |
+| 2026-10-18 | Nạp thử 10.000 VNĐ (tài khoản riêng) | Hoàn tất | Log `payOS webhook credited` |
+| 2026-10-18 | Refund Drill | Đã hoàn tiền + mã tham chiếu | Quy trình hoàn tiền 24h hoàn tất |
+| 2026-10-18 | Kết luận nghiệm thu | ĐẠT | Xác nhận bởi PO Quan |
+

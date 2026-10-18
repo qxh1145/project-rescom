@@ -31,6 +31,7 @@ export const EXTERNAL_MESSAGES = {
     "Lượt làm đã bị khoá nên chưa gửi báo cáo được ở đây. Liên hệ hỗ trợ Rescom để Admin kiểm tra giúp bạn.",
   reportCompleted: "Lượt làm này đã được xác nhận, không cần báo thiếu mã.",
   reportExpired: "Lượt làm này đã bị huỷ nên không gửi báo cáo được.",
+  reportResolved: "Báo cáo thiếu mã của bạn đã được admin xử lý.",
   reportFailed: "Chưa gửi được báo cáo. Vui lòng thử lại.",
 
   // Cancel dialog — ASSUMED (design) (not drawn).

@@ -28,6 +28,9 @@ import {
   InternalRewardRequest,
   MissingCodeReportEvidence,
   ResetCompletionCodeFailuresParams,
+  LockedMissingCodeReport,
+  MissingCodeResolutionData,
+  MissingCodeOutboxEvent,
 } from '../application/ports/participation-repository.port';
 import {
   currentClient,
@@ -37,7 +40,10 @@ import {
   COMPLETED_RESPONSE_STATUSES,
   countCompletionsByFormIds,
 } from '../../../common/database/completion-counts';
-import { UncleanAttachmentException } from '../application/exceptions/participation.exceptions';
+import {
+  SurveyAlreadyCompletedException,
+  UncleanAttachmentException,
+} from '../application/exceptions/participation.exceptions';
 import { COMPLETION_CODE_POLICY_VERSION } from '@rescom/schemas';
 
 type ParticipationClient = Prisma.TransactionClient;
@@ -296,6 +302,10 @@ function toAttemptEntity(raw: any): SurveyAttemptEntity {
     },
     (raw.closedReason as AttemptCloseReason | null) ?? null,
     raw.closedAt ?? null,
+    raw.missingCodeResolvedAt ?? null,
+    raw.missingCodeResolution ?? null,
+    raw.missingCodeResolutionNote ?? null,
+    raw.missingCodeResolvedById ?? null,
   );
 }
 
@@ -398,6 +408,7 @@ async function getQuotaStatusWith(
   client: ParticipationClient,
   formId: string,
   cutoffDate: Date,
+  excludeAttemptId?: string,
 ): Promise<QuotaStatus> {
   const [completed, activeReservationCount] = await Promise.all([
     countCompletionsByFormIds(client, [formId]),
@@ -406,6 +417,7 @@ async function getQuotaStatusWith(
         surveyId: formId,
         status: 'IN_PROGRESS',
         startedAt: { gte: cutoffDate },
+        ...(excludeAttemptId ? { id: { not: excludeAttemptId } } : {}),
       },
     }),
   ]);
@@ -544,8 +556,17 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
     return { abandonedIds: rows.map((row) => row.id) };
   }
 
-  async getQuotaStatus(formId: string, cutoffDate: Date): Promise<QuotaStatus> {
-    return getQuotaStatusWith(currentClient(this.prisma), formId, cutoffDate);
+  async getQuotaStatus(
+    formId: string,
+    cutoffDate: Date,
+    excludeAttemptId?: string,
+  ): Promise<QuotaStatus> {
+    return getQuotaStatusWith(
+      currentClient(this.prisma),
+      formId,
+      cutoffDate,
+      excludeAttemptId,
+    );
   }
 
   /**
@@ -1498,6 +1519,121 @@ export class PrismaParticipationRepository implements ParticipationRepositoryPor
         outcome: 'CANCELLED' as const,
         attempt: toAttemptEntity(updated),
       };
+    });
+  }
+
+  async lockOpenMissingCodeReport(
+    attemptId: string,
+  ): Promise<LockedMissingCodeReport | null> {
+    const client = currentClient(this.prisma);
+    const existing = await client.surveyAttempt.findUnique({
+      where: { id: attemptId },
+      select: { id: true, surveyId: true },
+    });
+    if (!existing) return null;
+
+    // Lock order: form row FOR NO KEY UPDATE, then attempt row FOR UPDATE
+    await client.$queryRaw`
+      SELECT id FROM forms WHERE id = ${existing.surveyId}::uuid FOR NO KEY UPDATE
+    `;
+    await client.$queryRaw`
+      SELECT id FROM survey_attempts WHERE id = ${attemptId}::uuid FOR UPDATE
+    `;
+
+    const row = await client.surveyAttempt.findUniqueOrThrow({
+      where: { id: attemptId },
+    });
+    const formOpen = await isFormOpenForCompletion(client, existing.surveyId);
+
+    return {
+      attempt: toAttemptEntity(row),
+      formOpen,
+    };
+  }
+
+  async completeAttemptByAdmin(
+    attemptId: string,
+    now: Date,
+  ): Promise<{ changed: boolean }> {
+    const client = currentClient(this.prisma);
+    const attempt = await client.surveyAttempt.findUnique({
+      where: { id: attemptId },
+      select: { id: true, surveyId: true, respondentId: true },
+    });
+    if (!attempt) return { changed: false };
+
+    if (
+      attempt.respondentId &&
+      (await hasCompletedLogicalFormWith(
+        client,
+        attempt.respondentId,
+        attempt.surveyId,
+        attempt.id,
+      ))
+    ) {
+      throw new SurveyAlreadyCompletedException();
+    }
+
+    try {
+      const result = await client.surveyAttempt.updateMany({
+        where: {
+          id: attemptId,
+          status: { not: 'COMPLETED' },
+          missingCodeResolvedAt: null,
+        },
+        data: {
+          status: 'COMPLETED',
+          submittedAt: now,
+        },
+      });
+      return { changed: result.count > 0 };
+    } catch (error) {
+      if (isAttemptAccountViolation(error, ONE_COMPLETION_PER_ACCOUNT_INDEX)) {
+        throw new SurveyAlreadyCompletedException();
+      }
+      throw error;
+    }
+  }
+
+  async recordMissingCodeResolution(
+    attemptId: string,
+    data: MissingCodeResolutionData,
+    auditEvent: MissingCodeOutboxEvent,
+    resolvedEvent: MissingCodeOutboxEvent,
+  ): Promise<{ changed: boolean }> {
+    return runInTransaction(this.prisma, async (tx) => {
+      const result = await tx.surveyAttempt.updateMany({
+        where: {
+          id: attemptId,
+          missingCodeResolvedAt: null,
+        },
+        data: {
+          missingCodeResolvedAt: data.resolvedAt,
+          missingCodeResolution: data.resolution,
+          missingCodeResolutionNote: data.note,
+          missingCodeResolvedById: data.adminId,
+        },
+      });
+      if (result.count === 0) {
+        throw new Error(
+          `Failed to record missing code resolution: attempt ${attemptId} is not open or was already resolved`,
+        );
+      }
+      await tx.outboxEvent.createMany({
+        data: [auditEvent, resolvedEvent].map((event) => ({
+          id: event.id ?? randomUUID(),
+          idempotencyKey: event.idempotencyKey,
+          eventType: event.eventType,
+          schemaVersion: event.schemaVersion ?? 1,
+          producer: event.producer ?? 'participation',
+          aggregateType: event.aggregateType ?? 'survey_attempt',
+          aggregateId: event.aggregateId ?? attemptId,
+          aggregateVersion: event.aggregateVersion ?? 1,
+          status: 'PENDING' as const,
+          payload: event.payload as Prisma.InputJsonValue,
+        })),
+      });
+      return { changed: true };
     });
   }
 }

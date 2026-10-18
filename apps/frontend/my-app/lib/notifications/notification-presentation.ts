@@ -44,6 +44,7 @@ export const NOTIFICATION_PRESENTATION: Record<NotificationType, NotificationPre
   ACCOUNT_UNLOCKED: { icon: "unlock", tone: "green", href: null },
   VOUCHER_EXPIRING: { icon: "clock", tone: "amber", href: null },
   CODE_ISSUE_RESOLVED: { icon: "check-circle", tone: "green", href: null },
+  MISSING_CODE_REPORT_RESOLVED: { icon: "flag", tone: "teal", href: "/notifications" },
 };
 
 /**
@@ -112,6 +113,7 @@ export const NOTIFICATION_TITLES: Record<NotificationType, string> = {
   ACCOUNT_UNLOCKED: "Tài khoản đã được mở khoá",
   VOUCHER_EXPIRING: "Voucher sắp hết hạn",
   CODE_ISSUE_RESOLVED: "Khiếu nại voucher đã xử lý",
+  MISSING_CODE_REPORT_RESOLVED: "Kết quả báo thiếu mã",
 };
 
 const WARNING_TITLES: Record<WarningTopic, string> = {

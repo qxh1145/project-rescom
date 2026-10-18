@@ -16,6 +16,8 @@ import { FORM_TITLE_LOOKUP_PORT } from '../src/modules/forms/application/ports/f
 import { InMemoryFormAdminReads } from '../src/modules/forms/infrastructure/in-memory-form-admin-reads';
 import { MISSING_CODE_REPORT_STATS_PORT } from '../src/modules/participation/application/ports/missing-code-report-stats.port';
 import { InMemoryMissingCodeReportStats } from '../src/modules/participation/infrastructure/in-memory-missing-code-report-stats';
+import { PARTICIPATION_REPOSITORY_PORT } from '../src/modules/participation/application/ports/participation-repository.port';
+import { InMemoryParticipationRepository } from '../src/modules/participation/infrastructure/in-memory-participation.repository';
 import { SessionService } from '../src/modules/auth/application/session.service';
 import { EnvService } from '../src/common/config/env.service';
 import { PrismaService } from '../src/common/database/prisma.service';
@@ -37,6 +39,7 @@ describe('Admin missing-code reports E2E', () => {
   const ALLOWED_ORIGIN = 'http://localhost:3000';
   const FORM = '5a0c1f7e-2b4d-4c6a-8e1f-0a1b2c3d4e71';
   const ATTEMPT_BASE = '00000000-0000-4000-8000-0000000000';
+  const FORM_VERSION = '5a0c1f7e-2b4d-4c6a-8e1f-0a1b2c3d4e72';
   const NOW = Date.parse('2026-10-01T12:00:00.000Z');
 
   interface Actor {
@@ -71,6 +74,21 @@ describe('Admin missing-code reports E2E', () => {
     return who ? req.set('Cookie', [who.cookie]) : req;
   };
 
+  const post = (
+    who: Actor | null,
+    path: string,
+    body: unknown,
+    options: { csrf?: boolean } = {},
+  ) => {
+    let req = request(app.getHttpServer())
+      .post(path)
+      .set('Origin', ALLOWED_ORIGIN)
+      .set('Content-Type', 'application/json');
+    if (who) req = req.set('Cookie', [who.cookie]);
+    if (who && options.csrf !== false) req = req.set('x-csrf-token', who.csrf);
+    return req.send(body as object);
+  };
+
   function seedReports(count: number, respondentId: string | null) {
     missingCodes.reports = Array.from({ length: count }, (_, index) => ({
       attemptId: `${ATTEMPT_BASE}${String(10 + index)}`,
@@ -79,6 +97,10 @@ describe('Admin missing-code reports E2E', () => {
       reason: index === 0 ? 'Code never shown' : null,
       reportedAt: new Date(NOW - index * 60_000),
       attemptStatus: 'IN_PROGRESS',
+      formVersionId: FORM_VERSION,
+      failedCodeVerifications: 0,
+      attemptCancelled: false,
+      respondentCompletedForm: false,
     }));
     missingCodes.unresolved = count;
   }
@@ -123,6 +145,8 @@ describe('Admin missing-code reports E2E', () => {
       .useValue(new InMemoryUserProfileRepository())
       .overrideProvider(MISSING_CODE_REPORT_STATS_PORT)
       .useValue(missingCodes)
+      .overrideProvider(PARTICIPATION_REPOSITORY_PORT)
+      .useValue(new InMemoryParticipationRepository())
       .overrideProvider(FORM_TITLE_LOOKUP_PORT)
       .useValue(forms)
       .overrideProvider(EnvService)
@@ -264,5 +288,93 @@ describe('Admin missing-code reports E2E', () => {
       ).expect(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
     }
+  });
+
+  it('exposes the AC 7 fields on every GET item', async () => {
+    const admin = await actor('ADMIN');
+    seedReports(1, null);
+    const res = await get(admin, '/admin/missing-code-reports').expect(200);
+    const [item] = res.body.data.items;
+    expect(item).toHaveProperty('formVersionId', FORM_VERSION);
+    expect(item).toHaveProperty('rewardPerResponse');
+    expect(item).toHaveProperty('surveyOpen');
+    expect(item).toHaveProperty('failedCodeVerifications', 0);
+    expect(item).toHaveProperty('attemptCancelled', false);
+    expect(item).toHaveProperty('respondentCompletedForm', false);
+  });
+
+  describe('POST /admin/missing-code-reports/:attemptId/resolve', () => {
+    const ATTEMPT = `${ATTEMPT_BASE}10`;
+    const resolvePath = (id = ATTEMPT, prefix = '/admin') =>
+      `${prefix}/missing-code-reports/${id}/resolve`;
+    const validBody = {
+      outcome: 'DISMISSED',
+      note: 'No proof of survey submission.',
+    };
+
+    it('answers 401 without a session', async () => {
+      const res = await post(null, resolvePath(), validBody).expect(401);
+      expect(res.body.data).toBeNull();
+    });
+
+    it('answers 403 FORBIDDEN_RESOURCE to non-admins', async () => {
+      for (const role of ['RESPONDENT', 'PUBLISHER'] as const) {
+        const who = await actor(role);
+        const res = await post(who, resolvePath(), validBody).expect(403);
+        expect(res.body.error.code).toBe('FORBIDDEN_RESOURCE');
+      }
+    });
+
+    it('answers 403 when the CSRF token is missing', async () => {
+      const admin = await actor('ADMIN');
+      await post(admin, resolvePath(), validBody, { csrf: false }).expect(403);
+    });
+
+    it.each([
+      ['an empty body', {}],
+      ['an unknown outcome', { outcome: 'REFUND', note: 'x'.repeat(20) }],
+      ['an unknown key', { ...validBody, extra: true }],
+      [
+        'a note shorter than 10 characters',
+        { ...validBody, note: 'too short' },
+      ],
+      [
+        'a note that is only 10 characters after padding',
+        { ...validBody, note: '   short   ' },
+      ],
+      [
+        'a note longer than 500 characters',
+        { ...validBody, note: 'x'.repeat(501) },
+      ],
+    ])('rejects %s with 400 VALIDATION_ERROR', async (_label, body) => {
+      const admin = await actor('ADMIN');
+      const res = await post(admin, resolvePath(), body).expect(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('rejects a non-UUID attemptId with 400', async () => {
+      const admin = await actor('ADMIN');
+      await post(admin, resolvePath('not-a-uuid'), validBody).expect(400);
+    });
+
+    it('answers 404 MISSING_CODE_REPORT_NOT_FOUND for an unknown attempt on both prefixes', async () => {
+      const admin = await actor('ADMIN');
+      for (const prefix of ['/admin', '/api/admin']) {
+        const res = await post(
+          admin,
+          resolvePath(ATTEMPT, prefix),
+          validBody,
+        ).expect(404);
+        expect(res.body.error.code).toBe('MISSING_CODE_REPORT_NOT_FOUND');
+      }
+    });
+
+    it('serves GET and POST on the same prefix', async () => {
+      const admin = await actor('ADMIN');
+      await get(admin, '/admin/missing-code-reports').expect(200);
+      // POST reaches the resolve handler (404 from the use case, not 404 route-not-found).
+      const res = await post(admin, resolvePath(), validBody).expect(404);
+      expect(res.body.error.code).toBe('MISSING_CODE_REPORT_NOT_FOUND');
+    });
   });
 });

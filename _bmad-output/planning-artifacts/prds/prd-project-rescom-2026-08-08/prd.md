@@ -1,7 +1,7 @@
 ---
 title: RESCOM — Academic Survey Exchange Platform
 created: 2026-08-08
-updated: 2026-10-15
+updated: 2026-10-18
 status: final
 ---
 
@@ -454,6 +454,10 @@ If the Publisher failed to embed the Completion Code in their Google Form, Respo
 **Consequences (testable):**
 - Report button is visible on the code input modal
 - Admin receives the report and can resolve (refund Respondent or instruct Publisher)
+- "Refund Respondent" confirms the completion: the attempt becomes Completed and the reward follows the normal External path (Escrow → Pending 48 h → Available), paid at most once; it is refused when the survey is closed or its quota is full, the escrow is short, or the attempt is a guest attempt or already completed
+- "Dismiss" requires a reason; the Respondent is notified with it
+- On "Refund Respondent" the Publisher is notified to check the completion code on the external form
+- Each report is resolved at most once, and every resolution is audited (FR-ADD-13)
 
 #### FR-24: 48-Hour Pending Period (External Only)
 Points from external form completions enter Pending Balance. After 48 hours without complaint, they auto-transfer to Available Balance.
@@ -654,6 +658,17 @@ Enabling PayOS retires the manual bank-transfer top-up.
 - PayOS cannot be enabled while any manual request is still pending
 - The manual request form and the Admin approval queue are no longer available
 - Historical manual top-ups remain visible in Wallet and Admin history
+
+#### FR-80: Admin Direct Point Credit
+Admin can credit Points directly to a user's Available Balance, for example as compensation or a support fix.
+
+**Consequences (testable):**
+- The credit is one balanced journal from System Issuance to the user's Available Balance, posted at most once per request (FR-ADD-11)
+- A reason is required; the amount is a positive integer with no hard cap, and an amount above 5,000 Points needs an extra confirmation
+- An Admin cannot credit their own account, and a banned user cannot be credited
+- The user is notified, and the credit appears in Point history as a credit from Admin with the reason
+- Only credit is offered; a mistaken credit is undone by reversing that journal, never below a zero balance
+- Every credit and reversal is audited (FR-ADD-13)
 
 ---
 
@@ -1108,6 +1123,7 @@ Redemption is limited per user and blocked for ineligible accounts.
 - Only activated accounts that are not locked can redeem. Accounts flagged in FraudLog cannot redeem in a Flash Sale (BR-21)
 - Flash Sale eligibility requires at least one completed survey in the last 30 days, and Admin can disable this rule (BR-02)
 - Per-user limits apply per voucher (default 2 per 30 days) and per day (default 500 Points), counted inside the redemption transaction (BR-20, Open Question 23)
+- Admin can change the per-day Points limit (1–1,000,000) in the Admin console; a change applies to the next redemption and is audited (FR-ADD-13)
 - A redemption in a Flash Sale within 24 hours after a top-up creates a FraudLog flag for review. It does not block the redemption automatically
 
 #### FR-75: Faulty Code Resolution

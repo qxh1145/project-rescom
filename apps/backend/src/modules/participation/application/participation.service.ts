@@ -26,6 +26,14 @@ import {
   COMPLETION_CODE_POLICY_VERSION,
   CompletionCodeLimitResetRequest,
   CompletionCodeLimitResetResultDto,
+  resolveMissingCodeReportSchema,
+  ResolveMissingCodeReportResult,
+  missingCodeAuditKey,
+  missingCodeResolvedEventKey,
+  MISSING_CODE_AUDIT_EVENT_TYPE,
+  MISSING_CODE_RESOLVED_EVENT_TYPE,
+  missingCodeAuditEventPayloadSchema,
+  missingCodeResolvedEventPayloadSchema,
 } from '@rescom/schemas';
 import { FormRepositoryPort } from '../../forms/application/ports/form-repository.port';
 import { CompletionCodePort } from '../../forms/application/ports/completion-code.port';
@@ -33,6 +41,7 @@ import { DemographicProfileRepositoryPort } from '../../users/application/ports/
 import { requireCompleteDemographicProfile } from '../../users/application/demographic-profile.gate';
 import {
   CompletionLimitCheck,
+  MissingCodeOutboxEvent,
   ParticipationRepositoryPort,
   SubmissionAttachment,
 } from './ports/participation-repository.port';
@@ -62,6 +71,11 @@ import {
   RewardNotSettleableException,
   SurveyRewardUnavailableException,
   TelemetryRejectedException,
+  MissingCodeReportNotFoundException,
+  MissingCodeSelfResolveForbiddenException,
+  MissingCodeReportAlreadyResolvedException,
+  MissingCodeSurveyClosedException,
+  MissingCodeAttemptCancelledException,
 } from './exceptions/participation.exceptions';
 import { InsufficientBalanceException } from '../../economy/application/exceptions/economy.exceptions';
 import {
@@ -1785,6 +1799,13 @@ export class ParticipationService {
       throw new ParticipantNotEligibleException('Unauthorized attempt access.');
     }
 
+    // Story 14.1 review: a reviewed report is final; do not swallow a re-report.
+    if (attempt.missingCodeResolvedAt !== null) {
+      throw new MissingCodeReportAlreadyResolvedException(
+        'This missing-code report has already been reviewed.',
+      );
+    }
+
     const formWithVersion = await this.formRepository.findById(
       attempt.surveyId,
     );
@@ -1842,6 +1863,230 @@ export class ParticipationService {
       message:
         'Your report has been submitted to RESCOM admin for review. Admins will investigate and compensate missing points within 24 working hours.',
     };
+  }
+
+  /**
+   * Story 14.1 (AC 1–6): Admin resolution of a missing completion code report.
+   * Resolves the report with CREDIT_RESPONDENT or DISMISSED under the attempt row lock.
+   */
+  async resolveMissingCodeReport(
+    adminId: string,
+    attemptId: string,
+    input: unknown,
+    options: { correlationId?: string } = {},
+  ): Promise<ResolveMissingCodeReportResult> {
+    const parsedInput = resolveMissingCodeReportSchema.parse(input);
+
+    const initialAttempt =
+      await this.participationRepository.findAttemptById(attemptId);
+    if (!initialAttempt || initialAttempt.missingCodeReportedAt === null) {
+      throw new MissingCodeReportNotFoundException();
+    }
+    if (initialAttempt.respondentId === adminId) {
+      throw new MissingCodeSelfResolveForbiddenException();
+    }
+
+    const formWithVersion = await this.formRepository.findById(
+      initialAttempt.surveyId,
+    );
+    if (!formWithVersion) {
+      throw new SurveyNotAvailableException('Survey not found.');
+    }
+    const { form } = formWithVersion;
+    if (form.type !== 'EXTERNAL') {
+      throw new AttemptNotExternalException(
+        'Survey attempt is not for an external survey.',
+      );
+    }
+
+    const outcome = await this.unitOfWork.run(
+      `external-completion:${attemptId}`,
+      async (): Promise<ResolveMissingCodeReportResult> => {
+        const locked =
+          await this.participationRepository.lockOpenMissingCodeReport(
+            attemptId,
+          );
+        if (!locked || locked.attempt.missingCodeReportedAt === null) {
+          throw new MissingCodeReportNotFoundException();
+        }
+        if (locked.attempt.respondentId === adminId) {
+          throw new MissingCodeSelfResolveForbiddenException();
+        }
+
+        if (locked.attempt.missingCodeResolvedAt !== null) {
+          if (locked.attempt.missingCodeResolution === parsedInput.outcome) {
+            return {
+              replayed: true,
+              attemptId: locked.attempt.id,
+              outcome: locked.attempt.missingCodeResolution,
+              attemptStatus: locked.attempt.status,
+              rewardPoints:
+                locked.attempt.missingCodeResolution === 'CREDIT_RESPONDENT'
+                  ? form.rewardPerResponse
+                  : null,
+            };
+          }
+          throw new MissingCodeReportAlreadyResolvedException();
+        }
+
+        if (locked.attempt.status === 'COMPLETED') {
+          if (parsedInput.outcome === 'CREDIT_RESPONDENT') {
+            throw new SurveyAlreadyCompletedException(
+              'This survey attempt is already completed.',
+            );
+          }
+          throw new MissingCodeReportAlreadyResolvedException(
+            'This report is no longer open.',
+          );
+        }
+
+        const now = new Date();
+
+        let rewardResult: RewardSettlementResultDto | null = null;
+        if (parsedInput.outcome === 'CREDIT_RESPONDENT') {
+          if (!locked.attempt.respondentId) {
+            throw new RewardNotSettleableException(
+              'Guest attempts cannot be credited.',
+            );
+          }
+          if (
+            locked.attempt.status === 'ABANDONED' &&
+            locked.attempt.closedReason === 'CANCELLED'
+          ) {
+            throw new MissingCodeAttemptCancelledException();
+          }
+          if (!locked.formOpen) {
+            throw new MissingCodeSurveyClosedException();
+          }
+
+          const cutoffDate = new Date(now.getTime() - RESERVATION_EXPIRY_MS);
+          const quota = await this.participationRepository.getQuotaStatus(
+            form.id,
+            cutoffDate,
+            locked.attempt.id,
+          );
+          if (
+            quota.completedCount + quota.activeReservationCount >=
+            form.expectedCompletions
+          ) {
+            throw new SurveyQuotaFullException();
+          }
+
+          const completion =
+            await this.participationRepository.completeAttemptByAdmin(
+              locked.attempt.id,
+              now,
+            );
+          if (!completion.changed) {
+            throw new Error(
+              `Failed to complete attempt ${locked.attempt.id} for missing code credit: attempt is not open or was already resolved`,
+            );
+          }
+
+          rewardResult = await this.settleExternalOrExisting(
+            locked.attempt.id,
+            form.publisherId,
+            locked.attempt.respondentId,
+            form.rewardPerResponse,
+          );
+
+          await this.quotaCloser?.closeFormIfQuotaMet(form.id, now);
+        }
+
+        const auditPayload = missingCodeAuditEventPayloadSchema.parse({
+          schemaVersion: 1,
+          action: 'MISSING_CODE_REPORT_RESOLVED',
+          auditCategory: 'MODERATION_ADMIN_ACTION',
+          adminId,
+          attemptId: locked.attempt.id,
+          surveyId: form.id,
+          outcome: parsedInput.outcome,
+          rewardPoints:
+            parsedInput.outcome === 'CREDIT_RESPONDENT'
+              ? form.rewardPerResponse
+              : null,
+          journalId: rewardResult?.journalId ?? null,
+          noteLength: parsedInput.note.length,
+          correlationId: options.correlationId ?? null,
+          occurredAt: now.toISOString(),
+        });
+
+        const resolvedPayload = missingCodeResolvedEventPayloadSchema.parse({
+          schemaVersion: 1,
+          attemptId: locked.attempt.id,
+          surveyId: form.id,
+          surveyTitle: form.title,
+          respondentId: locked.attempt.respondentId,
+          publisherId: form.publisherId,
+          outcome: parsedInput.outcome,
+          rewardPoints:
+            parsedInput.outcome === 'CREDIT_RESPONDENT'
+              ? form.rewardPerResponse
+              : null,
+          note: parsedInput.note,
+          occurredAt: now.toISOString(),
+        });
+
+        const auditOutboxEvent: MissingCodeOutboxEvent = {
+          idempotencyKey: missingCodeAuditKey(locked.attempt.id),
+          eventType: MISSING_CODE_AUDIT_EVENT_TYPE,
+          schemaVersion: 1,
+          aggregateType: 'SurveyAttempt',
+          aggregateId: locked.attempt.id,
+          payload: auditPayload,
+        };
+
+        const resolvedOutboxEvent: MissingCodeOutboxEvent = {
+          idempotencyKey: missingCodeResolvedEventKey(locked.attempt.id),
+          eventType: MISSING_CODE_RESOLVED_EVENT_TYPE,
+          schemaVersion: 1,
+          aggregateType: 'SurveyAttempt',
+          aggregateId: locked.attempt.id,
+          payload: resolvedPayload,
+        };
+
+        await this.participationRepository.recordMissingCodeResolution(
+          locked.attempt.id,
+          {
+            resolution: parsedInput.outcome,
+            note: parsedInput.note,
+            adminId,
+            resolvedAt: now,
+          },
+          auditOutboxEvent,
+          resolvedOutboxEvent,
+        );
+
+        return {
+          replayed: false,
+          attemptId: locked.attempt.id,
+          outcome: parsedInput.outcome,
+          attemptStatus:
+            parsedInput.outcome === 'CREDIT_RESPONDENT'
+              ? ('COMPLETED' as const)
+              : locked.attempt.status,
+          rewardPoints:
+            parsedInput.outcome === 'CREDIT_RESPONDENT'
+              ? form.rewardPerResponse
+              : null,
+        };
+      },
+    );
+
+    if (
+      outcome.outcome === 'CREDIT_RESPONDENT' &&
+      !outcome.replayed &&
+      initialAttempt.respondentId
+    ) {
+      if (this.starterPointsCoordinator) {
+        await this.starterPointsCoordinator.tryUnlockStarterPoints(
+          initialAttempt.respondentId,
+          'EXTERNAL_VERIFICATION',
+        );
+      }
+    }
+
+    return outcome;
   }
 }
 

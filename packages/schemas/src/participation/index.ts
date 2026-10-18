@@ -7,3 +7,4 @@ export * from './reservation-window';
 export * from './survey-feedback.schema';
 export * from './survey-runner.schema';
 export * from './integrity-consent.schema';
+export * from './missing-code-resolution.schema';

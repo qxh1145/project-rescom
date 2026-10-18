@@ -214,9 +214,17 @@ describe("missing-code report contracts", () => {
       reason: null,
       reportedAt: AT,
       attemptStatus: "IN_PROGRESS",
+      formVersionId: ID,
+      rewardPerResponse: 10,
+      surveyOpen: true,
+      failedCodeVerifications: 0,
+      attemptCancelled: false,
+      respondentCompletedForm: false,
     };
     expect(missingCodeReportPageSchema.parse({ items: [item], total: 1, nextCursor: null }).items).toHaveLength(1);
     expect(missingCodeReportPageSchema.safeParse({ items: [{ ...item, extra: 1 }], total: 1, nextCursor: null }).success).toBe(false);
+    const { attemptCancelled: _a, ...withoutFlag } = item;
+    expect(missingCodeReportPageSchema.safeParse({ items: [withoutFlag], total: 1, nextCursor: null }).success).toBe(false);
     expect(listMissingCodeReportsQuerySchema.parse({}).limit).toBe(50);
     expect(listMissingCodeReportsQuerySchema.safeParse({ limit: "101" }).success).toBe(false);
   });

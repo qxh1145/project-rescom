@@ -38,6 +38,14 @@ export const missingCodeReportSchema = z
     reason: z.string().nullable(),
     reportedAt: z.string().datetime(),
     attemptStatus: attemptStatusSchema,
+    formVersionId: z.string().uuid(),
+    rewardPerResponse: z.number().int().nonnegative(),
+    surveyOpen: z.boolean(),
+    failedCodeVerifications: z.number().int().nonnegative(),
+    /** Attempt is ABANDONED with closed_reason CANCELLED: Credit is refused (409). */
+    attemptCancelled: z.boolean(),
+    /** The respondent has another COMPLETED attempt on the same survey; Guest: false. */
+    respondentCompletedForm: z.boolean(),
   })
   .strict();
 export type MissingCodeReport = z.infer<typeof missingCodeReportSchema>;

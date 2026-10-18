@@ -66,6 +66,22 @@ export function DisputesScreen() {
             loadingMore={queue.loadingMoreReports}
             loadMoreError={queue.moreReportsError}
             onLoadMore={queue.loadMoreReports}
+            onResolved={(outcome, points) => {
+              queue.reloadAll();
+              setNotice({
+                tone: "info",
+                text:
+                  outcome === "CREDIT_RESPONDENT"
+                    ? `Đã cộng ${points} điểm cho người trả lời.`
+                    : outcome === "DISMISSED"
+                      ? "Đã bác bỏ báo cáo thiếu mã."
+                      : "Đã mở lại giới hạn mã hoàn thành.",
+              });
+            }}
+            onStale={(message) => {
+              queue.reloadAll();
+              setNotice({ tone: "danger", text: message });
+            }}
           />
         ) : !selected ? (
           // ASSUMED (design) empty state (not drawn).

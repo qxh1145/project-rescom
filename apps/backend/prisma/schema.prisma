@@ -77,6 +77,12 @@ enum AttemptCloseReason {
   CANCELLED
 }
 
+/// Story 14.1: admin resolution of a missing-code report (FR-23).
+enum MissingCodeResolution {
+  CREDIT_RESPONDENT
+  DISMISSED
+}
+
 enum IntegrityEventType {
   SURVEY_ATTEMPT_STARTED
   SURVEY_ATTEMPT_RESUMED
@@ -192,6 +198,7 @@ enum NotificationType {
   TOPUP_REFUND_REQUESTED
   TOPUP_REFUND_WITHDRAWN
   TOPUP_REFUND_REJECTED
+  MISSING_CODE_REPORT_RESOLVED
 }
 
 /// Story IR.4b B5: one email delivery attempt per notification. Mirrors
@@ -360,8 +367,9 @@ model User {
   completionCodeLimitResets     CompletionCodeLimitReset[] @relation("CompletionCodeLimitResetRespondent")
   completionCodeLimitResetsByMe CompletionCodeLimitReset[] @relation("CompletionCodeLimitResetAdmin")
 
-  surveyAttempts       SurveyAttempt[]
-  integrityConsents    IntegrityConsent[]
+  surveyAttempts                 SurveyAttempt[]
+  missingCodeReportsResolvedByMe SurveyAttempt[]            @relation("SurveyAttemptMissingCodeResolver")
+  integrityConsents              IntegrityConsent[]
   integrityAssessments IntegrityAssessment[]
   integrityIncidents   IntegrityIncident[]
   integrityReviews     IntegrityReview[]
@@ -694,18 +702,23 @@ model SurveyAttempt {
   /// Epic 5 review P2: server-owned completion-code security state (FR-22/23).
   failedCodeVerifications  Int                 @default(0) @map("failed_code_verifications")
   lastFailedVerificationAt DateTime?           @map("last_failed_verification_at")
-  missingCodeReportedAt    DateTime?           @map("missing_code_reported_at")
-  missingCodeReason        String?             @map("missing_code_reason")
+  missingCodeReportedAt     DateTime?               @map("missing_code_reported_at")
+  missingCodeReason         String?                 @map("missing_code_reason")
+  missingCodeResolvedAt     DateTime?               @map("missing_code_resolved_at")
+  missingCodeResolution     MissingCodeResolution?  @map("missing_code_resolution")
+  missingCodeResolutionNote String?                 @map("missing_code_resolution_note") @db.VarChar(500)
+  missingCodeResolvedById   String?                 @map("missing_code_resolved_by") @db.Uuid
   /// Story IR.2a: set with every ABANDONED transition (cancel, reservation
   /// expiry); NULL for open, completed and locked attempts and for rows
   /// abandoned before the column existed.
-  closedReason             AttemptCloseReason? @map("closed_reason")
-  closedAt                 DateTime?           @map("closed_at")
-  createdAt                DateTime            @default(now()) @map("created_at")
-  updatedAt                DateTime            @updatedAt @map("updated_at")
+  closedReason              AttemptCloseReason?     @map("closed_reason")
+  closedAt                  DateTime?               @map("closed_at")
+  createdAt                 DateTime                @default(now()) @map("created_at")
+  updatedAt                 DateTime                @updatedAt @map("updated_at")
 
-  respondent User?       @relation(fields: [respondentId], references: [id])
-  form       Form        @relation(fields: [surveyId], references: [id])
+  respondent            User?       @relation(fields: [respondentId], references: [id])
+  missingCodeResolvedBy User?       @relation("SurveyAttemptMissingCodeResolver", fields: [missingCodeResolvedById], references: [id], onDelete: Restrict)
+  form                  Form        @relation(fields: [surveyId], references: [id])
   version    FormVersion @relation(fields: [formVersionId], references: [id])
 
   response             Response?

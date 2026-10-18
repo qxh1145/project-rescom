@@ -269,6 +269,8 @@ export function reportFailureMessage(error: unknown): string {
       return EXTERNAL_MESSAGES.reportCompleted;
     case "ATTEMPT_EXPIRED":
       return EXTERNAL_MESSAGES.reportExpired;
+    case "MISSING_CODE_REPORT_ALREADY_RESOLVED":
+      return EXTERNAL_MESSAGES.reportResolved;
     case "VALIDATION_ERROR":
       return EXTERNAL_MESSAGES.reportReasonTooShort;
     case "PARTICIPATION_RATE_LIMITED":

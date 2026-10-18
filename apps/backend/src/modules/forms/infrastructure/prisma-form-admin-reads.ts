@@ -7,6 +7,7 @@ import {
 import {
   FormTitleLookupPort,
   FormTitleLookupResult,
+  FormTitleSummary,
 } from '../application/ports/form-title-lookup.port';
 import {
   PublishedFormAdminPort,
@@ -151,5 +152,27 @@ export class PrismaFormAdminReads
         ]),
       ),
     };
+  }
+
+  async findSummaries(params: {
+    formIds: readonly string[];
+  }): Promise<Map<string, FormTitleSummary>> {
+    const formIds = [...new Set(params.formIds)];
+    if (formIds.length === 0) return new Map();
+    const forms = await this.prisma.form.findMany({
+      where: { id: { in: formIds } },
+      select: { id: true, title: true, rewardPerResponse: true, status: true },
+      take: formIds.length,
+    });
+    return new Map(
+      forms.map((f) => [
+        f.id,
+        {
+          title: f.title,
+          rewardPerResponse: f.rewardPerResponse,
+          status: f.status,
+        },
+      ]),
+    );
   }
 }

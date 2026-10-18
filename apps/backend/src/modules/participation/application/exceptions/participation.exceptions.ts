@@ -323,3 +323,72 @@ export class AttemptNotInProgressException extends Error {
     this.name = 'AttemptNotInProgressException';
   }
 }
+
+/**
+ * Story 14.1 (AC 5): report not found or missingCodeReportedAt is null. 404.
+ */
+export class MissingCodeReportNotFoundException extends Error {
+  readonly code = 'MISSING_CODE_REPORT_NOT_FOUND';
+
+  constructor(message = 'Missing completion code report not found.') {
+    super(message);
+    this.name = 'MissingCodeReportNotFoundException';
+  }
+}
+
+/**
+ * Story 14.1 (AC 5): Admin attempting to resolve their own report. 403.
+ */
+export class MissingCodeSelfResolveForbiddenException extends Error {
+  readonly code = 'MISSING_CODE_SELF_RESOLVE_FORBIDDEN';
+
+  constructor(
+    message = 'You cannot resolve a missing completion code report on your own attempt.',
+  ) {
+    super(message);
+    this.name = 'MissingCodeSelfResolveForbiddenException';
+  }
+}
+
+/**
+ * Story 14.1 (AC 5): Report already resolved with a different outcome. 409.
+ */
+export class MissingCodeReportAlreadyResolvedException extends Error {
+  readonly code = 'MISSING_CODE_REPORT_ALREADY_RESOLVED';
+
+  constructor(
+    message = 'This missing completion code report has already been resolved.',
+  ) {
+    super(message);
+    this.name = 'MissingCodeReportAlreadyResolvedException';
+  }
+}
+
+/**
+ * Story 14.1 (AC 3, D3): Form is not open (PUBLISHED) when attempting CREDIT_RESPONDENT. 409.
+ */
+export class MissingCodeSurveyClosedException extends Error {
+  readonly code = 'MISSING_CODE_SURVEY_CLOSED';
+
+  constructor(
+    message = 'Cannot credit respondent because the survey is closed.',
+  ) {
+    super(message);
+    this.name = 'MissingCodeSurveyClosedException';
+  }
+}
+
+/**
+ * Story 14.1 (review): CREDIT_RESPONDENT on an attempt the Respondent cancelled
+ * after reporting (ABANDONED + CANCELLED). DISMISSED stays allowed. 409.
+ */
+export class MissingCodeAttemptCancelledException extends Error {
+  readonly code = 'MISSING_CODE_ATTEMPT_CANCELLED';
+
+  constructor(
+    message = 'Cannot credit respondent because the attempt was cancelled.',
+  ) {
+    super(message);
+    this.name = 'MissingCodeAttemptCancelledException';
+  }
+}

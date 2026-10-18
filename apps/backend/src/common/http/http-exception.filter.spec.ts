@@ -56,6 +56,11 @@ import {
   SurveyNotFoundException,
   AttemptNotFoundException,
   AttemptNotInProgressException,
+  MissingCodeReportNotFoundException,
+  MissingCodeSelfResolveForbiddenException,
+  MissingCodeReportAlreadyResolvedException,
+  MissingCodeSurveyClosedException,
+  MissingCodeAttemptCancelledException,
 } from '../../modules/participation/application/exceptions/participation.exceptions';
 import {
   SurveyFeedbackAlreadySubmittedException,
@@ -503,6 +508,48 @@ describe('HttpExceptionFilter (Unit Tests)', () => {
     ],
   ])(
     'maps Story 9.2 feedback exception %# to its HTTP status and code',
+    (exception, expectedStatus, expectedCode) => {
+      const mockJson = jest.fn();
+      const mockStatus = jest.fn().mockReturnValue({ json: mockJson });
+      filter.catch(
+        exception,
+        createMockHost({ status: mockStatus, headersSent: false }),
+      );
+
+      expect(mockStatus).toHaveBeenCalledWith(expectedStatus);
+      expect(mockJson.mock.calls[0][0].error.code).toBe(expectedCode);
+      expect(mockJson.mock.calls[0][0].error.message).toBe(exception.message);
+    },
+  );
+
+  it.each([
+    [
+      new MissingCodeReportNotFoundException(),
+      HttpStatus.NOT_FOUND,
+      'MISSING_CODE_REPORT_NOT_FOUND',
+    ],
+    [
+      new MissingCodeSelfResolveForbiddenException(),
+      HttpStatus.FORBIDDEN,
+      'MISSING_CODE_SELF_RESOLVE_FORBIDDEN',
+    ],
+    [
+      new MissingCodeReportAlreadyResolvedException(),
+      HttpStatus.CONFLICT,
+      'MISSING_CODE_REPORT_ALREADY_RESOLVED',
+    ],
+    [
+      new MissingCodeSurveyClosedException(),
+      HttpStatus.CONFLICT,
+      'MISSING_CODE_SURVEY_CLOSED',
+    ],
+    [
+      new MissingCodeAttemptCancelledException(),
+      HttpStatus.CONFLICT,
+      'MISSING_CODE_ATTEMPT_CANCELLED',
+    ],
+  ])(
+    'maps Story 14.1 missing code resolution exception %# to its HTTP status and code',
     (exception, expectedStatus, expectedCode) => {
       const mockJson = jest.fn();
       const mockStatus = jest.fn().mockReturnValue({ json: mockJson });
