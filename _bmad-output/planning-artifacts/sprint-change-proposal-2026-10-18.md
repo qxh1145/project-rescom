@@ -285,3 +285,29 @@ No Figma change for 14.1 (frame 11c). Stories 14.2–14.4 have no Figma frames a
 - The daily limit, the Audit Log, and every ledger fallback are usable from the console, with no curl and no database access.
 - `route-diff.test.mjs` passes with the updated counts. The FE, schema, and backend suites pass, including the 14.1 concurrency test.
 - Stories 8.5 and 10.7 are still `phase_2_deferred`. No screen fakes their data on the pilot build.
+
+---
+
+## Addendum A — Story 14.5 Admin Direct Point Credit (2026-10-18)
+
+**Trigger:** The Owner requested a new capability: Admin credits Points directly to a user.
+
+**Changes applied**
+
+- PRD: new **FR-80 Admin Direct Point Credit**, after FR-79.
+- Epics: Story 14.5 added; Epic 14 goal, FRs covered, and FR Coverage Map now include FR-80.
+- Sprint status: `14-5-admin-direct-point-credit: backlog`.
+
+**Owner decisions**
+
+| ID | Decision | Choice |
+|---|---|---|
+| D5 | Destination balance | `USER_AVAILABLE`, from `SYSTEM_ISSUANCE` |
+| D6 | Limit | No hard cap; above 5,000 Points the UI asks the Admin to re-type the amount |
+| D7 | Debit | Credit only. Mistakes are undone with the existing journal reverse |
+
+**Defaults applied (change at story creation if needed):** self-credit forbidden; banned users cannot be credited; reason 10–500 characters; the credit is a new dedicated route, not the generic `POST /economy/journals`.
+
+**Known risk (accepted, recorded for 14.5 Dev Notes):** Admin-credited Points raise Available, and the top-up refund check is `Available ≥ pointsCredited`. A user who has spent top-up Points and then receives an Admin credit could still refund that top-up within 24 h. Exposure is bounded by the 24 h window and by Admin judgment. If this becomes a problem, exclude Admin credits from the refund check.
+
+**Security note:** Points have cash value (200 VNĐ each, redeemable for vouchers). With no hard cap and one pilot Admin, the audit trail (Story 14.3) and the user-visible notification are the main controls.

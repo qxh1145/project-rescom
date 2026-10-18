@@ -659,6 +659,17 @@ Enabling PayOS retires the manual bank-transfer top-up.
 - The manual request form and the Admin approval queue are no longer available
 - Historical manual top-ups remain visible in Wallet and Admin history
 
+#### FR-80: Admin Direct Point Credit
+Admin can credit Points directly to a user's Available Balance, for example as compensation or a support fix.
+
+**Consequences (testable):**
+- The credit is one balanced journal from System Issuance to the user's Available Balance, posted at most once per request (FR-ADD-11)
+- A reason is required; the amount is a positive integer with no hard cap, and an amount above 5,000 Points needs an extra confirmation
+- An Admin cannot credit their own account, and a banned user cannot be credited
+- The user is notified, and the credit appears in Point history as a credit from Admin with the reason
+- Only credit is offered; a mistaken credit is undone by reversing that journal, never below a zero balance
+- Every credit and reversal is audited (FR-ADD-13)
+
 ---
 
 ### 4.11 Survey Feed & Marketplace

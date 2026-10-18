@@ -210,7 +210,7 @@ UX-DR-P15: PayOS and bank logos are placeholders in Figma; production uses the o
 - **Epic 11: Production Deployment & Pilot Readiness** -> NFR-ADD-3, NFR-ADD-4, NFR-ADD-5, AD-23 (no new FRs)
 - **Epic 12: Rewards — Voucher Redemption & Flash Sale** -> FR-68, FR-69, FR-70, FR-71, FR-72, FR-73, FR-74, FR-75
 - **Epic 13: PayOS Top-Up & 24-Hour Refund** -> FR-34 (PayOS, amended 2026-10-15), FR-35 (amended 2026-10-15), FR-31 (amend: Escrow + Refund Hold, 6 balances), FR-76, FR-77, FR-78, FR-79; NFR-31, NFR-32; FR-56 amendment (PayOS top-ups by status, open refund requests) covered by the Story 13.8 B1 tab count badges, Epic 9 dashboard unchanged; FR-57 amendment (top-up and refund notifications, email for Successful/Refunded/Refund Rejected) covered by Stories 13.3, 13.4, 13.5, 13.9, 13.10, 13.12
-- **Epic 14: Admin Console Completion** -> FR-23 (Admin resolution half), FR-74 (Admin-editable daily limit), FR-ADD-13 (viewer); ledger operator fallbacks from Epic 6 (no new FR)
+- **Epic 14: Admin Console Completion** -> FR-23 (Admin resolution half), FR-74 (Admin-editable daily limit), FR-ADD-13 (viewer), FR-80 (Admin direct Point credit); ledger operator fallbacks from Epic 6 (no new FR)
 
 ## Epic List
 
@@ -276,8 +276,8 @@ UX-DR-P15: PayOS and bank logos are placeholders in Figma; production uses the o
 **Dependency:** Builds on Epic 6 and Epic 12; develop against a fake `PaymentProviderPort`. Production enable (`PAYOS_ENABLED`) requires OQ-27, the manual `PENDING` rows resolved (4 on 2026-10-15; re-count before enable), and the prod-enable checklist (confirm-webhook, 10,000 VNĐ credited by webhook, refund drill, pre-deploy `PENDING` check, runbook for emergency disable and key rotation).
 
 ### Epic 14: Admin Console Completion
-**Goal:** Admins can resolve missing-code reports, change the Rewards daily Points limit, read the Audit Log, and run the ledger operator fallbacks from the console instead of the API or the database.
-**FRs covered:** FR-23 (resolution), FR-74 (daily limit setting), FR-ADD-13 (viewer). Added by `sprint-change-proposal-2026-10-18.md`.
+**Goal:** Admins can resolve missing-code reports, change the Rewards daily Points limit, read the Audit Log, credit Points directly to a user, and run the ledger operator fallbacks from the console instead of the API or the database.
+**FRs covered:** FR-23 (resolution), FR-74 (daily limit setting), FR-ADD-13 (viewer), FR-80 (direct credit, Story 14.5). Added by `sprint-change-proposal-2026-10-18.md`.
 **Out of scope:** Story 8.5 (FR-54 complaints) and Story 10.7 (FR-65 quality review) stay Phase 2; the `ATTEMPT_DISPUTE` and `LOCKED_ATTEMPT` dispute kinds stay on MSW.
 **Dependency:** Starts after Story 13.13 Part B. Stories are independent; 14.1 is the only one with a migration. Screens without Figma frames (14.2–14.4) reuse the existing Admin shell, table, card, and confirm-dialog components.
 
@@ -2098,3 +2098,22 @@ So that I can repair a stuck reward or check balances without curl.
 **And** every mutating action needs a confirm dialog naming its effect, sends CSRF, and disables itself while running; 404 and 409 codes are shown in Vietnamese.
 **And** every mutating route writes an audit event; any route that does not is fixed in this story (backend touch limited to adding the audit event).
 **And** the `docs/` operations runbook links to the panel.
+
+### Story 14.5: Admin Direct Point Credit
+
+As an Admin,
+I want to credit Points directly to a user,
+So that I can compensate users or fix support cases without a raw ledger journal.
+
+**Acceptance Criteria:**
+
+**Given** a user opened in the `/admin/users` detail panel
+**When** the Admin submits "Cộng Điểm" with an amount and a reason
+**Then** `POST /admin/users/:id/point-credits` (`ADMIN` only, CSRF, JSON-only, strict body `{ amount, reason, idempotencyKey }`) posts one journal `SYSTEM_ISSUANCE → USER_AVAILABLE` with idempotency key `admin-credit:{idempotencyKey}`; a replay returns the same journal and never credits twice (FR-80, FR-ADD-11).
+**And** `amount` is a positive integer with no hard cap; `reason` is required (10–500 characters); an amount above 5,000 Points requires a second confirmation in the UI where the Admin re-types the amount.
+**And** the route returns 403 `ADMIN_SELF_CREDIT_FORBIDDEN` when the target is the acting Admin and 409 `USER_BANNED` for a banned user; nothing is posted on refusal.
+**And** the journal, the audit event (actor, target, amount, reason), and the Outbox notification to the user commit in one transaction (FR-57, FR-ADD-13).
+**And** the user's Point history labels the journal "Điểm cộng từ Admin" with the reason; the Admin detail panel lists the user's past Admin credits with "Hoàn tác" for each.
+**And** "Hoàn tác" calls the existing `POST /economy/journals/:id/reverse` with a required reason; it is refused when it would make Available negative, and a reversed credit cannot be reversed again.
+**And** the journal type is classified in the spend-journal completeness test (credits `USER_AVAILABLE`, not a spend), and the ledger integrity check stays balanced.
+**And** no debit action is added; the generic `POST /economy/journals` route is unchanged.

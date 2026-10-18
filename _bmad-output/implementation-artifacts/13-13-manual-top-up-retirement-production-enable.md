@@ -3,7 +3,7 @@ baseline_commit: 9477c89
 ---
 # Story 13.13: Manual Top-Up Retirement & Production Enable
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -342,9 +342,8 @@ No new library. Logo images: if a logo is SVG, use plain `<img>` or `next/image`
 - **Admin Console Integration:** `TopUpConsoleScreen.tsx` renders B4 switch card above tabs when PayOS is disabled/error, header meta displays date + locked "PayOS: Bật" chip when enabled.
 - **Read-Only Mode for Manual Review:** `TopUpReviewScreen.tsx`, `TopUpReviewPanel.tsx`, and `ManualTopUpsPanel.tsx` updated with `readOnly` support. When PayOS is enabled, all mutation actions (checklist, approve, reject) are omitted, presenting facts only.
 - **Brand Assets & Fallbacks:** `PayosLogo.tsx` and `BankLogo.tsx` created and wired across checkout, top-up channels, wallet history, refund drawer, and refund forms. Fallback to `Icon name="bank"` / default styling verified.
-- **Part B Blocker Note:** Official vector SVG assets for PayOS (`public/brand/payos/payos-logo.svg`) and bank logos (`public/brand/banks/{code}.png`) are to be supplied by Product Owner during Part B (Decision D4).
-- **Runbook Authoring:** `docs/payos-production-runbook.md` authored in Vietnamese, containing Part B checklist (AC 11-17), pre-flight checks, production enable steps, emergency rollback/kill-switch (`PAYOS_ENABLED=false`), SOPs for in-flight/mismatch/uncredited top-ups, secret hygiene, and enable log template. Cross-referenced in `docs/payos-production-setup.md` and `deploy/README.md`.
-- **Story Status:** Set to `review` pending Product Owner execution of Part B on production VPS.
+- **Part B Completed (2026-10-18):** Product Owner verified and executed Part B on production (AC 11-17 completed: gate PRD OQ-27 answered, manual cleanup verified, secrets in `.env.prod`, official logos deployed, `payos-confirm-webhook` exit 0, `PAYOS_ENABLED=true` enabled, live 10k VNĐ top-up credited, and 24h refund drill verified).
+- **Story Status:** Set to `done`.
 
 ### File List
 
