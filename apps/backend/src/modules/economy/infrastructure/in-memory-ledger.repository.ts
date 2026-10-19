@@ -1,5 +1,10 @@
-import { LedgerAccountClass, LedgerDriftedAccount } from '@rescom/schemas';
 import {
+  ADMIN_CREDIT_KEY_PREFIX,
+  LedgerAccountClass,
+  LedgerDriftedAccount,
+} from '@rescom/schemas';
+import {
+  AdminPointCreditRecord,
   LedgerRepositoryPort,
   MaturedCreditCursor,
   PostJournalTransactionOptions,
@@ -533,5 +538,54 @@ export class InMemoryLedgerRepository implements LedgerRepositoryPort {
       }
     }
     return false;
+  }
+
+  async findAdminCreditsForUser(
+    userId: string,
+    limit: number,
+  ): Promise<AdminPointCreditRecord[]> {
+    const userAccountIds = new Set(
+      Array.from(this.accounts.values())
+        .filter(
+          (acc) =>
+            acc.userId === userId && acc.accountClass === 'USER_AVAILABLE',
+        )
+        .map((acc) => acc.id),
+    );
+
+    const matching: { journal: LedgerJournalEntity; amount: number }[] = [];
+    for (const j of this.journals.values()) {
+      if (!j.idempotencyKey.startsWith(ADMIN_CREDIT_KEY_PREFIX)) continue;
+      const jEntries = this.entries.filter((e) => e.journalId === j.id);
+      const userEntry = jEntries.find(
+        (e) => userAccountIds.has(e.accountId) && e.amount > 0,
+      );
+      if (userEntry) {
+        matching.push({ journal: j, amount: userEntry.amount });
+      }
+    }
+
+    matching.sort((a, b) => {
+      const diff =
+        b.journal.createdAt.getTime() - a.journal.createdAt.getTime();
+      if (diff !== 0) return diff;
+      return b.journal.id.localeCompare(a.journal.id);
+    });
+
+    const sliced = matching.slice(0, limit);
+    return Promise.all(
+      sliced.map(async ({ journal, amount }) => {
+        const rev = await this.findReversalJournal(journal.id);
+        return {
+          journalId: journal.id,
+          amount,
+          reason: journal.description ?? '',
+          createdAt: journal.createdAt,
+          reversed: rev != null,
+          reversalJournalId: rev?.id ?? null,
+          reversedAt: rev?.createdAt ?? null,
+        };
+      }),
+    );
   }
 }

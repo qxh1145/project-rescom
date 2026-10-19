@@ -21,6 +21,7 @@ import {
   ReleaseMaturedPendingRewardsInput,
   releasePendingRewardRequestSchema,
   ReleasePendingRewardRequest,
+  ADMIN_CREDIT_KEY_PREFIX,
 } from '@rescom/schemas';
 import { LedgerService } from '../application/ledger.service';
 import { SessionAuthGuard } from '../../auth/presentation/guards/session-auth.guard';
@@ -71,12 +72,36 @@ export class LedgerController {
   @Roles('ADMIN')
   async reverseJournal(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
     @Body() body: Partial<ReverseJournalInput>,
   ) {
+    // A replay of an already-posted reversal returns the same journal; audit
+    // only the reversal this call actually posted (same default key as
+    // reverseJournalInputSchema).
+    const replayed = await this.ledgerService.findJournalByIdempotencyKey(
+      body?.idempotencyKey ?? `reversal:${id}`,
+    );
     const journal = await this.ledgerService.reverseJournal({
       targetJournalId: id,
       idempotencyKey: body?.idempotencyKey,
       reason: body?.reason,
+    });
+    if (replayed) {
+      return createSuccessEnvelope(this.serializeJournal(journal));
+    }
+    const target = await this.ledgerService.findJournalById(id);
+    const isAdminCredit =
+      target?.idempotencyKey.startsWith(ADMIN_CREDIT_KEY_PREFIX) ?? false;
+    await this.audit.append({
+      action: 'LEDGER_JOURNAL_REVERSED',
+      userId: user.id,
+      outcome: 'SUCCESS',
+      metadata: {
+        targetJournalId: id,
+        reversalJournalId: journal.id,
+        reason: body?.reason ?? null,
+        adminCredit: isAdminCredit,
+      },
     });
     return createSuccessEnvelope(this.serializeJournal(journal));
   }

@@ -1,11 +1,18 @@
 import { http } from "msw";
 import { z } from "zod";
-import { listUsersQuerySchema, updateUserRoleSchema, updateUserStatusSchema } from "@rescom/schemas";
+import {
+  createAdminPointCreditSchema,
+  listUsersQuerySchema,
+  updateUserRoleSchema,
+  updateUserStatusSchema,
+} from "@rescom/schemas";
 import { apiUrl } from "@/lib/api/config";
 import {
   activeAdminCount,
+  creditMockUserPoints,
   findMockAdminUser,
   listMockAdminUsers,
+  listMockUserPointCredits,
   matchesUserEmail,
   setMockAdminUserRole,
   setMockAdminUserStatus,
@@ -131,5 +138,63 @@ export const adminUserHandlers = [
     }
     const user = setMockAdminUserRole(id, role);
     return user ? ok({ user }) : notFound();
+  }),
+
+  // VERIFIED: POST /admin/users/:id/point-credits
+  http.post(apiUrl("/admin/users/:id/point-credits"), async ({ params, request }) => {
+    const admin = await guard();
+    if (admin instanceof Response) return admin;
+    const csrf = missingCsrf(request);
+    if (csrf) return csrf;
+
+    const id = String(params.id);
+    if (!UUID.test(id)) return invalidUuid();
+
+    const parsed = createAdminPointCreditSchema.safeParse(await readJson(request));
+    if (!parsed.success) return validationFailed(parsed.error);
+
+    const result = creditMockUserPoints(admin.id, id, parsed.data);
+    if ("error" in result) {
+      if (result.error === "ADMIN_SELF_CREDIT_FORBIDDEN") {
+        return fail(403, "ADMIN_SELF_CREDIT_FORBIDDEN", "Admins cannot self-credit Points.");
+      }
+      if (result.error === "USER_NOT_FOUND") {
+        return notFound();
+      }
+      if (result.error === "USER_BANNED") {
+        return fail(409, "USER_BANNED", "Cannot credit points to banned user.");
+      }
+      return fail(409, "IDEMPOTENCY_CONFLICT", "Conflicting idempotency key.");
+    }
+    return ok({
+      journalId: result.credit.journalId,
+      userId: result.credit.userId,
+      amount: result.credit.amount,
+      reason: result.credit.reason,
+      createdAt: result.credit.createdAt,
+      replayed: result.replayed,
+    });
+  }),
+
+  // VERIFIED: GET /admin/users/:id/point-credits
+  http.get(apiUrl("/admin/users/:id/point-credits"), async ({ params }) => {
+    const admin = await guard();
+    if (admin instanceof Response) return admin;
+
+    const id = String(params.id);
+    if (!UUID.test(id)) return invalidUuid();
+
+    const credits = listMockUserPointCredits(id);
+    return ok({
+      items: credits.map((c) => ({
+        journalId: c.journalId,
+        amount: c.amount,
+        reason: c.reason,
+        createdAt: c.createdAt,
+        reversed: c.reversed,
+        reversalJournalId: c.reversalJournalId,
+        reversedAt: c.reversedAt,
+      })),
+    });
   }),
 ];

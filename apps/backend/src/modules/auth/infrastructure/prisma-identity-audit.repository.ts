@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../common/database/prisma.service';
+import { currentClient } from '../../../common/database/prisma-unit-of-work';
 import {
   IdentityAuditPort,
   CreateIdentityAuditRecord,
@@ -16,7 +17,7 @@ export class PrismaIdentityAuditRepository
   constructor(private readonly prisma: PrismaService) {}
 
   async append(record: CreateIdentityAuditRecord): Promise<void> {
-    await this.prisma.identityAuditLog.create({
+    await currentClient(this.prisma).identityAuditLog.create({
       data: {
         action: record.action,
         userId: record.userId,

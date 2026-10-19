@@ -97,6 +97,8 @@ export interface BootOptions {
   databaseUrl?: string;
   /** Extra EnvService values, e.g. an unreachable MALWARE_SCANNER_PORT. */
   env?: Record<string, unknown>;
+  /** When true, keeps PrismaIdentityAuditRepository to test atomicity in PostgreSQL. */
+  usePrismaAudit?: boolean;
 }
 
 export async function bootHarness(options: BootOptions = {}): Promise<Harness> {
@@ -134,7 +136,7 @@ export async function bootHarness(options: BootOptions = {}): Promise<Harness> {
     REWARDS_ENABLED: true, // Story 12.11: the flag defaults off; the Rewards PG suites exercise the routes
     ...options.env,
   });
-  const moduleFixture = await Test.createTestingModule({
+  const moduleBuilder = Test.createTestingModule({
     imports: [AppModule],
   })
     .overrideProvider(PrismaService)
@@ -143,13 +145,16 @@ export async function bootHarness(options: BootOptions = {}): Promise<Harness> {
     .useValue(userRepo)
     .overrideProvider(SESSION_REPOSITORY_PORT)
     .useValue(new InMemorySessionRepository(auditRepo))
-    .overrideProvider(IDENTITY_AUDIT_PORT)
-    .useValue(auditRepo)
     .overrideProvider(DEMOGRAPHIC_PROFILE_REPOSITORY_PORT)
     .useValue(new InMemoryDemographicProfileRepository())
     .overrideProvider(EnvService)
-    .useValue(envService)
-    .compile();
+    .useValue(envService);
+
+  if (!options.usePrismaAudit) {
+    moduleBuilder.overrideProvider(IDENTITY_AUDIT_PORT).useValue(auditRepo);
+  }
+
+  const moduleFixture = await moduleBuilder.compile();
 
   const sessionService = moduleFixture.get(SessionService);
   const ledger = moduleFixture.get(LedgerService, { strict: false });

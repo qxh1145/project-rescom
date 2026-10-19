@@ -49,7 +49,27 @@ Nguyên tắc chung:
 
 ---
 
-## 5. Nhật ký kiểm toán
+## 5. Cộng Điểm thủ công và Hoàn tác (Story 14.5)
+
+- **Khi nào dùng:** bồi thường sự cố làm khảo sát, hỗ trợ người dùng khiếu nại, hoặc thưởng/điều chỉnh thủ công mà không cần tạo bút toán thô.
+- **Vị trí thao tác:** `/admin/users` → chọn người dùng → phần **"Cộng Điểm"** trong bảng chi tiết (bên dưới phần Vai trò). Bị ẩn đối với chính tài khoản Admin đang đăng nhập.
+- **Cộng Điểm:**
+  - Nhập số Điểm (nguyên dương, từ 1 đến 2.147.483.647) và lý do (10–500 ký tự). Nhấn **"Cộng Điểm"**.
+  - Nếu số Điểm > 5.000: hộp thoại yêu cầu gõ lại đúng số Điểm để xác nhận an toàn.
+  - Hệ thống ghi bút toán `SYSTEM_ISSUANCE (-amount) → USER_AVAILABLE (+amount)`, tạo bản ghi nhật ký kiểm toán `ADMIN_POINTS_CREDITED`, và xếp hàng sự kiện Outbox gửi thông báo in-app kèm lý do cho người dùng trong cùng một giao dịch (Unit of Work) nguyên tử.
+  - Bị chặn: không thể tự cộng cho mình (403), không thể cộng cho tài khoản đang bị khoá `LOCKED` (409).
+- **Hoàn tác:**
+  - Nhấn nút **"Hoàn tác"** tại dòng giao dịch trong danh sách "Điểm đã cộng" bên dưới.
+  - Bắt buộc nhập lý do hoàn tác (10–500 ký tự).
+  - Hệ thống tạo bút toán đảo ngược, trừ số Điểm khỏi `USER_AVAILABLE` của người dùng và ghi nhật ký kiểm toán `LEDGER_JOURNAL_REVERSED`.
+  - **Lưu ý:** không thể hoàn tác nếu người dùng đã sử dụng số Điểm này khiến số dư Khả dụng không đủ (`INSUFFICIENT_BALANCE` 409), hoặc khoản này đã được hoàn tác trước đó (`JOURNAL_ALREADY_REVERSED` 409).
+- **Rủi ro đã biết & tính khả hoán (Fungibility Risk - Addendum A):**
+  - Điểm cộng trực tiếp vào `USER_AVAILABLE` có tính khả hoán hoàn toàn với Điểm nạp tiền qua payOS.
+  - Việc kiểm tra điều kiện hoàn tiền nạp (`placeTopUpRefundHold`) dựa trên điều kiện `Available >= points` và `hasSpendSince`. Nếu người dùng đã tiêu Điểm nạp nhưng được Admin cộng Điểm thủ công, số Điểm khả dụng này có thể thỏa mãn điều kiện giữ chỗ hoàn tiền nạp. Đây là rủi ro đã được chấp thuận trong thiết kế kiến trúc. Admin cần cẩn trọng khi cộng Điểm cho tài khoản đang có yêu cầu hoàn tiền nạp.
+
+---
+
+## 6. Nhật ký kiểm toán
 
 Mỗi thao tác ghi thành công tạo một dòng trong nhật ký, xem tại `/admin/audit-log`:
 
@@ -58,12 +78,14 @@ Mỗi thao tác ghi thành công tạo một dòng trong nhật ký, xem tại `
 | Đối soát | `LEDGER_ACCOUNT_RECONCILED` | Đối soát tài khoản sổ cái |
 | Chạy lại trả thưởng | `REWARD_REDRIVEN` | Chạy lại trả thưởng |
 | Giải phóng / Chạy tiếp | `PENDING_REWARDS_RELEASED` | Giải phóng Điểm chờ 48 giờ |
+| Cộng Điểm thủ công | `ADMIN_POINTS_CREDITED` | Cộng Điểm thủ công |
+| Hoàn tác giao dịch sổ cái | `LEDGER_JOURNAL_REVERSED` | Hoàn tác giao dịch sổ cái |
 
-Người thực hiện là Admin đang đăng nhập. Thao tác bị từ chối (lỗi) không ghi dòng nào. Chi tiết ghi kèm: mã tài khoản và số dư trước/sau (đối soát); loại, mã, trạng thái và số Điểm (chạy lại trả thưởng); giới hạn và các số đếm của lô (giải phóng). Không ghi thông tin cá nhân.
+Người thực hiện là Admin đang đăng nhập. Thao tác bị từ chối (lỗi) không ghi dòng nào. Chi tiết ghi kèm: mã tài khoản và số dư trước/sau (đối soát); loại, mã, trạng thái và số Điểm (chạy lại trả thưởng); giới hạn và các số đếm của lô (giải phóng); mã bút toán, số Điểm, lý do (cộng Điểm / hoàn tác). Không ghi thông tin cá nhân nhạy cảm.
 
-**Lưu ý:** dòng nhật ký được ghi sau khi thao tác đã hoàn tất, không nằm cùng giao dịch. Nếu việc ghi nhật ký lỗi, màn hình báo lỗi dù thao tác đã được thực hiện. Vì mọi thao tác đều an toàn khi chạy lại, hãy chạy lại thao tác đó; lần chạy lại sẽ ghi nhật ký.
+**Lưu ý:** đối với các thao tác vận hành ở mục 1–4, dòng nhật ký được ghi sau khi thao tác đã hoàn tất, không nằm cùng giao dịch. Riêng thao tác cộng Điểm thủ công (mục 5) ghi nhật ký kiểm toán nguyên tử trong cùng giao dịch Unit of Work với bút toán sổ cái.
 
-## 6. Liên quan
+## 7. Liên quan
 
-- Màn hình: `/admin/transactions` → **Vận hành**.
+- Màn hình: `/admin/transactions` → **Vận hành**, và `/admin/users` → **Chi tiết người dùng**.
 - Sự cố nạp tiền payOS: [Sổ tay vận hành payOS Production](payos-production-runbook.md), mục 7.

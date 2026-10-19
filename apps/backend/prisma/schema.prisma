@@ -199,6 +199,8 @@ enum NotificationType {
   TOPUP_REFUND_WITHDRAWN
   TOPUP_REFUND_REJECTED
   MISSING_CODE_REPORT_RESOLVED
+  /// Story 14.5: Admin direct point credit in-app notification.
+  ADMIN_POINTS_CREDITED
 }
 
 /// Story IR.4b B5: one email delivery attempt per notification. Mirrors

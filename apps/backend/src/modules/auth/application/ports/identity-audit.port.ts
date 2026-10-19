@@ -20,7 +20,10 @@ export type IdentityAuditAction =
   // Story 14.4: Admin ledger operations (reconcile, reward re-drive, release).
   | 'LEDGER_ACCOUNT_RECONCILED'
   | 'REWARD_REDRIVEN'
-  | 'PENDING_REWARDS_RELEASED';
+  | 'PENDING_REWARDS_RELEASED'
+  // Story 14.5: Direct point credit and ledger reversal audit
+  | 'ADMIN_POINTS_CREDITED'
+  | 'LEDGER_JOURNAL_REVERSED';
 
 export interface CreateIdentityAuditRecord {
   action: IdentityAuditAction;

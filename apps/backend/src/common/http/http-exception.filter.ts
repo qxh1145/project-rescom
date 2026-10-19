@@ -160,6 +160,9 @@ import {
   RefundNotRefundedException,
   RefundBankTransferAlreadyRecordedException,
   RefundResolutionValidationException,
+  AdminPointCreditCapabilityRequiredException,
+  AdminSelfCreditForbiddenException,
+  UserBannedException,
 } from '../../modules/economy/application/exceptions/economy.exceptions';
 import { NotificationNotFoundException } from '../../modules/notifications/application/exceptions/notification.exceptions';
 import {
@@ -623,7 +626,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       exception instanceof RefundNotHeldException ||
       exception instanceof RefundDestinationUnconfirmedException ||
       exception instanceof RefundNotRefundedException ||
-      exception instanceof RefundBankTransferAlreadyRecordedException
+      exception instanceof RefundBankTransferAlreadyRecordedException ||
+      exception instanceof UserBannedException
     ) {
       status = HttpStatus.CONFLICT;
       code = exception.code;
@@ -692,7 +696,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message = exception.message;
     } else if (
       exception instanceof TopUpAdminCapabilityRequiredException ||
-      exception instanceof TopUpSelfReviewForbiddenException
+      exception instanceof TopUpSelfReviewForbiddenException ||
+      exception instanceof AdminPointCreditCapabilityRequiredException ||
+      exception instanceof AdminSelfCreditForbiddenException
     ) {
       status = HttpStatus.FORBIDDEN;
       code = exception.code;

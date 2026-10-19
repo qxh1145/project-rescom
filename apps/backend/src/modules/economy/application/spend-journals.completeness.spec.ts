@@ -52,6 +52,9 @@ describe('SpendJournals Completeness', () => {
     'toSettlementResult',
     'findReversedJournalIds',
     'isJournalCompatible',
+    'findAdminCreditJournal',
+    'listAdminCredits',
+    'findJournalById',
   ]);
 
   it('verifies that all LedgerService posting methods with USER_AVAILABLE debits are classified', async () => {
@@ -436,6 +439,16 @@ describe('SpendJournals Completeness', () => {
             points: 10,
             topUpId: randomUUID(),
             orderCode: 999,
+          }),
+      ],
+      [
+        'creditAdminPoints',
+        () =>
+          service.creditAdminPoints({
+            userId: u,
+            amount: 10,
+            reason: 'Test admin point credit for completeness',
+            idempotencyKey: randomUUID(),
           }),
       ],
     ];

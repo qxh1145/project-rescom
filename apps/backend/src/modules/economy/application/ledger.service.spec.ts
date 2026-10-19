@@ -18,6 +18,7 @@ import {
   PendingCreditNotFoundException,
   PendingRewardForbiddenException,
   PendingRewardNotMaturedException,
+  RefundResolutionValidationException,
   UnbalancedJournalException,
 } from './exceptions/economy.exceptions';
 
@@ -3261,6 +3262,197 @@ describe('Story 6.1: Double-Entry Ledger Core & Idempotency - LedgerService', ()
       expect(existing).toBeNull();
       const wallet = await service.getWallet(redeemUserId);
       expect(wallet.balance.available).toBe(200);
+    });
+  });
+
+  describe('Story 14.5: Admin Direct Point Credit', () => {
+    const adminCreditUser = '11111111-1111-4111-8111-111111111111';
+    const key = 'credit-key-1';
+
+    it('credit posts balanced journal and increases available balance', async () => {
+      const journal = await service.creditAdminPoints({
+        userId: adminCreditUser,
+        amount: 500,
+        reason: 'Hỗ trợ sự cố kỹ thuật',
+        idempotencyKey: key,
+      });
+
+      expect(journal.idempotencyKey).toBe(`admin-credit:${key}`);
+      expect(journal.description).toBe('Hỗ trợ sự cố kỹ thuật');
+      const wallet = await service.getWallet(adminCreditUser);
+      expect(wallet.balance.available).toBe(500);
+
+      const items = await service.listAdminCredits(adminCreditUser);
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({
+        journalId: journal.id,
+        amount: 500,
+        reason: 'Hỗ trợ sự cố kỹ thuật',
+        reversed: false,
+        reversalJournalId: null,
+      });
+    });
+
+    it('replay returns same journal and does not double credit', async () => {
+      const first = await service.creditAdminPoints({
+        userId: adminCreditUser,
+        amount: 500,
+        reason: 'Hỗ trợ sự cố kỹ thuật',
+        idempotencyKey: key,
+      });
+      const second = await service.creditAdminPoints({
+        userId: adminCreditUser,
+        amount: 500,
+        reason: 'Hỗ trợ sự cố kỹ thuật',
+        idempotencyKey: key,
+      });
+
+      expect(second.id).toBe(first.id);
+      const wallet = await service.getWallet(adminCreditUser);
+      expect(wallet.balance.available).toBe(500);
+    });
+
+    it('reversal after a replayed credit reverses the single journal once', async () => {
+      const first = await service.creditAdminPoints({
+        userId: adminCreditUser,
+        amount: 500,
+        reason: 'Hỗ trợ sự cố kỹ thuật',
+        idempotencyKey: key,
+      });
+      const replay = await service.creditAdminPoints({
+        userId: adminCreditUser,
+        amount: 500,
+        reason: 'Hỗ trợ sự cố kỹ thuật',
+        idempotencyKey: key,
+      });
+      expect(replay.id).toBe(first.id);
+
+      const reversal = await service.reverseJournal({
+        targetJournalId: replay.id,
+        reason: 'Hoàn tác khoản cộng nhầm',
+      });
+      expect(reversal.reversesJournalId).toBe(first.id);
+      const wallet = await service.getWallet(adminCreditUser);
+      expect(wallet.balance.available).toBe(0);
+      const items = await service.listAdminCredits(adminCreditUser);
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({
+        reversed: true,
+        reversalJournalId: reversal.id,
+      });
+    });
+
+    it('incompatible replay throws IdempotencyConflictException', async () => {
+      await service.creditAdminPoints({
+        userId: adminCreditUser,
+        amount: 500,
+        reason: 'Hỗ trợ sự cố kỹ thuật',
+        idempotencyKey: key,
+      });
+
+      await expect(
+        service.creditAdminPoints({
+          userId: adminCreditUser,
+          amount: 600,
+          reason: 'Hỗ trợ sự cố kỹ thuật',
+          idempotencyKey: key,
+        }),
+      ).rejects.toBeInstanceOf(IdempotencyConflictException);
+    });
+
+    it('reversal without reason (or reason < 10 chars) throws RefundResolutionValidationException', async () => {
+      const journal = await service.creditAdminPoints({
+        userId: adminCreditUser,
+        amount: 500,
+        reason: 'Hỗ trợ sự cố kỹ thuật',
+        idempotencyKey: 'credit-to-reverse-1',
+      });
+
+      await expect(
+        service.reverseJournal({
+          targetJournalId: journal.id,
+          reason: 'Short',
+          idempotencyKey: 'reversal-short',
+        }),
+      ).rejects.toBeInstanceOf(RefundResolutionValidationException);
+
+      await expect(
+        service.reverseJournal({
+          targetJournalId: journal.id,
+          idempotencyKey: 'reversal-no-reason',
+        }),
+      ).rejects.toBeInstanceOf(RefundResolutionValidationException);
+    });
+
+    it('reversal with valid reason succeeds and reduces available balance', async () => {
+      const journal = await service.creditAdminPoints({
+        userId: adminCreditUser,
+        amount: 500,
+        reason: 'Hỗ trợ sự cố kỹ thuật',
+        idempotencyKey: 'credit-to-reverse-2',
+      });
+
+      const rev = await service.reverseJournal({
+        targetJournalId: journal.id,
+        reason: 'Hoàn tác cộng nhầm tài khoản',
+        idempotencyKey: 'reversal-valid',
+      });
+
+      expect(rev.reversesJournalId).toBe(journal.id);
+      const wallet = await service.getWallet(adminCreditUser);
+      expect(wallet.balance.available).toBe(0);
+
+      const items = await service.listAdminCredits(adminCreditUser);
+      const item = items.find((i) => i.journalId === journal.id);
+      expect(item?.reversed).toBe(true);
+      expect(item?.reversalJournalId).toBe(rev.id);
+    });
+
+    it('second reversal throws JournalAlreadyReversedException', async () => {
+      const journal = await service.creditAdminPoints({
+        userId: adminCreditUser,
+        amount: 500,
+        reason: 'Hỗ trợ sự cố kỹ thuật',
+        idempotencyKey: 'credit-to-reverse-3',
+      });
+
+      await service.reverseJournal({
+        targetJournalId: journal.id,
+        reason: 'Hoàn tác cộng nhầm tài khoản',
+        idempotencyKey: 'reversal-first',
+      });
+
+      await expect(
+        service.reverseJournal({
+          targetJournalId: journal.id,
+          reason: 'Hoàn tác lần thứ hai thất bại',
+          idempotencyKey: 'reversal-second',
+        }),
+      ).rejects.toBeInstanceOf(JournalAlreadyReversedException);
+    });
+
+    it('reversal after spending points throws InsufficientBalanceException', async () => {
+      const journal = await service.creditAdminPoints({
+        userId: adminCreditUser,
+        amount: 500,
+        reason: 'Hỗ trợ sự cố kỹ thuật',
+        idempotencyKey: 'credit-to-reverse-4',
+      });
+
+      // Spend the points so available drops below 500
+      await service.spendPoints({
+        userId: adminCreditUser,
+        amount: 400,
+        idempotencyKey: 'spend-before-reverse',
+      });
+
+      await expect(
+        service.reverseJournal({
+          targetJournalId: journal.id,
+          reason: 'Hoàn tác cộng nhầm tài khoản',
+          idempotencyKey: 'reversal-insufficient',
+        }),
+      ).rejects.toBeInstanceOf(InsufficientBalanceException);
     });
   });
 });

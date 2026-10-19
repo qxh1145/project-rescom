@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
+  ADMIN_CREDIT_KEY_PREFIX,
   canAccountClassOverdraft,
   LedgerAccountClass,
   LedgerDriftedAccount,
 } from '@rescom/schemas';
 import { PrismaService } from '../../../common/database/prisma.service';
 import {
+  AdminPointCreditRecord,
   LedgerRepositoryPort,
   MaturedCreditCursor,
   PostJournalTransactionOptions,
@@ -627,5 +629,51 @@ export class PrismaLedgerRepository implements LedgerRepositoryPort {
       LIMIT 1
     `;
     return (rows[0]?.count ?? 0n) > 0n;
+  }
+
+  async findAdminCreditsForUser(
+    userId: string,
+    limit: number,
+  ): Promise<AdminPointCreditRecord[]> {
+    const rows = await this.client.ledgerJournal.findMany({
+      where: {
+        idempotencyKey: { startsWith: ADMIN_CREDIT_KEY_PREFIX },
+        entries: {
+          some: {
+            amount: { gt: 0 },
+            account: {
+              userId,
+              accountClass: 'USER_AVAILABLE',
+            },
+          },
+        },
+      },
+      include: {
+        entries: {
+          include: { account: true },
+        },
+        reversal: true,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+    });
+
+    return rows.map((row) => {
+      const userEntry = row.entries.find(
+        (e) =>
+          e.account.userId === userId &&
+          e.account.accountClass === 'USER_AVAILABLE' &&
+          e.amount > 0,
+      );
+      return {
+        journalId: row.id,
+        amount: userEntry ? userEntry.amount : 0,
+        reason: row.description ?? '',
+        createdAt: row.createdAt,
+        reversed: row.reversal != null,
+        reversalJournalId: row.reversal?.id ?? null,
+        reversedAt: row.reversal?.createdAt ?? null,
+      };
+    });
   }
 }

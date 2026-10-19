@@ -537,3 +537,51 @@ test("Story 13.12: wallet history handles topup-refund-resolve (REFUNDED vs REJE
   assert.equal(rowsNoUuid[0].topUpHref, null);
 });
 
+test("ADMIN_CREDIT row title, note, and reversal stays REVERSAL (Story 14.5)", () => {
+  const creditJournalId = uuid();
+  const entries = [
+    {
+      id: uuid(),
+      journalId: creditJournalId,
+      accountClass: "USER_AVAILABLE",
+      amount: 500,
+      idempotencyKey: "admin-credit:test-key-1",
+      reversesJournalId: null,
+      description: "Hỗ trợ khách hàng do gián đoạn dịch vụ",
+      createdAt: "2026-10-19T08:00:00Z",
+    },
+  ];
+
+  assert.equal(history.historyKindOf("admin-credit:test-key-1", null), "ADMIN_CREDIT");
+  const rows = history.toHistoryRows(entries);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].kind, "ADMIN_CREDIT");
+  assert.equal(rows[0].title, "Điểm cộng từ Admin");
+  assert.equal(rows[0].amount, 500);
+  assert.equal(rows[0].direction, "in");
+  assert.equal(rows[0].bucket, "USER_AVAILABLE");
+  assert.equal(rows[0].note, "Lý do: Hỗ trợ khách hàng do gián đoạn dịch vụ");
+  assert.equal(rows[0].shortNote, "Hỗ trợ khách hàng do gián đoạn dịch vụ");
+
+  // Reversal of an admin credit has reversesJournalId set -> kind is REVERSAL
+  assert.equal(history.historyKindOf("reversal:" + creditJournalId, creditJournalId), "REVERSAL");
+  const revEntries = [
+    {
+      id: uuid(),
+      journalId: uuid(),
+      accountClass: "USER_AVAILABLE",
+      amount: -500,
+      idempotencyKey: "reversal:" + creditJournalId,
+      reversesJournalId: creditJournalId,
+      description: "Hoàn tác do nhầm lẫn",
+      createdAt: "2026-10-19T08:30:00Z",
+    },
+  ];
+  const revRows = history.toHistoryRows(revEntries);
+  assert.equal(revRows.length, 1);
+  assert.equal(revRows[0].kind, "REVERSAL");
+  assert.equal(revRows[0].title, "Điều chỉnh giao dịch");
+  assert.equal(revRows[0].amount, -500);
+});
+
+

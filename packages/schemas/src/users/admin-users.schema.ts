@@ -109,3 +109,83 @@ export const paginatedAdminUsersResponseSchema = z
 export type PaginatedAdminUsersResponse = z.infer<
   typeof paginatedAdminUsersResponseSchema
 >;
+
+/** Story 14.5: Admin Direct Point Credit constants and schemas */
+export const ADMIN_POINT_CREDIT_REASON_MIN = 10;
+export const ADMIN_POINT_CREDIT_REASON_MAX = 500;
+export const ADMIN_POINT_CREDIT_CONFIRM_THRESHOLD = 5000;
+export const ADMIN_POINT_CREDIT_MAX_AMOUNT = 2_147_483_647;
+export const ADMIN_CREDIT_KEY_PREFIX = "admin-credit:";
+
+export const createAdminPointCreditSchema = z
+  .object({
+    amount: z
+      .number()
+      .int()
+      .min(1)
+      .max(ADMIN_POINT_CREDIT_MAX_AMOUNT),
+    reason: z
+      .string()
+      .trim()
+      .min(ADMIN_POINT_CREDIT_REASON_MIN)
+      .max(ADMIN_POINT_CREDIT_REASON_MAX),
+    idempotencyKey: z.string().uuid(),
+  })
+  .strict();
+
+export type CreateAdminPointCreditDto = z.infer<
+  typeof createAdminPointCreditSchema
+>;
+
+export const adminPointCreditSchema = z
+  .object({
+    journalId: z.string().uuid(),
+    userId: z.string().uuid(),
+    amount: z.number().int().min(1),
+    reason: z.string(),
+    createdAt: z.string().datetime(),
+    replayed: z.boolean(),
+  })
+  .strict();
+
+export type AdminPointCreditDto = z.infer<typeof adminPointCreditSchema>;
+
+export const adminPointCreditListItemSchema = z
+  .object({
+    journalId: z.string().uuid(),
+    amount: z.number().int().min(1),
+    reason: z.string(),
+    createdAt: z.string().datetime(),
+    reversed: z.boolean(),
+    reversalJournalId: z.string().uuid().nullable(),
+    reversedAt: z.string().datetime().nullable(),
+  })
+  .strict();
+
+export type AdminPointCreditListItem = z.infer<
+  typeof adminPointCreditListItemSchema
+>;
+
+export const adminPointCreditListSchema = z
+  .object({
+    items: z.array(adminPointCreditListItemSchema),
+  })
+  .strict();
+
+export type AdminPointCreditList = z.infer<typeof adminPointCreditListSchema>;
+
+export const ADMIN_POINTS_CREDITED_EVENT_TYPE = "AdminPointsCredited";
+
+export const adminPointsCreditedPayloadSchema = z
+  .object({
+    journalId: z.string().uuid(),
+    userId: z.string().uuid(),
+    amount: z.number().int().min(1),
+    reason: z.string(),
+    actorId: z.string().uuid(),
+  })
+  .strict();
+
+export type AdminPointsCreditedPayload = z.infer<
+  typeof adminPointsCreditedPayloadSchema
+>;

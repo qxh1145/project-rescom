@@ -1,11 +1,23 @@
 import { z } from "zod";
-import { adminUserSchema, type UserRole, type UserStatus } from "@rescom/schemas";
+import {
+  adminUserSchema,
+  adminPointCreditSchema,
+  adminPointCreditListSchema,
+  ledgerJournalSchema,
+  type UserRole,
+  type UserStatus,
+  type CreateAdminPointCreditDto,
+  type AdminPointCreditDto,
+  type AdminPointCreditList,
+  type LedgerJournalDto,
+} from "@rescom/schemas";
 import { apiRequest } from "../api/client.ts";
 
 /**
  * Admin · Người dùng (Figma 11d, 63:2212).
  *
- * VERIFIED (`admin-users.controller.ts`, `packages/schemas/src/users/admin-users.schema.ts`,
+ * VERIFIED (`admin-users.controller.ts`, `admin-point-credits.controller.ts`,
+ * `ledger.controller.ts`, `packages/schemas/src/users/admin-users.schema.ts`,
  * `user-admin.service.ts`), ADMIN only:
  * - `GET /admin/users?page&limit&search&role&status` → `{ items, pagination }`
  * - `GET /admin/users/:id` → `{ user }`
@@ -16,6 +28,10 @@ import { apiRequest } from "../api/client.ts";
  *   403 `USER_ADMIN_ACTOR_NOT_ACTIVE_ADMIN`, 404 `USER_NOT_FOUND`. Written to the audit log.
  * - `PATCH /admin/users/:id/role` `{ role }` (CSRF) → `{ user }`. Revokes every session of
  *   the target; 400 `CANNOT_DEMOTE_SELF` / `CANNOT_DEMOTE_LAST_ADMIN`.
+ * - `POST /admin/users/:id/point-credits` `{ amount, reason, idempotencyKey }` (CSRF)
+ *   → `{ journalId, userId, amount, reason, createdAt, replayed }`.
+ * - `GET /admin/users/:id/point-credits` → `{ items }`.
+ * - `POST /economy/journals/:id/reverse` `{ reason }` (CSRF) → `LedgerJournalDto`.
  *
  * VERIFIED `lockReason` (shared `adminUserSchema`, mock-off plan 4.6): the reason of
  * the latest lock, read from the identity audit log; null for active accounts.
@@ -124,3 +140,40 @@ export async function updateAdminUserRole(id: string, role: UserRole, signal?: A
   });
   return user;
 }
+
+export function creditAdminUserPoints(
+  userId: string,
+  body: CreateAdminPointCreditDto,
+  signal?: AbortSignal,
+): Promise<AdminPointCreditDto> {
+  return apiRequest(`/admin/users/${encodeURIComponent(userId)}/point-credits`, {
+    method: "POST",
+    body,
+    schema: adminPointCreditSchema,
+    signal,
+  });
+}
+
+export function listAdminUserPointCredits(
+  userId: string,
+  signal?: AbortSignal,
+): Promise<AdminPointCreditList> {
+  return apiRequest(`/admin/users/${encodeURIComponent(userId)}/point-credits`, {
+    schema: adminPointCreditListSchema,
+    signal,
+  });
+}
+
+export function reverseAdminPointCredit(
+  journalId: string,
+  reason: string,
+  signal?: AbortSignal,
+): Promise<LedgerJournalDto> {
+  return apiRequest(`/economy/journals/${encodeURIComponent(journalId)}/reverse`, {
+    method: "POST",
+    body: { reason },
+    schema: ledgerJournalSchema,
+    signal,
+  });
+}
+

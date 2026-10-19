@@ -88,6 +88,8 @@ test("labels format action and user properly including unknown action and null a
 
   assert.equal(auditActionLabel("LOGIN_SUCCESS"), "Đăng nhập");
   assert.equal(auditActionLabel("USER_ROLE_CHANGED"), "Đổi vai trò");
+  assert.equal(auditActionLabel("ADMIN_POINTS_CREDITED"), "Cộng Điểm thủ công");
+  assert.equal(auditActionLabel("LEDGER_JOURNAL_REVERSED"), "Hoàn tác giao dịch sổ cái");
   assert.equal(auditActionLabel("UNKNOWN_FUTURE_ACTION"), "UNKNOWN_FUTURE_ACTION");
 
   assert.equal(

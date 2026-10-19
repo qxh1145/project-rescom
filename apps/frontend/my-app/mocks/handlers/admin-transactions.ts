@@ -24,7 +24,8 @@ import {
   ledgerOpsRelease,
   listAdminJournals,
 } from "../data/admin-transactions";
-import { fail, ok } from "../envelope";
+import { reverseMockCredit } from "../data/admin-users";
+import { fail, missingCsrf, ok } from "../envelope";
 import { applyScenario } from "../scenarios";
 import { requireMockAdmin } from "./admin";
 
@@ -132,5 +133,38 @@ export const adminTransactionHandlers: RequestHandler[] = [
     const parsed = releaseMaturedPendingRewardsSchema.safeParse(await jsonBody(request));
     if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request.", { details: parsed.error.format() });
     return ok(maturedReleaseSummarySchema.parse(ledgerOpsRelease(parsed.data.limit)));
+  }),
+
+  // VERIFIED: POST /economy/journals/:id/reverse
+  http.post(apiUrl("/economy/journals/:id/reverse"), async ({ params, request }) => {
+    const forced = await applyScenario("admin");
+    if (forced) return forced;
+    const admin = await requireMockAdmin();
+    if (admin instanceof Response) return admin;
+    const csrf = missingCsrf(request);
+    if (csrf) return csrf;
+
+    const id = String(params.id);
+    if (!uuidParam.safeParse(id).success) {
+      return fail(400, "VALIDATION_ERROR", "Invalid UUID parameter");
+    }
+
+    const body = (await jsonBody(request)) as { reason?: string } | undefined;
+    const reason = typeof body?.reason === "string" ? body.reason : "";
+
+    const result = reverseMockCredit(id, reason);
+    if ("error" in result) {
+      if (result.error === "JOURNAL_NOT_FOUND") {
+        return fail(404, "JOURNAL_NOT_FOUND", "Journal not found.");
+      }
+      if (result.error === "JOURNAL_ALREADY_REVERSED") {
+        return fail(409, "JOURNAL_ALREADY_REVERSED", "Journal already reversed.");
+      }
+      if (result.error === "INSUFFICIENT_BALANCE") {
+        return fail(409, "INSUFFICIENT_BALANCE", "Insufficient balance to reverse.");
+      }
+      return fail(400, "VALIDATION_ERROR", "Reason is required and must be between 10 and 500 characters.");
+    }
+    return ok(result.journal);
   }),
 ];

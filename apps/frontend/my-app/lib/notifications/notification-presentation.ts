@@ -45,6 +45,7 @@ export const NOTIFICATION_PRESENTATION: Record<NotificationType, NotificationPre
   VOUCHER_EXPIRING: { icon: "clock", tone: "amber", href: null },
   CODE_ISSUE_RESOLVED: { icon: "check-circle", tone: "green", href: null },
   MISSING_CODE_REPORT_RESOLVED: { icon: "flag", tone: "teal", href: "/notifications" },
+  ADMIN_POINTS_CREDITED: { icon: "bank", tone: "green", href: "/wallet" },
 };
 
 /**
@@ -114,6 +115,7 @@ export const NOTIFICATION_TITLES: Record<NotificationType, string> = {
   VOUCHER_EXPIRING: "Voucher sắp hết hạn",
   CODE_ISSUE_RESOLVED: "Khiếu nại voucher đã xử lý",
   MISSING_CODE_REPORT_RESOLVED: "Kết quả báo thiếu mã",
+  ADMIN_POINTS_CREDITED: "Điểm cộng từ Admin",
 };
 
 const WARNING_TITLES: Record<WarningTopic, string> = {
