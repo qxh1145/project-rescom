@@ -408,3 +408,38 @@ export class RefundResolutionValidationException extends Error {
     this.name = 'RefundResolutionValidationException';
   }
 }
+
+// ---------------------------------------------------------------------------
+// Story 14.5: Admin Direct Point Credit
+// ---------------------------------------------------------------------------
+
+export class AdminSelfCreditForbiddenException extends Error {
+  readonly code = 'ADMIN_SELF_CREDIT_FORBIDDEN';
+  readonly status = 403;
+  constructor(
+    message = 'Administrators cannot credit points to their own account.',
+  ) {
+    super(message);
+    this.name = 'AdminSelfCreditForbiddenException';
+  }
+}
+
+export class UserBannedException extends Error {
+  readonly code = 'USER_BANNED';
+  readonly status = 409;
+  constructor(
+    message = 'Target user is locked and cannot receive point credits.',
+  ) {
+    super(message);
+    this.name = 'UserBannedException';
+  }
+}
+
+export class AdminPointCreditCapabilityRequiredException extends Error {
+  readonly code = 'ADMIN_CAPABILITY_REQUIRED';
+  readonly status = 403;
+  constructor(message = 'Only an active administrator can credit points.') {
+    super(message);
+    this.name = 'AdminPointCreditCapabilityRequiredException';
+  }
+}

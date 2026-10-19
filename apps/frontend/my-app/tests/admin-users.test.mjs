@@ -158,3 +158,129 @@ test("users messages", () => {
   assert.match(messages.userActionErrorMessage(lastAdmin, "role"), /Admin duy nhất/);
   assert.equal(messages.userActionErrorMessage(new Error("x"), "unlock"), "Chưa mở khoá được tài khoản. Vui lòng thử lại.");
 });
+
+test("point credit view helpers (Story 14.5)", () => {
+  assert.deepEqual(view.parseCreditAmount(" 100 "), { amount: 100 });
+  assert.deepEqual(view.parseCreditAmount("5.000"), { amount: 5000 });
+  assert.deepEqual(view.parseCreditAmount("10,000"), { amount: 10000 });
+  assert.deepEqual(view.parseCreditAmount(""), { error: "Nhập số Điểm cần cộng." });
+  assert.deepEqual(view.parseCreditAmount("-10"), { error: "Nhập số nguyên dương." });
+  assert.deepEqual(view.parseCreditAmount("abc"), { error: "Nhập số nguyên dương." });
+
+  assert.equal(view.needsRetypeConfirm(5000), false);
+  assert.equal(view.needsRetypeConfirm(5001), true);
+  assert.equal(view.retypeMatches(" 5.001 ", 5001), true);
+  assert.equal(view.retypeMatches("5000", 5001), false);
+
+  assert.match(view.creditReasonError("  "), /Nhập lý do/);
+  assert.match(view.creditReasonError("ngắn"), /ít nhất 10/);
+  assert.match(view.creditReasonError("x".repeat(501)), /tối đa 500/);
+  assert.equal(view.creditReasonError("Bồi thường lỗi gián đoạn hệ thống khảo sát."), null);
+});
+
+test("point credit service and messages (Story 14.5)", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const calls = [];
+  function installFetch(handler) {
+    calls.length = 0;
+    globalThis.fetch = async (url, init) => {
+      calls.push({ url: String(url), init });
+      if (String(url) === "/api/auth/csrf") return jsonResponse(200, { data: { csrfToken: "csrf-token" } });
+      return handler(String(url), init);
+    };
+  }
+
+  await t.test("creditAdminUserPoints posts with CSRF and validates response", async () => {
+    installFetch(() =>
+      jsonResponse(200, {
+        data: {
+          journalId: "22222222-2222-4222-8222-222222222222",
+          userId: KHANG,
+          amount: 500,
+          reason: "Bồi thường sự cố",
+          createdAt: "2026-10-19T08:00:00Z",
+          replayed: false,
+        },
+        error: null,
+        meta: {},
+      }),
+    );
+    const result = await service.creditAdminUserPoints(KHANG, {
+      amount: 500,
+      reason: "Bồi thường sự cố",
+      idempotencyKey: "credit-key-1",
+    });
+    assert.equal(result.amount, 500);
+    assert.equal(result.replayed, false);
+    const call = calls.find((c) => c.url === `/api/admin/users/${KHANG}/point-credits`);
+    assert.equal(call.init.method, "POST");
+    assert.equal(call.init.headers["X-CSRF-Token"], "csrf-token");
+  });
+
+  await t.test("listAdminUserPointCredits fetches credit list", async () => {
+    installFetch(() =>
+      jsonResponse(200, {
+        data: {
+          items: [
+            {
+              journalId: "22222222-2222-4222-8222-222222222222",
+              amount: 500,
+              reason: "Bồi thường sự cố",
+              createdAt: "2026-10-19T08:00:00Z",
+              reversed: false,
+              reversalJournalId: null,
+              reversedAt: null,
+            },
+          ],
+        },
+        error: null,
+        meta: {},
+      }),
+    );
+    const list = await service.listAdminUserPointCredits(KHANG);
+    assert.equal(list.items.length, 1);
+    assert.equal(list.items[0].amount, 500);
+  });
+
+  await t.test("reverseAdminPointCredit posts reversal with reason", async () => {
+    const journalId = "22222222-2222-4222-8222-222222222222";
+    installFetch(() =>
+      jsonResponse(200, {
+        data: {
+          id: "33333333-3333-4333-8333-333333333333",
+          idempotencyKey: `reversal:${journalId}`,
+          description: "Hoàn tác do nhầm lẫn",
+          reversesJournalId: journalId,
+          createdAt: "2026-10-19T08:30:00Z",
+          entries: [],
+        },
+        error: null,
+        meta: {},
+      }),
+    );
+    const journal = await service.reverseAdminPointCredit(journalId, "Hoàn tác do nhầm lẫn");
+    assert.equal(journal.reversesJournalId, journalId);
+    const call = calls.find((c) => c.url === `/api/economy/journals/${journalId}/reverse`);
+    assert.equal(call.init.method, "POST");
+    assert.equal(call.init.body, JSON.stringify({ reason: "Hoàn tác do nhầm lẫn" }));
+  });
+
+  await t.test("maps credit and reverse errors to messages", () => {
+    const selfCredit = new ApiError({ kind: "http", status: 403, code: "ADMIN_SELF_CREDIT_FORBIDDEN", message: "x" });
+    assert.equal(messages.userActionErrorMessage(selfCredit, "credit"), "Bạn không thể tự cộng Điểm cho tài khoản của mình.");
+
+    const banned = new ApiError({ kind: "http", status: 409, code: "USER_BANNED", message: "x" });
+    assert.equal(messages.userActionErrorMessage(banned, "credit"), "Tài khoản này đang bị khoá nên không thể cộng Điểm.");
+
+    const insufficient = new ApiError({ kind: "http", status: 409, code: "INSUFFICIENT_BALANCE", message: "x" });
+    assert.equal(messages.userActionErrorMessage(insufficient, "reverse"), "Người dùng đã dùng một phần số Điểm này nên không thể hoàn tác.");
+
+    const reversed = new ApiError({ kind: "http", status: 409, code: "JOURNAL_ALREADY_REVERSED", message: "x" });
+    assert.equal(messages.userActionErrorMessage(reversed, "reverse"), "Khoản cộng Điểm này đã được hoàn tác.");
+  });
+});
+

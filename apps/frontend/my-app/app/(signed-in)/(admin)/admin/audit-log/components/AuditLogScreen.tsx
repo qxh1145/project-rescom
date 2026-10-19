@@ -159,8 +159,8 @@ export function AuditLogScreen() {
 
       <p className="mt-2 text-caption text-ink-muted">
         Nhật ký này gồm đăng nhập, phân quyền, khoá tài khoản, ghim khảo sát,
-        chạy lại Outbox và vận hành sổ cái (đối soát, chạy lại trả thưởng,
-        giải phóng Điểm chờ). Thao tác nạp/hoàn điểm, duyệt khảo sát và voucher chưa
+        chạy lại Outbox, cộng Điểm thủ công và vận hành sổ cái (đối soát, chạy lại trả thưởng,
+        giải phóng Điểm chờ, hoàn tác giao dịch). Thao tác nạp/hoàn tiền nạp, duyệt khảo sát và voucher chưa
         hiển thị ở đây.
       </p>
 

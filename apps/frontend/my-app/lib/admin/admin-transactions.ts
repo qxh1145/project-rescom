@@ -127,6 +127,7 @@ const IMPLIED_SOURCE: Partial<Record<HistoryKind, LedgerAccountClass>> = {
   TOP_UP: "SYSTEM_CLEARING",
   SURVEY_REWARD: "ESCROW",
   STARTER_GRANT: "SYSTEM_ISSUANCE",
+  ADMIN_CREDIT: "SYSTEM_ISSUANCE",
   ESCROW_REFUND: "ESCROW",
   // `resolveDisputeHold`: the publisher's refund / respondent's release comes out of the Integrity Hold.
   DISPUTE_RESOLUTION: "INTEGRITY_HOLD",
@@ -154,6 +155,7 @@ const TITLES: Record<HistoryKind, string> = {
   VOUCHER_REDEMPTION: "Đổi voucher",
   SURVEY_ESCROW: "Khoá ký quỹ",
   ESCROW_REFUND: "Hoàn ký quỹ",
+  ADMIN_CREDIT: "Điểm cộng từ Admin",
   REVERSAL: "Đảo giao dịch",
   OTHER: "Giao dịch",
 };
@@ -186,6 +188,8 @@ function relatedFallback(kind: HistoryKind, key: string, description: string | n
       return "Khiếu nại đang xét";
     case "ESCROW_REFUND":
       return "Khảo sát đóng / bị từ chối";
+    case "ADMIN_CREDIT":
+      return description?.trim() ? `Lý do: ${description.trim()}` : "Cộng Điểm từ Admin";
     case "REVERSAL":
       return "Hoàn tác một giao dịch trước";
     default:

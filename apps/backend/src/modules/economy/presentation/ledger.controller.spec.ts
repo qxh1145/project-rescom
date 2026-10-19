@@ -67,13 +67,36 @@ describe('LedgerController', () => {
       ],
     });
 
-    const revRes = await controller.reverseJournal(postRes.data!.id, {
+    const revRes = await controller.reverseJournal(postRes.data!.id, mockUser, {
       reason: 'Reversal test',
     });
 
     expect(revRes.data?.reversesJournalId).toBe(postRes.data!.id);
     expect(revRes.data?.entries).toHaveLength(2);
     expect(revRes.error).toBeNull();
+    const records = audit.records.filter(
+      (r) => r.action === 'LEDGER_JOURNAL_REVERSED',
+    );
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      action: 'LEDGER_JOURNAL_REVERSED',
+      userId: mockUser.id,
+      metadata: {
+        targetJournalId: postRes.data!.id,
+        reversalJournalId: revRes.data!.id,
+        reason: 'Reversal test',
+        adminCredit: false,
+      },
+    });
+
+    // Replay with the same key + reason returns the same reversal, no new audit row.
+    const replay = await controller.reverseJournal(postRes.data!.id, mockUser, {
+      reason: 'Reversal test',
+    });
+    expect(replay.data?.id).toBe(revRes.data!.id);
+    expect(
+      audit.records.filter((r) => r.action === 'LEDGER_JOURNAL_REVERSED'),
+    ).toHaveLength(1);
   });
 
   it('gets my accounts for current user', async () => {

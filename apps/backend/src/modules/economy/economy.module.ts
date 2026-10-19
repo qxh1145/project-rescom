@@ -16,6 +16,11 @@ import { PayosAvailability } from './application/payos-availability';
 import { PayosTopUpService } from './application/payos-top-up.service';
 import { TopUpNotificationHandler } from './application/top-up-notification.handler';
 import { TopUpRefundNotificationHandler } from './application/top-up-refund-notification.handler';
+import { AdminPointsCreditedNotificationHandler } from './application/admin-points-credited-notification.handler';
+import { AdminPointCreditService } from './application/admin-point-credit.service';
+import { ADMIN_POINT_CREDIT_OUTBOX_PORT } from './application/ports/admin-point-credit-outbox.port';
+import { PrismaAdminPointCreditOutbox } from './infrastructure/prisma-admin-point-credit-outbox';
+import { AdminPointCreditsController } from './presentation/admin-point-credits.controller';
 import { TopUpAdminAlerts } from './application/top-up-admin-alerts';
 import { TopUpAdminAlertHandler } from './infrastructure/top-up-admin-alert.handler';
 import { TopUpRefundAdminNoticeHandler } from './infrastructure/top-up-refund-admin-notice.handler';
@@ -101,6 +106,7 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     PayosTopUpController,
     PayosWebhookController,
     AdminTopUpController,
+    AdminPointCreditsController,
   ],
   providers: [
     { provide: WALLET_BALANCE_PORT, useClass: PrismaWalletBalanceReader },
@@ -284,6 +290,17 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
       inject: [NOTIFICATION_PUBLISHER_PORT],
     },
     {
+      provide: AdminPointsCreditedNotificationHandler,
+      useFactory: (publisher: NotificationPublisherPort) =>
+        new AdminPointsCreditedNotificationHandler(publisher),
+      inject: [NOTIFICATION_PUBLISHER_PORT],
+    },
+    AdminPointCreditService,
+    {
+      provide: ADMIN_POINT_CREDIT_OUTBOX_PORT,
+      useClass: PrismaAdminPointCreditOutbox,
+    },
+    {
       provide: TopUpRefundAdminNoticeHandler,
       useFactory: (
         adminCapability: AdminCapabilityPort,
@@ -420,6 +437,8 @@ export const STARTER_POINTS_DATA_PROVIDER = Symbol(
     TopUpAdminAlerts,
     TopUpRefundService,
     AdminTopUpRefundService,
+    AdminPointCreditService,
+    ADMIN_POINT_CREDIT_OUTBOX_PORT,
   ],
 })
 export class EconomyModule {}

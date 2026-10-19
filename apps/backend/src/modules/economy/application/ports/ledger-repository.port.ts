@@ -142,6 +142,24 @@ export interface LedgerRepositoryPort {
    * Evaluated by entries (debit USER_AVAILABLE into ESCROW or SYSTEM_SINK).
    */
   hasSpendSince(userId: string, since: Date): Promise<boolean>;
+
+  /**
+   * Story 14.5: Up to `limit` direct admin point credit journals for `userId`, newest first.
+   */
+  findAdminCreditsForUser(
+    userId: string,
+    limit: number,
+  ): Promise<AdminPointCreditRecord[]>;
+}
+
+export interface AdminPointCreditRecord {
+  journalId: string;
+  amount: number;
+  reason: string;
+  createdAt: Date;
+  reversed: boolean;
+  reversalJournalId: string | null;
+  reversedAt: Date | null;
 }
 
 export interface UserLedgerTransactionRecord {

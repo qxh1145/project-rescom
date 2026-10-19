@@ -25,18 +25,36 @@ const ACTION_MESSAGES: Record<string, string> = {
   CANNOT_DEMOTE_LAST_ADMIN: "Không thể hạ vai trò của Admin duy nhất còn hoạt động.",
   USER_ADMIN_ACTOR_NOT_ACTIVE_ADMIN: "Tài khoản của bạn không còn quyền Admin. Hãy đăng nhập lại.",
   USER_NOT_FOUND: "Không tìm thấy người dùng này. Có thể tài khoản đã bị xoá.",
-  VALIDATION_ERROR: "Thông tin gửi đi chưa hợp lệ. Kiểm tra lại rồi thử lại.",
+  VALIDATION_ERROR: "Dữ liệu gửi lên không hợp lệ.",
+  ADMIN_SELF_CREDIT_FORBIDDEN: "Bạn không thể tự cộng Điểm cho tài khoản của mình.",
+  USER_BANNED: "Tài khoản này đang bị khoá nên không thể cộng Điểm.",
+  IDEMPOTENCY_CONFLICT: "Yêu cầu này đã được gửi với nội dung khác. Đóng hộp thoại và thử lại.",
+  LEDGER_COMMAND_IN_PROGRESS: "Một thao tác khác trên sổ cái đang chạy. Thử lại sau vài giây.",
+  ADMIN_CAPABILITY_REQUIRED: "Tài khoản của bạn không có quyền cộng Điểm.",
+  INSUFFICIENT_BALANCE: "Người dùng đã dùng một phần số Điểm này nên không thể hoàn tác.",
+  JOURNAL_ALREADY_REVERSED: "Khoản cộng Điểm này đã được hoàn tác.",
+  JOURNAL_NOT_FOUND: "Không tìm thấy giao dịch này.",
 };
 
-export function userActionErrorMessage(error: unknown, action: "lock" | "unlock" | "role"): string {
+export function userActionErrorMessage(
+  error: unknown,
+  action: "lock" | "unlock" | "role" | "credit" | "reverse",
+): string {
   const fallback =
     action === "lock"
       ? "Chưa khoá được tài khoản. Vui lòng thử lại."
       : action === "unlock"
         ? "Chưa mở khoá được tài khoản. Vui lòng thử lại."
-        : "Chưa đổi được vai trò. Vui lòng thử lại.";
+        : action === "role"
+          ? "Chưa đổi được vai trò. Vui lòng thử lại."
+          : action === "credit"
+            ? "Chưa cộng được Điểm. Vui lòng thử lại."
+            : "Chưa hoàn tác được Điểm. Vui lòng thử lại.";
   if (!isApiError(error)) return fallback;
   if (error.kind === "network") return NETWORK;
   if (error.status === 429) return "Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút.";
+  if (action === "credit" && error.status === 403 && (!error.code || error.code === "FORBIDDEN")) {
+    return "Tài khoản của bạn không có quyền cộng Điểm.";
+  }
   return (error.code && ACTION_MESSAGES[error.code]) || fallback;
 }

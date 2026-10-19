@@ -31,8 +31,11 @@ import {
   topUpRefundHoldKey,
   topUpRefundResolveKey,
   TopUpRefundIneligibleReason,
+  ADMIN_CREDIT_KEY_PREFIX,
+  ADMIN_POINT_CREDIT_REASON_MIN,
 } from '@rescom/schemas';
 import {
+  AdminPointCreditRecord,
   LedgerRepositoryPort,
   MaturedCreditCursor,
   PostJournalTransactionOptions,
@@ -63,6 +66,7 @@ import {
   PendingCreditNotFoundException,
   PendingRewardForbiddenException,
   PendingRewardNotMaturedException,
+  RefundResolutionValidationException,
   UnbalancedJournalException,
 } from './exceptions/economy.exceptions';
 
@@ -568,6 +572,16 @@ export class LedgerService {
     ) {
       throw new InvalidLedgerOperationException(
         'Top-up credit journals cannot be reversed; use the refund flow.',
+      );
+    }
+
+    if (
+      targetJournal.idempotencyKey.startsWith(ADMIN_CREDIT_KEY_PREFIX) &&
+      (validated.reason?.trim().length ?? 0) < ADMIN_POINT_CREDIT_REASON_MIN
+    ) {
+      throw new RefundResolutionValidationException(
+        'Reason is required and must be between 10 and 500 characters when reversing an admin credit.',
+        [{ path: 'reason', code: 'too_small' }],
       );
     }
 
@@ -2165,6 +2179,13 @@ export class LedgerService {
   }
 
   /**
+   * Retrieves a journal by its ID. Non-posting.
+   */
+  async findJournalById(id: string): Promise<LedgerJournalEntity | null> {
+    return this.ledgerRepo.findJournalById(id);
+  }
+
+  /**
    * Grants starter points from SYSTEM_ISSUANCE to the user's FROZEN account (FR-4, AD-16).
    * Keyed by idempotencyKey: `starter-grant:${userId}`.
    */
@@ -2410,6 +2431,69 @@ export class LedgerService {
         { accountId: availableAccount.id, amount: params.amount },
       ],
     });
+  }
+
+  /**
+   * Story 14.5: Credits Points directly from SYSTEM_ISSUANCE to USER_AVAILABLE.
+   * Keyed by `admin-credit:${idempotencyKey}`.
+   */
+  async creditAdminPoints(params: {
+    userId: string;
+    amount: number;
+    reason: string;
+    idempotencyKey: string;
+  }): Promise<LedgerJournalEntity> {
+    if (!Number.isInteger(params.amount) || params.amount <= 0) {
+      throw new InvalidLedgerOperationException(
+        'Credit amount must be a positive integer.',
+      );
+    }
+
+    const systemAccount = await this.getOrCreateAccount(
+      null,
+      'SYSTEM_ISSUANCE',
+    );
+    const availableAccount = await this.getOrCreateAccount(
+      params.userId,
+      'USER_AVAILABLE',
+    );
+
+    const idempotencyKey = params.idempotencyKey.startsWith(
+      ADMIN_CREDIT_KEY_PREFIX,
+    )
+      ? params.idempotencyKey
+      : `${ADMIN_CREDIT_KEY_PREFIX}${params.idempotencyKey}`;
+
+    return this.postJournal({
+      idempotencyKey,
+      description: params.reason.trim(),
+      entries: [
+        { accountId: systemAccount.id, amount: -params.amount },
+        { accountId: availableAccount.id, amount: params.amount },
+      ],
+    });
+  }
+
+  /**
+   * Story 14.5: Reads an admin-credit journal by idempotency key. Non-posting.
+   */
+  async findAdminCreditJournal(
+    idempotencyKey: string,
+  ): Promise<LedgerJournalEntity | null> {
+    const key = idempotencyKey.startsWith(ADMIN_CREDIT_KEY_PREFIX)
+      ? idempotencyKey
+      : `${ADMIN_CREDIT_KEY_PREFIX}${idempotencyKey}`;
+    return this.findJournalByIdempotencyKey(key);
+  }
+
+  /**
+   * Story 14.5: Lists direct admin credits for a user, newest first. Non-posting.
+   */
+  async listAdminCredits(
+    userId: string,
+    limit = 50,
+  ): Promise<AdminPointCreditRecord[]> {
+    return this.ledgerRepo.findAdminCreditsForUser(userId, limit);
   }
 
   /**

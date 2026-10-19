@@ -1,4 +1,10 @@
-import type { UserRole } from "@rescom/schemas";
+import {
+  ADMIN_POINT_CREDIT_CONFIRM_THRESHOLD,
+  ADMIN_POINT_CREDIT_MAX_AMOUNT,
+  ADMIN_POINT_CREDIT_REASON_MIN,
+  ADMIN_POINT_CREDIT_REASON_MAX,
+  type UserRole,
+} from "@rescom/schemas";
 import type { AdminUserProfileSummary, AdminUserView } from "./users-service.ts";
 
 /** Pure presentation rules of Admin · Người dùng (Figma 11d) — unit-tested. */
@@ -95,17 +101,66 @@ export function formatCount(value: number | undefined): string {
 export const LOCK_REASON_MIN = 10;
 export const LOCK_REASON_MAX = 500;
 
+export function reasonLengthError(
+  reason: string,
+  min: number,
+  max: number,
+  emptyMessage: string,
+): string | null {
+  const length = reason.trim().length;
+  if (length === 0) return emptyMessage;
+  if (length < min) return `Lý do cần ít nhất ${min} ký tự.`;
+  if (length > max) return `Lý do tối đa ${max} ký tự.`;
+  return null;
+}
+
 /**
  * Lock reason: required, 10–500 characters after trimming — mirrors `updateUserStatusSchema`
  * in `packages/schemas/src/users/admin-users.schema.ts`. The backend only records it in the
  * audit-log metadata (no e-mail is sent to the user).
  */
 export function lockReasonError(reason: string): string | null {
-  const length = reason.trim().length;
-  if (length === 0) return "Nhập lý do khoá: lý do được ghi vào nhật ký kiểm toán.";
-  if (length < LOCK_REASON_MIN) return `Lý do cần ít nhất ${LOCK_REASON_MIN} ký tự.`;
-  if (length > LOCK_REASON_MAX) return `Lý do tối đa ${LOCK_REASON_MAX} ký tự.`;
-  return null;
+  return reasonLengthError(
+    reason,
+    LOCK_REASON_MIN,
+    LOCK_REASON_MAX,
+    "Nhập lý do khoá: lý do được ghi vào nhật ký kiểm toán.",
+  );
+}
+
+/**
+ * Credit reason: required, 10–500 characters after trimming. Sent to respondent and recorded in audit log.
+ */
+export function creditReasonError(reason: string): string | null {
+  return reasonLengthError(
+    reason,
+    ADMIN_POINT_CREDIT_REASON_MIN,
+    ADMIN_POINT_CREDIT_REASON_MAX,
+    "Nhập lý do: lý do được gửi cho người dùng và ghi nhật ký kiểm toán.",
+  );
+}
+
+/**
+ * Parse point credit amount input: integer 1..2,147,483,647.
+ */
+export function parseCreditAmount(raw: string): { amount: number } | { error: string } {
+  const cleaned = raw.trim().replace(/[\s.,_]/g, "");
+  if (!cleaned) return { error: "Nhập số Điểm cần cộng." };
+  if (!/^\d+$/.test(cleaned)) return { error: "Nhập số nguyên dương." };
+  const amount = Number(cleaned);
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > ADMIN_POINT_CREDIT_MAX_AMOUNT) {
+    return { error: `Số Điểm phải là số nguyên từ 1 đến ${ADMIN_POINT_CREDIT_MAX_AMOUNT.toLocaleString("vi-VN")}.` };
+  }
+  return { amount };
+}
+
+export function needsRetypeConfirm(amount: number): boolean {
+  return amount > ADMIN_POINT_CREDIT_CONFIRM_THRESHOLD;
+}
+
+export function retypeMatches(raw: string, amount: number): boolean {
+  const parsed = parseCreditAmount(raw);
+  return "amount" in parsed && parsed.amount === amount;
 }
 
 /**

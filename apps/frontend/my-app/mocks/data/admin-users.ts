@@ -1,10 +1,10 @@
-import type { UserRole, UserStatus } from "@rescom/schemas";
+import type { UserRole, UserStatus, LedgerJournalDto } from "@rescom/schemas";
 import { loadStore, updateUser } from "../legacy/store";
-import { createCollection } from "../db/store";
+import { createCollection, mockId } from "../db/store";
 import { findMockUserByEmail } from "../db/session";
 import { attempts } from "./attempts";
 import { toMockUuid } from "./auth";
-import { walletOf } from "./economy";
+import { walletOf, wallets } from "./economy";
 import { FRAUD_SEED_USER_IDS, fraudSummaryOf } from "./admin-fraud-log";
 
 /**
@@ -265,3 +265,136 @@ export function isMockAccountLocked(email: string): boolean {
   if (!user) return false;
   return accountOverrides.get()[toMockUuid(user.id)]?.status === "LOCKED";
 }
+
+export interface MockAdminPointCredit {
+  journalId: string;
+  userId: string;
+  amount: number;
+  reason: string;
+  createdAt: string;
+  idempotencyKey: string;
+  reversed: boolean;
+  reversalJournalId: string | null;
+  reversedAt: string | null;
+}
+
+export const adminPointCredits = createCollection<MockAdminPointCredit[]>(
+  "admin-point-credits",
+  () => [],
+);
+
+export function listMockUserPointCredits(userId: string): MockAdminPointCredit[] {
+  return adminPointCredits
+    .get()
+    .filter((c) => c.userId === userId)
+    .sort((a, b) => (b.createdAt < a.createdAt ? -1 : b.createdAt > a.createdAt ? 1 : 0))
+    .slice(0, 50);
+}
+
+export function findMockCreditByJournalId(journalId: string): MockAdminPointCredit | undefined {
+  return adminPointCredits.get().find((c) => c.journalId === journalId);
+}
+
+export function creditMockUserPoints(
+  actorId: string,
+  targetUserId: string,
+  input: { amount: number; reason: string; idempotencyKey: string },
+):
+  | { credit: MockAdminPointCredit; replayed: boolean }
+  | { error: "ADMIN_SELF_CREDIT_FORBIDDEN" | "USER_NOT_FOUND" | "USER_BANNED" | "IDEMPOTENCY_CONFLICT" } {
+  if (targetUserId === actorId) {
+    return { error: "ADMIN_SELF_CREDIT_FORBIDDEN" };
+  }
+  const existing = adminPointCredits.get().find((c) => c.idempotencyKey === input.idempotencyKey);
+  if (existing) {
+    if (existing.userId === targetUserId && existing.amount === input.amount) {
+      return { credit: existing, replayed: true };
+    }
+    return { error: "IDEMPOTENCY_CONFLICT" };
+  }
+  const target = findMockAdminUser(targetUserId);
+  if (!target) return { error: "USER_NOT_FOUND" };
+  if (target.status === "LOCKED") return { error: "USER_BANNED" };
+
+  const journalId = mockId();
+  const credit: MockAdminPointCredit = {
+    journalId,
+    userId: targetUserId,
+    amount: input.amount,
+    reason: input.reason.trim(),
+    createdAt: new Date().toISOString(),
+    idempotencyKey: input.idempotencyKey,
+    reversed: false,
+    reversalJournalId: null,
+    reversedAt: null,
+  };
+
+  adminPointCredits.update((all) => [credit, ...all]);
+
+  // Raise balance
+  if (seedUsers.get().some((user) => user.id === targetUserId)) {
+    seedUsers.update((all) => {
+      const u = all.find((candidate) => candidate.id === targetUserId);
+      if (u) u.balance.available += input.amount;
+    });
+  } else {
+    wallets.update((all) => {
+      if (all[targetUserId]) all[targetUserId].available += input.amount;
+    });
+  }
+
+  return { credit, replayed: false };
+}
+
+export function reverseMockCredit(
+  journalId: string,
+  reason: string,
+):
+  | { journal: LedgerJournalDto }
+  | { error: "JOURNAL_NOT_FOUND" | "JOURNAL_ALREADY_REVERSED" | "INSUFFICIENT_BALANCE" | "VALIDATION_ERROR" } {
+  const credit = findMockCreditByJournalId(journalId);
+  if (!credit) return { error: "JOURNAL_NOT_FOUND" };
+  if (credit.reversed) return { error: "JOURNAL_ALREADY_REVERSED" };
+  if (reason.trim().length < 10) return { error: "VALIDATION_ERROR" };
+
+  const target = findMockAdminUser(credit.userId);
+  if (target && target.balance.available < credit.amount) {
+    return { error: "INSUFFICIENT_BALANCE" };
+  }
+
+  const reversalJournalId = mockId();
+  const now = new Date().toISOString();
+
+  adminPointCredits.update((all) => {
+    const item = all.find((c) => c.journalId === journalId);
+    if (item) {
+      item.reversed = true;
+      item.reversalJournalId = reversalJournalId;
+      item.reversedAt = now;
+    }
+  });
+
+  // Decrease balance
+  if (seedUsers.get().some((user) => user.id === credit.userId)) {
+    seedUsers.update((all) => {
+      const u = all.find((candidate) => candidate.id === credit.userId);
+      if (u) u.balance.available -= credit.amount;
+    });
+  } else {
+    wallets.update((all) => {
+      if (all[credit.userId]) all[credit.userId].available -= credit.amount;
+    });
+  }
+
+  return {
+    journal: {
+      id: reversalJournalId,
+      idempotencyKey: `reversal:${journalId}`,
+      description: reason.trim(),
+      reversesJournalId: journalId,
+      createdAt: now,
+      entries: [],
+    },
+  };
+}
+

@@ -2,6 +2,7 @@ import { Inject, Injectable, OnModuleInit, Optional } from '@nestjs/common';
 import { OutboxHandlerRegistry } from '../../../common/scheduler/outbox/outbox-handler';
 import { TopUpNotificationHandler } from '../application/top-up-notification.handler';
 import { TopUpRefundNotificationHandler } from '../application/top-up-refund-notification.handler';
+import { AdminPointsCreditedNotificationHandler } from '../application/admin-points-credited-notification.handler';
 import { ScheduledJobRegistry } from '../../../common/scheduler/scheduled-job';
 import { RewardSettlementCoordinator } from '../application/reward-settlement.coordinator';
 import { StarterPointsCoordinator } from '../application/starter-points.coordinator';
@@ -45,6 +46,8 @@ export class EconomySchedulerRegistrar implements OnModuleInit {
     private readonly refundNotification?: TopUpRefundNotificationHandler,
     @Optional()
     private readonly refundAdminNotice?: TopUpRefundAdminNoticeHandler,
+    @Optional()
+    private readonly adminPointsCreditedNotification?: AdminPointsCreditedNotificationHandler,
   ) {}
 
   onModuleInit(): void {
@@ -57,6 +60,9 @@ export class EconomySchedulerRegistrar implements OnModuleInit {
     }
     if (this.refundAdminNotice) {
       this.handlers?.register(this.refundAdminNotice);
+    }
+    if (this.adminPointsCreditedNotification) {
+      this.handlers?.register(this.adminPointsCreditedNotification);
     }
     this.jobs?.register(new PendingReleaseJob(this.rewards));
     this.jobs?.register(new StarterExpiryJob(this.starterPoints));

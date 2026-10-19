@@ -90,6 +90,7 @@ const { adminOverviewHandlers } = await import("../mocks/handlers/admin-overview
 const { adminFraudLogHandlers } = await import("../mocks/handlers/admin-fraud-log.ts");
 const { adminAuditLogsHandlers } = await import("../mocks/handlers/admin-audit-logs.ts");
 const { adminTransactionHandlers } = await import("../mocks/handlers/admin-transactions.ts");
+const { adminUserHandlers } = await import("../mocks/handlers/admin-users.ts");
 const { LEDGER_OPS_DEMO } = await import("../mocks/data/admin-transactions.ts");
 const { journalKindOf, matchesTransactionFilter, TRANSACTION_FILTERS } = await import("../lib/admin/admin-transactions.ts");
 const schemas = await import("@rescom/schemas");
@@ -100,6 +101,7 @@ const handlers = [
   ...adminFraudLogHandlers,
   ...adminAuditLogsHandlers,
   ...adminTransactionHandlers,
+  ...adminUserHandlers,
 ];
 const ORIGIN = "http://localhost";
 
@@ -113,8 +115,15 @@ async function get(route) {
   return { status: response.status, body: await response.json() };
 }
 
-async function post(route, body) {
-  const init = { method: "POST", headers: { "Content-Type": "application/json" } };
+async function post(route, body, extraHeaders = {}) {
+  const init = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": "test-csrf-token",
+      ...extraHeaders,
+    },
+  };
   if (body !== undefined) init.body = JSON.stringify(body);
   const response = await getResponse(handlers, new Request(`${ORIGIN}/api${route}`, init), { baseUrl: ORIGIN });
   assert.ok(response, `a handler answers POST ${route}`);
@@ -138,6 +147,7 @@ const ROUTES = [
   "/admin/ledger/summary",
   "/economy/integrity",
   `/economy/accounts/${randomUUID()}/balance`,
+  `/admin/users/${randomUUID()}/point-credits`,
 ];
 
 test("non-admins get 403 FORBIDDEN_RESOURCE (the backend RolesGuard code), anonymous 401", async () => {
@@ -387,9 +397,76 @@ test("Ledger ops: integrity, balance, reconcile, re-drive, release", async () =>
     `/economy/rewards/internal/${LEDGER_OPS_DEMO.settledResponseId}`,
     `/economy/rewards/external/${LEDGER_OPS_DEMO.pendingAttemptId}`,
     "/economy/rewards/release-matured",
+    `/admin/users/${randomUUID()}/point-credits`,
+    `/economy/journals/${randomUUID()}/reverse`,
   ];
   signIn("USER");
   for (const route of mutatingRoutes) assert.equal((await post(route, {})).status, 403, route);
   globalThis.__adminContractUser = null;
   for (const route of mutatingRoutes) assert.equal((await post(route, {})).status, 401, route);
+});
+
+test("Story 14.5: Admin Direct Point Credit flow (credit -> list -> reverse -> reverse again 409)", async () => {
+  signIn();
+  const targetUserId = "5b21e8a4-3c6d-4f7e-8a9b-0c1d2e3f4a02"; // Linh N. from mock seeds
+  const key = randomUUID();
+  const amount = 250;
+  const reason = "Cộng điểm bồi thường kiểm tra contract";
+
+  // Credit points
+  const creditRes = await post(`/admin/users/${targetUserId}/point-credits`, {
+    amount,
+    reason,
+    idempotencyKey: key,
+  });
+  const credit = parsed(schemas.adminPointCreditSchema, creditRes);
+  assert.equal(credit.userId, targetUserId);
+  assert.equal(credit.amount, amount);
+  assert.equal(credit.reason, reason);
+  assert.equal(credit.replayed, false);
+  const journalId = credit.journalId;
+
+  // Replay
+  const replayRes = await post(`/admin/users/${targetUserId}/point-credits`, {
+    amount,
+    reason,
+    idempotencyKey: key,
+  });
+  const replay = parsed(schemas.adminPointCreditSchema, replayRes);
+  assert.equal(replay.journalId, journalId);
+  assert.equal(replay.replayed, true);
+
+  // List credits
+  const listRes = await get(`/admin/users/${targetUserId}/point-credits`);
+  const list = parsed(schemas.adminPointCreditListSchema, listRes);
+  const found = list.items.find((item) => item.journalId === journalId);
+  assert.ok(found);
+  assert.equal(found.amount, amount);
+  assert.equal(found.reversed, false);
+
+  // Reverse without reason -> 400
+  const badRev = await post(`/economy/journals/${journalId}/reverse`, {});
+  assert.equal(badRev.status, 400);
+  assert.equal(badRev.body.error.code, "VALIDATION_ERROR");
+
+  // Reverse with reason
+  const revRes = await post(`/economy/journals/${journalId}/reverse`, {
+    reason: "Hoàn tác khoản cộng điểm kiểm tra contract",
+  });
+  assert.equal(revRes.status, 200);
+  const revJournal = parsed(schemas.ledgerJournalSchema, revRes);
+  assert.equal(revJournal.reversesJournalId, journalId);
+
+  // List now shows reversed: true
+  const listAfter = parsed(schemas.adminPointCreditListSchema, await get(`/admin/users/${targetUserId}/point-credits`));
+  const foundAfter = listAfter.items.find((item) => item.journalId === journalId);
+  assert.equal(foundAfter.reversed, true);
+  assert.equal(foundAfter.reversalJournalId, revJournal.id);
+
+  // Second reverse -> 409 JOURNAL_ALREADY_REVERSED
+  const secondRev = await post(`/economy/journals/${journalId}/reverse`, {
+    reason: "Hoàn tác lần thứ hai kiểm tra contract",
+  });
+  assert.equal(secondRev.status, 409);
+  assert.equal(secondRev.body.error.code, "JOURNAL_ALREADY_REVERSED");
 });

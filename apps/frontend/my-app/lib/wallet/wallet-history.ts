@@ -37,6 +37,7 @@ export type HistoryKind =
   | "VOUCHER_REDEMPTION"
   | "SURVEY_ESCROW"
   | "ESCROW_REFUND"
+  | "ADMIN_CREDIT"
   | "REVERSAL"
   | "OTHER";
 
@@ -99,6 +100,7 @@ const KEY_PREFIXES: ReadonlyArray<readonly [string, HistoryKind]> = [
   ["publish:", "SURVEY_ESCROW"],
   ["reopen-escrow:", "SURVEY_ESCROW"],
   ["close-refund:", "ESCROW_REFUND"],
+  ["admin-credit:", "ADMIN_CREDIT"],
 ];
 
 export function historyKindOf(
@@ -152,6 +154,7 @@ const TITLES: Record<HistoryKind, string> = {
   VOUCHER_REDEMPTION: "Đổi voucher",
   SURVEY_ESCROW: "Ký quỹ khảo sát",
   ESCROW_REFUND: "Hoàn ký quỹ",
+  ADMIN_CREDIT: "Điểm cộng từ Admin",
   REVERSAL: "Điều chỉnh giao dịch",
   OTHER: "Giao dịch",
 };
@@ -227,6 +230,12 @@ function notesOf(kind: HistoryKind, entry: WalletTransaction, payout: boolean): 
     case "ESCROW_REFUND": {
       const title = titleFromDescription(entry.description) ?? "Khảo sát của bạn";
       return { note: title, shortNote: title };
+    }
+    case "ADMIN_CREDIT": {
+      const desc = entry.description?.trim();
+      const note = desc ? `Lý do: ${desc}` : "";
+      const shortNote = desc ?? "";
+      return { note, shortNote };
     }
     case "REVERSAL":
       return { note: "Hoàn tác một giao dịch trước", shortNote: "Hoàn tác" };

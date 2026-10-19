@@ -23,6 +23,7 @@ import {
 import { useSession } from "@/lib/session/SessionProvider";
 import { useUserActions } from "../hooks/use-user-actions";
 import { ConfirmUserActionDialog } from "./ConfirmUserActionDialog";
+import { PointCreditSection } from "./PointCreditSection";
 import { StatusPill } from "./StatusPill";
 
 const ROLE_OPTIONS = (Object.keys(ROLE_LABELS) as UserRole[]).map((role) => ({ value: role, label: ROLE_LABELS[role] }));
@@ -211,6 +212,12 @@ export function UserDetailPanel({ user, detailError, onRetryDetail, onUpdated }:
         </div>
         {roleBlock ? <p className="mt-2 text-[12px] leading-4.5 text-ink-muted">{roleBlock}</p> : null}
       </div>
+
+      {actor?.id !== user.id ? (
+        <div className="mt-5 border-t border-line-subtle pt-4">
+          <PointCreditSection user={user} onDetailReload={onRetryDetail} />
+        </div>
+      ) : null}
 
       <ConfirmUserActionDialog
         open={dialog === "lock"}

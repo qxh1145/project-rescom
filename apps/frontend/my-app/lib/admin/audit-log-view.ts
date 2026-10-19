@@ -29,6 +29,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   LEDGER_ACCOUNT_RECONCILED: "Đối soát tài khoản sổ cái",
   REWARD_REDRIVEN: "Chạy lại trả thưởng",
   PENDING_REWARDS_RELEASED: "Giải phóng Điểm chờ 48 giờ",
+  ADMIN_POINTS_CREDITED: "Cộng Điểm thủ công",
+  LEDGER_JOURNAL_REVERSED: "Hoàn tác giao dịch sổ cái",
 };
 
 export const AUDIT_ACTION_OPTIONS: Array<{ value: string; label: string }> = [

@@ -27,6 +27,9 @@ import {
   TopUpRefundNotFoundException,
   RefundAlreadyResolvedException,
   InsufficientEscrowBalanceException,
+  AdminPointCreditCapabilityRequiredException,
+  AdminSelfCreditForbiddenException,
+  UserBannedException,
 } from '../../modules/economy/application/exceptions/economy.exceptions';
 import {
   FormNotInModerationQueueException,
@@ -243,6 +246,17 @@ describe('HttpExceptionFilter (Unit Tests)', () => {
       HttpStatus.CONFLICT,
       'REFUND_ALREADY_RESOLVED',
     ],
+    [
+      new AdminPointCreditCapabilityRequiredException(),
+      HttpStatus.FORBIDDEN,
+      'ADMIN_CAPABILITY_REQUIRED',
+    ],
+    [
+      new AdminSelfCreditForbiddenException(),
+      HttpStatus.FORBIDDEN,
+      'ADMIN_SELF_CREDIT_FORBIDDEN',
+    ],
+    [new UserBannedException(), HttpStatus.CONFLICT, 'USER_BANNED'],
   ])(
     'maps Story 6.6 top-up exception %# to its HTTP status and code',
     (exception, expectedStatus, expectedCode) => {
