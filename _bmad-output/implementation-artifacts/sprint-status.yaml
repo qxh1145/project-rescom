@@ -168,12 +168,50 @@ development_status:
   # Added 2026-10-18 by sprint-change-proposal-2026-10-18 (Admin console gaps; 8.5/10.7 stay Phase 2)
   # Starts after 13.13 Part B; stories independent; 14.1 has the only migration
   epic-14: in-progress
-  14-1-missing-code-report-resolution: done  # implemented 2026-10-18; code review 2026-10-18: 9 patches applied (uncommitted), e2e 38/38 live, FE 1003/1003
-  14-2-rewards-daily-points-limit-setting: review  # implemented 2026-10-18 (FE only + test-only BE e2e); FE 1006/1006, BE 2744/2744
+  14-1-missing-code-report-resolution: done  # implemented 2026-10-18; code review 2026-10-18: 9 patches applied (b7a6232, PR #57), e2e 38/38 live, FE 1003/1003
+  14-2-rewards-daily-points-limit-setting: done  # code review 2026-10-19 on 9329592 (post-merge PR #58): clean, 0 patches, 12 dismissed; implemented 2026-10-18 (FE only + test-only BE e2e); FE 1006/1006, BE 2744/2744
   14-3-admin-audit-log-viewer: done  # code review 2026-10-18: 7 patches applied, 5 deferred; created 2026-10-18; branch feat/14-3 from 7a3c1c7; D1=A confirmed by Quan: identity_audit_logs only (Outbox admin-audit events not shown)
   14-4-ledger-operations-panel: done  # implemented + reviewed 2026-10-19 on feat/14-4; D1=A + D2=A confirmed by Quan; 5 review patches applied, clamp dismissed; schemas 712, BE 2763, FE 1020/1021 (pre-existing clock-dependent failure)
-  14-5-admin-direct-point-credit: done  # code review 2026-10-19: 9 patches applied (uncommitted); created 2026-10-19 on feat/14-5 from 859b1ef; D1 (audit tx-aware identity_audit_logs) + D2 (new notification type ADMIN_POINTS_CREDITED, migration) confirmed by Quan, D3 banned=LOCKED
-  epic-14-retrospective: optional
+  14-5-admin-direct-point-credit: done  # code review 2026-10-19: 9 patches applied (in 1db604d, PR #61 a7e6341); created 2026-10-19 on feat/14-5 from 859b1ef; D1 (audit tx-aware identity_audit_logs) + D2 (new notification type ADMIN_POINTS_CREDITED, migration) confirmed by Quan, D3 banned=LOCKED
+  epic-14-retrospective: done  # retro 2026-10-20: epic-14-retro-2026-10-20.md
+
+action_items:
+  - epic: 14
+    action: "Run full e2e incl. *.prisma.e2e suites (unrun in 14.4) and 14.1 + 14.5 migrations on a scratch DB before release"
+    owner: "Quan (QA)"
+    status: open
+  - epic: 14
+    action: "Release Epic 14: PR develop -> main, VPS build + up --no-deps backend, verify migrations, smoke-test Cong Diem on prod"
+    owner: "Quan (Dev/Ops)"
+    status: open
+  - epic: 14
+    action: "Epic DoD = merged to main; every epic ends with a release story (like 12.11, 13.13)"
+    owner: "Quan (PO/SM)"
+    status: open
+  - epic: 14
+    action: "Story template lists CI gates (contract-callsites, route-diff, prettier) in Tasks/Dev Notes"
+    owner: "Quan (SM)"
+    status: open
+  - epic: 14
+    action: "No [x] on test tasks without command + result in Dev Agent Record; review returns in-progress otherwise"
+    owner: "Quan (Dev)"
+    status: open
+  - epic: 14
+    action: "Fix stale Epic 14 sprint-status comments and commit 14.2 status change"
+    owner: "Quan (SM)"
+    status: done
+  - epic: 14
+    action: "Fix or quarantine pre-existing failures: rewards-flash.prisma.e2e:144, clock-dependent rewards-admin-flash-domain 'stats: daily', prettier on missing-code spec"
+    owner: "Quan (Dev)"
+    status: open
+  - epic: 14
+    action: "Create story: Audit Log viewer shows Outbox admin-audit:* events (14.3 D1 Option B)"
+    owner: "Quan (PO)"
+    status: open
+  - epic: 14
+    action: "Audit Log pagination tie-break: orderBy createdAt + id (prisma-audit-log.repository.ts:84, deferred from 14.3)"
+    owner: "Quan (Dev)"
+    status: open
 
 # ==============================================================================
 # PHASE 2 DEFERRED EPICS & SUB-EPICS (Post-MVP Scope)

@@ -4,7 +4,7 @@ baseline_commit: 6f0d5ab92fdee3ef85fd8abbf03fb607ea9997d4
 
 # Story 14.2: Rewards Daily Points Limit Setting
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
